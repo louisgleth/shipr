@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipr Labels - Instant Postage</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="auth-gate" id="authGate">
+      <div class="auth-stack">
+        <div class="auth-logo-lottie" id="authLogoLottie" aria-hidden="true"></div>
+        <div class="auth-card">
+          <div class="auth-brand" id="authBrand">
+            <div class="auth-brand-original" id="authBrandOriginal">
+              <div class="brand-mark"></div>
+              <div>
+                <div class="brand-title">Shipr Labels</div>
+                <div class="brand-sub">Account required to access your label workspace</div>
+              </div>
+            </div>
+            <div class="auth-brand-inline-logo is-hidden" id="authBrandInlineLogo" aria-hidden="true"></div>
+          </div>
+          <div class="auth-copy">
+            <h2>Sign in to continue</h2>
+            <p>Use your email and password. New users can create an account below.</p>
+          </div>
+          <form id="authForm" class="auth-form" autocomplete="on">
+            <label class="field">
+              <span>Email</span>
+              <input type="email" id="authEmail" required autocomplete="email" />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input type="password" id="authPassword" required autocomplete="current-password" />
+            </label>
+            <div class="form-error" id="authError"></div>
+            <div class="auth-actions">
+              <button type="submit" class="btn btn-primary" id="authSignIn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Sign In</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="authSignUp">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                <span>Create Account</span>
+              </button>
+            </div>
+            <div class="auth-form-foot">
+              <button type="button" class="auth-forgot" id="authForgotPassword">Forgot Password?</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="page is-hidden" id="appPage">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div>
+            <div class="brand-title">Shipr Labels</div>
+            <div class="brand-sub">Private label postage for your subdomain</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="account-chip is-hidden" id="accountChip"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="openAccountPage">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M5 20c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+            <span>Account</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm is-hidden" id="openReportsPage">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="4" y1="19" x2="20" y2="19"/><rect x="6" y="10" width="3" height="6"/><rect x="11" y="7" width="3" height="9"/><rect x="16" y="4" width="3" height="12"/></svg>
+            <span>Reports</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="builder-page" id="builderPage">
+        <div class="hero">
+          <div>
+            <h1>Build, pay, and preview your postage label in minutes.</h1>
+            <p>
+              A minimal, high-trust label pipeline: enter details, choose a service,
+              confirm invoice details, and receive a crisp PDF ready to print.
+            </p>
+          </div>
+        </div>
+
+        <main class="layout">
+        <aside class="sidebar">
+          <div class="stepper-card">
+            <div class="stepper" id="stepper">
+              <div class="stepper-item is-active" data-step="1">
+                <div class="step-dot"><span>1</span></div>
+                <div class="step-text">
+                  <div class="step-title">Label Info</div>
+                  <div class="step-sub">Sender, recipient, parcel</div>
+                </div>
+              </div>
+              <div class="stepper-item" data-step="2">
+                <div class="step-dot"><span>2</span></div>
+                <div class="step-text">
+                  <div class="step-title">Label Selection</div>
+                  <div class="step-sub">Service, speed, cost</div>
+                </div>
+              </div>
+              <div class="stepper-item" data-step="3">
+                <div class="step-dot"><span>3</span></div>
+                <div class="step-text">
+                  <div class="step-title">Invoice Confirm</div>
+                  <div class="step-sub">Billing details, monthly invoice</div>
+                </div>
+              </div>
+              <div class="stepper-item" data-step="4">
+                <div class="step-dot"><span>4</span></div>
+                <div class="step-text">
+                  <div class="step-title">Label PDF</div>
+                  <div class="step-sub">Preview and download</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary-title">Order Summary</div>
+            <div class="summary-row">
+              <span class="summary-label">Service</span>
+              <span class="summary-value" id="summaryService">Standard Ground</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Unit Price</span>
+              <span class="summary-value" id="summaryPrice">$6.40</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Quantity</span>
+              <span class="summary-value" id="summaryQty">1</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Total</span>
+              <span class="summary-value" id="summaryTotal">$6.40</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Tracking</span>
+              <span class="summary-value mono" id="summaryTracking">--</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Label ID</span>
+              <span class="summary-value mono" id="summaryLabelId">--</span>
+            </div>
+          </div>
+
+        </aside>
+
+        <section class="panel">
+          <div class="panel-stack">
+            <section class="step-panel" data-panel="2">
+              <div class="panel-header">
+                <div>
+                  <h2>Choose your label service</h2>
+                  <p class="panel-sub">
+                    Select a delivery speed. Pricing updates instantly.
+                  </p>
+                </div>
+              </div>
+
+              <div class="label-grid">
+                <button type="button" class="label-card is-selected" data-type="Standard Ground" data-speed="3-5 business days" data-price="6.40">
+                  <div class="label-card-top">
+                    <div>
+                      <div class="label-title">Standard Ground</div>
+                      <div class="label-sub">Reliable, cost-effective</div>
+                    </div>
+                    <div class="label-price">$6.40</div>
+                  </div>
+                  <div class="label-meta">
+                    <span class="mono">TRACKING INCLUDED</span>
+                    <span class="mono">4x6 PDF</span>
+                  </div>
+                </button>
+                <button type="button" class="label-card" data-type="Two-Day Express" data-speed="2 business days" data-price="14.80">
+                  <div class="label-card-top">
+                    <div>
+                      <div class="label-title">Two-Day Express</div>
+                      <div class="label-sub">Fast, time sensitive</div>
+                    </div>
+                    <div class="label-price">$14.80</div>
+                  </div>
+                  <div class="label-meta">
+                    <span class="mono">SIGNATURE READY</span>
+                    <span class="mono">INSURED</span>
+                  </div>
+                </button>
+                <button type="button" class="label-card" data-type="International Priority" data-speed="4-8 business days" data-price="28.25">
+                  <div class="label-card-top">
+                    <div>
+                      <div class="label-title">International Priority</div>
+                      <div class="label-sub">Global, priority clearance</div>
+                    </div>
+                    <div class="label-price">$28.25</div>
+                  </div>
+                  <div class="label-meta">
+                    <span class="mono">CUSTOMS READY</span>
+                    <span class="mono">GLOBAL ETA</span>
+                  </div>
+                </button>
+              </div>
+              <div class="quantity-row">
+                <label class="field">
+                  <span>Label Quantity</span>
+                  <input type="number" id="labelQuantity" min="1" max="50" value="1" />
+                </label>
+              </div>
+
+              <div class="panel-actions">
+                <button type="button" class="btn btn-ghost" data-back="1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="button" class="btn btn-primary" data-next="3">
+                  <span>Continue</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+              </div>
+            </section>
+
+            <section class="step-panel is-active" data-panel="1">
+              <div class="panel-header panel-header-import">
+                <div>
+                  <h2>Enter label information</h2>
+                  <p class="panel-sub">
+                    Add sender, recipient, and parcel details — or import from a provider.
+                  </p>
+                </div>
+                <div class="header-actions">
+                  <div class="header-actions-row">
+                    <div class="provider-dropdown" id="providerDropdown">
+                      <button type="button" class="provider-trigger" id="providerTrigger">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
+                        <span>Import from provider</span>
+                        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                      </button>
+                      <div class="provider-menu" id="providerMenu">
+                        <button type="button" class="provider-option" data-provider="shopify">
+                          <span class="provider-icon">S</span>Shopify
+                        </button>
+                        <button type="button" class="provider-option" data-provider="woocommerce">
+                          <span class="provider-icon">W</span>WooCommerce
+                        </button>
+                        <button type="button" class="provider-option" data-provider="amazon">
+                          <span class="provider-icon">A</span>Amazon Seller
+                        </button>
+                        <button type="button" class="provider-option" data-provider="etsy">
+                          <span class="provider-icon">E</span>Etsy
+                        </button>
+                        <button type="button" class="provider-option" data-provider="bigcommerce">
+                          <span class="provider-icon">B</span>BigCommerce
+                        </button>
+                        <button type="button" class="provider-option" data-provider="squarespace">
+                          <span class="provider-icon">Sq</span>Squarespace
+                        </button>
+                      </div>
+                    </div>
+
+                    <button type="button" class="csv-upload-trigger" id="csvUploadTrigger">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      <span>Upload CSV</span>
+                    </button>
+                  </div>
+                  <div class="test-tools">
+                    <button type="button" class="test-link" id="autoFill">Auto-fill</button>
+                    <span class="test-sep">/</span>
+                    <button type="button" class="test-link" id="autoCsv">Auto CSV</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-error" id="labelError">
+                Complete all required fields or use Auto-generate CSV.
+              </div>
+
+              <form class="form-grid" id="labelForm">
+                <div class="form-section">
+                  <div class="section-title">Sender</div>
+                  <label class="field">
+                    <span>Name</span>
+                    <input type="text" id="senderName" required />
+                  </label>
+                  <label class="field">
+                    <span>Street</span>
+                    <input type="text" id="senderStreet" required />
+                  </label>
+                  <div class="field-row">
+                    <label class="field">
+                      <span>City</span>
+                      <input type="text" id="senderCity" required />
+                    </label>
+                    <label class="field">
+                      <span>Region / Province</span>
+                      <input type="text" id="senderState" required />
+                    </label>
+                    <label class="field">
+                      <span>ZIP</span>
+                      <input type="text" id="senderZip" required />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-section">
+                  <div class="section-title">Recipient</div>
+                  <label class="field">
+                    <span>Name</span>
+                    <input type="text" id="recipientName" required />
+                  </label>
+                  <label class="field">
+                    <span>Street</span>
+                    <input type="text" id="recipientStreet" required />
+                  </label>
+                  <label class="field">
+                    <span>Country</span>
+                    <div class="country-input-wrap">
+                      <span class="country-flag" id="countryFlag"></span>
+                      <input type="text" id="recipientCountry" value="United States" required />
+                    </div>
+                  </label>
+                  <div class="field-row">
+                    <label class="field">
+                      <span>City</span>
+                      <input type="text" id="recipientCity" required />
+                    </label>
+                    <label class="field">
+                      <span>Region / Province</span>
+                      <input type="text" id="recipientState" required />
+                    </label>
+                    <label class="field">
+                      <span>ZIP</span>
+                      <input type="text" id="recipientZip" required />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-section">
+                  <div class="section-title">Parcel</div>
+                  <div class="field-row">
+                    <label class="field">
+                      <span>Weight (lb)</span>
+                      <input type="number" id="packageWeight" min="0.1" step="0.1" required />
+                    </label>
+                    <label class="field">
+                      <span>Dimensions (in)</span>
+                      <input type="text" id="packageDims" placeholder="10 x 6 x 2" required />
+                    </label>
+                  </div>
+                </div>
+                <input type="hidden" id="trackingId" />
+                <input type="hidden" id="labelId" />
+              </form>
+              <div class="csv-section" id="csvSection">
+                <div class="csv-header">
+                  <div>
+                    <div class="section-title">CSV Batch Upload</div>
+                    <div class="csv-sub">Imported rows ready for review.</div>
+                  </div>
+                  <button type="button" class="csv-edit-btn" id="csvEditToggle" disabled>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    <span>Edit</span>
+                  </button>
+                </div>
+                <div class="csv-table-wrap">
+                  <table class="csv-table" id="csvTable">
+                    <thead>
+                      <tr>
+                        <th>From Name</th>
+                        <th>From Street</th>
+                        <th>From City</th>
+                        <th>From State</th>
+                        <th>From Zip</th>
+                        <th>To Name</th>
+                        <th>To Street</th>
+                        <th>To City</th>
+                        <th>To State</th>
+                        <th>To Zip</th>
+                        <th>Country</th>
+                        <th>Weight</th>
+                        <th>Dims</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" data-next="2">
+                  <span>Continue</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+              </div>
+            </section>
+
+            <section class="step-panel" data-panel="3">
+              <div class="panel-header">
+                <div>
+                  <h2>Confirm invoice information</h2>
+                  <p class="panel-sub">
+                    No charge now. These details are used for your month-end invoice.
+                  </p>
+                </div>
+              </div>
+
+              <div class="form-grid invoice-layout">
+                <div class="form-section invoice-info-card">
+                  <div class="section-title">Invoice Recipient</div>
+                  <div class="invoice-info-grid">
+                    <div class="invoice-info-row">
+                      <span>Company</span>
+                      <strong id="invoiceCompany">--</strong>
+                    </div>
+                    <div class="invoice-info-row">
+                      <span>Point of Contact</span>
+                      <strong id="invoiceContact">--</strong>
+                    </div>
+                    <div class="invoice-info-row">
+                      <span>Email</span>
+                      <strong id="invoiceEmail">--</strong>
+                    </div>
+                    <div class="invoice-info-row">
+                      <span>Phone</span>
+                      <strong id="invoicePhone">--</strong>
+                    </div>
+                    <div class="invoice-info-row">
+                      <span>Billing Address</span>
+                      <strong id="invoiceAddress">--</strong>
+                    </div>
+                    <div class="invoice-info-row">
+                      <span>Tax ID</span>
+                      <strong id="invoiceTaxId" class="mono">--</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-section payment-summary invoice-summary">
+                  <div class="section-title">Monthly Invoice Preview</div>
+                  <div class="summary-line">
+                    <span>Label service</span>
+                    <span id="paymentService">Standard Ground</span>
+                  </div>
+                  <div class="summary-line">
+                    <span>Quantity</span>
+                    <span id="invoiceQty">1</span>
+                  </div>
+                  <div class="summary-line">
+                    <span>Subtotal (ex VAT)</span>
+                    <span id="invoiceSubtotal">$6.40</span>
+                  </div>
+                  <div class="summary-line">
+                    <span>VAT (21%)</span>
+                    <span id="invoiceVat">$1.34</span>
+                  </div>
+                  <div class="summary-line total">
+                    <span>Total (incl VAT)</span>
+                    <span id="paymentTotal">$7.74</span>
+                  </div>
+                  <div class="invoice-note">
+                    This order will be added to your monthly invoice. If you want your information to be changed, please contact your account manager.
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel-actions">
+                <button type="button" class="btn btn-ghost" data-back="2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="payButton">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9 9 4 9 9z"/></svg>
+                  <span>Confirm &amp; Generate</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="step-panel" data-panel="4">
+              <div class="panel-header">
+                <div>
+                  <h2>Your label is ready</h2>
+                  <p class="panel-sub">
+                    Preview the PDF and download the label for printing.
+                  </p>
+                </div>
+                <div class="panel-actions inline-actions">
+                  <button type="button" class="btn btn-secondary btn-accent" id="downloadPdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
+                    <span>Download PDF</span>
+                  </button>
+                  <button type="button" class="btn btn-ghost" id="startOver">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 .2-6.2L1 10"/></svg>
+                    <span>Start New Label</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="preview-grid">
+                <div class="pdf-preview">
+                  <div class="preview-title">PDF Preview</div>
+                  <div class="batch-preview" id="batchPreview">
+                    <div class="batch-panel is-hidden" id="batchPanel">
+                      <div class="batch-title">Batch Queue</div>
+                      <div class="batch-list" id="batchList"></div>
+                    </div>
+                    <iframe id="pdfFrame" title="Label PDF preview"></iframe>
+                  </div>
+                </div>
+                <div class="label-preview">
+                  <div class="preview-title">Label Summary</div>
+                  <div class="label-sheet" id="labelSheet">
+                    <div class="label-top">
+                      <div>
+                        <div class="label-brand">Shipr Label Co.</div>
+                        <div class="label-service" id="previewService">Standard Ground</div>
+                      </div>
+                      <div class="label-tracking mono" id="previewTracking">TRACKING</div>
+                    </div>
+                    <div class="label-block">
+                      <div class="label-caption mono">FROM</div>
+                      <div class="label-text" id="previewFrom">--</div>
+                    </div>
+                    <div class="label-block">
+                      <div class="label-caption mono">TO</div>
+                      <div class="label-text" id="previewTo">--</div>
+                    </div>
+                    <div class="label-footer">
+                      <div>
+                        <div class="label-caption mono">WEIGHT</div>
+                        <div class="label-text" id="previewWeight">--</div>
+                      </div>
+                      <div>
+                    <div class="label-caption mono">DIMENSIONS</div>
+                    <div class="label-text" id="previewDims">--</div>
+                  </div>
+                </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+        </main>
+      </div>
+
+      <section class="account-page is-hidden" id="accountPageSection">
+        <div class="account-page-head">
+          <div>
+            <h2>Account Overview</h2>
+            <p class="panel-sub">
+              Read-only account profile details tied to this authenticated workspace.
+            </p>
+          </div>
+          <div class="account-page-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="closeAccountPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Back to Builder</span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm is-hidden" id="signOutButton">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="account-info-panel">
+          <div class="preview-title">Account Information</div>
+          <div class="account-info-grid">
+            <div class="account-info-item">
+              <div class="account-info-label">Company Name</div>
+              <div class="account-info-value" id="accountCompanyName">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Point of Contact</div>
+              <div class="account-info-value" id="accountContactName">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Contact Email</div>
+              <div class="account-info-value" id="accountContactEmail">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Phone</div>
+              <div class="account-info-value" id="accountContactPhone">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Billing Address</div>
+              <div class="account-info-value" id="accountBillingAddress">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Tax ID</div>
+              <div class="account-info-value mono" id="accountTaxId">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Customer ID</div>
+              <div class="account-info-value mono" id="accountCustomerId">--</div>
+            </div>
+            <div class="account-info-item">
+              <div class="account-info-label">Plan</div>
+              <div class="account-info-value" id="accountPlan">--</div>
+            </div>
+          </div>
+          <div class="account-info-note">
+            To update account information, please contact your account manager.
+          </div>
+        </div>
+
+        <div class="account-page-layout">
+          <div class="account-history-panel">
+            <div class="account-section-head">
+              <h3>Generation History</h3>
+              <p class="panel-sub">
+                Review previous generations, preview label PDFs, and export receipts.
+              </p>
+            </div>
+            <div class="preview-title">Generations</div>
+            <div class="account-history-status" id="accountHistoryStatus">
+              Sign in to view previous generations.
+            </div>
+            <div class="account-history-list" id="accountHistoryList"></div>
+          </div>
+
+          <div class="account-preview-panel">
+            <div class="account-preview-head">
+              <div>
+                <div class="preview-title">Generation Preview</div>
+                <div class="account-preview-meta mono" id="accountPreviewMeta">
+                  Select a generation to preview labels and receipt details.
+                </div>
+              </div>
+              <div class="account-preview-actions">
+                <button type="button" class="btn btn-secondary btn-accent btn-sm" id="accountDownloadPdf" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
+                  <span>Download Label PDF</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="openReceiptModal" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span>View Receipt</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="batch-preview is-single" id="accountBatchPreview">
+              <div class="account-preview-empty" id="accountPreviewEmpty">
+                No label PDF selected yet. Choose a generation to preview.
+              </div>
+              <div class="batch-panel is-hidden" id="accountBatchPanel">
+                <div class="batch-title">Batch Queue</div>
+                <div class="batch-list" id="accountBatchList"></div>
+              </div>
+              <iframe id="accountPdfFrame" title="Account label PDF preview"></iframe>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="reports-page is-hidden" id="reportsPageSection">
+        <div class="reports-page-head">
+          <div>
+            <h2>Shipping Reports</h2>
+            <p class="panel-sub">
+              Interactive visibility into savings, payments, shipment volume, services, and destinations.
+            </p>
+          </div>
+          <div class="reports-page-actions">
+            <div class="reports-range" id="reportsRange">
+              <button type="button" class="reports-range-btn" data-report-range="7">Last 7 Days</button>
+              <button type="button" class="reports-range-btn is-active" data-report-range="30">Last 30 Days</button>
+              <button type="button" class="reports-range-btn" data-report-range="90">Last 90 Days</button>
+              <button type="button" class="reports-range-btn" data-report-range="365">Last Year</button>
+              <button type="button" class="reports-range-btn" data-report-range="custom">Custom</button>
+            </div>
+            <div class="reports-custom-range is-hidden" id="reportsCustomRange">
+              <label class="reports-date-field">
+                <span>From</span>
+                <input type="date" id="reportsStartDate" />
+              </label>
+              <label class="reports-date-field">
+                <span>To</span>
+                <input type="date" id="reportsEndDate" />
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="reportsApplyCustom">
+                <span>Apply Range</span>
+              </button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="closeReportsPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Back to Builder</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="reports-grid">
+          <article class="reports-card reports-kpi-card">
+            <div class="reports-kpi-title">Savings vs Retail</div>
+            <div class="reports-kpi-value" id="reportSavingsValue">$0.00</div>
+            <div class="reports-kpi-meta mono" id="reportSavingsMeta">0 labels analyzed</div>
+            <div class="reports-kpi-foot">Estimated discount captured</div>
+          </article>
+
+          <article class="reports-card reports-kpi-card">
+            <div class="reports-kpi-title">Pending Returns</div>
+            <div class="reports-kpi-value" id="reportPendingReturnsValue">0 labels</div>
+            <div class="reports-kpi-meta mono" id="reportPendingReturnsMeta">$0.00 pending</div>
+            <div class="reports-kpi-foot">Return labels waiting action</div>
+          </article>
+
+          <article class="reports-card reports-kpi-card">
+            <div class="reports-kpi-title">Pending Label Refunds</div>
+            <div class="reports-kpi-value" id="reportPendingRefundsValue">0 labels</div>
+            <div class="reports-kpi-meta mono" id="reportPendingRefundsMeta">$0.00 pending</div>
+            <div class="reports-kpi-foot">Unused or voided labels</div>
+          </article>
+        </div>
+
+        <div class="reports-finance-layout">
+          <div class="reports-finance-stack">
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Account Balance</div>
+              <div class="reports-kpi-value" id="reportAccountBalanceValue">$0.00</div>
+              <div class="reports-kpi-meta mono">Monthly billing cycle</div>
+              <div class="reports-kpi-foot">Settled at month end</div>
+            </article>
+
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Total Shipping Costs</div>
+              <div class="reports-kpi-value" id="reportTotalShippingCostsValue">$0.00</div>
+              <div class="reports-kpi-meta mono" id="reportTotalShippingCostsMeta">EX VAT</div>
+              <div class="reports-kpi-foot">Service charges in selected range</div>
+            </article>
+
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Carrier Adjustments</div>
+              <div class="reports-kpi-value" id="reportCarrierAdjustmentsValue">$0.00</div>
+              <div class="reports-kpi-meta mono" id="reportCarrierAdjustmentsMeta">0 events</div>
+              <div class="reports-kpi-foot">Post-label carrier corrections</div>
+            </article>
+          </div>
+
+          <article class="reports-card reports-chart-card reports-chart-large">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Total Payments</h3>
+                <p class="reports-chart-sub">Daily spend trend (ex VAT)</p>
+              </div>
+              <div class="reports-chart-total mono" id="reportTotalPaymentsValue">$0.00</div>
+            </div>
+            <div class="reports-chart-wrap" id="reportPaymentsChartWrap">
+              <svg class="reports-line-chart" id="reportPaymentsChart" viewBox="0 0 900 220" aria-label="Total payments chart"></svg>
+              <div class="reports-chart-tooltip is-hidden" id="reportPaymentsTooltip"></div>
+            </div>
+            <div class="reports-chart-axis" id="reportPaymentsAxis"></div>
+          </article>
+        </div>
+
+        <div class="reports-shipping-layout">
+          <article class="reports-card reports-chart-card reports-chart-large">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Average Cost</h3>
+                <p class="reports-chart-sub">Average label price by day</p>
+              </div>
+              <div class="reports-chart-total mono" id="reportAverageCostValue">$0.00</div>
+            </div>
+            <div class="reports-chart-wrap" id="reportAverageCostChartWrap">
+              <svg class="reports-line-chart" id="reportAverageCostChart" viewBox="0 0 900 220" aria-label="Average cost chart"></svg>
+              <div class="reports-chart-tooltip is-hidden" id="reportAverageCostTooltip"></div>
+            </div>
+            <div class="reports-chart-axis" id="reportAverageCostAxis"></div>
+          </article>
+
+          <div class="reports-shipping-stack">
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Avg. Domestic</div>
+              <div class="reports-kpi-value" id="reportAvgDomesticValue">$0.00</div>
+              <div class="reports-kpi-meta mono" id="reportAvgDomesticMeta">0 labels</div>
+              <div class="reports-kpi-foot">Recipient country: Belgium</div>
+            </article>
+
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Avg. International</div>
+              <div class="reports-kpi-value" id="reportAvgInternationalValue">$0.00</div>
+              <div class="reports-kpi-meta mono" id="reportAvgInternationalMeta">0 labels</div>
+              <div class="reports-kpi-foot">Recipient country: international</div>
+            </article>
+          </div>
+        </div>
+
+        <div class="reports-volume-layout">
+          <div class="reports-volume-stack">
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">New Shipments</div>
+              <div class="reports-kpi-value" id="reportNewShipmentsValue">0</div>
+              <div class="reports-kpi-meta mono" id="reportNewShipmentsMeta">$0.00 spend</div>
+              <div class="reports-kpi-foot">Created in selected range</div>
+            </article>
+
+            <article class="reports-card reports-kpi-card">
+              <div class="reports-kpi-title">Delivery Issues</div>
+              <div class="reports-kpi-value" id="reportDeliveryIssuesValue">0</div>
+              <div class="reports-kpi-meta mono" id="reportDeliveryIssuesMeta">0.00% rate</div>
+              <div class="reports-kpi-foot">Flagged as delayed / exception</div>
+            </article>
+          </div>
+
+          <article class="reports-card reports-chart-card reports-chart-large">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Total Shipments</h3>
+                <p class="reports-chart-sub">Daily label volume</p>
+              </div>
+              <div class="reports-chart-total mono" id="reportTotalShipmentsValue">0</div>
+            </div>
+            <div class="reports-chart-wrap" id="reportShipmentsChartWrap">
+              <svg class="reports-line-chart" id="reportShipmentsChart" viewBox="0 0 900 220" aria-label="Total shipments chart"></svg>
+              <div class="reports-chart-tooltip is-hidden" id="reportShipmentsTooltip"></div>
+            </div>
+            <div class="reports-chart-axis" id="reportShipmentsAxis"></div>
+          </article>
+        </div>
+
+        <div class="reports-distribution-layout">
+          <article class="reports-card reports-services-card">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Services</h3>
+                <p class="reports-chart-sub">Label mix by service type</p>
+              </div>
+            </div>
+            <div class="reports-donut-wrap">
+              <svg class="reports-donut" id="reportServicesDonut" viewBox="0 0 220 220" aria-label="Service distribution chart"></svg>
+              <div class="reports-donut-center">
+                <div class="reports-donut-total mono" id="reportServicesTotal">0</div>
+                <div class="reports-donut-label">labels</div>
+              </div>
+            </div>
+            <div class="reports-legend" id="reportServicesLegend"></div>
+          </article>
+
+          <article class="reports-card reports-zones-card">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Recipient Zones</h3>
+                <p class="reports-chart-sub">Distribution from Zone 1 to Zone 9</p>
+              </div>
+            </div>
+            <div class="reports-zones" id="reportZones"></div>
+          </article>
+        </div>
+
+        <div class="reports-locations-layout">
+          <article class="reports-card reports-table-card">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Top Regions (Belgium)</h3>
+                <p class="reports-chart-sub">Most frequent domestic destinations by region</p>
+              </div>
+            </div>
+            <div class="reports-map-wrap">
+              <svg
+                class="reports-map-svg reports-map-belgium"
+                id="reportRegionsMap"
+                viewBox="0 0 340 220"
+                preserveAspectRatio="xMidYMid meet"
+                aria-label="Belgium regions map"
+              ></svg>
+              <div class="reports-map-tooltip is-hidden" id="reportRegionsMapTooltip"></div>
+            </div>
+            <div class="reports-table-wrap">
+              <table class="reports-table">
+                <thead>
+                  <tr>
+                    <th>Region</th>
+                    <th>Labels</th>
+                    <th>Spend</th>
+                  </tr>
+                </thead>
+                <tbody id="reportTopRegionsBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="reports-card reports-table-card">
+            <div class="reports-chart-head">
+              <div>
+                <h3>Top International Countries</h3>
+                <p class="reports-chart-sub">Most frequent non-domestic destinations</p>
+              </div>
+            </div>
+            <div class="reports-map-wrap">
+              <svg
+                class="reports-map-svg reports-map-world"
+                id="reportCountriesMap"
+                viewBox="0 0 720 300"
+                preserveAspectRatio="xMidYMid meet"
+                aria-label="International countries map"
+              ></svg>
+              <div class="reports-map-tooltip is-hidden" id="reportCountriesMapTooltip"></div>
+            </div>
+            <div class="reports-table-wrap">
+              <table class="reports-table">
+                <thead>
+                  <tr>
+                    <th>Country</th>
+                    <th>Labels</th>
+                    <th>Spend</th>
+                  </tr>
+                </thead>
+                <tbody id="reportTopCountriesBody"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <!-- CSV Upload Modal (full-screen overlay) -->
+    <div class="csv-modal-overlay is-closed" id="csvModal">
+      <div class="csv-modal">
+        <div class="csv-modal-header">
+          <span class="csv-modal-title">Upload CSV file</span>
+          <button type="button" class="csv-modal-close" id="csvModalClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="csv-modal-step is-active" id="csvUploadStep">
+          <div class="csv-dropzone" id="csvDropzone">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="dropzone-text">Drop your CSV here, or <span class="dropzone-link">browse</span></div>
+            <div class="dropzone-hint">.csv files only</div>
+            <input type="file" accept=".csv" class="dropzone-input" id="csvFileInput" />
+          </div>
+          <div class="csv-spec">
+            <div class="csv-spec-title">Expected Fields</div>
+            <div class="csv-spec-grid">
+              <div class="csv-spec-item">
+                <span class="csv-spec-key">Recipient</span>
+                <span class="csv-spec-value">Name, street, city, region, ZIP, country</span>
+              </div>
+              <div class="csv-spec-item">
+                <span class="csv-spec-key">Parcel</span>
+                <span class="csv-spec-value">Weight and dimensions (or length, width, height)</span>
+              </div>
+              <div class="csv-spec-item">
+                <span class="csv-spec-key">Sender</span>
+                <span class="csv-spec-value">Optional warehouse / origin fields</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="csv-modal-step" id="csvMappingStep">
+          <div class="csv-map-head">
+            <div class="csv-map-title">Map Columns</div>
+            <div class="csv-map-meta mono" id="csvMapMeta">Auto-mapped columns ready for review</div>
+          </div>
+          <div class="csv-map-wrap">
+            <table class="csv-map-table">
+              <thead>
+                <tr>
+                  <th>Expected Field</th>
+                  <th>CSV Column</th>
+                  <th>Sample</th>
+                </tr>
+              </thead>
+              <tbody id="csvMappingBody"></tbody>
+            </table>
+          </div>
+          <div class="form-error" id="csvMapError">Upload a valid CSV with at least one data row.</div>
+          <div class="csv-map-actions">
+            <button type="button" class="btn btn-ghost" id="csvMapBack">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Back</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="csvMapApply">
+              <span>Apply Mapping</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="receipt-modal-overlay is-closed" id="receiptModal">
+      <div class="receipt-modal">
+        <div class="csv-modal-header">
+          <span class="csv-modal-title">Receipt</span>
+          <button type="button" class="csv-modal-close" id="receiptModalClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="receipt-summary" id="receiptSummary"></div>
+        <div class="receipt-table-wrap">
+          <table class="receipt-table" id="receiptTable">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Tracking</th>
+                <th>Price ex VAT</th>
+                <th>Price incl VAT</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="panel-actions receipt-actions">
+          <button type="button" class="btn btn-secondary btn-accent" id="receiptDownloadPdf">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
+            <span>Download Receipt PDF</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="countries.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
