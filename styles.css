@@ -63,6 +63,7 @@ body {
   will-change: opacity, transform, filter;
 }
 
+
 .auth-particles-canvas {
   position: absolute;
   inset: 0;
@@ -82,17 +83,26 @@ body {
   width: min(440px, 100%);
   display: grid;
   gap: 0;
-  justify-items: center;
+  justify-items: stretch;
   position: relative;
   z-index: 1;
 }
 
 .auth-logo-lottie {
-  width: 130px;
-  height: 130px;
+  position: relative;
+  width: 110px;
+  height: 26px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  pointer-events: none;
   opacity: 0;
-  transform: translateY(14px);
-  animation: authLogoReveal 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+  transform: translateY(10px);
+  animation: authLogoReveal 1.35s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards;
+}
+
+.auth-logo-lottie svg,
+.auth-logo-lottie * {
+  pointer-events: none !important;
 }
 
 .auth-card {
@@ -100,10 +110,10 @@ body {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  margin-top: -10px;
-  padding: 24px;
+  margin-top: 0;
+  padding: 12px 24px 24px;
   display: grid;
-  gap: 18px;
+  gap: 12px;
   position: relative;
   z-index: 1;
   opacity: 0;
@@ -125,12 +135,65 @@ body {
 @keyframes authLogoReveal {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes authPortalDividerReveal {
+  from {
+    opacity: 0;
+    transform: scaleY(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes authPortalLabelReveal {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.auth-portal-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  pointer-events: none;
+  padding: 10px 0 14px;
+}
+
+.auth-portal-divider {
+  width: 1.5px;
+  min-height: 22px;
+  background: rgba(241, 244, 251, 0.28);
+  opacity: 0;
+  transform-origin: center;
+  animation: authPortalDividerReveal 0.9s var(--ease-out-expo) 0.28s forwards;
+}
+
+.auth-portal-label {
+  font-size: var(--fs-lg);
+  font-weight: 300;
+  color: var(--text);
+  letter-spacing: var(--letter-tight);
+  opacity: 0;
+  display: inline-block;
+  will-change: clip-path, transform, opacity;
+  animation: authPortalLabelReveal 0.9s var(--ease-out-expo) 0.34s forwards;
 }
 
 .auth-brand {
@@ -269,6 +332,16 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.brand-logo-only {
+  gap: 0;
+}
+
+.app-logo-lottie {
+  width: 118px;
+  height: 44px;
+  opacity: 0.96;
 }
 
 .brand-mark {
@@ -1738,14 +1811,21 @@ body {
   z-index: 200;
   backdrop-filter: blur(6px);
   opacity: 1;
-  transition: opacity 0.35s ease, backdrop-filter 0.35s ease;
+  transition: opacity 0.35s ease, backdrop-filter 0.35s ease, visibility 0s;
   will-change: opacity, backdrop-filter;
+  visibility: visible;
 }
 
 .csv-modal-overlay.is-closed {
   opacity: 0;
   pointer-events: none;
-  backdrop-filter: blur(0);
+  backdrop-filter: none;
+  visibility: hidden;
+  transition: opacity 0.35s ease, backdrop-filter 0.35s ease, visibility 0s 0.35s;
+}
+
+.csv-modal-overlay.is-closed .dropzone-input {
+  pointer-events: none;
 }
 
 .csv-modal {
@@ -2070,13 +2150,16 @@ body {
   z-index: 220;
   backdrop-filter: blur(6px);
   opacity: 1;
-  transition: opacity 0.35s ease, backdrop-filter 0.35s ease;
+  transition: opacity 0.35s ease, backdrop-filter 0.35s ease, visibility 0s;
+  visibility: visible;
 }
 
 .receipt-modal-overlay.is-closed {
   opacity: 0;
   pointer-events: none;
-  backdrop-filter: blur(0);
+  backdrop-filter: none;
+  visibility: hidden;
+  transition: opacity 0.35s ease, backdrop-filter 0.35s ease, visibility 0s 0.35s;
 }
 
 .receipt-modal {

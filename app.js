@@ -39,6 +39,7 @@ const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
+const AUTH_PARTICLES_WARMUP_STEPS = 42;
 const VAT_RATE = 0.21;
 const TOTAL_STEPS = 4;
 const ROUTE_PATHS = {
@@ -84,6 +85,7 @@ const authLogoLottie = document.getElementById("authLogoLottie");
 const authBrand = document.getElementById("authBrand");
 const authBrandOriginal = document.getElementById("authBrandOriginal");
 const authBrandInlineLogo = document.getElementById("authBrandInlineLogo");
+const appLogoLottie = document.getElementById("appLogoLottie");
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
@@ -3289,8 +3291,24 @@ function initializeAuthLogo() {
   if (!window.lottie) return;
   const target = layout === "inline" ? authBrandInlineLogo : authLogoLottie;
   if (!target) return;
-  window.lottie.loadAnimation({
+  target.style.pointerEvents = "none";
+  const anim = window.lottie.loadAnimation({
     container: target,
+    renderer: "svg",
+    loop: false,
+    autoplay: true,
+    path: "assets/flow-logo.json",
+  });
+  anim.addEventListener("DOMLoaded", () => {
+    const svg = target.querySelector("svg");
+    if (svg) svg.style.pointerEvents = "none";
+  });
+}
+
+function initializeAppLogo() {
+  if (!window.lottie || !appLogoLottie) return;
+  window.lottie.loadAnimation({
+    container: appLogoLottie,
     renderer: "svg",
     loop: false,
     autoplay: true,
@@ -3323,6 +3341,7 @@ function initializeAuthParticles() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
   renderer.domElement.className = "auth-particles-canvas";
   renderer.domElement.style.opacity = "0";
+  renderer.domElement.style.pointerEvents = "none";
   authGate.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -3406,6 +3425,10 @@ function initializeAuthParticles() {
     return Math.sqrt(currentMaxDistanceSq);
   };
 
+  for (let i = 0; i < AUTH_PARTICLES_WARMUP_STEPS; i += 1) {
+    updateParticles();
+  }
+
   const onResize = () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -3416,7 +3439,9 @@ function initializeAuthParticles() {
 
   onResize();
   window.addEventListener("resize", onResize);
+  let particlesVisible = false;
   requestAnimationFrame(() => {
+    particlesVisible = true;
     authGate.classList.add("is-ready");
   });
 
@@ -3430,7 +3455,7 @@ function initializeAuthParticles() {
       1,
       Math.max(minSceneOpacity, maxSpread / targetSpreadForFullOpacity)
     );
-    renderer.domElement.style.opacity = sceneOpacity.toFixed(2);
+    renderer.domElement.style.opacity = particlesVisible ? sceneOpacity.toFixed(2) : "0";
     renderer.render(scene, camera);
   };
 
@@ -4654,15 +4679,22 @@ function resetCsvMappingFlow() {
   setCsvModalStep("upload", { animate: false });
 }
 
+function syncCsvFileInputState() {
+  if (!csvFileInput || !csvModal) return;
+  csvFileInput.disabled = csvModal.classList.contains("is-closed");
+}
+
 function openCsvModal() {
   if (!csvModal) return;
   resetCsvMappingFlow();
   csvModal.classList.remove("is-closed");
+  syncCsvFileInputState();
 }
 
 function closeCsvModal() {
   if (!csvModal) return;
   csvModal.classList.add("is-closed");
+  syncCsvFileInputState();
   window.setTimeout(() => {
     if (csvModal.classList.contains("is-closed")) {
       resetCsvMappingFlow();
@@ -4728,6 +4760,8 @@ if (csvMapApply) {
     applyCsvMapping();
   });
 }
+
+syncCsvFileInputState();
 
 function handleCsvFile(file) {
   if (!/\.csv$/i.test(file.name || "")) return;
@@ -5457,5 +5491,6 @@ if (batchPreview) {
 }
 
 initializeAuthLogo();
+initializeAppLogo();
 initializeAuthParticles();
 initializeAuth();
