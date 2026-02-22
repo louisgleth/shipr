@@ -702,6 +702,206 @@ body {
   padding-top: 10px;
 }
 
+.warehouse-panel {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.warehouse-head .panel-sub {
+  max-width: none;
+}
+
+.warehouse-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--stroke);
+  flex-wrap: wrap;
+}
+
+.warehouse-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.warehouse-status {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.warehouse-status.is-error {
+  color: #d16c6c;
+}
+
+.warehouse-status.is-success {
+  color: #cfd6e4;
+}
+
+.warehouse-list {
+  display: grid;
+  gap: 10px;
+}
+
+.warehouse-empty {
+  border: 1px dashed var(--stroke);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.warehouse-card {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-quart),
+    border-color 0.35s ease;
+}
+
+.warehouse-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: var(--selection-underline-size);
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.65, 0, 0.35, 1),
+    opacity 0.55s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.warehouse-card.is-default {
+  background: var(--card-active);
+}
+
+.warehouse-card.is-default::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+.warehouse-card:hover {
+  transform: translateY(-1px);
+}
+
+.warehouse-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.warehouse-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.warehouse-card-name {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.warehouse-card-tag {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.warehouse-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.warehouse-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.warehouse-field-label {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-transform: none;
+}
+
+.warehouse-field input {
+  height: 36px;
+}
+
+.warehouse-field.is-wide {
+  grid-column: span 2;
+}
+
+.warehouse-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.warehouse-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.warehouse-default input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.warehouse-default input:focus {
+  box-shadow: none;
+  border: none;
+}
+
+.warehouse-card-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.warehouse-note {
+  border-top: 1px solid var(--stroke);
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
 .account-section-head h3 {
   margin: 0 0 6px;
   font-size: var(--fs-md);
@@ -3048,6 +3248,14 @@ input.is-invalid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .warehouse-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .warehouse-field.is-wide {
+    grid-column: span 2;
+  }
+
   .account-page-layout {
     grid-template-columns: 1fr;
   }
@@ -3109,6 +3317,26 @@ input.is-invalid {
 @media (max-width: 720px) {
   .account-info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .warehouse-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .warehouse-field.is-wide {
+    grid-column: auto;
+  }
+
+  .warehouse-toolbar {
+    align-items: flex-start;
+  }
+
+  .warehouse-toolbar-actions {
+    width: 100%;
+  }
+
+  .warehouse-toolbar-actions .btn {
+    flex: 1;
   }
 
   .account-info-item {

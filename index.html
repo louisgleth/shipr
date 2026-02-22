@@ -541,7 +541,7 @@
           <div>
             <h2>Account Overview</h2>
             <p class="panel-sub">
-              Read-only account profile details tied to this authenticated workspace.
+              Review account profile details and manage your shipping-origin presets.
             </p>
           </div>
           <div class="account-page-actions">
@@ -594,6 +594,34 @@
           </div>
           <div class="account-info-note">
             To update account information, please contact your account manager.
+          </div>
+        </div>
+
+        <div class="warehouse-panel">
+          <div class="warehouse-head">
+            <div class="preview-title">Shipping Origins</div>
+            <p class="panel-sub">
+              Editable warehouse presets used as sender defaults for label creation and CSV imports.
+            </p>
+          </div>
+          <div class="warehouse-toolbar">
+            <div class="warehouse-status" id="warehouseStatus">
+              Sign in to manage shipping origins.
+            </div>
+            <div class="warehouse-toolbar-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="warehouseAdd">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Add Warehouse</span>
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" id="warehouseSave" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12l4.5 4.5L19 7"/></svg>
+                <span>Save Origins</span>
+              </button>
+            </div>
+          </div>
+          <div class="warehouse-list" id="warehouseList"></div>
+          <div class="warehouse-note">
+            Origin presets are editable and saved to your account profile.
           </div>
         </div>
 

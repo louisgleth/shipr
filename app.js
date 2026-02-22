@@ -33,8 +33,10 @@ const state = {
 const SUPABASE_URL = "https://pxcqxubehvnyaubqjcrf.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_MfL9s44GmmR9peD1jouetw_aZOa8xVa";
 const HISTORY_TABLE = "label_generations";
+const ACCOUNT_SETTINGS_TABLE = "account_settings";
 const HISTORY_LIMIT = 25;
 const HISTORY_FETCH_RETRY_DELAYS_MS = [0, 220, 600];
+const WAREHOUSE_MAX_COUNT = 10;
 const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
@@ -65,11 +67,71 @@ const ROUTE_SUFFIXES = [
 // "stack" => logo above the card (previous behavior).
 const AUTH_LOGO_LAYOUT = "stack";
 const ROUTE_BASE_PATH = detectRouteBasePath(window.location.pathname);
+const SUPABASE_AUTH_STORAGE_KEY = "sb-pxcqxubehvnyaubqjcrf-auth-token-shipr";
+
+function createSupabaseAuthLock() {
+  return async (...args) => {
+    const callback = args[args.length - 1];
+    if (typeof callback !== "function") {
+      return null;
+    }
+
+    const lockName = typeof args[0] === "string" ? args[0] : "sb-auth-lock";
+    const requestedTimeout = Number(args[1]);
+    const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+      ? requestedTimeout
+      : 10000;
+
+    const canUseNavigatorLocks =
+      typeof navigator !== "undefined" &&
+      navigator.locks &&
+      typeof navigator.locks.request === "function";
+
+    if (!canUseNavigatorLocks) {
+      return callback();
+    }
+
+    let timerId = 0;
+    let controller = null;
+    if (typeof AbortController !== "undefined") {
+      controller = new AbortController();
+      timerId = window.setTimeout(() => {
+        controller.abort("timeout");
+      }, timeoutMs + 120);
+    }
+
+    try {
+      return await navigator.locks.request(
+        lockName,
+        controller
+          ? { mode: "exclusive", signal: controller.signal }
+          : { mode: "exclusive" },
+        async () => callback()
+      );
+    } catch (_error) {
+      // Fallback: run auth critical section without Web Lock if lock acquisition fails.
+      return callback();
+    } finally {
+      if (timerId) {
+        window.clearTimeout(timerId);
+      }
+    }
+  };
+}
+
 const supabaseClient =
   window.supabase?.createClient &&
   SUPABASE_URL &&
   SUPABASE_PUBLISHABLE_KEY
-    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true,
+          storageKey: SUPABASE_AUTH_STORAGE_KEY,
+          lock: createSupabaseAuthLock(),
+        },
+      })
     : null;
 
 const authGate = document.getElementById("authGate");
@@ -103,6 +165,10 @@ const accountBillingAddress = document.getElementById("accountBillingAddress");
 const accountTaxId = document.getElementById("accountTaxId");
 const accountCustomerId = document.getElementById("accountCustomerId");
 const accountPlan = document.getElementById("accountPlan");
+const warehouseStatus = document.getElementById("warehouseStatus");
+const warehouseList = document.getElementById("warehouseList");
+const warehouseAddButton = document.getElementById("warehouseAdd");
+const warehouseSaveButton = document.getElementById("warehouseSave");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
 const accountHistoryList = document.getElementById("accountHistoryList");
 const accountPreviewMeta = document.getElementById("accountPreviewMeta");
@@ -273,6 +339,10 @@ let accountActiveHistoryIndex = -1;
 let accountActiveLabelIndex = 0;
 let accountLabels = [];
 let accountBatchPdfUrl = "";
+let warehouseRecords = [];
+let warehouseDirty = false;
+let warehouseSaving = false;
+let warehouseLoadRequestToken = 0;
 let authParticlesStarted = false;
 let currentMainView = "builder";
 let authShellTransitionToken = 0;
@@ -1074,6 +1144,10 @@ function historyServerCacheKey(userId) {
   return `shipr-history-server-cache-${userId}`;
 }
 
+function warehouseStorageKey(userId) {
+  return `shipr-warehouses-${userId}`;
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -1243,6 +1317,514 @@ function renderAccountProfile(user) {
   if (invoicePhone) invoicePhone.textContent = values.contactPhone;
   if (invoiceAddress) invoiceAddress.textContent = values.billingAddress;
   if (invoiceTaxId) invoiceTaxId.textContent = values.taxId;
+}
+
+function generateWarehouseId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `wh-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeWarehouseRecord(record, fallback = {}) {
+  const country = String(record?.country || fallback.country || "Belgium").trim() || "Belgium";
+  return {
+    id: String(record?.id || fallback.id || generateWarehouseId()),
+    name: String(record?.name || fallback.name || "").trim(),
+    senderName: String(
+      record?.senderName ?? record?.sender_name ?? fallback.senderName ?? ""
+    ).trim(),
+    street: String(record?.street || fallback.street || "").trim(),
+    city: String(record?.city || fallback.city || "").trim(),
+    region: String(record?.region ?? record?.state ?? fallback.region ?? "").trim(),
+    postalCode: String(
+      record?.postalCode ?? record?.postal_code ?? fallback.postalCode ?? ""
+    ).trim(),
+    country,
+    isDefault: Boolean(record?.isDefault ?? record?.is_default ?? fallback.isDefault),
+  };
+}
+
+function normalizeWarehouseRecords(records) {
+  const list = Array.isArray(records) ? records.slice(0, WAREHOUSE_MAX_COUNT) : [];
+  const normalized = list.map((record, index) =>
+    normalizeWarehouseRecord(record, {
+      name: `Warehouse ${index + 1}`,
+    })
+  );
+  if (!normalized.length) return [];
+  let defaultIndex = normalized.findIndex((item) => item.isDefault);
+  if (defaultIndex === -1) {
+    defaultIndex = 0;
+  }
+  return normalized.map((item, index) => ({
+    ...item,
+    isDefault: index === defaultIndex,
+  }));
+}
+
+function buildDefaultWarehouseRecords(user) {
+  const profile = buildMockAccountProfile(user);
+  const billing = parseAccountBillingAddress(profile?.billingAddress);
+  return normalizeWarehouseRecords([
+    {
+      id: generateWarehouseId(),
+      name: "Warehouse 1",
+      senderName: String(profile?.companyName || profile?.contactName || "").trim(),
+      street: billing.street,
+      city: billing.city,
+      region: billing.state,
+      postalCode: billing.zip,
+      country: billing.country || "Belgium",
+      isDefault: true,
+    },
+  ]);
+}
+
+function getDefaultWarehouseRecord() {
+  return warehouseRecords.find((origin) => origin.isDefault) || warehouseRecords[0] || null;
+}
+
+function areSenderFieldsEmpty() {
+  return (
+    !String(inputMap.senderName?.value || "").trim() &&
+    !String(inputMap.senderStreet?.value || "").trim() &&
+    !String(inputMap.senderCity?.value || "").trim() &&
+    !String(inputMap.senderState?.value || "").trim() &&
+    !String(inputMap.senderZip?.value || "").trim()
+  );
+}
+
+function applyWarehouseToSender(origin, options = {}) {
+  const { announce = true } = options;
+  if (!origin) return;
+  if (inputMap.senderName) inputMap.senderName.value = origin.senderName || origin.name || "";
+  if (inputMap.senderStreet) inputMap.senderStreet.value = origin.street || "";
+  if (inputMap.senderCity) inputMap.senderCity.value = origin.city || "";
+  if (inputMap.senderState) inputMap.senderState.value = origin.region || "";
+  if (inputMap.senderZip) inputMap.senderZip.value = origin.postalCode || "";
+  syncInfoState();
+  updatePreview();
+  if (announce) {
+    setWarehouseStatus(`Applied ${origin.name || "warehouse"} to sender fields.`, {
+      tone: "success",
+    });
+  }
+}
+
+function maybeApplyDefaultWarehouseToSender() {
+  if (!areSenderFieldsEmpty()) return;
+  const defaultOrigin = getDefaultWarehouseRecord();
+  if (!defaultOrigin) return;
+  applyWarehouseToSender(defaultOrigin, { announce: false });
+}
+
+function setWarehouseStatus(message, options = {}) {
+  const { tone = "muted" } = options;
+  if (!warehouseStatus) return;
+  warehouseStatus.textContent = String(message || "").trim();
+  warehouseStatus.classList.remove("is-error", "is-success");
+  if (tone === "error") {
+    warehouseStatus.classList.add("is-error");
+  } else if (tone === "success") {
+    warehouseStatus.classList.add("is-success");
+  }
+}
+
+function updateWarehouseControls() {
+  const disabledBase = !currentUser || warehouseSaving;
+  if (warehouseAddButton) {
+    warehouseAddButton.disabled =
+      disabledBase || warehouseRecords.length >= WAREHOUSE_MAX_COUNT;
+  }
+  if (warehouseSaveButton) {
+    warehouseSaveButton.disabled =
+      disabledBase || !warehouseDirty || warehouseRecords.length === 0;
+    const label = warehouseSaveButton.querySelector("span");
+    if (label) {
+      label.textContent = warehouseSaving ? "Saving..." : "Save Origins";
+    }
+  }
+}
+
+function setWarehouseDirty(isDirty, options = {}) {
+  const { announce = true } = options;
+  warehouseDirty = Boolean(isDirty);
+  updateWarehouseControls();
+  if (warehouseDirty && announce) {
+    setWarehouseStatus("Unsaved changes in shipping origins.");
+  }
+}
+
+function createWarehouseField(label, fieldKey, value, options = {}) {
+  const { wide = false, placeholder = "" } = options;
+  const field = document.createElement("label");
+  field.className = `warehouse-field${wide ? " is-wide" : ""}`;
+
+  const title = document.createElement("span");
+  title.className = "warehouse-field-label";
+  title.textContent = label;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value || "";
+  input.placeholder = placeholder;
+  input.dataset.warehouseField = fieldKey;
+
+  field.appendChild(title);
+  field.appendChild(input);
+  return field;
+}
+
+function renderWarehouseList() {
+  if (!warehouseList) return;
+  warehouseList.innerHTML = "";
+
+  if (!currentUser) {
+    const empty = document.createElement("div");
+    empty.className = "warehouse-empty";
+    empty.textContent = "Sign in to manage account shipping origins.";
+    warehouseList.appendChild(empty);
+    updateWarehouseControls();
+    return;
+  }
+
+  if (!warehouseRecords.length) {
+    const empty = document.createElement("div");
+    empty.className = "warehouse-empty";
+    empty.textContent = "No shipping origins configured yet.";
+    warehouseList.appendChild(empty);
+    updateWarehouseControls();
+    return;
+  }
+
+  warehouseRecords.forEach((origin, index) => {
+    const card = document.createElement("article");
+    card.className = `warehouse-card${origin.isDefault ? " is-default" : ""}`;
+    card.dataset.warehouseId = origin.id;
+
+    const head = document.createElement("div");
+    head.className = "warehouse-card-head";
+
+    const title = document.createElement("div");
+    title.className = "warehouse-card-title";
+
+    const name = document.createElement("span");
+    name.className = "warehouse-card-name";
+    name.textContent = origin.name || `Warehouse ${index + 1}`;
+
+    title.appendChild(name);
+
+    if (origin.isDefault) {
+      const tag = document.createElement("span");
+      tag.className = "warehouse-card-tag";
+      tag.textContent = "Default Origin";
+      title.appendChild(tag);
+    }
+
+    head.appendChild(title);
+
+    const defaultWrap = document.createElement("label");
+    defaultWrap.className = "warehouse-default";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "warehouseDefault";
+    radio.checked = origin.isDefault;
+    radio.dataset.warehouseDefault = "1";
+    radio.disabled = warehouseSaving;
+    const radioText = document.createElement("span");
+    radioText.textContent = "Default";
+    defaultWrap.appendChild(radio);
+    defaultWrap.appendChild(radioText);
+    head.appendChild(defaultWrap);
+
+    const grid = document.createElement("div");
+    grid.className = "warehouse-grid";
+    grid.appendChild(
+      createWarehouseField("Warehouse Name", "name", origin.name, {
+        placeholder: `Warehouse ${index + 1}`,
+      })
+    );
+    grid.appendChild(
+      createWarehouseField("Sender Name", "senderName", origin.senderName, {
+        placeholder: "Sender/Company name",
+      })
+    );
+    grid.appendChild(createWarehouseField("Street", "street", origin.street, { wide: true }));
+    grid.appendChild(createWarehouseField("City", "city", origin.city));
+    grid.appendChild(createWarehouseField("Region", "region", origin.region));
+    grid.appendChild(createWarehouseField("Postal Code", "postalCode", origin.postalCode));
+    grid.appendChild(createWarehouseField("Country", "country", origin.country));
+
+    const controls = document.createElement("div");
+    controls.className = "warehouse-card-actions";
+
+    const controlGroup = document.createElement("div");
+    controlGroup.className = "warehouse-card-controls";
+
+    const applyButton = document.createElement("button");
+    applyButton.type = "button";
+    applyButton.className = "btn btn-secondary btn-sm";
+    applyButton.dataset.warehouseAction = "apply";
+    applyButton.textContent = "Use As Sender";
+    applyButton.disabled = warehouseSaving;
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "btn btn-ghost btn-sm";
+    removeButton.dataset.warehouseAction = "remove";
+    removeButton.textContent = "Remove";
+    removeButton.disabled = warehouseSaving || warehouseRecords.length <= 1;
+
+    controlGroup.appendChild(applyButton);
+    controlGroup.appendChild(removeButton);
+
+    const hint = document.createElement("span");
+    hint.className = "warehouse-card-tag";
+    hint.textContent = "Used as sender origin";
+
+    controls.appendChild(hint);
+    controls.appendChild(controlGroup);
+
+    card.appendChild(head);
+    card.appendChild(grid);
+    card.appendChild(controls);
+    warehouseList.appendChild(card);
+  });
+
+  const inputs = warehouseList.querySelectorAll("input[data-warehouse-field]");
+  inputs.forEach((input) => {
+    input.disabled = warehouseSaving;
+  });
+  updateWarehouseControls();
+}
+
+function findWarehouseIndexById(warehouseId) {
+  if (!warehouseId) return -1;
+  return warehouseRecords.findIndex((origin) => origin.id === warehouseId);
+}
+
+function buildNewWarehouseRecord() {
+  const nextNumber = warehouseRecords.length + 1;
+  const senderNameSeed = String(accountCompanyName?.textContent || "").trim();
+  return normalizeWarehouseRecord({
+    id: generateWarehouseId(),
+    name: `Warehouse ${nextNumber}`,
+    senderName: senderNameSeed === "--" ? "" : senderNameSeed,
+    country: "Belgium",
+    isDefault: warehouseRecords.length === 0,
+  });
+}
+
+function validateWarehouseRecords(records) {
+  if (!Array.isArray(records) || !records.length) {
+    return { ok: false, message: "Add at least one warehouse origin.", records: [] };
+  }
+
+  const normalized = normalizeWarehouseRecords(records);
+  for (let i = 0; i < normalized.length; i += 1) {
+    const origin = normalized[i];
+    const prefix = origin.name || `Warehouse ${i + 1}`;
+    if (!origin.name) {
+      return { ok: false, message: `${prefix}: warehouse name is required.`, records: normalized };
+    }
+    if (!origin.senderName) {
+      return { ok: false, message: `${prefix}: sender name is required.`, records: normalized };
+    }
+    if (!origin.street) {
+      return { ok: false, message: `${prefix}: street is required.`, records: normalized };
+    }
+    if (!origin.city) {
+      return { ok: false, message: `${prefix}: city is required.`, records: normalized };
+    }
+    if (!origin.postalCode) {
+      return { ok: false, message: `${prefix}: postal code is required.`, records: normalized };
+    }
+    if (!origin.country) {
+      return { ok: false, message: `${prefix}: country is required.`, records: normalized };
+    }
+  }
+
+  return { ok: true, records: normalized };
+}
+
+function toWarehouseOriginsPayload(records) {
+  return normalizeWarehouseRecords(records).map((origin) => ({
+    id: origin.id,
+    name: origin.name,
+    senderName: origin.senderName,
+    street: origin.street,
+    city: origin.city,
+    region: origin.region,
+    postalCode: origin.postalCode,
+    country: origin.country,
+    isDefault: origin.isDefault,
+  }));
+}
+
+async function fetchSupabaseWarehouseOrigins(userId) {
+  if (!supabaseClient || !userId) {
+    return { origins: [], error: new Error("Supabase unavailable") };
+  }
+  const { data, error } = await supabaseClient
+    .from(ACCOUNT_SETTINGS_TABLE)
+    .select("warehouse_origins")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return { origins: [], error };
+  }
+  const origins = Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : [];
+  return { origins, error: null };
+}
+
+async function saveSupabaseWarehouseOrigins(userId, origins) {
+  if (!supabaseClient || !userId) {
+    return { origins: [], error: new Error("Supabase unavailable") };
+  }
+  const payload = toWarehouseOriginsPayload(origins);
+  const { data, error } = await supabaseClient
+    .from(ACCOUNT_SETTINGS_TABLE)
+    .upsert(
+      {
+        user_id: userId,
+        warehouse_origins: payload,
+      },
+      { onConflict: "user_id" }
+    )
+    .select("warehouse_origins")
+    .single();
+
+  if (error) {
+    return { origins: [], error };
+  }
+  return {
+    origins: Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : payload,
+    error: null,
+  };
+}
+
+async function loadWarehouseSettings(options = {}) {
+  const { quiet = false } = options;
+  const requestToken = ++warehouseLoadRequestToken;
+  const userId = currentUser?.id || null;
+
+  if (!warehouseList) return;
+
+  if (!userId) {
+    warehouseRecords = [];
+    warehouseDirty = false;
+    warehouseSaving = false;
+    renderWarehouseList();
+    setWarehouseStatus("Sign in to manage shipping origins.");
+    return;
+  }
+
+  if (!quiet) {
+    setWarehouseStatus("Loading shipping origins...");
+  }
+
+  let nextRecords = [];
+  let source = "default";
+
+  if (supabaseClient) {
+    const { origins, error } = await fetchSupabaseWarehouseOrigins(userId);
+    if (requestToken !== warehouseLoadRequestToken || currentUser?.id !== userId) {
+      return;
+    }
+    if (!error) {
+      if (origins.length) {
+        nextRecords = origins;
+        source = "supabase";
+      }
+    } else {
+      console.warn("Warehouse settings sync failed; falling back to local data.", error);
+    }
+  }
+
+  if (!nextRecords.length) {
+    const localRecords = loadLocalWarehouses(userId);
+    if (localRecords.length) {
+      nextRecords = localRecords;
+      source = "local";
+    }
+  }
+
+  if (!nextRecords.length) {
+    nextRecords = buildDefaultWarehouseRecords(currentUser);
+    source = "default";
+  }
+
+  warehouseRecords = normalizeWarehouseRecords(nextRecords);
+  warehouseDirty = false;
+  warehouseSaving = false;
+  saveLocalWarehouses(userId, warehouseRecords);
+  renderWarehouseList();
+
+  if (source === "supabase") {
+    setWarehouseStatus("Shipping origins synced from your account.");
+  } else if (source === "local") {
+    setWarehouseStatus("Showing browser-saved origins. Click Save Origins to sync.");
+  } else {
+    setWarehouseStatus("Add your shipping origin and click Save Origins.");
+  }
+
+  maybeApplyDefaultWarehouseToSender();
+}
+
+async function saveWarehouseSettings() {
+  if (!currentUser || warehouseSaving) return;
+
+  const validation = validateWarehouseRecords(warehouseRecords);
+  if (!validation.ok) {
+    setWarehouseStatus(validation.message, { tone: "error" });
+    return;
+  }
+
+  warehouseRecords = validation.records;
+  warehouseSaving = true;
+  renderWarehouseList();
+  setWarehouseStatus("Saving shipping origins...");
+
+  const userId = currentUser.id;
+  let savedToSupabase = false;
+  let savedOrigins = toWarehouseOriginsPayload(warehouseRecords);
+
+  if (supabaseClient) {
+    const { origins, error } = await saveSupabaseWarehouseOrigins(userId, savedOrigins);
+    if (!error) {
+      savedOrigins = Array.isArray(origins) && origins.length ? origins : savedOrigins;
+      savedToSupabase = true;
+    } else {
+      console.warn("Failed to sync shipping origins to account.", error);
+    }
+  }
+
+  warehouseRecords = normalizeWarehouseRecords(savedOrigins);
+  saveLocalWarehouses(userId, warehouseRecords);
+  warehouseSaving = false;
+  warehouseDirty = false;
+  renderWarehouseList();
+
+  if (savedToSupabase) {
+    setWarehouseStatus("Shipping origins saved to your account.", { tone: "success" });
+  } else {
+    setWarehouseStatus("Saved locally. Account sync is currently unavailable.", {
+      tone: "error",
+    });
+  }
+
+  maybeApplyDefaultWarehouseToSender();
+}
+
+function resetWarehouseState() {
+  warehouseLoadRequestToken += 1;
+  warehouseRecords = [];
+  warehouseDirty = false;
+  warehouseSaving = false;
+  renderWarehouseList();
+  setWarehouseStatus("Sign in to manage shipping origins.");
 }
 
 function calculateRecordTotals(record) {
@@ -1431,6 +2013,27 @@ function saveLocalHistory(userId, records) {
   if (!userId) return;
   try {
     localStorage.setItem(historyStorageKey(userId), JSON.stringify(records));
+  } catch (_error) {
+    // Ignore local storage errors silently (quota/private mode)
+  }
+}
+
+function loadLocalWarehouses(userId) {
+  if (!userId) return [];
+  try {
+    const raw = localStorage.getItem(warehouseStorageKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function saveLocalWarehouses(userId, warehouses) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(warehouseStorageKey(userId), JSON.stringify(warehouses));
   } catch (_error) {
     // Ignore local storage errors silently (quota/private mode)
   }
@@ -3095,6 +3698,11 @@ function setAuthView(session, options = {}) {
   currentUser = session?.user || null;
   const isAuthed = Boolean(currentUser);
   renderAccountProfile(currentUser);
+  if (isAuthed) {
+    loadWarehouseSettings({ quiet: true });
+  } else {
+    resetWarehouseState();
+  }
   transitionShellVisibility(isAuthed, { animate });
   if (accountChip) {
     accountChip.classList.toggle("is-hidden", !isAuthed);
@@ -3917,6 +4525,7 @@ if (signOutButton) {
 if (openAccountPageButton) {
   openAccountPageButton.addEventListener("click", async () => {
     setAccountPageVisible(true);
+    await loadWarehouseSettings({ quiet: true });
     await loadGenerationHistory({ preferLatest: true });
   });
 }
@@ -3938,6 +4547,96 @@ if (closeAccountPageButton) {
 if (closeReportsPageButton) {
   closeReportsPageButton.addEventListener("click", () => {
     setReportsPageVisible(false);
+  });
+}
+
+if (warehouseAddButton) {
+  warehouseAddButton.addEventListener("click", () => {
+    if (!currentUser || warehouseSaving) return;
+    if (warehouseRecords.length >= WAREHOUSE_MAX_COUNT) {
+      setWarehouseStatus(`Maximum ${WAREHOUSE_MAX_COUNT} warehouses reached.`, {
+        tone: "error",
+      });
+      return;
+    }
+    warehouseRecords = [...warehouseRecords, buildNewWarehouseRecord()];
+    renderWarehouseList();
+    setWarehouseDirty(true);
+  });
+}
+
+if (warehouseSaveButton) {
+  warehouseSaveButton.addEventListener("click", async () => {
+    await saveWarehouseSettings();
+  });
+}
+
+if (warehouseList) {
+  warehouseList.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const field = target.dataset.warehouseField;
+    if (!field) return;
+    const card = target.closest("[data-warehouse-id]");
+    if (!card) return;
+    const index = findWarehouseIndexById(card.dataset.warehouseId);
+    if (index === -1) return;
+    warehouseRecords[index][field] = target.value.trim();
+
+    if (field === "name") {
+      const label = card.querySelector(".warehouse-card-name");
+      if (label) {
+        label.textContent = target.value.trim() || `Warehouse ${index + 1}`;
+      }
+    }
+
+    setWarehouseDirty(true);
+  });
+
+  warehouseList.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!target.dataset.warehouseDefault) return;
+    const card = target.closest("[data-warehouse-id]");
+    if (!card) return;
+    const nextId = card.dataset.warehouseId;
+    warehouseRecords = normalizeWarehouseRecords(
+      warehouseRecords.map((origin) => ({
+        ...origin,
+        isDefault: origin.id === nextId,
+      }))
+    );
+    renderWarehouseList();
+    setWarehouseDirty(true);
+  });
+
+  warehouseList.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-warehouse-action]");
+    if (!actionButton) return;
+    const card = actionButton.closest("[data-warehouse-id]");
+    if (!card) return;
+    const warehouseId = card.dataset.warehouseId;
+    const action = actionButton.dataset.warehouseAction;
+    const index = findWarehouseIndexById(warehouseId);
+    if (index === -1) return;
+
+    if (action === "apply") {
+      applyWarehouseToSender(warehouseRecords[index]);
+      return;
+    }
+
+    if (action === "remove") {
+      if (warehouseRecords.length <= 1) {
+        setWarehouseStatus("At least one warehouse origin is required.", {
+          tone: "error",
+        });
+        return;
+      }
+      warehouseRecords = warehouseRecords.filter((origin) => origin.id !== warehouseId);
+      warehouseRecords = normalizeWarehouseRecords(warehouseRecords);
+      renderWarehouseList();
+      setWarehouseDirty(true);
+    }
   });
 }
 
@@ -4950,7 +5649,7 @@ function buildCsvHeaderMap(headers) {
 function parseAccountBillingAddress(value) {
   const text = String(value || "").trim();
   if (!text) {
-    return { street: "", city: "", state: "", zip: "" };
+    return { street: "", city: "", state: "", zip: "", country: "" };
   }
 
   const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
@@ -4968,7 +5667,28 @@ function parseAccountBillingAddress(value) {
       state = regionAndZip;
     }
   }
-  return { street, city, state, zip };
+  const country = parts[3] || "";
+  return { street, city, state, zip, country };
+}
+
+function getDefaultWarehouseSenderDefaults() {
+  const defaultOrigin = warehouseRecords.find((origin) => origin.isDefault) || warehouseRecords[0];
+  if (!defaultOrigin) {
+    return {
+      senderName: "",
+      senderStreet: "",
+      senderCity: "",
+      senderState: "",
+      senderZip: "",
+    };
+  }
+  return {
+    senderName: String(defaultOrigin.senderName || defaultOrigin.name || "").trim(),
+    senderStreet: String(defaultOrigin.street || "").trim(),
+    senderCity: String(defaultOrigin.city || "").trim(),
+    senderState: String(defaultOrigin.region || "").trim(),
+    senderZip: String(defaultOrigin.postalCode || "").trim(),
+  };
 }
 
 function getCsvSenderDefaults() {
@@ -4982,6 +5702,7 @@ function getCsvSenderDefaults() {
 
   const profile = buildMockAccountProfile(currentUser);
   const billing = parseAccountBillingAddress(profile?.billingAddress);
+  const fromWarehouse = getDefaultWarehouseSenderDefaults();
   const fromProfile = {
     senderName: String(profile?.companyName || profile?.contactName || "").trim(),
     senderStreet: billing.street,
@@ -4991,11 +5712,11 @@ function getCsvSenderDefaults() {
   };
 
   return {
-    senderName: direct.senderName || fromProfile.senderName,
-    senderStreet: direct.senderStreet || fromProfile.senderStreet,
-    senderCity: direct.senderCity || fromProfile.senderCity,
-    senderState: direct.senderState || fromProfile.senderState,
-    senderZip: direct.senderZip || fromProfile.senderZip,
+    senderName: direct.senderName || fromWarehouse.senderName || fromProfile.senderName,
+    senderStreet: direct.senderStreet || fromWarehouse.senderStreet || fromProfile.senderStreet,
+    senderCity: direct.senderCity || fromWarehouse.senderCity || fromProfile.senderCity,
+    senderState: direct.senderState || fromWarehouse.senderState || fromProfile.senderState,
+    senderZip: direct.senderZip || fromWarehouse.senderZip || fromProfile.senderZip,
   };
 }
 
@@ -5490,6 +6211,7 @@ if (batchPreview) {
   batchPreview.classList.add("is-single");
 }
 
+resetWarehouseState();
 initializeAuthLogo();
 initializeAppLogo();
 initializeAuthParticles();
