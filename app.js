@@ -803,31 +803,46 @@ async function getAuthAccessToken() {
 }
 
 async function fetchApiWithAuth(path, options = {}) {
+  const { timeoutMs = 15000, ...requestOptions } = options;
   const token = await getAuthAccessToken();
   if (!token) {
     throw new Error("You must be signed in to use provider import.");
   }
-  const headers = new Headers(options.headers || {});
+  const headers = new Headers(requestOptions.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
-  if (options.body && !headers.has("Content-Type")) {
+  if (requestOptions.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path, {
-    ...options,
-    headers,
-  });
-  const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
-    ? await response.json().catch(() => ({}))
-    : await response.text().catch(() => "");
-  if (!response.ok) {
-    const message =
-      (payload && typeof payload === "object" && payload.error) ||
-      (typeof payload === "string" ? payload : "") ||
-      `Request failed (${response.status})`;
-    throw new Error(message);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort("request-timeout");
+  }, Math.max(3000, Number(timeoutMs) || 15000));
+  try {
+    const response = await fetch(path, {
+      ...requestOptions,
+      headers,
+      signal: controller.signal,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => "");
+    if (!response.ok) {
+      const message =
+        (payload && typeof payload === "object" && payload.error) ||
+        (typeof payload === "string" ? payload : "") ||
+        `Request failed (${response.status})`;
+      throw new Error(message);
+    }
+    return payload;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Shopify request timed out. Check Worker route and secrets.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-  return payload;
 }
 
 function updateShopifyProviderStatus() {
