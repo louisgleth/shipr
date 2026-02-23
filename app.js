@@ -28,6 +28,23 @@ const state = {
     trackingId: "",
     labelId: "",
   },
+  customs: {
+    summaryDescription: "",
+    shipmentType: "",
+    senderReference: "",
+    importerReference: "",
+    items: [
+      {
+        description: "",
+        quantity: "1",
+        weightKg: "",
+        valueEur: "",
+        originCountry: "",
+        hsCode: "",
+      },
+    ],
+    completedFor: "",
+  },
 };
 
 const SUPABASE_URL = "https://pxcqxubehvnyaubqjcrf.supabase.co";
@@ -45,6 +62,7 @@ const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
 const AUTH_PARTICLES_WARMUP_STEPS = 42;
 const VAT_RATE = 0.21;
 const TOTAL_STEPS = 4;
+const CUSTOMS_MAX_ITEMS = 12;
 const ROUTE_PATHS = {
   login: "/login",
   account: "/account",
@@ -267,11 +285,26 @@ const startOver = document.getElementById("startOver");
 const payButton = document.getElementById("payButton");
 const autoFillButton = document.getElementById("autoFill");
 const labelError = document.getElementById("labelError");
+const customsGhostPanel = document.getElementById("customsGhostPanel");
+const customsScopeMeta = document.getElementById("customsScopeMeta");
+const customsError = document.getElementById("customsError");
+const customsSummaryDescriptionInput = document.getElementById("customsSummaryDescription");
+const customsShipmentTypeInput = document.getElementById("customsShipmentType");
+const customsSenderReferenceInput = document.getElementById("customsSenderReference");
+const customsImporterReferenceInput = document.getElementById("customsImporterReference");
+const customsItemsList = document.getElementById("customsItemsList");
+const customsAddItemButton = document.getElementById("customsAddItem");
+const customsBackButton = document.getElementById("customsBack");
+const customsContinueButton = document.getElementById("customsContinue");
+const openRestrictedGoodsModalButton = document.getElementById("openRestrictedGoodsModal");
+const restrictedGoodsModal = document.getElementById("restrictedGoodsModal");
+const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalClose");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
 const providerTrigger = document.getElementById("providerTrigger");
 const providerMenu = document.getElementById("providerMenu");
+const providerStatus = document.getElementById("providerStatus");
 
 // CSV modal
 const csvModal = document.getElementById("csvModal");
@@ -363,6 +396,9 @@ let reportsDomesticGeoJson = null;
 let reportsWorldGeoJson = null;
 let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
+let customsGhostVisible = false;
+let providerStatusTimer = 0;
+let shopifyConnection = null;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
   "domestic",
@@ -374,6 +410,135 @@ const DOMESTIC_COUNTRY_ALIASES = new Set([
   "belgique",
   "be",
 ]);
+
+const EU_COUNTRY_CODES = new Set([
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+]);
+
+const COUNTRY_ALIAS_TO_CODE = {
+  ue: "EU",
+  eu: "EU",
+  "european union": "EU",
+  "union europeenne": "EU",
+  "union européenne": "EU",
+  "pays bas": "NL",
+  nederland: "NL",
+  hollande: "NL",
+  allemagne: "DE",
+  espagne: "ES",
+  italie: "IT",
+  autriche: "AT",
+  suede: "SE",
+  "suède": "SE",
+  grece: "GR",
+  "grèce": "GR",
+  tchequie: "CZ",
+  "république tchèque": "CZ",
+  slovaquie: "SK",
+  "belgie": "BE",
+  belgique: "BE",
+};
+
+const NORMALIZED_COUNTRY_CODE_MAP = (() => {
+  if (typeof COUNTRY_CODES !== "object" || !COUNTRY_CODES) return {};
+  const map = {};
+  Object.entries(COUNTRY_CODES).forEach(([name, code]) => {
+    map[normalizeNameKey(name)] = String(code || "").toUpperCase();
+  });
+  return map;
+})();
+
+function resolveCountryCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^[A-Za-z]{2}$/.test(raw)) {
+    return raw.toUpperCase();
+  }
+  const lowered = raw.toLowerCase();
+  const normalized = normalizeNameKey(raw);
+  const aliasCode = COUNTRY_ALIAS_TO_CODE[normalized] || COUNTRY_ALIAS_TO_CODE[lowered];
+  if (aliasCode) return aliasCode;
+
+  if (typeof COUNTRY_CODES === "object" && COUNTRY_CODES) {
+    const direct = COUNTRY_CODES[lowered];
+    if (direct) return String(direct).toUpperCase();
+  }
+
+  const normalizedCode = NORMALIZED_COUNTRY_CODE_MAP[normalized];
+  if (normalizedCode) return normalizedCode;
+  return "";
+}
+
+function isEuCountry(value) {
+  const code = resolveCountryCode(value);
+  if (!code) return false;
+  if (code === "EU") return true;
+  return EU_COUNTRY_CODES.has(code);
+}
+
+function createEmptyCustomsItem() {
+  return {
+    description: "",
+    quantity: "1",
+    weightKg: "",
+    valueEur: "",
+    originCountry: "",
+    hsCode: "",
+  };
+}
+
+function getShipmentCountryValues() {
+  if (state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length) {
+    return state.csvRows.map((row) => String(row?.recipientCountry || "").trim()).filter(Boolean);
+  }
+  return [String(state.info.recipientCountry || inputMap.recipientCountry?.value || "").trim()].filter(
+    Boolean
+  );
+}
+
+function requiresCustomsDeclaration() {
+  const countries = getShipmentCountryValues();
+  if (!countries.length) return false;
+  return countries.some((country) => !isEuCountry(country));
+}
+
+function getCustomsRequirementSignature() {
+  const countries = getShipmentCountryValues()
+    .map((country) => resolveCountryCode(country) || normalizeNameKey(country))
+    .filter(Boolean)
+    .sort();
+  return `${state.csvMode ? "csv" : "single"}::${countries.join("|")}`;
+}
+
+function invalidateCustomsCompletion() {
+  state.customs.completedFor = "";
+}
 
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
@@ -513,7 +678,7 @@ function routeToPath(route) {
 function routeToState(route) {
   if (!route || route.view === "builder") {
     const step = clampStep(route?.step || state.step);
-    return { view: "builder", step };
+    return { view: "builder", step, customs: Boolean(route?.customs && step === 1) };
   }
   return { view: route.view };
 }
@@ -527,7 +692,8 @@ function updateRoute(route, options = {}) {
   const samePath = currentPath === normalizePathname(nextPath);
   const sameState =
     history.state?.view === nextState.view &&
-    Number(history.state?.step || 0) === Number(nextState.step || 0);
+    Number(history.state?.step || 0) === Number(nextState.step || 0) &&
+    Boolean(history.state?.customs) === Boolean(nextState.customs);
 
   if (replace) {
     if (!samePath || !sameState) {
@@ -582,6 +748,272 @@ function normalizeNameKey(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function setProviderStatus(message = "", options = {}) {
+  if (!providerStatus) return;
+  const { kind = "info", persist = false } = options;
+  providerStatus.textContent = String(message || "").trim();
+  providerStatus.classList.remove("is-success", "is-error");
+  if (kind === "success") {
+    providerStatus.classList.add("is-success");
+  } else if (kind === "error") {
+    providerStatus.classList.add("is-error");
+  }
+  if (providerStatusTimer) {
+    window.clearTimeout(providerStatusTimer);
+    providerStatusTimer = 0;
+  }
+  if (!persist && providerStatus.textContent) {
+    providerStatusTimer = window.setTimeout(() => {
+      if (!shopifyConnection) {
+        providerStatus.textContent = "";
+        providerStatus.classList.remove("is-success", "is-error");
+      } else {
+        providerStatus.textContent = `Shopify connected: ${shopifyConnection.shop}`;
+        providerStatus.classList.add("is-success");
+      }
+      providerStatusTimer = 0;
+    }, 2800);
+  }
+}
+
+function normalizeShopDomain(value) {
+  let normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+  if (!normalized) return "";
+  if (!normalized.endsWith(".myshopify.com") && /^[a-z0-9][a-z0-9-]*$/.test(normalized)) {
+    normalized = `${normalized}.myshopify.com`;
+  }
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(normalized)) {
+    return "";
+  }
+  return normalized;
+}
+
+async function getAuthAccessToken() {
+  if (!supabaseClient) return "";
+  const {
+    data: { session },
+  } = await supabaseClient.auth.getSession();
+  return String(session?.access_token || "");
+}
+
+async function fetchApiWithAuth(path, options = {}) {
+  const token = await getAuthAccessToken();
+  if (!token) {
+    throw new Error("You must be signed in to use provider import.");
+  }
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(path, {
+    ...options,
+    headers,
+  });
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json().catch(() => ({}))
+    : await response.text().catch(() => "");
+  if (!response.ok) {
+    const message =
+      (payload && typeof payload === "object" && payload.error) ||
+      (typeof payload === "string" ? payload : "") ||
+      `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return payload;
+}
+
+function updateShopifyProviderStatus() {
+  if (!providerStatus) return;
+  if (!currentUser) {
+    setProviderStatus("", { persist: true });
+    return;
+  }
+  if (shopifyConnection) {
+    setProviderStatus(`Shopify connected: ${shopifyConnection.shop}`, {
+      kind: "success",
+      persist: true,
+    });
+    return;
+  }
+  setProviderStatus("", { persist: true });
+}
+
+async function loadShopifyConnectionStatus(options = {}) {
+  const { quiet = false } = options;
+  if (!currentUser) {
+    shopifyConnection = null;
+    updateShopifyProviderStatus();
+    return null;
+  }
+  try {
+    const data = await fetchApiWithAuth("/api/shopify/connection");
+    const connection =
+      data && typeof data === "object" && data.connection && typeof data.connection === "object"
+        ? data.connection
+        : null;
+    shopifyConnection = connection
+      ? {
+          shop: String(connection.shop || "").trim(),
+          connectedAt: String(connection.connectedAt || "").trim(),
+          scopes: String(connection.scopes || "").trim(),
+        }
+      : null;
+    updateShopifyProviderStatus();
+    return shopifyConnection;
+  } catch (error) {
+    shopifyConnection = null;
+    updateShopifyProviderStatus();
+    if (!quiet) {
+      setProviderStatus(error.message || "Could not load Shopify connection.", {
+        kind: "error",
+      });
+    }
+    return null;
+  }
+}
+
+function consumeShopifyCallbackParams() {
+  const params = new URLSearchParams(window.location.search || "");
+  if (params.get("provider") !== "shopify") return;
+
+  const status = params.get("shopify");
+  if (status === "connected") {
+    const shop = normalizeShopDomain(params.get("shop"));
+    if (shop) {
+      setProviderStatus(`Shopify connected: ${shop}`, { kind: "success" });
+    } else {
+      setProviderStatus("Shopify connected.", { kind: "success" });
+    }
+  } else if (status === "error") {
+    const message = String(params.get("message") || "").trim() || "Could not connect Shopify.";
+    setProviderStatus(message, { kind: "error" });
+  }
+
+  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  history.replaceState(history.state, "", cleanUrl);
+}
+
+function mapShopifyImportRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      return {
+        senderName: String(row.senderName || "").trim(),
+        senderStreet: String(row.senderStreet || "").trim(),
+        senderCity: String(row.senderCity || "").trim(),
+        senderState: String(row.senderState || "").trim(),
+        senderZip: String(row.senderZip || "").trim(),
+        recipientName: String(row.recipientName || "").trim(),
+        recipientStreet: String(row.recipientStreet || "").trim(),
+        recipientCity: String(row.recipientCity || "").trim(),
+        recipientState: String(row.recipientState || "").trim(),
+        recipientZip: String(row.recipientZip || "").trim(),
+        recipientCountry: String(row.recipientCountry || "").trim(),
+        packageWeight: String(row.packageWeight || "").trim(),
+        packageDims: String(row.packageDims || "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function applyImportedRows(rows, sourceLabel) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(`No usable ${sourceLabel} rows found.`);
+  }
+  clearBatchState();
+  state.csvRows = rows;
+  setCsvMode(true);
+  setCsvEditMode(false);
+  renderCsvTable();
+  if (labelError) {
+    labelError.classList.remove("is-visible");
+  }
+  updatePreview();
+  updateSummary();
+  updatePayment();
+}
+
+async function beginShopifyInstall() {
+  const defaultShop = shopifyConnection?.shop || "";
+  const typed = window.prompt(
+    "Enter your Shopify store domain (example: your-store.myshopify.com)",
+    defaultShop
+  );
+  if (typed === null) return;
+  const shop = normalizeShopDomain(typed);
+  if (!shop) {
+    setProviderStatus("Enter a valid .myshopify.com domain.", { kind: "error" });
+    return;
+  }
+  try {
+    setProviderStatus("Connecting Shopify...", { persist: true });
+    const data = await fetchApiWithAuth("/api/shopify/install-link", {
+      method: "POST",
+      body: JSON.stringify({ shop }),
+    });
+    if (!data || typeof data !== "object" || !data.url) {
+      throw new Error("Shopify install URL was not returned.");
+    }
+    window.location.assign(String(data.url));
+  } catch (error) {
+    setProviderStatus(error.message || "Could not start Shopify connect flow.", {
+      kind: "error",
+    });
+  }
+}
+
+async function importShopifyOrders(shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) {
+    setProviderStatus("Connect Shopify before importing.", { kind: "error" });
+    return;
+  }
+
+  try {
+    setProviderStatus(`Importing orders from ${normalizedShop}...`, { persist: true });
+    const data = await fetchApiWithAuth("/api/shopify/import-orders", {
+      method: "POST",
+      body: JSON.stringify({
+        shop: normalizedShop,
+        limit: 50,
+      }),
+    });
+    const rows = mapShopifyImportRows(data?.rows);
+    applyImportedRows(rows, "Shopify");
+    setProviderStatus(`Imported ${rows.length} orders from ${normalizedShop}.`, {
+      kind: "success",
+    });
+    const triggerText = providerTrigger?.querySelector("span");
+    if (triggerText) {
+      triggerText.textContent = `Imported ${rows.length} Shopify orders`;
+      window.setTimeout(() => {
+        triggerText.textContent = "Import from provider";
+      }, 2200);
+    }
+  } catch (error) {
+    setProviderStatus(error.message || "Shopify import failed.", { kind: "error" });
+  }
+}
+
+async function handleShopifyProviderAction() {
+  if (!currentUser) {
+    setProviderStatus("Sign in before importing from Shopify.", { kind: "error" });
+    return;
+  }
+  if (!shopifyConnection?.shop) {
+    await beginShopifyInstall();
+    return;
+  }
+  await importShopifyOrders(shopifyConnection.shop);
 }
 
 function getFeaturePolygons(geometry) {
@@ -1996,6 +2428,9 @@ function setMainView(view, options = {}) {
     if (nextView !== "account") {
       setReceiptModalOpen(false);
     }
+    if (nextView !== "builder") {
+      setRestrictedGoodsModalOpen(false);
+    }
     if (nextView === "reports") {
       renderReportsDashboard();
       ensureReportsGeoDataLoaded().then(() => {
@@ -2032,6 +2467,11 @@ function setReportsPageVisible(visible, options = {}) {
 function setReceiptModalOpen(open) {
   if (!receiptModal) return;
   receiptModal.classList.toggle("is-closed", !open);
+}
+
+function setRestrictedGoodsModalOpen(open) {
+  if (!restrictedGoodsModal) return;
+  restrictedGoodsModal.classList.toggle("is-closed", !open);
 }
 
 function loadLocalHistory(userId) {
@@ -2373,6 +2813,16 @@ function buildHistoryRecord() {
     trackingId: label.trackingId,
     data: label.data,
   }));
+  const customsRequired = requiresCustomsDeclaration();
+  const customsPayload = customsRequired
+    ? {
+        summaryDescription: state.customs.summaryDescription,
+        shipmentType: state.customs.shipmentType,
+        senderReference: state.customs.senderReference,
+        importerReference: state.customs.importerReference,
+        items: buildCustomsItemsPayload(),
+      }
+    : null;
   return {
     service_type: state.selection.type,
     quantity: payloadLabels.length,
@@ -2380,6 +2830,7 @@ function buildHistoryRecord() {
     payload: {
       selection: { ...state.selection },
       labels: payloadLabels,
+      customs: customsPayload,
     },
   };
 }
@@ -3761,8 +4212,11 @@ function setAuthView(session, options = {}) {
   renderAccountProfile(currentUser);
   if (isAuthed) {
     loadWarehouseSettings({ quiet: true });
+    loadShopifyConnectionStatus({ quiet: true });
   } else {
     resetWarehouseState();
+    shopifyConnection = null;
+    updateShopifyProviderStatus();
   }
   transitionShellVisibility(isAuthed, { animate });
   if (accountChip) {
@@ -3891,6 +4345,9 @@ async function initializeAuth() {
     setAuthMessage(error.message);
   }
   setAuthView(session, { animate: false });
+  if (session?.user) {
+    consumeShopifyCallbackParams();
+  }
   const initialRoute = parseRouteFromLocation();
   const isAuthed = Boolean(session);
   if (isAuthed && initialRoute.view === "account") {
@@ -4143,6 +4600,7 @@ function updateCountryFlag() {
 
 function setCsvMode(enabled) {
   state.csvMode = enabled;
+  invalidateCustomsCompletion();
   if (labelForm) {
     labelForm.classList.toggle("is-hidden", enabled);
   }
@@ -4248,6 +4706,7 @@ function handleCsvInput(event) {
   if (Number.isNaN(rowIndex) || !key) return;
   if (!state.csvRows[rowIndex]) return;
   state.csvRows[rowIndex][key] = input.value.trim();
+  invalidateCustomsCompletion();
   input.classList.remove("is-invalid");
   if (labelError) {
     labelError.classList.remove("is-visible");
@@ -4380,6 +4839,293 @@ function updatePreview() {
   previewDims.textContent = activeData.packageDims || "--";
 }
 
+function renderActiveBuilderPanel() {
+  stepPanels.forEach((panel) => {
+    const isActive = !customsGhostVisible && Number(panel.dataset.panel) === state.step;
+    panel.classList.toggle("is-active", isActive);
+  });
+  if (customsGhostPanel) {
+    customsGhostPanel.classList.toggle("is-active", customsGhostVisible);
+  }
+}
+
+function setCustomsError(message = "") {
+  if (!customsError) return;
+  customsError.textContent = message;
+  customsError.classList.toggle("is-visible", Boolean(message));
+}
+
+function setCustomsFieldInvalid(input, invalid) {
+  if (!input) return;
+  input.classList.toggle("is-invalid", Boolean(invalid));
+}
+
+function setCustomsItemFieldInvalid(index, fieldKey, invalid) {
+  if (!customsItemsList) return;
+  const input = customsItemsList.querySelector(
+    `[data-customs-item-index="${index}"] [data-customs-item-field="${fieldKey}"]`
+  );
+  setCustomsFieldInvalid(input, invalid);
+}
+
+function syncCustomsStateFromInputs() {
+  if (customsSummaryDescriptionInput) {
+    state.customs.summaryDescription = customsSummaryDescriptionInput.value.trim();
+  }
+  if (customsShipmentTypeInput) {
+    state.customs.shipmentType = customsShipmentTypeInput.value.trim();
+  }
+  if (customsSenderReferenceInput) {
+    state.customs.senderReference = customsSenderReferenceInput.value.trim();
+  }
+  if (customsImporterReferenceInput) {
+    state.customs.importerReference = customsImporterReferenceInput.value.trim();
+  }
+}
+
+function syncCustomsInputsFromState() {
+  if (customsSummaryDescriptionInput) {
+    customsSummaryDescriptionInput.value = state.customs.summaryDescription || "";
+  }
+  if (customsShipmentTypeInput) {
+    customsShipmentTypeInput.value = state.customs.shipmentType || "";
+  }
+  if (customsSenderReferenceInput) {
+    customsSenderReferenceInput.value = state.customs.senderReference || "";
+  }
+  if (customsImporterReferenceInput) {
+    customsImporterReferenceInput.value = state.customs.importerReference || "";
+  }
+}
+
+function seedCustomsDefaults() {
+  if (!Array.isArray(state.customs.items) || !state.customs.items.length) {
+    state.customs.items = [createEmptyCustomsItem()];
+  }
+  const first = state.customs.items[0];
+  const weightSource = state.csvMode
+    ? String(state.csvRows?.[0]?.packageWeight || "").trim()
+    : String(state.info.packageWeight || inputMap.packageWeight?.value || "").trim();
+  if (!first.weightKg && weightSource) {
+    first.weightKg = weightSource;
+  }
+  const defaultOriginCountry =
+    String(getDefaultWarehouseRecord()?.country || "").trim() || "France";
+  if (!first.originCountry) {
+    first.originCountry = defaultOriginCountry;
+  }
+}
+
+function updateCustomsScopeMeta() {
+  if (!customsScopeMeta) return;
+  const uniqueCountries = Array.from(new Set(getShipmentCountryValues()));
+  const outsideEu = uniqueCountries.filter((country) => !isEuCountry(country));
+  if (!outsideEu.length) {
+    customsScopeMeta.textContent =
+      "Complete this declaration for destinations that require customs processing.";
+    return;
+  }
+  if (outsideEu.length === 1) {
+    customsScopeMeta.textContent = `${outsideEu[0]} is outside the customs union. Complete declaration details before service selection.`;
+    return;
+  }
+  customsScopeMeta.textContent = `${outsideEu.length} destinations are outside the customs union. Complete declaration details before service selection.`;
+}
+
+function buildCustomsItemsPayload() {
+  return (state.customs.items || []).map((item) => ({
+    description: String(item?.description || "").trim(),
+    quantity: String(item?.quantity || "").trim(),
+    weightKg: String(item?.weightKg || "").trim(),
+    valueEur: String(item?.valueEur || "").trim(),
+    originCountry: String(item?.originCountry || "").trim(),
+    hsCode: String(item?.hsCode || "").trim(),
+  }));
+}
+
+function renderCustomsItems() {
+  if (!customsItemsList) return;
+  customsItemsList.innerHTML = "";
+  const items = buildCustomsItemsPayload();
+  state.customs.items = items.length ? items : [createEmptyCustomsItem()];
+
+  state.customs.items.forEach((item, index) => {
+    const card = document.createElement("article");
+    card.className = "customs-item";
+    card.dataset.customsItemIndex = String(index);
+
+    const head = document.createElement("div");
+    head.className = "customs-item-head";
+
+    const title = document.createElement("div");
+    title.className = "customs-item-title";
+    title.textContent = `Item ${index + 1}`;
+    head.appendChild(title);
+
+    if (state.customs.items.length > 1) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-ghost btn-sm customs-item-remove";
+      remove.dataset.customsItemAction = "remove";
+      remove.dataset.customsItemIndex = String(index);
+      remove.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Remove</span>';
+      head.appendChild(remove);
+    }
+
+    const note = document.createElement("div");
+    note.className = "customs-note";
+    note.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 9v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Provide a precise product description and material/composition.</span>';
+
+    const descriptionField = document.createElement("label");
+    descriptionField.className = "field";
+    descriptionField.innerHTML = `<span>Item Description</span><input type="text" data-customs-item-field="description" value="${escapeHtml(
+      item.description
+    )}" />`;
+
+    const rowThree = document.createElement("div");
+    rowThree.className = "field-row customs-row-three";
+
+    const quantityField = document.createElement("label");
+    quantityField.className = "field";
+    quantityField.innerHTML = `<span>Number of Items</span><input type="number" min="1" step="1" data-customs-item-field="quantity" value="${escapeHtml(
+      item.quantity
+    )}" />`;
+
+    const weightField = document.createElement("label");
+    weightField.className = "field";
+    weightField.innerHTML = `<span>Weight (kg)</span><input type="number" min="0.01" step="0.01" data-customs-item-field="weightKg" value="${escapeHtml(
+      item.weightKg
+    )}" />`;
+
+    const valueField = document.createElement("label");
+    valueField.className = "field";
+    valueField.innerHTML = `<span>Value (EUR)</span><div class="customs-currency"><span class="customs-currency-prefix">€</span><input type="number" min="0" step="0.01" data-customs-item-field="valueEur" value="${escapeHtml(
+      item.valueEur
+    )}" /></div>`;
+
+    rowThree.appendChild(quantityField);
+    rowThree.appendChild(weightField);
+    rowThree.appendChild(valueField);
+
+    const rowTwo = document.createElement("div");
+    rowTwo.className = "field-row customs-row-two";
+
+    const originField = document.createElement("label");
+    originField.className = "field";
+    originField.innerHTML =
+      '<span>Origin of Items</span><div class="country-input-wrap customs-origin-wrap"><span class="customs-origin-flag"></span><input type="text" data-customs-item-field="originCountry" /></div>';
+    const originInput = originField.querySelector("input");
+    const originFlag = originField.querySelector(".customs-origin-flag");
+    if (originInput) originInput.value = item.originCountry;
+    if (originFlag) originFlag.innerHTML = getCountryIcon(item.originCountry);
+
+    const hsField = document.createElement("label");
+    hsField.className = "field";
+    hsField.innerHTML = `<span>HS Tariff Code (optional)</span><input type="text" data-customs-item-field="hsCode" value="${escapeHtml(
+      item.hsCode
+    )}" />`;
+
+    rowTwo.appendChild(originField);
+    rowTwo.appendChild(hsField);
+
+    card.appendChild(head);
+    card.appendChild(note);
+    card.appendChild(descriptionField);
+    card.appendChild(rowThree);
+    card.appendChild(rowTwo);
+    customsItemsList.appendChild(card);
+  });
+
+  if (customsAddItemButton) {
+    customsAddItemButton.disabled = state.customs.items.length >= CUSTOMS_MAX_ITEMS;
+  }
+}
+
+function setCustomsGhostVisible(visible, options = {}) {
+  const { push = true, replace = false } = options;
+  customsGhostVisible = Boolean(visible);
+  if (customsGhostVisible) {
+    seedCustomsDefaults();
+    syncCustomsInputsFromState();
+    renderCustomsItems();
+    updateCustomsScopeMeta();
+  } else {
+    setCustomsError("");
+  }
+  renderActiveBuilderPanel();
+  if (push) {
+    updateRoute(
+      { view: "builder", step: state.step, customs: customsGhostVisible && state.step === 1 },
+      { replace }
+    );
+  }
+}
+
+function maybeOpenCustomsGhostBeforeSelection() {
+  if (state.step !== 1) return false;
+  if (!requiresCustomsDeclaration()) return false;
+  const signature = getCustomsRequirementSignature();
+  if (state.customs.completedFor && state.customs.completedFor === signature) {
+    return false;
+  }
+  setCustomsGhostVisible(true);
+  return true;
+}
+
+function validateCustomsDeclaration() {
+  syncCustomsStateFromInputs();
+  const items = buildCustomsItemsPayload();
+  state.customs.items = items.length ? items : [createEmptyCustomsItem()];
+
+  let isValid = true;
+  const hasSummary = Boolean(state.customs.summaryDescription);
+  const hasShipmentType = Boolean(state.customs.shipmentType);
+  setCustomsFieldInvalid(customsSummaryDescriptionInput, !hasSummary);
+  setCustomsFieldInvalid(customsShipmentTypeInput, !hasShipmentType);
+  if (!hasSummary || !hasShipmentType) {
+    isValid = false;
+  }
+
+  state.customs.items.forEach((item, index) => {
+    const quantity = Number(item.quantity);
+    const weight = Number(item.weightKg);
+    const value = Number(item.valueEur);
+    const checks = {
+      description: Boolean(item.description),
+      quantity: Number.isFinite(quantity) && quantity > 0,
+      weightKg: Number.isFinite(weight) && weight > 0,
+      valueEur: Number.isFinite(value) && value >= 0,
+      originCountry: Boolean(item.originCountry),
+    };
+    Object.entries(checks).forEach(([key, ok]) => {
+      setCustomsItemFieldInvalid(index, key, !ok);
+      if (!ok) isValid = false;
+    });
+  });
+
+  if (!isValid) {
+    setCustomsError("Complete required customs declaration fields before continuing.");
+    return false;
+  }
+  setCustomsError("");
+  state.customs.completedFor = getCustomsRequirementSignature();
+  return true;
+}
+
+function resetCustomsDeclaration() {
+  state.customs.summaryDescription = "";
+  state.customs.shipmentType = "";
+  state.customs.senderReference = "";
+  state.customs.importerReference = "";
+  state.customs.items = [createEmptyCustomsItem()];
+  state.customs.completedFor = "";
+  syncCustomsInputsFromState();
+  renderCustomsItems();
+  setCustomsError("");
+}
+
 function getQuantity() {
   if (state.csvMode) {
     return Math.max(1, state.csvRows.length || 1);
@@ -4422,11 +5168,8 @@ function goToStep(step, options = {}) {
   const { push = true, regenerate = true, replace = false } = options;
   if (step === state.step && push) return;
   state.step = step;
-
-  stepPanels.forEach((panel) => {
-    const isActive = Number(panel.dataset.panel) === step;
-    panel.classList.toggle("is-active", isActive);
-  });
+  customsGhostVisible = false;
+  renderActiveBuilderPanel();
 
   stepperItems.forEach((item) => {
     const itemStep = Number(item.dataset.step);
@@ -4455,7 +5198,7 @@ function goToStep(step, options = {}) {
   }
 
   if (push) {
-    updateRoute({ view: "builder", step }, { replace });
+    updateRoute({ view: "builder", step, customs: false }, { replace });
   }
 }
 
@@ -4494,6 +5237,7 @@ function syncInfoState() {
   state.info.trackingId = inputMap.trackingId.value.trim();
   state.info.labelId = inputMap.labelId.value.trim();
 
+  invalidateCustomsCompletion();
   updateCountryFlag();
   updateSummary();
   updatePreview();
@@ -4703,6 +5447,77 @@ if (warehouseList) {
   });
 }
 
+[
+  customsSummaryDescriptionInput,
+  customsShipmentTypeInput,
+  customsSenderReferenceInput,
+  customsImporterReferenceInput,
+].forEach((input) => {
+  if (!input) return;
+  const eventName = input.tagName === "SELECT" ? "change" : "input";
+  input.addEventListener(eventName, () => {
+    syncCustomsStateFromInputs();
+    setCustomsFieldInvalid(input, false);
+    setCustomsError("");
+  });
+});
+
+if (customsItemsList) {
+  customsItemsList.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const card = target.closest("[data-customs-item-index]");
+    if (!card) return;
+    const index = Number(card.dataset.customsItemIndex);
+    if (Number.isNaN(index) || !state.customs.items[index]) return;
+    const key = target.dataset.customsItemField;
+    if (!key) return;
+    state.customs.items[index][key] = target.value.trim();
+    target.classList.remove("is-invalid");
+    if (key === "originCountry") {
+      const flag = target.parentElement?.querySelector(".customs-origin-flag");
+      if (flag) {
+        flag.innerHTML = getCountryIcon(target.value.trim());
+      }
+    }
+    setCustomsError("");
+  });
+
+  customsItemsList.addEventListener("click", (event) => {
+    const removeButton = event.target.closest("[data-customs-item-action='remove']");
+    if (!removeButton) return;
+    const index = Number(removeButton.dataset.customsItemIndex);
+    if (Number.isNaN(index)) return;
+    if (state.customs.items.length <= 1) return;
+    state.customs.items.splice(index, 1);
+    renderCustomsItems();
+    setCustomsError("");
+  });
+}
+
+if (customsAddItemButton) {
+  customsAddItemButton.addEventListener("click", () => {
+    if (state.customs.items.length >= CUSTOMS_MAX_ITEMS) return;
+    state.customs.items.push(createEmptyCustomsItem());
+    renderCustomsItems();
+    setCustomsError("");
+  });
+}
+
+if (customsBackButton) {
+  customsBackButton.addEventListener("click", () => {
+    setCustomsGhostVisible(false, { replace: true });
+  });
+}
+
+if (customsContinueButton) {
+  customsContinueButton.addEventListener("click", () => {
+    if (!validateCustomsDeclaration()) return;
+    setCustomsGhostVisible(false, { push: false });
+    goToStep(2);
+  });
+}
+
 reportsRangeButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const token = button.dataset.reportRange;
@@ -4788,6 +5603,28 @@ if (receiptModal) {
   });
 }
 
+if (openRestrictedGoodsModalButton) {
+  openRestrictedGoodsModalButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    setRestrictedGoodsModalOpen(true);
+  });
+}
+
+if (restrictedGoodsModalClose) {
+  restrictedGoodsModalClose.addEventListener("click", (event) => {
+    event.preventDefault();
+    setRestrictedGoodsModalOpen(false);
+  });
+}
+
+if (restrictedGoodsModal) {
+  restrictedGoodsModal.addEventListener("click", (event) => {
+    if (event.target === restrictedGoodsModal) {
+      setRestrictedGoodsModalOpen(false);
+    }
+  });
+}
+
 if (receiptDownloadPdf) {
   receiptDownloadPdf.addEventListener("click", (event) => {
     event.preventDefault();
@@ -4799,6 +5636,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
   if (isTextEntryElement(event.target)) return;
   if (receiptModal && !receiptModal.classList.contains("is-closed")) return;
+  if (restrictedGoodsModal && !restrictedGoodsModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isAccountOpen = accountPageSection && !accountPageSection.classList.contains("is-hidden");
@@ -4907,6 +5745,9 @@ quantityInput.addEventListener("input", () => {
 
 function handleNext(step) {
   if (step === 2 && !validateLabelInfo()) {
+    return;
+  }
+  if (step === 2 && maybeOpenCustomsGhostBeforeSelection()) {
     return;
   }
   goToStep(step);
@@ -5306,6 +6147,8 @@ function generatePdf() {
 
 function resetAll() {
   clearBatchState();
+  resetCustomsDeclaration();
+  customsGhostVisible = false;
   state.quantity = 1;
   state.csvMode = false;
   state.csvEditable = false;
@@ -5360,16 +6203,22 @@ document.addEventListener("click", (e) => {
 });
 
 document.querySelectorAll(".provider-option").forEach((opt) => {
-  opt.addEventListener("click", () => {
+  opt.addEventListener("click", async () => {
     const provider = opt.dataset.provider;
     providerDropdown.classList.remove("is-open");
-    // Mock: auto-fill with provider-branded dummy data
+    if (provider === "shopify") {
+      await handleShopifyProviderAction();
+      return;
+    }
+
     autoFill();
-    // Flash a brief status
-    providerTrigger.querySelector("span").textContent = `Imported from ${opt.textContent.trim()}`;
-    setTimeout(() => {
-      providerTrigger.querySelector("span").textContent = "Import from provider";
-    }, 2000);
+    const triggerText = providerTrigger?.querySelector("span");
+    if (triggerText) {
+      triggerText.textContent = `Imported from ${opt.textContent.trim()}`;
+      window.setTimeout(() => {
+        triggerText.textContent = "Import from provider";
+      }, 2000);
+    }
   });
 });
 
@@ -6268,7 +7117,11 @@ window.addEventListener("popstate", (event) => {
 
   if (route.view === "builder") {
     setMainView("builder", { push: false });
-    goToStep(clampStep(route.step), { push: false, regenerate: false });
+    const targetStep = clampStep(route.step);
+    goToStep(targetStep, { push: false, regenerate: false });
+    if (route.customs && targetStep === 1) {
+      setCustomsGhostVisible(true, { push: false });
+    }
     return;
   }
 

@@ -1,11 +1,34 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 4173;
 const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
+const MAX_BODY_BYTES = 1024 * 1024;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
+const SHOPIFY_API_SECRET = String(process.env.SHOPIFY_API_SECRET || "").trim();
+const SHOPIFY_API_VERSION = String(process.env.SHOPIFY_API_VERSION || "2025-10").trim();
+const SHOPIFY_SCOPES = String(
+  process.env.SHOPIFY_SCOPES || "read_orders,read_locations"
+)
+  .split(",")
+  .map((scope) => scope.trim())
+  .filter(Boolean);
+const SUPABASE_URL = String(
+  process.env.SUPABASE_URL || "https://pxcqxubehvnyaubqjcrf.supabase.co"
+).replace(/\/+$/, "");
+const SUPABASE_PUBLISHABLE_KEY = String(
+  process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_MfL9s44GmmR9peD1jouetw_aZOa8xVa"
+).trim();
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const SHOPIFY_TOKEN_ENCRYPTION_KEY = String(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim();
+
+const oauthStateStore = new Map();
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -27,6 +50,30 @@ const MIME_TYPES = {
 function send(res, status, headers, body) {
   res.writeHead(status, headers);
   res.end(body);
+}
+
+function sendJson(res, status, payload) {
+  send(
+    res,
+    status,
+    {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+    JSON.stringify(payload)
+  );
+}
+
+function sendRedirect(res, location) {
+  send(
+    res,
+    302,
+    {
+      Location: location,
+      "Cache-Control": "no-store",
+    },
+    ""
+  );
 }
 
 function safeJoin(root, requestPath) {
@@ -60,8 +107,561 @@ function sendFile(res, filePath) {
   });
 }
 
-const server = http.createServer((req, res) => {
+function buildPublicBaseUrl(req) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || (req.socket.encrypted ? "https" : "http");
+  const host = forwardedHost || req.headers.host || `localhost:${PORT}`;
+  return `${protocol}://${host}`;
+}
+
+function normalizeShopDomain(value) {
+  let normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+  if (!normalized) return "";
+  if (!normalized.endsWith(".myshopify.com") && /^[a-z0-9][a-z0-9-]*$/.test(normalized)) {
+    normalized = `${normalized}.myshopify.com`;
+  }
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(normalized)) {
+    return "";
+  }
+  return normalized;
+}
+
+function getBearerToken(req) {
+  const auth = String(req.headers.authorization || "");
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice(7).trim();
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) {
+      throw new Error("Request body too large.");
+    }
+    chunks.push(chunk);
+  }
+  if (!chunks.length) return {};
+  const body = Buffer.concat(chunks).toString("utf8").trim();
+  if (!body) return {};
+  try {
+    return JSON.parse(body);
+  } catch (_error) {
+    throw new Error("Invalid JSON request body.");
+  }
+}
+
+async function fetchSupabaseUser(accessToken) {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error("Supabase auth environment is missing.");
+  }
+  if (!accessToken) {
+    return null;
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object" || !payload.id) {
+    return null;
+  }
+  return payload;
+}
+
+async function getAuthenticatedUser(req) {
+  const token = getBearerToken(req);
+  if (!token) return null;
+  return fetchSupabaseUser(token);
+}
+
+function verifyShopifyHmac(requestUrl) {
+  if (!SHOPIFY_API_SECRET) return false;
+  const receivedHmac = String(requestUrl.searchParams.get("hmac") || "").trim().toLowerCase();
+  if (!receivedHmac || !/^[a-f0-9]+$/.test(receivedHmac)) return false;
+
+  const params = new URLSearchParams(requestUrl.searchParams);
+  params.delete("hmac");
+  params.delete("signature");
+
+  const message = Array.from(params.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+
+  const expectedHmac = crypto
+    .createHmac("sha256", SHOPIFY_API_SECRET)
+    .update(message)
+    .digest("hex")
+    .toLowerCase();
+
+  const receivedBuffer = Buffer.from(receivedHmac, "utf8");
+  const expectedBuffer = Buffer.from(expectedHmac, "utf8");
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+function pruneOauthStates() {
+  const now = Date.now();
+  for (const [state, entry] of oauthStateStore.entries()) {
+    if (now - entry.createdAt > OAUTH_STATE_TTL_MS) {
+      oauthStateStore.delete(state);
+    }
+  }
+}
+
+function createOauthState(payload) {
+  pruneOauthStates();
+  const state = crypto.randomBytes(24).toString("hex");
+  oauthStateStore.set(state, {
+    ...payload,
+    createdAt: Date.now(),
+  });
+  return state;
+}
+
+function consumeOauthState(state, shop) {
+  if (!state) return null;
+  const stored = oauthStateStore.get(state);
+  if (!stored) return null;
+  oauthStateStore.delete(state);
+  if (Date.now() - stored.createdAt > OAUTH_STATE_TTL_MS) return null;
+  if (stored.shop !== shop) return null;
+  return stored;
+}
+
+function getTokenCipherKey() {
+  const secretSource = SHOPIFY_TOKEN_ENCRYPTION_KEY || SHOPIFY_API_SECRET;
+  if (!secretSource) {
+    throw new Error("Token encryption key is not configured.");
+  }
+  return crypto.createHash("sha256").update(secretSource).digest();
+}
+
+function encryptToken(plainToken) {
+  const key = getTokenCipherKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(String(plainToken || ""), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString("base64url")}:${tag.toString("base64url")}:${encrypted.toString(
+    "base64url"
+  )}`;
+}
+
+function decryptToken(token) {
+  const raw = String(token || "");
+  if (!raw.startsWith("v1:")) {
+    return raw;
+  }
+  const parts = raw.split(":");
+  if (parts.length !== 4) {
+    throw new Error("Invalid encrypted token format.");
+  }
+  const [, ivEncoded, tagEncoded, payloadEncoded] = parts;
+  const key = getTokenCipherKey();
+  const iv = Buffer.from(ivEncoded, "base64url");
+  const tag = Buffer.from(tagEncoded, "base64url");
+  const payload = Buffer.from(payloadEncoded, "base64url");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+async function supabaseServiceRequest(pathnameWithQuery, options = {}) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase service role key is required for provider integration.");
+  }
+  const response = await fetch(`${SUPABASE_URL}${pathnameWithQuery}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      ...(options.headers || {}),
+    },
+  });
+  return response;
+}
+
+async function exchangeShopifyAccessToken(shop, code) {
+  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      client_id: SHOPIFY_API_KEY,
+      client_secret: SHOPIFY_API_SECRET,
+      code,
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shopify token exchange failed (${response.status}) ${details}`.trim());
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!payload || !payload.access_token) {
+    throw new Error("Shopify token response was invalid.");
+  }
+  return payload;
+}
+
+async function upsertShopifyConnection(userId, shop, accessToken, scopes) {
+  const encryptedToken = encryptToken(accessToken);
+  const nowIso = new Date().toISOString();
+  const payload = [
+    {
+      user_id: userId,
+      provider: "shopify",
+      shop_domain: shop,
+      status: "connected",
+      scopes: String(scopes || ""),
+      access_token: encryptedToken,
+      updated_at: nowIso,
+      connected_at: nowIso,
+    },
+  ];
+
+  const response = await supabaseServiceRequest(
+    "/rest/v1/provider_connections?on_conflict=user_id,provider,shop_domain",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed saving Shopify connection (${response.status}) ${details}`.trim());
+  }
+}
+
+async function getShopifyConnection(userId, requestedShop) {
+  const params = new URLSearchParams();
+  params.set("select", "shop_domain,status,scopes,connected_at,updated_at,access_token");
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.shopify");
+  params.set("status", "eq.connected");
+  if (requestedShop) {
+    params.set("shop_domain", `eq.${requestedShop}`);
+  }
+  params.set("order", "updated_at.desc");
+  params.set("limit", "1");
+
+  const response = await supabaseServiceRequest(`/rest/v1/provider_connections?${params.toString()}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed reading Shopify connection (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) {
+    return null;
+  }
+  return rows[0];
+}
+
+function mapShopifyOrdersToCsvRows(orders) {
+  if (!Array.isArray(orders)) return [];
+  return orders.map((order) => {
+    const shipping = order?.shipping_address || {};
+    const recipientName =
+      String(shipping?.name || "").trim() ||
+      [shipping?.first_name, shipping?.last_name].filter(Boolean).join(" ").trim();
+    const totalWeightGrams = Number(order?.total_weight);
+    const weightKg =
+      Number.isFinite(totalWeightGrams) && totalWeightGrams > 0
+        ? (totalWeightGrams / 1000).toFixed(2)
+        : "0.50";
+
+    return {
+      senderName: "",
+      senderStreet: "",
+      senderCity: "",
+      senderState: "",
+      senderZip: "",
+      recipientName,
+      recipientStreet: String(shipping?.address1 || "").trim(),
+      recipientCity: String(shipping?.city || "").trim(),
+      recipientState: String(shipping?.province_code || shipping?.province || "").trim(),
+      recipientZip: String(shipping?.zip || "").trim(),
+      recipientCountry: String(shipping?.country_code || shipping?.country || "").trim(),
+      packageWeight: weightKg,
+      packageDims: "25 x 20 x 10",
+    };
+  });
+}
+
+async function fetchShopifyOrders(shop, accessToken, limit) {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(250, Math.trunc(limit))) : 50;
+  const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
+  url.searchParams.set("status", "open");
+  url.searchParams.set("limit", String(safeLimit));
+  url.searchParams.set(
+    "fields",
+    "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price"
+  );
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shopify order import failed (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => null);
+  const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+  return orders;
+}
+
+function getCallbackRedirect(req, params) {
+  const url = new URL("/label-info", buildPublicBaseUrl(req));
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    url.searchParams.set(key, String(value));
+  });
+  return url.toString();
+}
+
+function assertShopifyAppConfig() {
+  if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET) {
+    throw new Error("SHOPIFY_API_KEY and SHOPIFY_API_SECRET must be configured.");
+  }
+  if (!SHOPIFY_SCOPES.length) {
+    throw new Error("SHOPIFY_SCOPES must include at least one scope.");
+  }
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and SUPABASE_SERVICE_ROLE_KEY are required."
+    );
+  }
+}
+
+async function handleShopifyInstallLink(req, res, requestUrl) {
+  assertShopifyAppConfig();
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  const body = await readJsonBody(req);
+  const shop = normalizeShopDomain(body?.shop);
+  if (!shop) {
+    sendJson(res, 400, { error: "Enter a valid Shopify domain (store.myshopify.com)." });
+    return;
+  }
+
+  const state = createOauthState({
+    userId: user.id,
+    shop,
+  });
+  const callbackUrl = `${buildPublicBaseUrl(req)}/api/shopify/callback`;
+  const installUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+  installUrl.searchParams.set("client_id", SHOPIFY_API_KEY);
+  installUrl.searchParams.set("scope", SHOPIFY_SCOPES.join(","));
+  installUrl.searchParams.set("redirect_uri", callbackUrl);
+  installUrl.searchParams.set("state", state);
+
+  sendJson(res, 200, { url: installUrl.toString(), shop });
+}
+
+async function handleShopifyCallback(req, res, requestUrl) {
+  assertShopifyAppConfig();
+  const shop = normalizeShopDomain(requestUrl.searchParams.get("shop"));
+  const code = String(requestUrl.searchParams.get("code") || "");
+  const state = String(requestUrl.searchParams.get("state") || "");
+  if (!shop || !code || !state) {
+    sendRedirect(
+      res,
+      getCallbackRedirect(req, {
+        provider: "shopify",
+        shopify: "error",
+        message: "Missing callback parameters.",
+      })
+    );
+    return;
+  }
+  if (!verifyShopifyHmac(requestUrl)) {
+    sendRedirect(
+      res,
+      getCallbackRedirect(req, {
+        provider: "shopify",
+        shopify: "error",
+        message: "Shopify callback validation failed.",
+      })
+    );
+    return;
+  }
+  const statePayload = consumeOauthState(state, shop);
+  if (!statePayload?.userId) {
+    sendRedirect(
+      res,
+      getCallbackRedirect(req, {
+        provider: "shopify",
+        shopify: "error",
+        message: "OAuth session expired. Start Shopify connect again.",
+      })
+    );
+    return;
+  }
+
+  try {
+    const tokenData = await exchangeShopifyAccessToken(shop, code);
+    await upsertShopifyConnection(
+      statePayload.userId,
+      shop,
+      tokenData.access_token,
+      tokenData.scope || SHOPIFY_SCOPES.join(",")
+    );
+    sendRedirect(
+      res,
+      getCallbackRedirect(req, {
+        provider: "shopify",
+        shopify: "connected",
+        shop,
+      })
+    );
+  } catch (error) {
+    sendRedirect(
+      res,
+      getCallbackRedirect(req, {
+        provider: "shopify",
+        shopify: "error",
+        message: error.message || "Shopify connection failed.",
+      })
+    );
+  }
+}
+
+async function handleShopifyConnection(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  try {
+    const row = await getShopifyConnection(user.id, "");
+    if (!row) {
+      sendJson(res, 200, { connected: false, connection: null });
+      return;
+    }
+    sendJson(res, 200, {
+      connected: true,
+      connection: {
+        shop: row.shop_domain,
+        status: row.status,
+        scopes: row.scopes || "",
+        connectedAt: row.connected_at || "",
+        updatedAt: row.updated_at || "",
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Failed to load Shopify connection." });
+  }
+}
+
+async function handleShopifyImportOrders(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const requestedShop = normalizeShopDomain(body?.shop);
+  const limit = Number(body?.limit);
+
+  try {
+    const connection = await getShopifyConnection(user.id, requestedShop);
+    if (!connection) {
+      sendJson(res, 404, { error: "Shopify is not connected for this account." });
+      return;
+    }
+    const accessToken = decryptToken(connection.access_token);
+    const orders = await fetchShopifyOrders(connection.shop_domain, accessToken, limit);
+    const rows = mapShopifyOrdersToCsvRows(orders);
+    sendJson(res, 200, {
+      shop: connection.shop_domain,
+      count: rows.length,
+      rows,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Shopify import failed." });
+  }
+}
+
+async function handleApi(req, res, requestUrl) {
+  const pathname = requestUrl.pathname;
+  if (pathname === "/api/shopify/install-link" && req.method === "POST") {
+    await handleShopifyInstallLink(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/shopify/callback" && req.method === "GET") {
+    await handleShopifyCallback(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/shopify/connection" && req.method === "GET") {
+    await handleShopifyConnection(req, res);
+    return true;
+  }
+  if (pathname === "/api/shopify/import-orders" && req.method === "POST") {
+    await handleShopifyImportOrders(req, res);
+    return true;
+  }
+  if (pathname.startsWith("/api/")) {
+    sendJson(res, 404, { error: "API route not found." });
+    return true;
+  }
+  return false;
+}
+
+const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url || "/", "http://localhost");
+
+  try {
+    const apiHandled = await handleApi(req, res, requestUrl);
+    if (apiHandled) {
+      return;
+    }
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Unexpected server error." });
+    return;
+  }
+
   let pathname = decodeURIComponent(requestUrl.pathname);
 
   if (pathname === "/") {
@@ -88,7 +688,6 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // SPA history fallback: routes like /account or /reports serve index.html.
     sendFile(res, INDEX_FILE);
   });
 });
