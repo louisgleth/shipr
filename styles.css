@@ -711,17 +711,11 @@ body {
   gap: 12px;
 }
 
-.warehouse-head .panel-sub {
-  max-width: none;
-}
-
-.warehouse-toolbar {
+.warehouse-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--stroke);
   flex-wrap: wrap;
 }
 
@@ -737,6 +731,11 @@ body {
   color: var(--muted);
 }
 
+.warehouse-status-row {
+  border-top: 1px solid var(--stroke);
+  padding-top: 10px;
+}
+
 .warehouse-status.is-error {
   color: #d16c6c;
 }
@@ -748,6 +747,11 @@ body {
 .warehouse-list {
   display: grid;
   gap: 10px;
+  grid-template-columns: 1fr;
+}
+
+.warehouse-list.is-multi {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .warehouse-empty {
@@ -760,7 +764,7 @@ body {
 }
 
 .warehouse-card {
-  border: 1px solid var(--stroke);
+  border: none;
   border-radius: var(--radius);
   background: var(--card-bg);
   padding: 12px;
@@ -768,36 +772,25 @@ body {
   gap: 10px;
   position: relative;
   overflow: hidden;
-  transition: background 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-quart),
-    border-color 0.35s ease;
-}
-
-.warehouse-card::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  height: var(--selection-underline-size);
-  background: var(--accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  opacity: 0;
-  transition: transform 0.55s cubic-bezier(0.65, 0, 0.35, 1),
-    opacity 0.55s cubic-bezier(0.65, 0, 0.35, 1);
+  transition: background 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-quart);
+  height: 100%;
 }
 
 .warehouse-card.is-default {
-  background: var(--card-active);
-}
-
-.warehouse-card.is-default::after {
-  transform: scaleX(1);
-  opacity: 1;
+  background: var(--card-bg);
 }
 
 .warehouse-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+.warehouse-card.is-entering {
+  animation: warehouseCardEnter 0.58s var(--ease-out-expo) both;
+}
+
+.warehouse-card.is-removing {
+  animation: warehouseCardExit 0.44s var(--ease-out-expo) both;
+  pointer-events: none;
 }
 
 .warehouse-card-head {
@@ -852,6 +845,29 @@ body {
   height: 36px;
 }
 
+.warehouse-country-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.warehouse-country-flag {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+  z-index: 1;
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+.warehouse-country-input input {
+  padding-left: 34px;
+}
+
 .warehouse-field.is-wide {
   grid-column: span 2;
 }
@@ -859,33 +875,10 @@ body {
 .warehouse-card-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.warehouse-default {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
-.warehouse-default input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: var(--accent);
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-.warehouse-default input:focus {
-  box-shadow: none;
-  border: none;
+  margin-top: auto;
 }
 
 .warehouse-card-controls {
@@ -895,11 +888,97 @@ body {
   flex-wrap: wrap;
 }
 
-.warehouse-note {
-  border-top: 1px solid var(--stroke);
-  padding-top: 10px;
+.warehouse-default-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 2px 0 0;
+  background: transparent;
+  border: none;
   color: var(--muted);
   font-size: var(--fs-xs);
+  font-family: inherit;
+  letter-spacing: var(--letter-tight);
+  cursor: pointer;
+  transition: color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+}
+
+.warehouse-default-toggle:hover {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.warehouse-default-toggle:focus-visible {
+  outline: none;
+}
+
+.warehouse-default-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.warehouse-default-box::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  transform: scale(0.35);
+  opacity: 0;
+  transition: transform 0.28s var(--ease-out-expo), opacity 0.2s ease;
+}
+
+.warehouse-default-toggle.is-active {
+  color: #d8cbff;
+}
+
+.warehouse-default-toggle.is-active .warehouse-default-box::after {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.warehouse-default-toggle.is-active .warehouse-default-box {
+  animation: warehouseDefaultBoxPop 0.32s var(--ease-out-expo);
+}
+
+@keyframes warehouseDefaultBoxPop {
+  0% {
+    transform: scale(0.88);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes warehouseCardEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes warehouseCardExit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+    filter: blur(1.5px);
+  }
 }
 
 .account-section-head h3 {
@@ -3248,6 +3327,10 @@ input.is-invalid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .warehouse-list {
+    grid-template-columns: 1fr;
+  }
+
   .warehouse-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3327,7 +3410,7 @@ input.is-invalid {
     grid-column: auto;
   }
 
-  .warehouse-toolbar {
+  .warehouse-head {
     align-items: flex-start;
   }
 

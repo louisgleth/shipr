@@ -42,12 +42,18 @@ function sendFile(res, filePath) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
+    const isDev = process.env.NODE_ENV !== "production";
+    const cacheControl = isDev
+      ? "no-store"
+      : ext === ".html"
+        ? "no-cache"
+        : "public, max-age=3600";
     send(
       res,
       200,
       {
         "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
-        "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+        "Cache-Control": cacheControl,
       },
       data
     );

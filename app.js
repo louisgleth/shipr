@@ -1,9 +1,9 @@
 const state = {
   step: 1,
   selection: {
-    type: "Standard Ground",
-    speed: "3-5 business days",
-    price: 6.4,
+    type: "Economy",
+    speed: "2-4 working days",
+    price: 5.9,
   },
   quantity: 1,
   labels: [],
@@ -37,6 +37,7 @@ const ACCOUNT_SETTINGS_TABLE = "account_settings";
 const HISTORY_LIMIT = 25;
 const HISTORY_FETCH_RETRY_DELAYS_MS = [0, 220, 600];
 const WAREHOUSE_MAX_COUNT = 10;
+const WAREHOUSE_REMOVE_ANIMATION_MS = 440;
 const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
@@ -343,6 +344,7 @@ let warehouseRecords = [];
 let warehouseDirty = false;
 let warehouseSaving = false;
 let warehouseLoadRequestToken = 0;
+let warehouseEnteringIds = new Set();
 let authParticlesStarted = false;
 let currentMainView = "builder";
 let authShellTransitionToken = 0;
@@ -357,12 +359,16 @@ let reportsCustomEnd = "";
 let reportsActiveServiceIndex = -1;
 let reportsActiveCountryKey = "";
 let reportsActiveRegionKey = "";
-let reportsBelgiumGeoJson = null;
+let reportsDomesticGeoJson = null;
 let reportsWorldGeoJson = null;
 let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
+  "domestic",
+  "home",
+  "home market",
+  "local",
   "belgium",
   "belgie",
   "belgique",
@@ -370,15 +376,15 @@ const DOMESTIC_COUNTRY_ALIASES = new Set([
 ]);
 
 const RETAIL_BASE_RATE = {
-  "Standard Ground": 8.2,
-  "Two-Day Express": 18.6,
-  "International Priority": 33.4,
+  Economy: 7.1,
+  Priority: 12.2,
+  "International Express": 21.8,
 };
 
 const REPORT_SERVICE_COLOR_MAP = {
-  "Standard Ground": "#7747e3",
-  "Two-Day Express": "#8f66ed",
-  "International Priority": "#a18af0",
+  Economy: "#7747e3",
+  Priority: "#8f66ed",
+  "International Express": "#a18af0",
 };
 
 const REPORT_SERVICE_FALLBACK_COLORS = [
@@ -399,12 +405,12 @@ const REPORT_MOCK_COUNTRIES = [
 ];
 
 const REPORT_MOCK_REGIONS = [
-  { name: "Flanders", count: 56, spend: 436.8 },
-  { name: "Wallonia", count: 31, spend: 241.8 },
-  { name: "Brussels-Capital", count: 18, spend: 140.4 },
+  { name: "North Region", count: 56, spend: 436.8 },
+  { name: "South Region", count: 31, spend: 241.8 },
+  { name: "Capital Region", count: 18, spend: 140.4 },
 ];
 
-const REPORT_BELGIUM_GEOJSON_URL = "assets/belgium-provinces.geojson";
+const REPORT_DOMESTIC_GEOJSON_URL = "assets/belgium-provinces.geojson";
 const REPORT_WORLD_GEOJSON_URL = "assets/world-countries.geojson";
 
 function normalizePathname(pathname) {
@@ -534,15 +540,15 @@ function updateRoute(route, options = {}) {
 }
 
 async function ensureReportsGeoDataLoaded() {
-  if (reportsBelgiumGeoJson && reportsWorldGeoJson) return;
+  if (reportsDomesticGeoJson && reportsWorldGeoJson) return;
   if (reportsGeoLoadPromise) {
     await reportsGeoLoadPromise;
     return;
   }
   reportsGeoLoadPromise = Promise.all([
-    fetch(REPORT_BELGIUM_GEOJSON_URL).then((response) => {
+    fetch(REPORT_DOMESTIC_GEOJSON_URL).then((response) => {
       if (!response.ok) {
-        throw new Error(`Failed to load Belgium GeoJSON (${response.status})`);
+        throw new Error(`Failed to load domestic regions GeoJSON (${response.status})`);
       }
       return response.json();
     }),
@@ -553,13 +559,13 @@ async function ensureReportsGeoDataLoaded() {
       return response.json();
     }),
   ])
-    .then(([belgiumData, worldData]) => {
-      reportsBelgiumGeoJson = belgiumData;
+    .then(([domesticData, worldData]) => {
+      reportsDomesticGeoJson = domesticData;
       reportsWorldGeoJson = worldData;
     })
     .catch((error) => {
       console.warn("Reports map data failed to load:", error);
-      reportsBelgiumGeoJson = null;
+      reportsDomesticGeoJson = null;
       reportsWorldGeoJson = null;
     })
     .finally(() => {
@@ -677,12 +683,12 @@ function getCountryFeatureName(feature) {
   );
 }
 
-function getBelgiumProvinceName(feature) {
+function getDomesticProvinceName(feature) {
   const properties = feature?.properties || {};
   return properties.province || properties.NAME_2 || properties.name || "Unknown Province";
 }
 
-function getBelgiumRegionName(feature) {
+function getDomesticRegionName(feature) {
   const properties = feature?.properties || {};
   const raw =
     properties.region ||
@@ -691,61 +697,67 @@ function getBelgiumRegionName(feature) {
     properties.regio ||
     "";
   const normalized = normalizeNameKey(raw);
-  if (normalized.includes("flanders") || normalized.includes("vlaanderen")) return "Flanders";
-  if (normalized.includes("wallonia") || normalized.includes("wallonie")) return "Wallonia";
+  if (normalized.includes("flanders") || normalized.includes("vlaanderen")) return "North Region";
+  if (normalized.includes("wallonia") || normalized.includes("wallonie")) return "South Region";
   if (normalized.includes("brussels") || normalized.includes("bruxelles")) {
-    return "Brussels-Capital";
+    return "Capital Region";
   }
-  return "Flanders";
+  return "North Region";
 }
 
 const sampleProfiles = [
   {
     sender: {
       name: "Harper Clarke",
-      street: "214 Whisper Ridge Rd",
-      city: "Portland",
-      state: "OR",
-      zip: "97205",
+      street: "Westblaak 84",
+      city: "Rotterdam",
+      state: "South Holland",
+      zip: "3012",
+      country: "Netherlands",
     },
     recipient: {
       name: "Jordan Reyes",
-      street: "88 Sable Market St",
-      city: "Austin",
-      state: "TX",
-      zip: "78701",
+      street: "Rue de Rivoli 240",
+      city: "Paris",
+      state: "Ile-de-France",
+      zip: "75001",
+      country: "France",
     },
   },
   {
     sender: {
       name: "Avery Grant",
-      street: "620 North Pine Ave",
-      city: "Denver",
-      state: "CO",
-      zip: "80202",
+      street: "Avenue Foch 12",
+      city: "Lille",
+      state: "Hauts-de-France",
+      zip: "59800",
+      country: "France",
     },
     recipient: {
       name: "Riley Chen",
-      street: "5401 Birch Harbor Dr",
-      city: "Seattle",
-      state: "WA",
-      zip: "98121",
+      street: "Neumarkt 18",
+      city: "Cologne",
+      state: "North Rhine-Westphalia",
+      zip: "50667",
+      country: "Germany",
     },
   },
   {
     sender: {
       name: "Logan Pierce",
-      street: "128 Camden Blvd",
-      city: "Chicago",
-      state: "IL",
-      zip: "60610",
+      street: "Via Torino 47",
+      city: "Milan",
+      state: "Lombardy",
+      zip: "20123",
+      country: "Italy",
     },
     recipient: {
       name: "Morgan Diaz",
-      street: "409 Sunset Cove",
-      city: "Miami",
-      state: "FL",
-      zip: "33130",
+      street: "Carrer de Balmes 125",
+      city: "Barcelona",
+      state: "Catalonia",
+      zip: "08008",
+      country: "Spain",
     },
   },
 ];
@@ -755,12 +767,12 @@ const csvColumns = [
   { key: "senderStreet", label: "From Street" },
   { key: "senderCity", label: "From City" },
   { key: "senderState", label: "From Region" },
-  { key: "senderZip", label: "From Zip" },
+  { key: "senderZip", label: "From Postal Code" },
   { key: "recipientName", label: "To Name" },
   { key: "recipientStreet", label: "To Street" },
   { key: "recipientCity", label: "To City" },
   { key: "recipientState", label: "To Region" },
-  { key: "recipientZip", label: "To Zip" },
+  { key: "recipientZip", label: "To Postal Code" },
   { key: "recipientCountry", label: "Country" },
   { key: "packageWeight", label: "Weight" },
   { key: "packageDims", label: "Dims" },
@@ -1120,20 +1132,20 @@ const mockLastNames = [
   "Sullivan",
 ];
 const mockStreetNames = [
-  "Market St",
-  "Harbor Ave",
-  "Elm Ridge Rd",
-  "Granite Blvd",
-  "Kingston Dr",
-  "Alder Lane",
+  "Rue du Port",
+  "Avenue Centrale",
+  "Kadeweg",
+  "Via Mercato",
+  "Carrer Major",
+  "Boulevard Europe",
 ];
-const mockCityStates = [
-  ["Austin", "TX"],
-  ["Seattle", "WA"],
-  ["Denver", "CO"],
-  ["Chicago", "IL"],
-  ["Miami", "FL"],
-  ["Portland", "OR"],
+const mockCityRegions = [
+  ["Amsterdam", "North Holland", "Netherlands"],
+  ["Paris", "Ile-de-France", "France"],
+  ["Cologne", "North Rhine-Westphalia", "Germany"],
+  ["Milan", "Lombardy", "Italy"],
+  ["Barcelona", "Catalonia", "Spain"],
+  ["Vienna", "Vienna", "Austria"],
 ];
 
 function historyStorageKey(userId) {
@@ -1206,7 +1218,7 @@ function formatHistoryHeadlineParts(value) {
   }
   const day = String(date.getDate()).padStart(2, "0");
   const month = date
-    .toLocaleString("en-US", { month: "short" })
+    .toLocaleString("en-GB", { month: "short" })
     .replace(".", "");
   const year = date.getFullYear();
   const hour = String(date.getHours()).padStart(2, "0");
@@ -1218,7 +1230,7 @@ function formatHistoryHeadlineParts(value) {
 }
 
 function formatMoney(value) {
-  return `$${Number(value || 0).toFixed(2)}`;
+  return `€${Number(value || 0).toFixed(2)}`;
 }
 
 function hashString(value) {
@@ -1256,13 +1268,14 @@ function buildMockAccountProfile(user) {
   const companySuffix = pickBySeed(mockCompanySuffixes, seed, 1);
   const contactFirst = pickBySeed(mockFirstNames, seed, 2);
   const contactLast = pickBySeed(mockLastNames, seed, 3);
-  const [city, stateCode] = pickBySeed(mockCityStates, seed, 4);
+  const [city, stateCode, country] = pickBySeed(mockCityRegions, seed, 4);
   const streetNumber = 100 + (seed % 8800);
   const streetName = pickBySeed(mockStreetNames, seed, 5);
-  const zip = String(10000 + ((seed >> 3) % 89999)).padStart(5, "0");
-  const area = String(200 + (seed % 700)).padStart(3, "0");
-  const prefix = String(100 + ((seed >> 5) % 900)).padStart(3, "0");
-  const line = String(1000 + ((seed >> 9) % 9000)).padStart(4, "0");
+  const zip = String(1000 + ((seed >> 3) % 8999)).padStart(4, "0");
+  const mobilePrefix = String(450 + (seed % 500)).padStart(3, "0");
+  const lineA = String(10 + ((seed >> 5) % 90)).padStart(2, "0");
+  const lineB = String(10 + ((seed >> 9) % 90)).padStart(2, "0");
+  const lineC = String(10 + ((seed >> 13) % 90)).padStart(2, "0");
   const taxCore = String(100000000 + (seed % 900000000)).padStart(9, "0");
   const customerCore = String(100000 + (seed % 900000)).padStart(6, "0");
 
@@ -1270,9 +1283,9 @@ function buildMockAccountProfile(user) {
     companyName: `${companyBase} ${companySuffix}`.trim(),
     contactName: `${contactFirst} ${contactLast}`,
     contactEmail: email || `${localPart}@example.com`,
-    contactPhone: `+1 (${area}) ${prefix}-${line}`,
-    billingAddress: `${streetNumber} ${streetName}, ${city}, ${stateCode} ${zip}`,
-    taxId: `US-${taxCore}`,
+    contactPhone: `+32 ${mobilePrefix} ${lineA} ${lineB} ${lineC}`,
+    billingAddress: `${streetNumber} ${streetName}, ${city}, ${stateCode} ${zip}, ${country}`,
+    taxId: `EU-${taxCore}`,
     customerId: `CUST-${customerCore}`,
     plan: pickBySeed(mockPlans, seed, 6),
   };
@@ -1327,7 +1340,7 @@ function generateWarehouseId() {
 }
 
 function normalizeWarehouseRecord(record, fallback = {}) {
-  const country = String(record?.country || fallback.country || "Belgium").trim() || "Belgium";
+  const country = String(record?.country || fallback.country || "France").trim() || "France";
   return {
     id: String(record?.id || fallback.id || generateWarehouseId()),
     name: String(record?.name || fallback.name || "").trim(),
@@ -1375,7 +1388,7 @@ function buildDefaultWarehouseRecords(user) {
       city: billing.city,
       region: billing.state,
       postalCode: billing.zip,
-      country: billing.country || "Belgium",
+      country: billing.country || "France",
       isDefault: true,
     },
   ]);
@@ -1406,7 +1419,7 @@ function applyWarehouseToSender(origin, options = {}) {
   syncInfoState();
   updatePreview();
   if (announce) {
-    setWarehouseStatus(`Applied ${origin.name || "warehouse"} to sender fields.`, {
+    setWarehouseStatus(`Applied ${origin.name || "warehouse"} to sender details.`, {
       tone: "success",
     });
   }
@@ -1472,13 +1485,25 @@ function createWarehouseField(label, fieldKey, value, options = {}) {
   input.dataset.warehouseField = fieldKey;
 
   field.appendChild(title);
-  field.appendChild(input);
+  if (fieldKey === "country") {
+    const wrap = document.createElement("div");
+    wrap.className = "warehouse-country-input";
+    const icon = document.createElement("span");
+    icon.className = "warehouse-country-flag";
+    icon.innerHTML = getCountryIcon(input.value);
+    wrap.appendChild(icon);
+    wrap.appendChild(input);
+    field.appendChild(wrap);
+  } else {
+    field.appendChild(input);
+  }
   return field;
 }
 
 function renderWarehouseList() {
   if (!warehouseList) return;
   warehouseList.innerHTML = "";
+  warehouseList.classList.toggle("is-multi", warehouseRecords.length > 1);
 
   if (!currentUser) {
     const empty = document.createElement("div");
@@ -1502,6 +1527,9 @@ function renderWarehouseList() {
     const card = document.createElement("article");
     card.className = `warehouse-card${origin.isDefault ? " is-default" : ""}`;
     card.dataset.warehouseId = origin.id;
+    if (warehouseEnteringIds.has(origin.id)) {
+      card.classList.add("is-entering");
+    }
 
     const head = document.createElement("div");
     head.className = "warehouse-card-head";
@@ -1515,28 +1543,24 @@ function renderWarehouseList() {
 
     title.appendChild(name);
 
-    if (origin.isDefault) {
-      const tag = document.createElement("span");
-      tag.className = "warehouse-card-tag";
-      tag.textContent = "Default Origin";
-      title.appendChild(tag);
-    }
-
     head.appendChild(title);
 
-    const defaultWrap = document.createElement("label");
-    defaultWrap.className = "warehouse-default";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "warehouseDefault";
-    radio.checked = origin.isDefault;
-    radio.dataset.warehouseDefault = "1";
-    radio.disabled = warehouseSaving;
-    const radioText = document.createElement("span");
-    radioText.textContent = "Default";
-    defaultWrap.appendChild(radio);
-    defaultWrap.appendChild(radioText);
-    head.appendChild(defaultWrap);
+    const defaultToggle = document.createElement("button");
+    defaultToggle.type = "button";
+    defaultToggle.className = `warehouse-default-toggle${origin.isDefault ? " is-active" : ""}`;
+    defaultToggle.dataset.warehouseAction = "default";
+    defaultToggle.disabled = warehouseSaving;
+
+    const defaultBox = document.createElement("span");
+    defaultBox.className = "warehouse-default-box";
+    defaultBox.setAttribute("aria-hidden", "true");
+
+    const defaultText = document.createElement("span");
+    defaultText.textContent = "Default";
+
+    defaultToggle.appendChild(defaultBox);
+    defaultToggle.appendChild(defaultText);
+    head.appendChild(defaultToggle);
 
     const grid = document.createElement("div");
     grid.className = "warehouse-grid";
@@ -1566,7 +1590,7 @@ function renderWarehouseList() {
     applyButton.type = "button";
     applyButton.className = "btn btn-secondary btn-sm";
     applyButton.dataset.warehouseAction = "apply";
-    applyButton.textContent = "Use As Sender";
+    applyButton.textContent = "Apply";
     applyButton.disabled = warehouseSaving;
 
     const removeButton = document.createElement("button");
@@ -1578,12 +1602,6 @@ function renderWarehouseList() {
 
     controlGroup.appendChild(applyButton);
     controlGroup.appendChild(removeButton);
-
-    const hint = document.createElement("span");
-    hint.className = "warehouse-card-tag";
-    hint.textContent = "Used as sender origin";
-
-    controls.appendChild(hint);
     controls.appendChild(controlGroup);
 
     card.appendChild(head);
@@ -1596,12 +1614,52 @@ function renderWarehouseList() {
   inputs.forEach((input) => {
     input.disabled = warehouseSaving;
   });
+
+  if (warehouseEnteringIds.size > 0) {
+    const enteringCards = Array.from(
+      warehouseList.querySelectorAll(".warehouse-card.is-entering")
+    );
+    window.setTimeout(() => {
+      enteringCards.forEach((card) => card.classList.remove("is-entering"));
+      warehouseEnteringIds.clear();
+    }, 620);
+  }
   updateWarehouseControls();
 }
 
 function findWarehouseIndexById(warehouseId) {
   if (!warehouseId) return -1;
   return warehouseRecords.findIndex((origin) => origin.id === warehouseId);
+}
+
+function removeWarehouseRecord(warehouseId) {
+  warehouseRecords = warehouseRecords.filter((origin) => origin.id !== warehouseId);
+  warehouseRecords = normalizeWarehouseRecords(warehouseRecords);
+  renderWarehouseList();
+  setWarehouseDirty(true);
+}
+
+function removeWarehouseWithAnimation(warehouseId) {
+  if (!warehouseList) {
+    removeWarehouseRecord(warehouseId);
+    return;
+  }
+  const card = warehouseList.querySelector(`[data-warehouse-id="${warehouseId}"]`);
+  if (!card) {
+    removeWarehouseRecord(warehouseId);
+    return;
+  }
+  if (card.classList.contains("is-removing")) return;
+
+  card.classList.add("is-removing");
+  const controls = card.querySelectorAll("button, input");
+  controls.forEach((element) => {
+    element.disabled = true;
+  });
+
+  window.setTimeout(() => {
+    removeWarehouseRecord(warehouseId);
+  }, WAREHOUSE_REMOVE_ANIMATION_MS);
 }
 
 function buildNewWarehouseRecord() {
@@ -1611,7 +1669,7 @@ function buildNewWarehouseRecord() {
     id: generateWarehouseId(),
     name: `Warehouse ${nextNumber}`,
     senderName: senderNameSeed === "--" ? "" : senderNameSeed,
-    country: "Belgium",
+    country: "France",
     isDefault: warehouseRecords.length === 0,
   });
 }
@@ -1759,6 +1817,7 @@ async function loadWarehouseSettings(options = {}) {
   warehouseRecords = normalizeWarehouseRecords(nextRecords);
   warehouseDirty = false;
   warehouseSaving = false;
+  warehouseEnteringIds.clear();
   saveLocalWarehouses(userId, warehouseRecords);
   renderWarehouseList();
 
@@ -1805,6 +1864,7 @@ async function saveWarehouseSettings() {
   saveLocalWarehouses(userId, warehouseRecords);
   warehouseSaving = false;
   warehouseDirty = false;
+  warehouseEnteringIds.clear();
   renderWarehouseList();
 
   if (savedToSupabase) {
@@ -1823,6 +1883,7 @@ function resetWarehouseState() {
   warehouseRecords = [];
   warehouseDirty = false;
   warehouseSaving = false;
+  warehouseEnteringIds.clear();
   renderWarehouseList();
   setWarehouseStatus("Sign in to manage shipping origins.");
 }
@@ -2621,7 +2682,7 @@ function normalizeCountryLabel(value) {
   const raw = String(value || "").trim();
   if (!raw) return "Unknown";
   const lowered = raw.toLowerCase();
-  if (DOMESTIC_COUNTRY_ALIASES.has(lowered)) return "Belgium";
+  if (DOMESTIC_COUNTRY_ALIASES.has(lowered)) return "Domestic";
   return toTitleCase(raw);
 }
 
@@ -2630,21 +2691,21 @@ function isDomesticCountry(value) {
   return DOMESTIC_COUNTRY_ALIASES.has(normalized);
 }
 
-function resolveBelgiumRegion(labelData) {
+function resolveDomesticRegion(labelData) {
   const stateText = String(labelData?.recipientState || "").trim().toLowerCase();
-  if (stateText.includes("flanders") || stateText.includes("vlaanderen")) return "Flanders";
-  if (stateText.includes("wallonia") || stateText.includes("wallonie")) return "Wallonia";
+  if (stateText.includes("flanders") || stateText.includes("vlaanderen")) return "North Region";
+  if (stateText.includes("wallonia") || stateText.includes("wallonie")) return "South Region";
   if (stateText.includes("brussels") || stateText.includes("bruxelles")) {
-    return "Brussels-Capital";
+    return "Capital Region";
   }
 
   const zipDigits = String(labelData?.recipientZip || "").replace(/\D/g, "");
-  if (!zipDigits) return "Flanders";
+  if (!zipDigits) return "North Region";
   const prefix = Number(zipDigits.slice(0, 1));
-  if (prefix === 1) return "Brussels-Capital";
-  if ([2, 3, 8, 9].includes(prefix)) return "Flanders";
-  if ([4, 5, 6, 7].includes(prefix)) return "Wallonia";
-  return "Flanders";
+  if (prefix === 1) return "Capital Region";
+  if ([2, 3, 8, 9].includes(prefix)) return "North Region";
+  if ([4, 5, 6, 7].includes(prefix)) return "South Region";
+  return "North Region";
 }
 
 function getRecordCreatedDay(record) {
@@ -2886,7 +2947,7 @@ function buildReportsModel() {
       if (domestic) {
         domesticCount += 1;
         domesticSpend = round2(domesticSpend + distributedCost);
-        const region = resolveBelgiumRegion(labelData);
+        const region = resolveDomesticRegion(labelData);
         incrementReportsCounter(regionTotals, region, 1, distributedCost);
       } else {
         internationalCount += 1;
@@ -3406,17 +3467,17 @@ function renderReportsCountriesMap(model) {
 function renderReportsRegionsMap(model) {
   if (!reportRegionsMap) return;
   const rows = Array.isArray(model.topRegions) ? model.topRegions : [];
-  if (!reportsBelgiumGeoJson?.features?.length) {
+  if (!reportsDomesticGeoJson?.features?.length) {
     reportRegionsMap.innerHTML = `
       <rect class="reports-map-bg" x="0" y="0" width="360" height="220"></rect>
-      <text x="180" y="112" text-anchor="middle" class="reports-map-label">Belgium map data unavailable</text>
+      <text x="180" y="112" text-anchor="middle" class="reports-map-label">Domestic map data unavailable</text>
     `;
     return;
   }
 
   const width = 360;
   const height = 220;
-  const features = reportsBelgiumGeoJson.features;
+  const features = reportsDomesticGeoJson.features;
   const bounds = getFeatureBounds(features);
   const project = createGeoProjector(bounds, width, height, 8, { isGeographic: true });
   const rowMap = new Map(rows.map((row) => [row.name, row]));
@@ -3424,8 +3485,8 @@ function renderReportsRegionsMap(model) {
 
   const paths = features
     .map((feature) => {
-      const province = getBelgiumProvinceName(feature);
-      const region = getBelgiumRegionName(feature);
+      const province = getDomesticProvinceName(feature);
+      const region = getDomesticRegionName(feature);
       const stats = rowMap.get(region) || { count: 0, spend: 0 };
       const pathData = geometryToPath(feature.geometry, project);
       if (!pathData) return "";
@@ -4127,14 +4188,14 @@ function buildCsvRow(profile) {
     senderZip: profile.sender.zip,
     recipientName: profile.recipient.name,
     recipientStreet: profile.recipient.street,
-    recipientCountry: "United States",
+    recipientCountry: profile.recipient.country || "France",
     recipientCity: profile.recipient.city,
     recipientState: profile.recipient.state,
     recipientZip: profile.recipient.zip,
-    packageWeight: (Math.random() * 4 + 0.6).toFixed(1),
-    packageDims: `${Math.floor(Math.random() * 6 + 8)} x ${Math.floor(
-      Math.random() * 4 + 4
-    )} x ${Math.floor(Math.random() * 3 + 2)}`,
+    packageWeight: (Math.random() * 2.7 + 0.3).toFixed(1),
+    packageDims: `${Math.floor(Math.random() * 17 + 16)} x ${Math.floor(
+      Math.random() * 12 + 12
+    )} x ${Math.floor(Math.random() * 8 + 4)}`,
   };
 }
 
@@ -4259,9 +4320,9 @@ function updateSummary() {
   const total = state.selection.price * quantity;
   const activeLabel = getActiveLabel();
   const activeData = activeLabel.data || state.info;
-  summaryPrice.textContent = `$${state.selection.price.toFixed(2)}`;
+  summaryPrice.textContent = formatMoney(state.selection.price);
   summaryQty.textContent = String(quantity);
-  summaryTotal.textContent = `$${total.toFixed(2)}`;
+  summaryTotal.textContent = formatMoney(total);
   summaryTracking.textContent = activeLabel.trackingId || "--";
   summaryLabelId.textContent = activeLabel.labelId || "--";
 }
@@ -4314,7 +4375,7 @@ function updatePreview() {
   );
 
   previewWeight.textContent = activeData.packageWeight
-    ? `${activeData.packageWeight} lb`
+    ? `${activeData.packageWeight} kg`
     : "--";
   previewDims.textContent = activeData.packageDims || "--";
 }
@@ -4352,8 +4413,7 @@ function getActiveLabel() {
 function formatAddress(name, street, city, stateCode, zip, country) {
   const line1 = name || "--";
   const line2 = street || "";
-  const line3Parts = [city, stateCode, zip].filter(Boolean);
-  const line3 = line3Parts.join(" ");
+  const line3 = formatCityRegionPostal(city, stateCode, zip);
   const line4 = country || "";
   return [line1, line2, line3, line4].filter(Boolean).join("\n");
 }
@@ -4559,7 +4619,9 @@ if (warehouseAddButton) {
       });
       return;
     }
-    warehouseRecords = [...warehouseRecords, buildNewWarehouseRecord()];
+    const newOrigin = buildNewWarehouseRecord();
+    warehouseEnteringIds.add(newOrigin.id);
+    warehouseRecords = [...warehouseRecords, newOrigin];
     renderWarehouseList();
     setWarehouseDirty(true);
   });
@@ -4590,23 +4652,13 @@ if (warehouseList) {
       }
     }
 
-    setWarehouseDirty(true);
-  });
+    if (field === "country") {
+      const icon = target.parentElement?.querySelector(".warehouse-country-flag");
+      if (icon) {
+        icon.innerHTML = getCountryIcon(target.value.trim());
+      }
+    }
 
-  warehouseList.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    if (!target.dataset.warehouseDefault) return;
-    const card = target.closest("[data-warehouse-id]");
-    if (!card) return;
-    const nextId = card.dataset.warehouseId;
-    warehouseRecords = normalizeWarehouseRecords(
-      warehouseRecords.map((origin) => ({
-        ...origin,
-        isDefault: origin.id === nextId,
-      }))
-    );
-    renderWarehouseList();
     setWarehouseDirty(true);
   });
 
@@ -4625,6 +4677,20 @@ if (warehouseList) {
       return;
     }
 
+    if (action === "default") {
+      if (!warehouseRecords[index].isDefault) {
+        warehouseRecords = normalizeWarehouseRecords(
+          warehouseRecords.map((origin) => ({
+            ...origin,
+            isDefault: origin.id === warehouseId,
+          }))
+        );
+        renderWarehouseList();
+        setWarehouseDirty(true);
+      }
+      return;
+    }
+
     if (action === "remove") {
       if (warehouseRecords.length <= 1) {
         setWarehouseStatus("At least one warehouse origin is required.", {
@@ -4632,10 +4698,7 @@ if (warehouseList) {
         });
         return;
       }
-      warehouseRecords = warehouseRecords.filter((origin) => origin.id !== warehouseId);
-      warehouseRecords = normalizeWarehouseRecords(warehouseRecords);
-      renderWarehouseList();
-      setWarehouseDirty(true);
+      removeWarehouseWithAnimation(warehouseId);
     }
   });
 }
@@ -4779,15 +4842,15 @@ function autoFill() {
 
   inputMap.recipientName.value = profile.recipient.name;
   inputMap.recipientStreet.value = profile.recipient.street;
-  inputMap.recipientCountry.value = "United States";
+  inputMap.recipientCountry.value = profile.recipient.country || "France";
   inputMap.recipientCity.value = profile.recipient.city;
   inputMap.recipientState.value = profile.recipient.state;
   inputMap.recipientZip.value = profile.recipient.zip;
 
-  inputMap.packageWeight.value = (Math.random() * 4 + 0.6).toFixed(1);
-  inputMap.packageDims.value = `${Math.floor(Math.random() * 6 + 8)} x ${
-    Math.floor(Math.random() * 4 + 4)
-  } x ${Math.floor(Math.random() * 3 + 2)}`;
+  inputMap.packageWeight.value = (Math.random() * 2.7 + 0.3).toFixed(1);
+  inputMap.packageDims.value = `${Math.floor(Math.random() * 17 + 16)} x ${
+    Math.floor(Math.random() * 12 + 12)
+  } x ${Math.floor(Math.random() * 8 + 4)}`;
 
   inputMap.trackingId.value = generateTracking();
   inputMap.labelId.value = generateLabelId();
@@ -5008,6 +5071,11 @@ function createLabelBatchPdfBlob(labels, serviceType = state.selection.type) {
   return buildPdf(labelPages);
 }
 
+function formatCityRegionPostal(city, region, postalCode) {
+  const place = [city, region].filter(Boolean).join(", ");
+  return [postalCode, place].filter(Boolean).join(" ");
+}
+
 function buildLabelLines(label, serviceType = state.selection.type) {
   const data = label.data || state.info;
   return [
@@ -5019,16 +5087,16 @@ function buildLabelLines(label, serviceType = state.selection.type) {
     "FROM:",
     data.senderName,
     data.senderStreet,
-    `${data.senderCity}, ${data.senderState} ${data.senderZip}`,
+    formatCityRegionPostal(data.senderCity, data.senderState, data.senderZip),
     "",
     "TO:",
     data.recipientName,
     data.recipientStreet,
-    `${data.recipientCity}, ${data.recipientState} ${data.recipientZip}`,
+    formatCityRegionPostal(data.recipientCity, data.recipientState, data.recipientZip),
     data.recipientCountry ? data.recipientCountry : null,
     "",
-    `Weight: ${data.packageWeight} lb`,
-    `Dims: ${data.packageDims} in`,
+    `Weight: ${data.packageWeight} kg`,
+    `Dims: ${data.packageDims} cm`,
   ].filter((line) => line !== undefined && line !== null);
 }
 
@@ -5736,19 +5804,19 @@ function normalizeCsvWeight(value, sourceHeaderToken) {
   if (!Number.isFinite(numeric) || numeric <= 0) return raw;
 
   const token = normalizeCsvHeaderToken(sourceHeaderToken);
-  let pounds = numeric;
+  let kilograms = numeric;
 
   if (/(_|^)oz(s)?(_|$)/.test(token) || token.includes("ounce")) {
-    pounds = numeric / 16;
+    kilograms = numeric * 0.0283495;
   } else if (/(_|^)kg(_|$)/.test(token)) {
-    pounds = numeric * 2.20462;
+    kilograms = numeric;
   } else if (token === "grams" || /(_|^)g(rams)?(_|$)/.test(token)) {
-    pounds = numeric / 453.59237;
+    kilograms = numeric / 1000;
   } else if (/(_|^)lb(s)?(_|$)/.test(token)) {
-    pounds = numeric;
+    kilograms = numeric * 0.45359237;
   }
 
-  return Number(pounds.toFixed(2)).toString();
+  return Number(kilograms.toFixed(2)).toString();
 }
 
 function getCsvColumnLabel(key) {
@@ -6117,7 +6185,7 @@ function buildCsvRowsFromAnalysis(analysis, selectedColumnIndices = {}) {
       getCsvValueAt(row, analysis.extraIndices.dimHeight)
     );
 
-    const recipientCountry = getCsvValueAt(row, columnIndices.recipientCountry) || "United States";
+    const recipientCountry = getCsvValueAt(row, columnIndices.recipientCountry) || "France";
     const packageWeightHeaderToken =
       columnIndices.packageWeight >= 0
         ? normalizeCsvHeaderToken(analysis.headers[columnIndices.packageWeight])
