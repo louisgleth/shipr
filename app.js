@@ -1015,7 +1015,21 @@ async function importShopifyOrders(shop) {
       }, 2200);
     }
   } catch (error) {
-    setProviderStatus(error.message || "Shopify import failed.", { kind: "error" });
+    const message = String(error?.message || "Shopify import failed.");
+    if (
+      /connection expired|reconnect shopify|invalid api key or access token|unrecognized login|wrong password/i.test(
+        message
+      )
+    ) {
+      shopifyConnection = null;
+      updateShopifyProviderStatus();
+      setProviderStatus("Shopify connection expired. Click Shopify again to reconnect.", {
+        kind: "error",
+        persist: true,
+      });
+      return;
+    }
+    setProviderStatus(message, { kind: "error" });
   }
 }
 

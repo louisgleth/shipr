@@ -386,6 +386,33 @@ async function getShopifyConnection(userId, requestedShop) {
   return rows[0];
 }
 
+async function setShopifyConnectionStatus(userId, shop, status) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.shopify");
+  params.set("shop_domain", `eq.${shop}`);
+
+  const response = await supabaseServiceRequest(
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        status: String(status || "disconnected"),
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed updating Shopify connection (${response.status}) ${details}`.trim());
+  }
+}
+
 function mapShopifyOrdersToCsvRows(orders) {
   if (!Array.isArray(orders)) return [];
   return orders.map((order) => {
@@ -435,7 +462,9 @@ async function fetchShopifyOrders(shop, accessToken, limit) {
   });
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    throw new Error(`Shopify order import failed (${response.status}) ${details}`.trim());
+    const error = new Error(`Shopify order import failed (${response.status}) ${details}`.trim());
+    error.status = response.status;
+    throw error;
   }
   const payload = await response.json().catch(() => null);
   const orders = Array.isArray(payload?.orders) ? payload.orders : [];
@@ -604,6 +633,7 @@ async function handleShopifyImportOrders(req, res) {
 
   const requestedShop = normalizeShopDomain(body?.shop);
   const limit = Number(body?.limit);
+  let resolvedShop = requestedShop;
 
   try {
     const connection = await getShopifyConnection(user.id, requestedShop);
@@ -611,6 +641,7 @@ async function handleShopifyImportOrders(req, res) {
       sendJson(res, 404, { error: "Shopify is not connected for this account." });
       return;
     }
+    resolvedShop = String(connection.shop_domain || resolvedShop || "").trim();
     const accessToken = decryptToken(connection.access_token);
     const orders = await fetchShopifyOrders(connection.shop_domain, accessToken, limit);
     const rows = mapShopifyOrdersToCsvRows(orders);
@@ -620,6 +651,13 @@ async function handleShopifyImportOrders(req, res) {
       rows,
     });
   } catch (error) {
+    if (error?.status === 401 && resolvedShop) {
+      await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
+      sendJson(res, 409, {
+        error: "Shopify connection expired or was revoked. Reconnect Shopify and try again.",
+      });
+      return;
+    }
     sendJson(res, 500, { error: error.message || "Shopify import failed." });
   }
 }

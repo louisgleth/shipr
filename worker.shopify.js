@@ -331,6 +331,32 @@ async function getShopifyConnection(env, userId, shop) {
   return rows[0];
 }
 
+async function setShopifyConnectionStatus(env, userId, shop, status) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.shopify");
+  params.set("shop_domain", `eq.${shop}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        status: String(status || "disconnected"),
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed updating Shopify connection (${response.status}) ${details}`.trim());
+  }
+}
+
 function mapShopifyOrdersToCsvRows(orders) {
   if (!Array.isArray(orders)) return [];
   return orders.map((order) => {
@@ -570,6 +596,17 @@ async function handleImportOrders(request, env) {
         "X-Shopify-Access-Token": accessToken,
       },
     });
+    if (ordersResponse.status === 401) {
+      await setShopifyConnectionStatus(env, user.id, connection.shop_domain, "token_invalid").catch(
+        () => {}
+      );
+      return jsonResponse(
+        {
+          error: "Shopify connection expired or was revoked. Reconnect Shopify and try again.",
+        },
+        409
+      );
+    }
     if (!ordersResponse.ok) {
       const details = await ordersResponse.text().catch(() => "");
       throw new Error(`Shopify order import failed (${ordersResponse.status}) ${details}`.trim());
