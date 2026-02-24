@@ -9,6 +9,7 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
+      const pathname = url.pathname.replace(/\/+$/, "") || "/";
 
       if (request.method === "OPTIONS") {
         return new Response(null, {
@@ -17,19 +18,22 @@ export default {
         });
       }
 
-      if (url.pathname === "/api/shopify/install-link" && request.method === "POST") {
+      if (pathname === "/api/shopify/install-link" && request.method === "POST") {
         return handleInstallLink(request, env);
       }
-      if (url.pathname === "/api/shopify/callback" && request.method === "GET") {
+      if (pathname === "/api/shopify/callback" && request.method === "GET") {
         return handleShopifyCallback(request, env, url);
       }
-      if (url.pathname === "/api/shopify/connection" && request.method === "GET") {
+      if (pathname === "/api/shopify/connection" && request.method === "GET") {
         return handleConnection(request, env);
       }
-      if (url.pathname === "/api/shopify/locations" && request.method === "GET") {
+      if (
+        (pathname === "/api/shopify/locations" || pathname === "/api/shopify/location") &&
+        request.method === "GET"
+      ) {
         return handleLocations(request, env, url);
       }
-      if (url.pathname === "/api/shopify/import-orders" && request.method === "POST") {
+      if (pathname === "/api/shopify/import-orders" && request.method === "POST") {
         return handleImportOrders(request, env);
       }
 

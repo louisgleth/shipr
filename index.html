@@ -252,9 +252,13 @@
                             aria-label="Shopify fulfillment settings"
                             title="Shopify fulfillment settings"
                           >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                              <circle cx="12" cy="12" r="3.5"></circle>
-                              <path d="M19.4 15a1 1 0 00.2 1.1l.1.1a1.2 1.2 0 010 1.7l-.2.2a1.2 1.2 0 01-1.7 0l-.1-.1a1 1 0 00-1.1-.2 1 1 0 00-.6.9V19a1.2 1.2 0 01-1.2 1.2h-.3A1.2 1.2 0 0113.3 19v-.2a1 1 0 00-.6-.9 1 1 0 00-1.1.2l-.1.1a1.2 1.2 0 01-1.7 0l-.2-.2a1.2 1.2 0 010-1.7l.1-.1a1 1 0 00.2-1.1 1 1 0 00-.9-.6H9a1.2 1.2 0 01-1.2-1.2v-.3A1.2 1.2 0 019 11.7h.2a1 1 0 00.9-.6 1 1 0 00-.2-1.1l-.1-.1a1.2 1.2 0 010-1.7l.2-.2a1.2 1.2 0 011.7 0l.1.1a1 1 0 001.1.2 1 1 0 00.6-.9V7a1.2 1.2 0 011.2-1.2h.3A1.2 1.2 0 0116 7v.2a1 1 0 00.6.9 1 1 0 001.1-.2l.1-.1a1.2 1.2 0 011.7 0l.2.2a1.2 1.2 0 010 1.7l-.1.1a1 1 0 00-.2 1.1 1 1 0 00.9.6h.2a1.2 1.2 0 011.2 1.2v.3a1.2 1.2 0 01-1.2 1.2h-.2a1 1 0 00-.9.6z"></path>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round">
+                              <line x1="5" y1="6" x2="19" y2="6"></line>
+                              <line x1="5" y1="12" x2="19" y2="12"></line>
+                              <line x1="5" y1="18" x2="19" y2="18"></line>
+                              <circle cx="9" cy="6" r="2"></circle>
+                              <circle cx="15" cy="12" r="2"></circle>
+                              <circle cx="11" cy="18" r="2"></circle>
                             </svg>
                           </button>
                         </div>
@@ -1064,11 +1068,11 @@
           </p>
 
           <div class="shopify-locations-picker">
-            <button type="button" class="shopify-locations-trigger" id="shopifyLocationsToggle">
-              <span id="shopifyLocationsSummary">Loading locations...</span>
-              <svg class="chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div class="shopify-locations-list is-open" id="shopifyLocationsList"></div>
+            <div class="shopify-locations-head">
+              <span>Locations</span>
+              <span class="mono" id="shopifyLocationsSummary">Loading locations...</span>
+            </div>
+            <div class="shopify-locations-list" id="shopifyLocationsList"></div>
           </div>
           <div class="provider-status shopify-settings-status" id="shopifySettingsStatus"></div>
           <div class="panel-actions">

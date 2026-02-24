@@ -312,7 +312,6 @@ const shopifySettingsClose = document.getElementById("shopifySettingsClose");
 const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
 const shopifySettingsSave = document.getElementById("shopifySettingsSave");
 const shopifySettingsStatus = document.getElementById("shopifySettingsStatus");
-const shopifyLocationsToggle = document.getElementById("shopifyLocationsToggle");
 const shopifyLocationsSummary = document.getElementById("shopifyLocationsSummary");
 const shopifyLocationsList = document.getElementById("shopifyLocationsList");
 
@@ -411,7 +410,6 @@ let providerStatusTimer = 0;
 let shopifyConnection = null;
 let shopifyLocationsCache = [];
 let shopifyLocationDraftSelection = new Set();
-let shopifyLocationsCollapsed = false;
 let shopifySettingsBusy = false;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
@@ -870,29 +868,16 @@ function getSavedShopifyLocationSelection() {
 
 function getShopifySelectedLocationSummary(locations, selectedIds) {
   if (!Array.isArray(locations) || locations.length === 0) {
-    return "No fulfillment locations found";
+    return "No locations";
   }
   const selectedSet = new Set(normalizeShopifyLocationIdList(selectedIds));
-  if (!selectedSet.size) return "No locations selected";
+  if (!selectedSet.size) return "0 selected";
 
   const selected = locations.filter((location) => selectedSet.has(location.id));
   if (selected.length === locations.length) {
-    const names = selected.map((location) => location.name).filter(Boolean);
-    return names.length ? `${names.join(", ")} (All)` : "All locations";
+    return `${selected.length} selected (all)`;
   }
-
-  const names = selected.map((location) => location.name).filter(Boolean);
-  if (names.length <= 2) return names.join(", ");
-  return `${names[0]}, ${names[1]} +${names.length - 2} more`;
-}
-
-function setShopifyLocationsCollapsed(collapsed) {
-  if (!shopifyLocationsToggle || !shopifyLocationsList) return;
-  const picker = shopifyLocationsToggle.closest(".shopify-locations-picker");
-  shopifyLocationsCollapsed = Boolean(collapsed);
-  if (picker) {
-    picker.classList.toggle("is-collapsed", shopifyLocationsCollapsed);
-  }
+  return `${selected.length} selected`;
 }
 
 function setShopifySettingsBusy(isBusy) {
@@ -909,9 +894,6 @@ function setShopifySettingsBusy(isBusy) {
   }
   if (shopifySettingsClose) {
     shopifySettingsClose.disabled = shopifySettingsBusy;
-  }
-  if (shopifyLocationsToggle) {
-    shopifyLocationsToggle.disabled = shopifySettingsBusy;
   }
 }
 
@@ -942,17 +924,20 @@ function renderShopifySettingsLocations() {
 
   if (!locations.length) {
     const empty = document.createElement("div");
-    empty.className = "shopify-location-item";
-    empty.innerHTML = `<div></div><div><div class="shopify-location-item-title">No locations available</div></div>`;
+    empty.className = "shopify-location-empty";
+    empty.textContent = "No locations available";
     shopifyLocationsList.appendChild(empty);
     return;
   }
 
-  const allRow = document.createElement("label");
-  allRow.className = "shopify-location-item";
+  const allRow = document.createElement("button");
+  allRow.type = "button";
   const allChecked = shopifyLocationDraftSelection.size === locations.length;
+  allRow.className = `shopify-location-row${allChecked ? " is-selected" : ""}`;
+  allRow.dataset.role = "all";
+  allRow.setAttribute("aria-pressed", allChecked ? "true" : "false");
   allRow.innerHTML = `
-    <input type="checkbox" data-role="all" ${allChecked ? "checked" : ""} />
+    <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
     <div>
       <div class="shopify-location-item-title">All Locations</div>
       <div class="shopify-location-item-meta">Mirror Shopify location routing</div>
@@ -961,12 +946,15 @@ function renderShopifySettingsLocations() {
   shopifyLocationsList.appendChild(allRow);
 
   locations.forEach((location) => {
-    const row = document.createElement("label");
-    row.className = "shopify-location-item";
+    const row = document.createElement("button");
+    row.type = "button";
     const isChecked = shopifyLocationDraftSelection.has(location.id);
+    row.className = `shopify-location-row${isChecked ? " is-selected" : ""}`;
+    row.dataset.locationId = location.id;
+    row.setAttribute("aria-pressed", isChecked ? "true" : "false");
     const meta = getShopifyLocationMeta(location);
     row.innerHTML = `
-      <input type="checkbox" data-location-id="${location.id}" ${isChecked ? "checked" : ""} />
+      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
       <div>
         <div class="shopify-location-item-title">${location.name}</div>
         <div class="shopify-location-item-meta">${meta || "No address details"}</div>
@@ -983,7 +971,23 @@ async function fetchShopifyLocations(shopDomain) {
   }
   const query = new URLSearchParams();
   query.set("shop", shop);
-  const data = await fetchApiWithAuth(`/api/shopify/locations?${query.toString()}`);
+  let data = null;
+  try {
+    data = await fetchApiWithAuth(`/api/shopify/locations?${query.toString()}`);
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (/api route not found/i.test(message)) {
+      try {
+        data = await fetchApiWithAuth(`/api/shopify/location?${query.toString()}`);
+      } catch (_fallbackError) {
+        throw new Error(
+          "Shopify locations endpoint is not live yet. Deploy the latest API worker (or restart the local Node server) and try again."
+        );
+      }
+    } else {
+      throw error;
+    }
+  }
   const locations = Array.isArray(data?.locations) ? data.locations : [];
   return locations
     .map((location) => ({
@@ -1011,7 +1015,6 @@ async function openShopifySettingsModal() {
   setShopifySettingsModalOpen(true);
   setShopifySettingsBusy(true);
   setShopifySettingsStatus("Loading Shopify locations...");
-  setShopifyLocationsCollapsed(false);
 
   try {
     const locations = await fetchShopifyLocations(shopifyConnection.shop);
@@ -6581,20 +6584,13 @@ if (shopifySettingsTrigger) {
   });
 }
 
-if (shopifyLocationsToggle) {
-  shopifyLocationsToggle.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setShopifyLocationsCollapsed(!shopifyLocationsCollapsed);
-  });
-}
-
 if (shopifyLocationsList) {
-  shopifyLocationsList.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    if (target.dataset.role === "all") {
-      if (target.checked) {
+  shopifyLocationsList.addEventListener("click", (event) => {
+    const row = event.target?.closest?.(".shopify-location-row");
+    if (!row || !shopifyLocationsList.contains(row)) return;
+    if (row.dataset.role === "all") {
+      const shouldSelectAll = !row.classList.contains("is-selected");
+      if (shouldSelectAll) {
         shopifyLocationDraftSelection = new Set(
           shopifyLocationsCache.map((location) => location.id)
         );
@@ -6604,12 +6600,12 @@ if (shopifyLocationsList) {
       renderShopifySettingsLocations();
       return;
     }
-    const locationId = normalizeShopifyLocationId(target.dataset.locationId);
+    const locationId = normalizeShopifyLocationId(row.dataset.locationId);
     if (!locationId) return;
-    if (target.checked) {
-      shopifyLocationDraftSelection.add(locationId);
-    } else {
+    if (shopifyLocationDraftSelection.has(locationId)) {
       shopifyLocationDraftSelection.delete(locationId);
+    } else {
+      shopifyLocationDraftSelection.add(locationId);
     }
     renderShopifySettingsLocations();
   });

@@ -842,7 +842,7 @@ async function handleShopifyImportOrders(req, res) {
 }
 
 async function handleApi(req, res, requestUrl) {
-  const pathname = requestUrl.pathname;
+  const pathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
   if (pathname === "/api/shopify/install-link" && req.method === "POST") {
     await handleShopifyInstallLink(req, res, requestUrl);
     return true;
@@ -855,7 +855,10 @@ async function handleApi(req, res, requestUrl) {
     await handleShopifyConnection(req, res);
     return true;
   }
-  if (pathname === "/api/shopify/locations" && req.method === "GET") {
+  if (
+    (pathname === "/api/shopify/locations" || pathname === "/api/shopify/location") &&
+    req.method === "GET"
+  ) {
     await handleShopifyLocations(req, res, requestUrl);
     return true;
   }
