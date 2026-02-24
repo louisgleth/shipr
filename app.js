@@ -305,6 +305,7 @@ const providerDropdown = document.getElementById("providerDropdown");
 const providerTrigger = document.getElementById("providerTrigger");
 const providerMenu = document.getElementById("providerMenu");
 const providerStatus = document.getElementById("providerStatus");
+const shopifyProviderOption = document.querySelector('.provider-option[data-provider="shopify"]');
 
 // CSV modal
 const csvModal = document.getElementById("csvModal");
@@ -766,16 +767,16 @@ function setProviderStatus(message = "", options = {}) {
   }
   if (!persist && providerStatus.textContent) {
     providerStatusTimer = window.setTimeout(() => {
-      if (!shopifyConnection) {
-        providerStatus.textContent = "";
-        providerStatus.classList.remove("is-success", "is-error");
-      } else {
-        providerStatus.textContent = `Shopify connected: ${shopifyConnection.shop}`;
-        providerStatus.classList.add("is-success");
-      }
+      providerStatus.textContent = "";
+      providerStatus.classList.remove("is-success", "is-error");
       providerStatusTimer = 0;
     }, 2800);
   }
+}
+
+function setShopifyProviderConnectedState(isConnected) {
+  if (!shopifyProviderOption) return;
+  shopifyProviderOption.classList.toggle("is-connected", Boolean(isConnected));
 }
 
 function normalizeShopDomain(value) {
@@ -846,16 +847,9 @@ async function fetchApiWithAuth(path, options = {}) {
 }
 
 function updateShopifyProviderStatus() {
-  if (!providerStatus) return;
+  setShopifyProviderConnectedState(Boolean(currentUser && shopifyConnection));
   if (!currentUser) {
     setProviderStatus("", { persist: true });
-    return;
-  }
-  if (shopifyConnection) {
-    setProviderStatus(`Shopify connected: ${shopifyConnection.shop}`, {
-      kind: "success",
-      persist: true,
-    });
     return;
   }
   setProviderStatus("", { persist: true });
@@ -6243,6 +6237,9 @@ document.addEventListener("click", (e) => {
 document.querySelectorAll(".provider-option").forEach((opt) => {
   opt.addEventListener("click", async () => {
     const provider = opt.dataset.provider;
+    const optionLabel =
+      opt.querySelector(".provider-option-main > span:last-child")?.textContent?.trim() ||
+      opt.textContent.trim();
     providerDropdown.classList.remove("is-open");
     if (provider === "shopify") {
       await handleShopifyProviderAction();
@@ -6252,7 +6249,7 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
     autoFill();
     const triggerText = providerTrigger?.querySelector("span");
     if (triggerText) {
-      triggerText.textContent = `Imported from ${opt.textContent.trim()}`;
+      triggerText.textContent = `Imported from ${optionLabel}`;
       window.setTimeout(() => {
         triggerText.textContent = "Import from provider";
       }, 2000);

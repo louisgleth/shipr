@@ -1992,6 +1992,7 @@ body {
 .provider-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   width: 100%;
   padding: 9px 12px;
@@ -2010,6 +2011,12 @@ body {
   background: var(--panel-active);
 }
 
+.provider-option-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .provider-icon {
   display: inline-flex;
   align-items: center;
@@ -2022,6 +2029,29 @@ body {
   font-size: var(--fs-2xs);
   font-weight: 600;
   flex-shrink: 0;
+}
+
+.provider-connected-pill {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 196, 148, 0.35);
+  background: rgba(98, 150, 108, 0.16);
+  color: #a8d4b0;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--letter-tight);
+}
+
+.provider-connected-pill svg {
+  width: 10px;
+  height: 10px;
+}
+
+.provider-option.is-connected .provider-connected-pill {
+  display: inline-flex;
 }
 
 /* CSV upload trigger */
