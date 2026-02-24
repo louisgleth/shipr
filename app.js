@@ -1239,6 +1239,15 @@ const csvColumns = [
   { key: "packageDims", label: "Dims" },
 ];
 
+const csvReviewColumns = csvColumns.filter(
+  (column) =>
+    column.key !== "senderName" &&
+    column.key !== "senderStreet" &&
+    column.key !== "senderCity" &&
+    column.key !== "senderState" &&
+    column.key !== "senderZip"
+);
+
 const CSV_REQUIRED_FIELDS = new Set([
   "recipientName",
   "recipientStreet",
@@ -4700,7 +4709,7 @@ function renderCsvTable() {
   csvTableBody.innerHTML = "";
   state.csvRows.forEach((row, rowIndex) => {
     const tr = document.createElement("tr");
-    csvColumns.forEach((column) => {
+    csvReviewColumns.forEach((column) => {
       const td = document.createElement("td");
       const input = document.createElement("input");
       input.type = "text";
