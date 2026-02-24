@@ -33,6 +33,18 @@ export default {
       ) {
         return handleLocations(request, env, url);
       }
+      if (
+        (pathname === "/api/shopify/settings" || pathname === "/api/shopify/setting") &&
+        request.method === "GET"
+      ) {
+        return handleSettingsGet(request, env, url);
+      }
+      if (
+        (pathname === "/api/shopify/settings" || pathname === "/api/shopify/setting") &&
+        request.method === "POST"
+      ) {
+        return handleSettingsPost(request, env);
+      }
       if (pathname === "/api/shopify/import-orders" && request.method === "POST") {
         return handleImportOrders(request, env);
       }
@@ -310,9 +322,15 @@ async function upsertShopifyConnection(env, payload) {
   }
 }
 
-async function getShopifyConnection(env, userId, shop) {
+async function getShopifyConnection(env, userId, shop, options = {}) {
+  const { includeSettings = false } = options;
   const params = new URLSearchParams();
-  params.set("select", "shop_domain,status,scopes,connected_at,updated_at,access_token");
+  params.set(
+    "select",
+    includeSettings
+      ? "shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
+      : "shop_domain,status,scopes,connected_at,updated_at,access_token"
+  );
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
   params.set("status", "eq.connected");
@@ -331,11 +349,71 @@ async function getShopifyConnection(env, userId, shop) {
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
+    if (
+      includeSettings &&
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "Shopify settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
     throw new Error(`Failed reading Shopify connection (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
   if (!Array.isArray(rows) || !rows.length) return null;
   return rows[0];
+}
+
+function getSelectedLocationIdsFromImportSettings(importSettings) {
+  if (!importSettings || typeof importSettings !== "object") return [];
+  const selectedRaw = Array.isArray(importSettings.selected_location_ids)
+    ? importSettings.selected_location_ids
+    : Array.isArray(importSettings.selectedLocationIds)
+      ? importSettings.selectedLocationIds
+      : [];
+  return sanitizeSelectedLocationIds(selectedRaw);
+}
+
+async function saveShopifyImportSettings(env, userId, shop, selectedLocationIds) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.shopify");
+  params.set("shop_domain", `eq.${shop}`);
+  params.set("status", "eq.connected");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        import_settings: {
+          selected_location_ids: sanitizeSelectedLocationIds(selectedLocationIds),
+        },
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "Shopify settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
+    throw new Error(`Failed saving Shopify settings (${response.status}) ${details}`.trim());
+  }
 }
 
 async function setShopifyConnectionStatus(env, userId, shop, status) {
@@ -749,6 +827,73 @@ async function handleLocations(request, env, requestUrl) {
   }
 }
 
+async function handleSettingsGet(request, env, requestUrl) {
+  try {
+    assertConfig(env);
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    const requestedShop = normalizeShopDomain(requestUrl.searchParams.get("shop"));
+    const connection = await getShopifyConnection(env, user.id, requestedShop, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ error: "Shopify is not connected for this account." }, 404);
+    }
+    return jsonResponse({
+      shop: connection.shop_domain,
+      settings: {
+        selectedLocationIds: getSelectedLocationIdsFromImportSettings(
+          connection.import_settings
+        ),
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to load Shopify settings." }, 500);
+  }
+}
+
+async function handleSettingsPost(request, env) {
+  try {
+    assertConfig(env);
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    const body = await readJsonBody(request);
+    const requestedShop = normalizeShopDomain(body?.shop);
+    const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
+    if (!selectedLocationIds.length) {
+      return jsonResponse({ error: "Select at least one fulfillment location." }, 400);
+    }
+
+    const connection = await getShopifyConnection(env, user.id, requestedShop, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ error: "Shopify is not connected for this account." }, 404);
+    }
+    await saveShopifyImportSettings(env, user.id, connection.shop_domain, selectedLocationIds);
+    return jsonResponse({
+      shop: connection.shop_domain,
+      settings: {
+        selectedLocationIds,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to save Shopify settings." }, 500);
+  }
+}
+
 async function handleImportOrders(request, env) {
   try {
     assertConfig(env);
@@ -762,17 +907,25 @@ async function handleImportOrders(request, env) {
     const limitRaw = Number(body?.limit);
     const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(250, Math.trunc(limitRaw))) : 50;
 
-    const connection = await getShopifyConnection(env, user.id, shop);
+    const connection = await getShopifyConnection(env, user.id, shop, {
+      includeSettings: true,
+    });
     if (!connection) {
       return jsonResponse({ error: "Shopify is not connected for this account." }, 404);
     }
 
     const accessToken = await decryptToken(env, connection.access_token);
-    let locationById = {};
-    if (selectedLocationIds.length > 0) {
-      const locations = await fetchShopifyLocations(env, connection.shop_domain, accessToken);
-      locationById = indexLocationsById(locations);
+    const locations = await fetchShopifyLocations(env, connection.shop_domain, accessToken);
+    const savedSelectedLocationIds = getSelectedLocationIdsFromImportSettings(
+      connection.import_settings
+    );
+    let resolvedSelectedLocationIds = selectedLocationIds.length
+      ? selectedLocationIds
+      : savedSelectedLocationIds;
+    if (!resolvedSelectedLocationIds.length) {
+      resolvedSelectedLocationIds = locations.map((location) => location.id);
     }
+    const locationById = indexLocationsById(locations);
     const apiVersion = String(env.SHOPIFY_API_VERSION || DEFAULT_SHOPIFY_API_VERSION);
     const ordersUrl = new URL(`https://${connection.shop_domain}/admin/api/${apiVersion}/orders.json`);
     ordersUrl.searchParams.set("status", "open");
@@ -808,7 +961,7 @@ async function handleImportOrders(request, env) {
       Array.isArray(payload?.orders) ? payload.orders : [],
       {
         locationById,
-        selectedLocationIds,
+        selectedLocationIds: resolvedSelectedLocationIds,
       }
     );
     return jsonResponse({
@@ -817,6 +970,9 @@ async function handleImportOrders(request, env) {
       rows,
     });
   } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
     return jsonResponse({ error: error?.message || "Shopify import failed." }, 500);
   }
 }

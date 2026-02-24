@@ -11,6 +11,9 @@ const state = {
   csvMode: false,
   csvEditable: false,
   csvRows: [],
+  csvSource: "none",
+  shipFromOriginId: "",
+  shipFromLockedByProvider: false,
   info: {
     senderName: "",
     senderStreet: "",
@@ -55,6 +58,22 @@ const HISTORY_LIMIT = 25;
 const HISTORY_FETCH_RETRY_DELAYS_MS = [0, 220, 600];
 const WAREHOUSE_MAX_COUNT = 10;
 const WAREHOUSE_REMOVE_ANIMATION_MS = 440;
+const WAREHOUSE_RETURN_FIELD_MAP = {
+  senderName: "returnSenderName",
+  street: "returnStreet",
+  city: "returnCity",
+  region: "returnRegion",
+  postalCode: "returnPostalCode",
+  country: "returnCountry",
+};
+const WAREHOUSE_SENDER_FIELDS = new Set([
+  "senderName",
+  "street",
+  "city",
+  "region",
+  "postalCode",
+  "country",
+]);
 const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
@@ -278,7 +297,12 @@ const autoCsvButton = document.getElementById("autoCsv");
 const csvEditToggle = document.getElementById("csvEditToggle");
 const csvSection = document.getElementById("csvSection");
 const csvTableBody = document.querySelector("#csvTable tbody");
+const csvShipFromCard = document.getElementById("csvShipFromCard");
+const csvShipFromNote = document.getElementById("csvShipFromNote");
+const csvShipFromSelector = document.getElementById("csvShipFromSelector");
 const labelForm = document.getElementById("labelForm");
+const senderOriginSelector = document.getElementById("senderOriginSelector");
+const senderOriginNote = document.getElementById("senderOriginNote");
 const pdfFrame = document.getElementById("pdfFrame");
 const downloadPdf = document.getElementById("downloadPdf");
 const startOver = document.getElementById("startOver");
@@ -350,11 +374,6 @@ const inputMap = {
 const countryFlag = document.getElementById("countryFlag");
 
 const labelRequiredFields = [
-  "senderName",
-  "senderStreet",
-  "senderCity",
-  "senderState",
-  "senderZip",
   "recipientName",
   "recipientStreet",
   "recipientCountry",
@@ -410,6 +429,7 @@ let providerStatusTimer = 0;
 let shopifyConnection = null;
 let shopifyLocationsCache = [];
 let shopifyLocationDraftSelection = new Set();
+let shopifySavedLocationSelection = [];
 let shopifySettingsBusy = false;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
@@ -828,42 +848,52 @@ function normalizeShopifyLocationIdList(values) {
   return Array.from(seen);
 }
 
-function getShopifyLocationSettingsKey(userId, shopDomain) {
-  const user = String(userId || "").trim();
+async function fetchShopifySavedSettings(shopDomain) {
   const shop = normalizeShopDomain(shopDomain);
-  if (!user || !shop) return "";
-  return `shipr-shopify-location-settings-${user}-${shop}`;
-}
-
-function loadShopifyLocationSelection(userId, shopDomain) {
-  const key = getShopifyLocationSettingsKey(userId, shopDomain);
-  if (!key) return [];
+  if (!shop) return [];
+  const query = new URLSearchParams();
+  query.set("shop", shop);
+  let data = null;
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return normalizeShopifyLocationIdList(parsed);
-  } catch (_error) {
-    return [];
+    data = await fetchApiWithAuth(`/api/shopify/settings?${query.toString()}`);
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (/api route not found/i.test(message)) {
+      data = await fetchApiWithAuth(`/api/shopify/setting?${query.toString()}`);
+    } else {
+      throw error;
+    }
   }
+  return normalizeShopifyLocationIdList(data?.settings?.selectedLocationIds);
 }
 
-function saveShopifyLocationSelection(userId, shopDomain, selectedLocationIds) {
-  const key = getShopifyLocationSettingsKey(userId, shopDomain);
-  if (!key) return;
+async function saveShopifySavedSettings(shopDomain, selectedLocationIds) {
+  const shop = normalizeShopDomain(shopDomain);
+  if (!shop) {
+    throw new Error("Connect Shopify before saving settings.");
+  }
+  let data = null;
+  const payload = {
+    shop,
+    selectedLocationIds: normalizeShopifyLocationIdList(selectedLocationIds),
+  };
   try {
-    localStorage.setItem(
-      key,
-      JSON.stringify(normalizeShopifyLocationIdList(selectedLocationIds))
-    );
-  } catch (_error) {
-    // Ignore local storage errors (quota/private mode).
+    data = await fetchApiWithAuth("/api/shopify/settings", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (/api route not found/i.test(message)) {
+      data = await fetchApiWithAuth("/api/shopify/setting", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      throw error;
+    }
   }
-}
-
-function getSavedShopifyLocationSelection() {
-  if (!currentUser?.id || !shopifyConnection?.shop) return [];
-  return loadShopifyLocationSelection(currentUser.id, shopifyConnection.shop);
+  return normalizeShopifyLocationIdList(data?.settings?.selectedLocationIds);
 }
 
 function getShopifySelectedLocationSummary(locations, selectedIds) {
@@ -1017,9 +1047,12 @@ async function openShopifySettingsModal() {
   setShopifySettingsStatus("Loading Shopify locations...");
 
   try {
-    const locations = await fetchShopifyLocations(shopifyConnection.shop);
+    const [locations, savedSelection] = await Promise.all([
+      fetchShopifyLocations(shopifyConnection.shop),
+      fetchShopifySavedSettings(shopifyConnection.shop),
+    ]);
     shopifyLocationsCache = locations;
-    const savedSelection = loadShopifyLocationSelection(currentUser.id, shopifyConnection.shop);
+    shopifySavedLocationSelection = savedSelection;
     const savedSet = new Set(savedSelection);
     const validSaved = locations
       .map((location) => location.id)
@@ -1042,6 +1075,7 @@ async function openShopifySettingsModal() {
     }
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
+    shopifySavedLocationSelection = [];
     renderShopifySettingsLocations();
     setShopifySettingsStatus(message, { kind: "error" });
   } finally {
@@ -1052,10 +1086,6 @@ async function openShopifySettingsModal() {
 function closeShopifySettingsModal() {
   if (shopifySettingsBusy) return;
   setShopifySettingsModalOpen(false);
-}
-
-function getSelectedShopifyLocationIdsForImport() {
-  return getSavedShopifyLocationSelection();
 }
 
 async function saveShopifySettings() {
@@ -1071,12 +1101,17 @@ async function saveShopifySettings() {
 
   setShopifySettingsBusy(true);
   try {
-    saveShopifyLocationSelection(currentUser.id, shopifyConnection.shop, selectedIds);
+    const savedSelection = await saveShopifySavedSettings(shopifyConnection.shop, selectedIds);
+    shopifySavedLocationSelection = savedSelection;
     setProviderStatus("Shopify fulfillment settings updated.", { kind: "success" });
     setShopifySettingsStatus("Settings saved.", { kind: "success" });
     window.setTimeout(() => {
       closeShopifySettingsModal();
     }, 150);
+  } catch (error) {
+    setShopifySettingsStatus(error?.message || "Could not save Shopify settings.", {
+      kind: "error",
+    });
   } finally {
     setShopifySettingsBusy(false);
   }
@@ -1162,6 +1197,7 @@ async function loadShopifyConnectionStatus(options = {}) {
   const { quiet = false } = options;
   if (!currentUser) {
     shopifyConnection = null;
+    shopifySavedLocationSelection = [];
     updateShopifyProviderStatus();
     return null;
   }
@@ -1178,10 +1214,12 @@ async function loadShopifyConnectionStatus(options = {}) {
           scopes: String(connection.scopes || "").trim(),
         }
       : null;
+    shopifySavedLocationSelection = [];
     updateShopifyProviderStatus();
     return shopifyConnection;
   } catch (error) {
     shopifyConnection = null;
+    shopifySavedLocationSelection = [];
     updateShopifyProviderStatus();
     if (!quiet) {
       setProviderStatus(error.message || "Could not load Shopify connection.", {
@@ -1237,15 +1275,19 @@ function mapShopifyImportRows(rows) {
     .filter(Boolean);
 }
 
-function applyImportedRows(rows, sourceLabel) {
+function applyImportedRows(rows, sourceLabel, options = {}) {
+  const { source = "provider" } = options;
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error(`No usable ${sourceLabel} rows found.`);
   }
   clearBatchState();
   state.csvRows = rows;
+  setCsvBatchSource(source);
   setCsvMode(true);
+  if (!state.shipFromLockedByProvider) {
+    syncCsvRowsWithSelectedOrigin({ rerender: false });
+  }
   setCsvEditMode(false);
-  renderCsvTable();
   if (labelError) {
     labelError.classList.remove("is-visible");
   }
@@ -1292,17 +1334,15 @@ async function importShopifyOrders(shop) {
 
   try {
     setProviderStatus(`Importing orders from ${normalizedShop}...`, { persist: true });
-    const selectedLocationIds = getSelectedShopifyLocationIdsForImport();
     const data = await fetchApiWithAuth("/api/shopify/import-orders", {
       method: "POST",
       body: JSON.stringify({
         shop: normalizedShop,
         limit: 50,
-        selectedLocationIds,
       }),
     });
     const rows = mapShopifyImportRows(data?.rows);
-    applyImportedRows(rows, "Shopify");
+    applyImportedRows(rows, "Shopify", { source: "provider-shopify" });
     setProviderStatus(`Imported ${rows.length} orders from ${normalizedShop}.`, {
       kind: "success",
     });
@@ -1321,6 +1361,7 @@ async function importShopifyOrders(shop) {
       )
     ) {
       shopifyConnection = null;
+      shopifySavedLocationSelection = [];
       updateShopifyProviderStatus();
       setProviderStatus("Shopify connection expired. Click Shopify again to reconnect.", {
         kind: "error",
@@ -2110,6 +2151,23 @@ function generateWarehouseId() {
 
 function normalizeWarehouseRecord(record, fallback = {}) {
   const country = String(record?.country || fallback.country || "France").trim() || "France";
+  const sameReturnAddress =
+    record?.sameReturnAddress !== undefined
+      ? Boolean(record.sameReturnAddress)
+      : record?.same_return_address !== undefined
+        ? Boolean(record.same_return_address)
+        : fallback.sameReturnAddress !== undefined
+          ? Boolean(fallback.sameReturnAddress)
+          : true;
+
+  const returnCountryRaw =
+    record?.returnCountry ??
+    record?.return_country ??
+    fallback.returnCountry ??
+    (sameReturnAddress ? country : "");
+  const returnCountry =
+    String(returnCountryRaw || "").trim() || (sameReturnAddress ? country : "");
+
   return {
     id: String(record?.id || fallback.id || generateWarehouseId()),
     name: String(record?.name || fallback.name || "").trim(),
@@ -2123,6 +2181,42 @@ function normalizeWarehouseRecord(record, fallback = {}) {
       record?.postalCode ?? record?.postal_code ?? fallback.postalCode ?? ""
     ).trim(),
     country,
+    sameReturnAddress,
+    returnSenderName: String(
+      record?.returnSenderName ??
+        record?.return_sender_name ??
+        fallback.returnSenderName ??
+        (sameReturnAddress ? record?.senderName ?? fallback.senderName ?? "" : "")
+    ).trim(),
+    returnStreet: String(
+      record?.returnStreet ??
+        record?.return_street ??
+        fallback.returnStreet ??
+        (sameReturnAddress ? record?.street ?? fallback.street ?? "" : "")
+    ).trim(),
+    returnCity: String(
+      record?.returnCity ??
+        record?.return_city ??
+        fallback.returnCity ??
+        (sameReturnAddress ? record?.city ?? fallback.city ?? "" : "")
+    ).trim(),
+    returnRegion: String(
+      record?.returnRegion ??
+        record?.return_region ??
+        record?.returnState ??
+        record?.return_state ??
+        fallback.returnRegion ??
+        (sameReturnAddress ? record?.region ?? fallback.region ?? "" : "")
+    ).trim(),
+    returnPostalCode: String(
+      record?.returnPostalCode ??
+        record?.return_postal_code ??
+        record?.returnZip ??
+        record?.return_zip ??
+        fallback.returnPostalCode ??
+        (sameReturnAddress ? record?.postalCode ?? fallback.postalCode ?? "" : "")
+    ).trim(),
+    returnCountry,
     isDefault: Boolean(record?.isDefault ?? record?.is_default ?? fallback.isDefault),
   };
 }
@@ -2167,14 +2261,212 @@ function getDefaultWarehouseRecord() {
   return warehouseRecords.find((origin) => origin.isDefault) || warehouseRecords[0] || null;
 }
 
-function areSenderFieldsEmpty() {
-  return (
-    !String(inputMap.senderName?.value || "").trim() &&
-    !String(inputMap.senderStreet?.value || "").trim() &&
-    !String(inputMap.senderCity?.value || "").trim() &&
-    !String(inputMap.senderState?.value || "").trim() &&
-    !String(inputMap.senderZip?.value || "").trim()
-  );
+function getWarehouseRecordById(warehouseId) {
+  const id = String(warehouseId || "").trim();
+  if (!id) return null;
+  return warehouseRecords.find((origin) => origin.id === id) || null;
+}
+
+function getSelectedWarehouseRecord() {
+  const selected = getWarehouseRecordById(state.shipFromOriginId);
+  if (selected) return selected;
+  return getDefaultWarehouseRecord();
+}
+
+function ensureSelectedWarehouseOrigin() {
+  const selected = getSelectedWarehouseRecord();
+  state.shipFromOriginId = selected?.id || "";
+  return selected;
+}
+
+function getWarehouseSenderValues(origin) {
+  return {
+    senderName: String(origin?.senderName || origin?.name || "").trim(),
+    senderStreet: String(origin?.street || "").trim(),
+    senderCity: String(origin?.city || "").trim(),
+    senderState: String(origin?.region || "").trim(),
+    senderZip: String(origin?.postalCode || "").trim(),
+  };
+}
+
+function applyWarehouseSenderToRows(rows, origin) {
+  const sender = getWarehouseSenderValues(origin);
+  return rows.map((row) => ({
+    ...row,
+    senderName: sender.senderName,
+    senderStreet: sender.senderStreet,
+    senderCity: sender.senderCity,
+    senderState: sender.senderState,
+    senderZip: sender.senderZip,
+  }));
+}
+
+function formatWarehouseAddressLine(origin, options = {}) {
+  const { useReturn = false } = options;
+  const name = String(
+    useReturn
+      ? origin?.returnSenderName || ""
+      : origin?.senderName || origin?.name || ""
+  ).trim();
+  const street = String(useReturn ? origin?.returnStreet || "" : origin?.street || "").trim();
+  const city = String(useReturn ? origin?.returnCity || "" : origin?.city || "").trim();
+  const region = String(useReturn ? origin?.returnRegion || "" : origin?.region || "").trim();
+  const postalCode = String(
+    useReturn ? origin?.returnPostalCode || "" : origin?.postalCode || ""
+  ).trim();
+  const country = String(useReturn ? origin?.returnCountry || "" : origin?.country || "").trim();
+  return [name, street, formatCityRegionPostal(city, region, postalCode), country]
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function buildOriginChoiceButton(origin, options = {}) {
+  const { selected = false, disabled = false } = options;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `origin-choice${selected ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`;
+  button.dataset.originId = origin.id;
+  button.disabled = disabled;
+  button.innerHTML = `
+    <span class="origin-choice-check" aria-hidden="true"><span class="origin-choice-check-fill"></span></span>
+    <span>
+      <span class="origin-choice-name">${escapeHtml(origin.name || "Warehouse")}</span>
+      <span class="origin-choice-meta">Physical: ${escapeHtml(formatWarehouseAddressLine(origin))}</span>
+      <span class="origin-choice-meta">Return: ${
+        origin.sameReturnAddress
+          ? "Same as physical"
+          : escapeHtml(formatWarehouseAddressLine(origin, { useReturn: true }) || "Not set")
+      }</span>
+    </span>
+  `;
+  return button;
+}
+
+function renderSenderOriginSelector() {
+  if (!senderOriginSelector || !senderOriginNote) return;
+  senderOriginSelector.innerHTML = "";
+
+  if (!currentUser) {
+    senderOriginNote.textContent = "Sign in to use account shipping origins.";
+    if (inputMap.senderName) inputMap.senderName.value = "";
+    if (inputMap.senderStreet) inputMap.senderStreet.value = "";
+    if (inputMap.senderCity) inputMap.senderCity.value = "";
+    if (inputMap.senderState) inputMap.senderState.value = "";
+    if (inputMap.senderZip) inputMap.senderZip.value = "";
+    syncInfoState();
+    return;
+  }
+
+  if (!warehouseRecords.length) {
+    senderOriginNote.textContent = "Add at least one shipping origin in Account settings.";
+    if (inputMap.senderName) inputMap.senderName.value = "";
+    if (inputMap.senderStreet) inputMap.senderStreet.value = "";
+    if (inputMap.senderCity) inputMap.senderCity.value = "";
+    if (inputMap.senderState) inputMap.senderState.value = "";
+    if (inputMap.senderZip) inputMap.senderZip.value = "";
+    syncInfoState();
+    return;
+  }
+
+  const selected = ensureSelectedWarehouseOrigin();
+  if (selected) {
+    applyWarehouseToSender(selected, { announce: false });
+  }
+
+  const locked = warehouseRecords.length === 1;
+  warehouseRecords.forEach((origin) => {
+    const button = buildOriginChoiceButton(origin, {
+      selected: origin.id === state.shipFromOriginId,
+      disabled: locked,
+    });
+    senderOriginSelector.appendChild(button);
+  });
+
+  senderOriginNote.textContent = locked
+    ? "Sender is fixed to your only saved shipping origin."
+    : "";
+}
+
+function renderCsvShipFromSelector() {
+  if (!csvShipFromCard || !csvShipFromSelector || !csvShipFromNote) return;
+  csvShipFromCard.classList.toggle("is-hidden", !state.csvMode);
+  if (!state.csvMode) {
+    csvShipFromSelector.innerHTML = "";
+    csvShipFromNote.textContent = "";
+    return;
+  }
+
+  csvShipFromSelector.innerHTML = "";
+  const lockedByProvider = Boolean(state.shipFromLockedByProvider);
+  if (lockedByProvider && !warehouseRecords.length) {
+    csvShipFromNote.textContent =
+      "Ship from is controlled by your Shopify fulfillment settings for this import.";
+    return;
+  }
+
+  if (!warehouseRecords.length) {
+    csvShipFromNote.textContent = "No saved ship-from origin. Add one in Account settings.";
+    return;
+  }
+
+  ensureSelectedWarehouseOrigin();
+  const singleOrigin = warehouseRecords.length === 1;
+
+  warehouseRecords.forEach((origin) => {
+    const button = buildOriginChoiceButton(origin, {
+      selected: origin.id === state.shipFromOriginId,
+      disabled: lockedByProvider || singleOrigin,
+    });
+    csvShipFromSelector.appendChild(button);
+  });
+
+  if (lockedByProvider) {
+    csvShipFromNote.textContent =
+      "Ship from is controlled by your Shopify fulfillment settings for this import.";
+    return;
+  }
+  csvShipFromNote.textContent = singleOrigin
+    ? "Using your only saved ship-from origin."
+    : "Choose which origin to apply to this batch.";
+}
+
+function syncCsvRowsWithSelectedOrigin(options = {}) {
+  const { rerender = true } = options;
+  if (!state.csvMode || state.shipFromLockedByProvider) return;
+  if (!Array.isArray(state.csvRows) || !state.csvRows.length) return;
+  const selected = ensureSelectedWarehouseOrigin();
+  if (!selected) return;
+  state.csvRows = applyWarehouseSenderToRows(state.csvRows, selected);
+  if (rerender) {
+    renderCsvTable();
+    updatePreview();
+    updateSummary();
+  }
+}
+
+function setSelectedWarehouseOrigin(originId, options = {}) {
+  const { syncCsv = true } = options;
+  const origin = getWarehouseRecordById(originId);
+  if (!origin) return;
+  state.shipFromOriginId = origin.id;
+  applyWarehouseToSender(origin, { announce: false });
+  if (syncCsv) {
+    syncCsvRowsWithSelectedOrigin({ rerender: true });
+  }
+  renderSenderOriginSelector();
+  renderCsvShipFromSelector();
+}
+
+function maybeApplyDefaultWarehouseToSender() {
+  const selected = ensureSelectedWarehouseOrigin();
+  if (!selected) return;
+  applyWarehouseToSender(selected, { announce: false });
+}
+
+function setCsvBatchSource(source = "none") {
+  state.csvSource = String(source || "none");
+  state.shipFromLockedByProvider = state.csvSource === "provider-shopify";
+  renderCsvShipFromSelector();
 }
 
 function applyWarehouseToSender(origin, options = {}) {
@@ -2192,13 +2484,6 @@ function applyWarehouseToSender(origin, options = {}) {
       tone: "success",
     });
   }
-}
-
-function maybeApplyDefaultWarehouseToSender() {
-  if (!areSenderFieldsEmpty()) return;
-  const defaultOrigin = getDefaultWarehouseRecord();
-  if (!defaultOrigin) return;
-  applyWarehouseToSender(defaultOrigin, { announce: false });
 }
 
 function setWarehouseStatus(message, options = {}) {
@@ -2254,7 +2539,7 @@ function createWarehouseField(label, fieldKey, value, options = {}) {
   input.dataset.warehouseField = fieldKey;
 
   field.appendChild(title);
-  if (fieldKey === "country") {
+  if (fieldKey === "country" || fieldKey === "returnCountry") {
     const wrap = document.createElement("div");
     wrap.className = "warehouse-country-input";
     const icon = document.createElement("span");
@@ -2280,6 +2565,8 @@ function renderWarehouseList() {
     empty.textContent = "Sign in to manage account shipping origins.";
     warehouseList.appendChild(empty);
     updateWarehouseControls();
+    renderSenderOriginSelector();
+    renderCsvShipFromSelector();
     return;
   }
 
@@ -2289,6 +2576,8 @@ function renderWarehouseList() {
     empty.textContent = "No shipping origins configured yet.";
     warehouseList.appendChild(empty);
     updateWarehouseControls();
+    renderSenderOriginSelector();
+    renderCsvShipFromSelector();
     return;
   }
 
@@ -2349,6 +2638,48 @@ function renderWarehouseList() {
     grid.appendChild(createWarehouseField("Postal Code", "postalCode", origin.postalCode));
     grid.appendChild(createWarehouseField("Country", "country", origin.country));
 
+    const returnToggle = document.createElement("button");
+    returnToggle.type = "button";
+    returnToggle.className = `warehouse-return-toggle${origin.sameReturnAddress ? " is-active" : ""}`;
+    returnToggle.dataset.warehouseAction = "toggle-return";
+    returnToggle.disabled = warehouseSaving;
+
+    const returnToggleBox = document.createElement("span");
+    returnToggleBox.className = "warehouse-return-box";
+    returnToggleBox.setAttribute("aria-hidden", "true");
+
+    const returnToggleText = document.createElement("span");
+    returnToggleText.textContent = "Same Return Address";
+
+    returnToggle.appendChild(returnToggleBox);
+    returnToggle.appendChild(returnToggleText);
+
+    let returnGrid = null;
+    if (!origin.sameReturnAddress) {
+      returnGrid = document.createElement("div");
+      returnGrid.className = "warehouse-return-grid";
+      returnGrid.appendChild(
+        createWarehouseField("Return Name", "returnSenderName", origin.returnSenderName, {
+          placeholder: "Return sender/company",
+        })
+      );
+      returnGrid.appendChild(
+        createWarehouseField("Return Street", "returnStreet", origin.returnStreet, {
+          wide: true,
+        })
+      );
+      returnGrid.appendChild(createWarehouseField("Return City", "returnCity", origin.returnCity));
+      returnGrid.appendChild(
+        createWarehouseField("Return Region", "returnRegion", origin.returnRegion)
+      );
+      returnGrid.appendChild(
+        createWarehouseField("Return Postal Code", "returnPostalCode", origin.returnPostalCode)
+      );
+      returnGrid.appendChild(
+        createWarehouseField("Return Country", "returnCountry", origin.returnCountry)
+      );
+    }
+
     const controls = document.createElement("div");
     controls.className = "warehouse-card-actions";
 
@@ -2375,6 +2706,10 @@ function renderWarehouseList() {
 
     card.appendChild(head);
     card.appendChild(grid);
+    card.appendChild(returnToggle);
+    if (returnGrid) {
+      card.appendChild(returnGrid);
+    }
     card.appendChild(controls);
     warehouseList.appendChild(card);
   });
@@ -2394,6 +2729,11 @@ function renderWarehouseList() {
     }, 620);
   }
   updateWarehouseControls();
+  renderSenderOriginSelector();
+  renderCsvShipFromSelector();
+  if (state.csvMode) {
+    syncCsvRowsWithSelectedOrigin({ rerender: true });
+  }
 }
 
 function findWarehouseIndexById(warehouseId) {
@@ -2470,6 +2810,43 @@ function validateWarehouseRecords(records) {
     if (!origin.country) {
       return { ok: false, message: `${prefix}: country is required.`, records: normalized };
     }
+    if (!origin.sameReturnAddress) {
+      if (!origin.returnSenderName) {
+        return {
+          ok: false,
+          message: `${prefix}: return sender name is required when using a custom return address.`,
+          records: normalized,
+        };
+      }
+      if (!origin.returnStreet) {
+        return {
+          ok: false,
+          message: `${prefix}: return street is required when using a custom return address.`,
+          records: normalized,
+        };
+      }
+      if (!origin.returnCity) {
+        return {
+          ok: false,
+          message: `${prefix}: return city is required when using a custom return address.`,
+          records: normalized,
+        };
+      }
+      if (!origin.returnPostalCode) {
+        return {
+          ok: false,
+          message: `${prefix}: return postal code is required when using a custom return address.`,
+          records: normalized,
+        };
+      }
+      if (!origin.returnCountry) {
+        return {
+          ok: false,
+          message: `${prefix}: return country is required when using a custom return address.`,
+          records: normalized,
+        };
+      }
+    }
   }
 
   return { ok: true, records: normalized };
@@ -2485,6 +2862,13 @@ function toWarehouseOriginsPayload(records) {
     region: origin.region,
     postalCode: origin.postalCode,
     country: origin.country,
+    sameReturnAddress: origin.sameReturnAddress,
+    returnSenderName: origin.returnSenderName,
+    returnStreet: origin.returnStreet,
+    returnCity: origin.returnCity,
+    returnRegion: origin.returnRegion,
+    returnPostalCode: origin.returnPostalCode,
+    returnCountry: origin.returnCountry,
     isDefault: origin.isDefault,
   }));
 }
@@ -2543,6 +2927,7 @@ async function loadWarehouseSettings(options = {}) {
     warehouseRecords = [];
     warehouseDirty = false;
     warehouseSaving = false;
+    state.shipFromOriginId = "";
     renderWarehouseList();
     setWarehouseStatus("Sign in to manage shipping origins.");
     return;
@@ -2653,6 +3038,7 @@ function resetWarehouseState() {
   warehouseDirty = false;
   warehouseSaving = false;
   warehouseEnteringIds.clear();
+  state.shipFromOriginId = "";
   renderWarehouseList();
   setWarehouseStatus("Sign in to manage shipping origins.");
 }
@@ -4583,6 +4969,7 @@ function setAuthView(session, options = {}) {
     setShopifySettingsModalOpen(false);
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
+    shopifySavedLocationSelection = [];
     setMainView("builder", { push: false, animate: false });
     resetAccountPreview();
     updateRoute({ view: "login" }, { replace: true });
@@ -4955,7 +5342,11 @@ function setCsvMode(enabled) {
   }
   if (enabled) {
     updateQuantityFromCsv();
+  } else {
+    state.shipFromLockedByProvider = false;
+    state.csvSource = "none";
   }
+  renderCsvShipFromSelector();
 }
 
 function setCsvEditMode(enabled) {
@@ -5627,6 +6018,18 @@ function validateLabelInfo() {
     }
     return ok;
   }
+  const selectedOrigin = ensureSelectedWarehouseOrigin();
+  if (!selectedOrigin) {
+    if (senderOriginNote) {
+      senderOriginNote.textContent =
+        "Add at least one shipping origin in Account settings before continuing.";
+    }
+    if (labelError) {
+      labelError.classList.add("is-visible");
+    }
+    return false;
+  }
+  applyWarehouseToSender(selectedOrigin, { announce: false });
   return validateFields(labelRequiredFields, inputMap, labelError, isLabelFieldValid);
 }
 
@@ -5727,23 +6130,39 @@ if (warehouseList) {
     if (!card) return;
     const index = findWarehouseIndexById(card.dataset.warehouseId);
     if (index === -1) return;
-    warehouseRecords[index][field] = target.value.trim();
+    const value = target.value.trim();
+    warehouseRecords[index][field] = value;
+
+    const returnField = WAREHOUSE_RETURN_FIELD_MAP[field];
+    if (returnField && warehouseRecords[index].sameReturnAddress) {
+      warehouseRecords[index][returnField] = value;
+    }
 
     if (field === "name") {
       const label = card.querySelector(".warehouse-card-name");
       if (label) {
-        label.textContent = target.value.trim() || `Warehouse ${index + 1}`;
+        label.textContent = value || `Warehouse ${index + 1}`;
       }
     }
 
-    if (field === "country") {
+    if (field === "country" || field === "returnCountry") {
       const icon = target.parentElement?.querySelector(".warehouse-country-flag");
       if (icon) {
-        icon.innerHTML = getCountryIcon(target.value.trim());
+        icon.innerHTML = getCountryIcon(value);
       }
+    }
+
+    if (
+      warehouseRecords[index].id === state.shipFromOriginId &&
+      WAREHOUSE_SENDER_FIELDS.has(field)
+    ) {
+      applyWarehouseToSender(warehouseRecords[index], { announce: false });
+      syncCsvRowsWithSelectedOrigin({ rerender: true });
     }
 
     setWarehouseDirty(true);
+    renderSenderOriginSelector();
+    renderCsvShipFromSelector();
   });
 
   warehouseList.addEventListener("click", (event) => {
@@ -5757,7 +6176,10 @@ if (warehouseList) {
     if (index === -1) return;
 
     if (action === "apply") {
-      applyWarehouseToSender(warehouseRecords[index]);
+      setSelectedWarehouseOrigin(warehouseId, { syncCsv: true });
+      setWarehouseStatus(`Applied ${warehouseRecords[index].name || "warehouse"} to sender details.`, {
+        tone: "success",
+      });
       return;
     }
 
@@ -5775,6 +6197,34 @@ if (warehouseList) {
       return;
     }
 
+    if (action === "toggle-return") {
+      const origin = warehouseRecords[index];
+      const nextSameReturn = !origin.sameReturnAddress;
+      const nextOrigin = {
+        ...origin,
+        sameReturnAddress: nextSameReturn,
+      };
+      if (nextSameReturn) {
+        nextOrigin.returnSenderName = origin.senderName;
+        nextOrigin.returnStreet = origin.street;
+        nextOrigin.returnCity = origin.city;
+        nextOrigin.returnRegion = origin.region;
+        nextOrigin.returnPostalCode = origin.postalCode;
+        nextOrigin.returnCountry = origin.country;
+      } else {
+        nextOrigin.returnSenderName = origin.returnSenderName || origin.senderName;
+        nextOrigin.returnStreet = origin.returnStreet || origin.street;
+        nextOrigin.returnCity = origin.returnCity || origin.city;
+        nextOrigin.returnRegion = origin.returnRegion || origin.region;
+        nextOrigin.returnPostalCode = origin.returnPostalCode || origin.postalCode;
+        nextOrigin.returnCountry = origin.returnCountry || origin.country;
+      }
+      warehouseRecords[index] = normalizeWarehouseRecord(nextOrigin, origin);
+      renderWarehouseList();
+      setWarehouseDirty(true);
+      return;
+    }
+
     if (action === "remove") {
       if (warehouseRecords.length <= 1) {
         setWarehouseStatus("At least one warehouse origin is required.", {
@@ -5784,6 +6234,33 @@ if (warehouseList) {
       }
       removeWarehouseWithAnimation(warehouseId);
     }
+  });
+}
+
+if (senderOriginSelector) {
+  senderOriginSelector.addEventListener("click", (event) => {
+    const clickTarget = event.target;
+    if (!(clickTarget instanceof Element)) return;
+    const target = clickTarget.closest("[data-origin-id]");
+    if (!target) return;
+    const originId = String(target.dataset.originId || "").trim();
+    if (!originId) return;
+    if (warehouseRecords.length <= 1) return;
+    setSelectedWarehouseOrigin(originId, { syncCsv: true });
+  });
+}
+
+if (csvShipFromSelector) {
+  csvShipFromSelector.addEventListener("click", (event) => {
+    const clickTarget = event.target;
+    if (!(clickTarget instanceof Element)) return;
+    const target = clickTarget.closest("[data-origin-id]");
+    if (!target) return;
+    if (state.shipFromLockedByProvider) return;
+    const originId = String(target.dataset.originId || "").trim();
+    if (!originId) return;
+    if (warehouseRecords.length <= 1) return;
+    setSelectedWarehouseOrigin(originId, { syncCsv: true });
   });
 }
 
@@ -6020,11 +6497,7 @@ function autoFill() {
     labelError.classList.remove("is-visible");
   }
   const profile = sampleProfiles[Math.floor(Math.random() * sampleProfiles.length)];
-  inputMap.senderName.value = profile.sender.name;
-  inputMap.senderStreet.value = profile.sender.street;
-  inputMap.senderCity.value = profile.sender.city;
-  inputMap.senderState.value = profile.sender.state;
-  inputMap.senderZip.value = profile.sender.zip;
+  maybeApplyDefaultWarehouseToSender();
 
   inputMap.recipientName.value = profile.recipient.name;
   inputMap.recipientStreet.value = profile.recipient.street;
@@ -6056,9 +6529,10 @@ if (autoCsvButton) {
     event.preventDefault();
     clearBatchState();
     state.csvRows = generateCsvRows(3);
+    setCsvBatchSource("csv-auto");
     setCsvMode(true);
+    syncCsvRowsWithSelectedOrigin({ rerender: false });
     setCsvEditMode(false);
-    renderCsvTable();
     if (labelError) {
       labelError.classList.remove("is-visible");
     }
@@ -6308,6 +6782,8 @@ function clearBatchState() {
   revokePdfUrls();
   state.labels = [];
   state.activeLabelIndex = 0;
+  state.csvSource = "none";
+  state.shipFromLockedByProvider = false;
   currentPdfUrl = "";
   if (batchPanel) {
     batchPanel.classList.add("is-hidden");
@@ -6321,6 +6797,7 @@ function clearBatchState() {
   if (pdfFrame) {
     pdfFrame.src = "";
   }
+  renderCsvShipFromSelector();
 }
 
 function renderBatchList() {
@@ -7007,8 +7484,8 @@ function parseAccountBillingAddress(value) {
 }
 
 function getDefaultWarehouseSenderDefaults() {
-  const defaultOrigin = warehouseRecords.find((origin) => origin.isDefault) || warehouseRecords[0];
-  if (!defaultOrigin) {
+  const selectedOrigin = getSelectedWarehouseRecord();
+  if (!selectedOrigin) {
     return {
       senderName: "",
       senderStreet: "",
@@ -7017,13 +7494,7 @@ function getDefaultWarehouseSenderDefaults() {
       senderZip: "",
     };
   }
-  return {
-    senderName: String(defaultOrigin.senderName || defaultOrigin.name || "").trim(),
-    senderStreet: String(defaultOrigin.street || "").trim(),
-    senderCity: String(defaultOrigin.city || "").trim(),
-    senderState: String(defaultOrigin.region || "").trim(),
-    senderZip: String(defaultOrigin.postalCode || "").trim(),
-  };
+  return getWarehouseSenderValues(selectedOrigin);
 }
 
 function getCsvSenderDefaults() {
@@ -7389,9 +7860,10 @@ function applyCsvMapping() {
 
   clearBatchState();
   state.csvRows = rows;
+  setCsvBatchSource("csv-upload");
   setCsvMode(true);
+  syncCsvRowsWithSelectedOrigin({ rerender: false });
   setCsvEditMode(false);
-  renderCsvTable();
   if (labelError) labelError.classList.remove("is-visible");
   updatePreview();
   updateSummary();

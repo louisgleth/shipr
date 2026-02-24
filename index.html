@@ -316,28 +316,13 @@
               <form class="form-grid" id="labelForm">
                 <div class="form-section">
                   <div class="section-title">Sender</div>
-                  <label class="field">
-                    <span>Name</span>
-                    <input type="text" id="senderName" required />
-                  </label>
-                  <label class="field">
-                    <span>Street</span>
-                    <input type="text" id="senderStreet" required />
-                  </label>
-                  <div class="field-row">
-                    <label class="field">
-                      <span>City</span>
-                      <input type="text" id="senderCity" required />
-                    </label>
-                    <label class="field">
-                      <span>Region / Province</span>
-                      <input type="text" id="senderState" required />
-                    </label>
-                    <label class="field">
-                      <span>Postal Code</span>
-                      <input type="text" id="senderZip" required />
-                    </label>
-                  </div>
+                  <div class="sender-origin-selector" id="senderOriginSelector"></div>
+                  <div class="sender-origin-note" id="senderOriginNote"></div>
+                  <input type="hidden" id="senderName" />
+                  <input type="hidden" id="senderStreet" />
+                  <input type="hidden" id="senderCity" />
+                  <input type="hidden" id="senderState" />
+                  <input type="hidden" id="senderZip" />
                 </div>
 
                 <div class="form-section">
@@ -416,6 +401,11 @@
                     </thead>
                     <tbody></tbody>
                   </table>
+                </div>
+                <div class="csv-ship-from-card" id="csvShipFromCard">
+                  <div class="section-title">Ship From</div>
+                  <div class="csv-ship-from-note" id="csvShipFromNote"></div>
+                  <div class="csv-ship-from-selector" id="csvShipFromSelector"></div>
                 </div>
               </div>
 

@@ -6,10 +6,14 @@ create table if not exists public.provider_connections (
   status text not null default 'connected',
   scopes text not null default '',
   access_token text not null,
+  import_settings jsonb not null default '{}'::jsonb,
   connected_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, provider, shop_domain)
 );
+
+alter table public.provider_connections
+  add column if not exists import_settings jsonb not null default '{}'::jsonb;
 
 create index if not exists provider_connections_user_provider_idx
   on public.provider_connections (user_id, provider, updated_at desc);
@@ -28,4 +32,3 @@ create policy "provider_connections_update_own"
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
-
