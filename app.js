@@ -85,6 +85,7 @@ const CUSTOMS_MAX_ITEMS = 12;
 const ROUTE_PATHS = {
   login: "/login",
   account: "/account",
+  history: "/history",
   reports: "/reports",
 };
 const STEP_ROUTE_PATHS = {
@@ -97,6 +98,7 @@ const ROUTE_SUFFIXES = [
   "/index.html",
   ROUTE_PATHS.login,
   ROUTE_PATHS.account,
+  ROUTE_PATHS.history,
   ROUTE_PATHS.reports,
   ...Object.values(STEP_ROUTE_PATHS),
 ];
@@ -189,11 +191,14 @@ const appLogoLottie = document.getElementById("appLogoLottie");
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
+const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
+const closeHistoryPageButton = document.getElementById("closeHistoryPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
+const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
 const accountCompanyName = document.getElementById("accountCompanyName");
 const accountContactName = document.getElementById("accountContactName");
@@ -666,6 +671,9 @@ function parseRouteFromLocation() {
   if (path === ROUTE_PATHS.account) {
     return { view: "account" };
   }
+  if (path === ROUTE_PATHS.history) {
+    return { view: "history" };
+  }
   if (path === ROUTE_PATHS.reports) {
     return { view: "reports" };
   }
@@ -678,6 +686,9 @@ function parseRouteFromLocation() {
   const hash = window.location.hash || "";
   if (hash === "#account") {
     return { view: "account" };
+  }
+  if (hash === "#history") {
+    return { view: "history" };
   }
   if (hash === "#login") {
     return { view: "login" };
@@ -700,6 +711,9 @@ function routeToPath(route) {
   }
   if (route.view === "account") {
     return buildRoutePath(ROUTE_PATHS.account);
+  }
+  if (route.view === "history") {
+    return buildRoutePath(ROUTE_PATHS.history);
   }
   if (route.view === "reports") {
     return buildRoutePath(ROUTE_PATHS.reports);
@@ -2393,19 +2407,20 @@ function renderCsvShipFromSelector() {
   if (!state.csvMode) {
     csvShipFromSelector.innerHTML = "";
     csvShipFromSelector.classList.remove("is-locked");
-    csvShipFromNote.textContent = "";
+    csvShipFromNote.innerHTML = "";
     return;
   }
 
   csvShipFromSelector.innerHTML = "";
   const lockedByProvider = Boolean(state.shipFromLockedByProvider);
   csvShipFromSelector.classList.toggle("is-locked", lockedByProvider);
-  if (lockedByProvider && !warehouseRecords.length) {
-    csvShipFromNote.textContent =
-      "Ship from is controlled by your Shopify fulfillment settings for this import.";
+  if (lockedByProvider) {
+    csvShipFromNote.innerHTML =
+      'Ship from is controlled by your Shopify <button type="button" class="csv-ship-from-note-link" data-action="open-shopify-settings">fulfillment settings</button> for this import.';
     return;
   }
 
+  csvShipFromNote.innerHTML = "";
   if (!warehouseRecords.length) {
     csvShipFromNote.textContent = "No saved ship-from origin. Add one in Account settings.";
     return;
@@ -3139,7 +3154,9 @@ function runMainViewTransition(mutate, options = {}) {
 function setMainView(view, options = {}) {
   const { push = true, replace = false, animate = true } = options;
   const nextView =
-    view === "account" || view === "reports" || view === "builder" ? view : "builder";
+    view === "account" || view === "history" || view === "reports" || view === "builder"
+      ? view
+      : "builder";
   const viewChanged = nextView !== currentMainView;
 
   const applyView = () => {
@@ -3150,10 +3167,13 @@ function setMainView(view, options = {}) {
     if (accountPageSection) {
       accountPageSection.classList.toggle("is-hidden", nextView !== "account");
     }
+    if (historyPageSection) {
+      historyPageSection.classList.toggle("is-hidden", nextView !== "history");
+    }
     if (reportsPageSection) {
       reportsPageSection.classList.toggle("is-hidden", nextView !== "reports");
     }
-    if (nextView !== "account") {
+    if (nextView !== "history") {
       setReceiptModalOpen(false);
     }
     if (nextView !== "builder") {
@@ -3176,6 +3196,10 @@ function setMainView(view, options = {}) {
       updateRoute({ view: "account" }, { replace });
       return;
     }
+    if (nextView === "history") {
+      updateRoute({ view: "history" }, { replace });
+      return;
+    }
     if (nextView === "reports") {
       updateRoute({ view: "reports" }, { replace });
       return;
@@ -3190,6 +3214,10 @@ function setAccountPageVisible(visible, options = {}) {
 
 function setReportsPageVisible(visible, options = {}) {
   setMainView(visible ? "reports" : "builder", options);
+}
+
+function setHistoryPageVisible(visible, options = {}) {
+  setMainView(visible ? "history" : "builder", options);
 }
 
 function setReceiptModalOpen(open) {
@@ -4966,6 +4994,9 @@ function setAuthView(session, options = {}) {
   if (openAccountPageButton) {
     openAccountPageButton.classList.toggle("is-hidden", !isAuthed);
   }
+  if (openHistoryPageButton) {
+    openHistoryPageButton.classList.toggle("is-hidden", !isAuthed);
+  }
   if (openReportsPageButton) {
     openReportsPageButton.classList.toggle("is-hidden", !isAuthed);
   }
@@ -5084,6 +5115,8 @@ async function initializeAuth() {
   const isAuthed = Boolean(session);
   if (isAuthed && initialRoute.view === "account") {
     setMainView("account", { push: false, animate: false });
+  } else if (isAuthed && initialRoute.view === "history") {
+    setMainView("history", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "reports") {
     setMainView("reports", { push: false, animate: false });
   } else {
@@ -5096,7 +5129,11 @@ async function initializeAuth() {
   }
 
   await loadGenerationHistory({
-    preferLatest: isAuthed && (initialRoute.view === "account" || initialRoute.view === "reports"),
+    preferLatest:
+      isAuthed &&
+      (initialRoute.view === "account" ||
+        initialRoute.view === "history" ||
+        initialRoute.view === "reports"),
   });
   supabaseClient.auth.onAuthStateChange(async (_event, updatedSession) => {
     setAuthMessage("");
@@ -5113,6 +5150,8 @@ async function initializeAuth() {
     const route = parseRouteFromLocation();
     if (route.view === "account") {
       setMainView("account", { push: false, animate: false });
+    } else if (route.view === "history") {
+      setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
       setMainView("reports", { push: false, animate: false });
     } else {
@@ -5123,7 +5162,10 @@ async function initializeAuth() {
         updateRoute({ view: "builder", step: state.step }, { replace: true });
       }
     }
-    await loadGenerationHistory({ preferLatest: route.view === "account" || route.view === "reports" });
+    await loadGenerationHistory({
+      preferLatest:
+        route.view === "account" || route.view === "history" || route.view === "reports",
+    });
   });
 }
 
@@ -6078,6 +6120,12 @@ if (openAccountPageButton) {
   openAccountPageButton.addEventListener("click", async () => {
     setAccountPageVisible(true);
     await loadWarehouseSettings({ quiet: true });
+  });
+}
+
+if (openHistoryPageButton) {
+  openHistoryPageButton.addEventListener("click", async () => {
+    setHistoryPageVisible(true);
     await loadGenerationHistory({ preferLatest: true });
   });
 }
@@ -6099,6 +6147,12 @@ if (closeAccountPageButton) {
 if (closeReportsPageButton) {
   closeReportsPageButton.addEventListener("click", () => {
     setReportsPageVisible(false);
+  });
+}
+
+if (closeHistoryPageButton) {
+  closeHistoryPageButton.addEventListener("click", () => {
+    setHistoryPageVisible(false);
   });
 }
 
@@ -6266,6 +6320,17 @@ if (csvShipFromSelector) {
     if (!originId) return;
     if (warehouseRecords.length <= 1) return;
     setSelectedWarehouseOrigin(originId, { syncCsv: true });
+  });
+}
+
+if (csvShipFromNote) {
+  csvShipFromNote.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const trigger = target.closest("[data-action='open-shopify-settings']");
+    if (!trigger) return;
+    event.preventDefault();
+    await openShopifySettingsModal();
   });
 }
 
@@ -6462,10 +6527,10 @@ document.addEventListener("keydown", (event) => {
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
-  const isAccountOpen = accountPageSection && !accountPageSection.classList.contains("is-hidden");
+  const isHistoryOpen = historyPageSection && !historyPageSection.classList.contains("is-hidden");
   const isBuilderOpen = builderPage && !builderPage.classList.contains("is-hidden");
 
-  if (isAccountOpen) {
+  if (isHistoryOpen) {
     const active = document.activeElement;
     const inBatch =
       active?.closest?.("#accountBatchList") || event.target?.closest?.("#accountBatchList");
@@ -8000,6 +8065,12 @@ window.addEventListener("popstate", (event) => {
 
   if (route.view === "account") {
     setMainView("account", { push: false });
+    loadWarehouseSettings({ quiet: true });
+    return;
+  }
+
+  if (route.view === "history") {
+    setMainView("history", { push: false });
     loadGenerationHistory({ preferLatest: true });
     return;
   }
