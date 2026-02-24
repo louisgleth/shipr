@@ -934,7 +934,7 @@ body {
 }
 
 .warehouse-default-toggle.is-active {
-  color: #d8cbff;
+  color: var(--text);
 }
 
 .warehouse-default-toggle.is-active .warehouse-default-box::after {
@@ -967,7 +967,7 @@ body {
 }
 
 .warehouse-return-toggle.is-active {
-  color: #d8cbff;
+  color: var(--text);
 }
 
 .warehouse-return-box {
@@ -3429,9 +3429,31 @@ body {
 }
 
 .origin-choice.is-disabled {
-  opacity: 0.6;
-  cursor: default;
+  opacity: 1;
+  color: #8c94a1;
+  border-color: rgba(46, 46, 46, 0.9);
+  background: rgba(255, 255, 255, 0.015);
+  cursor: not-allowed;
   pointer-events: none;
+}
+
+.origin-choice.is-disabled .origin-choice-meta {
+  color: #7f8795;
+}
+
+.origin-choice.is-disabled .origin-choice-check {
+  border-color: #515a69;
+}
+
+.origin-choice.is-disabled.is-selected {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(62, 67, 76, 0.95);
+}
+
+.origin-choice.is-disabled.is-selected .origin-choice-check-fill {
+  opacity: 0.65;
+  transform: scale(1);
+  background: #5f6674;
 }
 
 .csv-ship-from-card {

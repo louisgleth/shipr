@@ -2392,12 +2392,14 @@ function renderCsvShipFromSelector() {
   csvShipFromCard.classList.toggle("is-hidden", !state.csvMode);
   if (!state.csvMode) {
     csvShipFromSelector.innerHTML = "";
+    csvShipFromSelector.classList.remove("is-locked");
     csvShipFromNote.textContent = "";
     return;
   }
 
   csvShipFromSelector.innerHTML = "";
   const lockedByProvider = Boolean(state.shipFromLockedByProvider);
+  csvShipFromSelector.classList.toggle("is-locked", lockedByProvider);
   if (lockedByProvider && !warehouseRecords.length) {
     csvShipFromNote.textContent =
       "Ship from is controlled by your Shopify fulfillment settings for this import.";
@@ -3001,18 +3003,28 @@ async function saveWarehouseSettings() {
   setWarehouseStatus("Saving shipping origins...");
 
   const userId = currentUser.id;
-  let savedToSupabase = false;
   let savedOrigins = toWarehouseOriginsPayload(warehouseRecords);
-
-  if (supabaseClient) {
-    const { origins, error } = await saveSupabaseWarehouseOrigins(userId, savedOrigins);
-    if (!error) {
-      savedOrigins = Array.isArray(origins) && origins.length ? origins : savedOrigins;
-      savedToSupabase = true;
-    } else {
-      console.warn("Failed to sync shipping origins to account.", error);
-    }
+  if (!supabaseClient) {
+    warehouseSaving = false;
+    renderWarehouseList();
+    setWarehouseStatus("Could not sync to account. Supabase client is unavailable.", {
+      tone: "error",
+    });
+    setWarehouseDirty(true, { announce: false });
+    return;
   }
+
+  const { origins, error } = await saveSupabaseWarehouseOrigins(userId, savedOrigins);
+  if (error) {
+    warehouseSaving = false;
+    renderWarehouseList();
+    setWarehouseStatus(`Could not sync shipping origins: ${error.message || "unknown error"}`, {
+      tone: "error",
+    });
+    setWarehouseDirty(true, { announce: false });
+    return;
+  }
+  savedOrigins = Array.isArray(origins) && origins.length ? origins : savedOrigins;
 
   warehouseRecords = normalizeWarehouseRecords(savedOrigins);
   saveLocalWarehouses(userId, warehouseRecords);
@@ -3021,14 +3033,7 @@ async function saveWarehouseSettings() {
   warehouseEnteringIds.clear();
   renderWarehouseList();
 
-  if (savedToSupabase) {
-    setWarehouseStatus("Shipping origins saved to your account.", { tone: "success" });
-  } else {
-    setWarehouseStatus("Saved locally. Account sync is currently unavailable.", {
-      tone: "error",
-    });
-  }
-
+  setWarehouseStatus("Shipping origins saved to your account.", { tone: "success" });
   maybeApplyDefaultWarehouseToSender();
 }
 
