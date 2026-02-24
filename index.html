@@ -230,18 +230,34 @@
                         <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                       </button>
                       <div class="provider-menu" id="providerMenu">
-                        <button type="button" class="provider-option" data-provider="shopify">
-                          <span class="provider-option-main">
-                            <span class="provider-icon">S</span>
-                            <span>Shopify</span>
-                          </span>
-                          <span class="provider-connected-pill">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <polyline points="20 6 9 17 4 12"></polyline>
+                        <div class="provider-option-row provider-option-row-shopify">
+                          <button type="button" class="provider-option" data-provider="shopify">
+                            <span class="provider-option-main">
+                              <span class="provider-icon provider-icon-shopify">
+                                <img src="assets/shopify.svg" alt="Shopify" class="provider-icon-img" />
+                              </span>
+                              <span>Shopify</span>
+                            </span>
+                            <span class="provider-connected-pill">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                              </svg>
+                              <span>Connected</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            class="provider-settings-trigger"
+                            id="shopifySettingsTrigger"
+                            aria-label="Shopify fulfillment settings"
+                            title="Shopify fulfillment settings"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                              <circle cx="12" cy="12" r="3.5"></circle>
+                              <path d="M19.4 15a1 1 0 00.2 1.1l.1.1a1.2 1.2 0 010 1.7l-.2.2a1.2 1.2 0 01-1.7 0l-.1-.1a1 1 0 00-1.1-.2 1 1 0 00-.6.9V19a1.2 1.2 0 01-1.2 1.2h-.3A1.2 1.2 0 0113.3 19v-.2a1 1 0 00-.6-.9 1 1 0 00-1.1.2l-.1.1a1.2 1.2 0 01-1.7 0l-.2-.2a1.2 1.2 0 010-1.7l.1-.1a1 1 0 00.2-1.1 1 1 0 00-.9-.6H9a1.2 1.2 0 01-1.2-1.2v-.3A1.2 1.2 0 019 11.7h.2a1 1 0 00.9-.6 1 1 0 00-.2-1.1l-.1-.1a1.2 1.2 0 010-1.7l.2-.2a1.2 1.2 0 011.7 0l.1.1a1 1 0 001.1.2 1 1 0 00.6-.9V7a1.2 1.2 0 011.2-1.2h.3A1.2 1.2 0 0116 7v.2a1 1 0 00.6.9 1 1 0 001.1-.2l.1-.1a1.2 1.2 0 011.7 0l.2.2a1.2 1.2 0 010 1.7l-.1.1a1 1 0 00-.2 1.1 1 1 0 00.9.6h.2a1.2 1.2 0 011.2 1.2v.3a1.2 1.2 0 01-1.2 1.2h-.2a1 1 0 00-.9.6z"></path>
                             </svg>
-                            <span>Connected</span>
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                         <button type="button" class="provider-option" data-provider="woocommerce">
                           <span class="provider-option-main">
                             <span class="provider-icon">W</span>
@@ -1031,6 +1047,42 @@
           </article>
         </div>
       </section>
+    </div>
+
+    <div class="shopify-settings-overlay is-closed" id="shopifySettingsModal">
+      <div class="shopify-settings-modal">
+        <div class="csv-modal-header">
+          <span class="csv-modal-title">Shopify Fulfillment Settings</span>
+          <button type="button" class="csv-modal-close" id="shopifySettingsClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="shopify-settings-body">
+          <h3>Select Fulfillment Locations</h3>
+          <p class="shopify-settings-note">
+            Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.
+          </p>
+
+          <div class="shopify-locations-picker">
+            <button type="button" class="shopify-locations-trigger" id="shopifyLocationsToggle">
+              <span id="shopifyLocationsSummary">Loading locations...</span>
+              <svg class="chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="shopify-locations-list is-open" id="shopifyLocationsList"></div>
+          </div>
+          <div class="provider-status shopify-settings-status" id="shopifySettingsStatus"></div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="shopifySettingsCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Cancel</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="shopifySettingsSave">
+              <span>Save Settings</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- CSV Upload Modal (full-screen overlay) -->

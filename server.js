@@ -413,8 +413,93 @@ async function setShopifyConnectionStatus(userId, shop, status) {
   }
 }
 
-function mapShopifyOrdersToCsvRows(orders) {
+function normalizeLocationId(value) {
+  const asString = String(value ?? "").trim();
+  if (!asString) return "";
+  const numeric = Number(asString);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return String(Math.trunc(numeric));
+  }
+  return asString;
+}
+
+function sanitizeSelectedLocationIds(values) {
+  if (!Array.isArray(values)) return [];
+  const ids = new Set();
+  values.forEach((value) => {
+    const id = normalizeLocationId(value);
+    if (!id) return;
+    ids.add(id);
+  });
+  return Array.from(ids);
+}
+
+function mapLocationToSender(location) {
+  if (!location || typeof location !== "object") {
+    return {
+      senderName: "",
+      senderStreet: "",
+      senderCity: "",
+      senderState: "",
+      senderZip: "",
+    };
+  }
+  const street = [location.address1, location.address2]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  return {
+    senderName: String(location.name || "").trim(),
+    senderStreet: street,
+    senderCity: String(location.city || "").trim(),
+    senderState: String(location.province_code || location.province || "").trim(),
+    senderZip: String(location.zip || "").trim(),
+  };
+}
+
+function getOrderLocationId(order) {
+  const candidates = [];
+  candidates.push(order?.location_id);
+  candidates.push(order?.origin_location?.id);
+
+  if (Array.isArray(order?.fulfillments)) {
+    order.fulfillments.forEach((fulfillment) => {
+      candidates.push(fulfillment?.location_id);
+    });
+  }
+
+  if (Array.isArray(order?.line_items)) {
+    order.line_items.forEach((item) => {
+      candidates.push(item?.origin_location?.id);
+    });
+  }
+
+  for (const value of candidates) {
+    const normalized = normalizeLocationId(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function indexLocationsById(locations) {
+  const byId = {};
+  if (!Array.isArray(locations)) return byId;
+  locations.forEach((location) => {
+    const id = normalizeLocationId(location?.id);
+    if (!id) return;
+    byId[id] = location;
+  });
+  return byId;
+}
+
+function mapShopifyOrdersToCsvRows(orders, options = {}) {
+  const { locationById = {}, selectedLocationIds = [] } = options;
   if (!Array.isArray(orders)) return [];
+
+  const selectedSet = new Set(sanitizeSelectedLocationIds(selectedLocationIds));
+  const singleOverrideId = selectedSet.size === 1 ? selectedSet.values().next().value : "";
+  const mirrorSelection = selectedSet.size > 1;
+
   return orders.map((order) => {
     const shipping = order?.shipping_address || {};
     const recipientName =
@@ -426,12 +511,24 @@ function mapShopifyOrdersToCsvRows(orders) {
         ? (totalWeightGrams / 1000).toFixed(2)
         : "0.50";
 
+    let senderLocationId = "";
+    if (singleOverrideId) {
+      senderLocationId = singleOverrideId;
+    } else if (mirrorSelection) {
+      const orderLocationId = getOrderLocationId(order);
+      if (orderLocationId && selectedSet.has(orderLocationId)) {
+        senderLocationId = orderLocationId;
+      }
+    }
+
+    const sender = mapLocationToSender(locationById[senderLocationId]);
+
     return {
-      senderName: "",
-      senderStreet: "",
-      senderCity: "",
-      senderState: "",
-      senderZip: "",
+      senderName: sender.senderName,
+      senderStreet: sender.senderStreet,
+      senderCity: sender.senderCity,
+      senderState: sender.senderState,
+      senderZip: sender.senderZip,
       recipientName,
       recipientStreet: String(shipping?.address1 || "").trim(),
       recipientCity: String(shipping?.city || "").trim(),
@@ -444,6 +541,44 @@ function mapShopifyOrdersToCsvRows(orders) {
   });
 }
 
+async function fetchShopifyLocations(shop, accessToken) {
+  const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/locations.json`);
+  url.searchParams.set("limit", "250");
+  url.searchParams.set(
+    "fields",
+    "id,name,address1,address2,city,province,province_code,zip,country,country_code"
+  );
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const error = new Error(`Shopify location fetch failed (${response.status}) ${details}`.trim());
+    error.status = response.status;
+    throw error;
+  }
+  const payload = await response.json().catch(() => null);
+  const locations = Array.isArray(payload?.locations) ? payload.locations : [];
+  return locations
+    .map((location) => ({
+      id: normalizeLocationId(location?.id),
+      name: String(location?.name || "").trim(),
+      address1: String(location?.address1 || "").trim(),
+      address2: String(location?.address2 || "").trim(),
+      city: String(location?.city || "").trim(),
+      province: String(location?.province || "").trim(),
+      province_code: String(location?.province_code || "").trim(),
+      zip: String(location?.zip || "").trim(),
+      country: String(location?.country_code || location?.country || "").trim(),
+    }))
+    .filter((location) => location.id && location.name);
+}
+
 async function fetchShopifyOrders(shop, accessToken, limit) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(250, Math.trunc(limit))) : 50;
   const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
@@ -451,7 +586,7 @@ async function fetchShopifyOrders(shop, accessToken, limit) {
   url.searchParams.set("limit", String(safeLimit));
   url.searchParams.set(
     "fields",
-    "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price"
+    "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments"
   );
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -617,6 +752,41 @@ async function handleShopifyConnection(req, res) {
   }
 }
 
+async function handleShopifyLocations(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+
+  const requestedShop = normalizeShopDomain(requestUrl.searchParams.get("shop"));
+  let resolvedShop = requestedShop;
+  try {
+    const connection = await getShopifyConnection(user.id, requestedShop);
+    if (!connection) {
+      sendJson(res, 404, { error: "Shopify is not connected for this account." });
+      return;
+    }
+    resolvedShop = String(connection.shop_domain || requestedShop || "").trim();
+    const accessToken = decryptToken(connection.access_token);
+    const locations = await fetchShopifyLocations(connection.shop_domain, accessToken);
+    sendJson(res, 200, {
+      shop: connection.shop_domain,
+      count: locations.length,
+      locations,
+    });
+  } catch (error) {
+    if (error?.status === 401 && resolvedShop) {
+      await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
+      sendJson(res, 409, {
+        error: "Shopify connection expired or was revoked. Reconnect Shopify and try again.",
+      });
+      return;
+    }
+    sendJson(res, 500, { error: error.message || "Failed to load Shopify locations." });
+  }
+}
+
 async function handleShopifyImportOrders(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -632,6 +802,7 @@ async function handleShopifyImportOrders(req, res) {
   }
 
   const requestedShop = normalizeShopDomain(body?.shop);
+  const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
   const limit = Number(body?.limit);
   let resolvedShop = requestedShop;
 
@@ -643,8 +814,16 @@ async function handleShopifyImportOrders(req, res) {
     }
     resolvedShop = String(connection.shop_domain || resolvedShop || "").trim();
     const accessToken = decryptToken(connection.access_token);
+    let locationById = {};
+    if (selectedLocationIds.length > 0) {
+      const locations = await fetchShopifyLocations(connection.shop_domain, accessToken);
+      locationById = indexLocationsById(locations);
+    }
     const orders = await fetchShopifyOrders(connection.shop_domain, accessToken, limit);
-    const rows = mapShopifyOrdersToCsvRows(orders);
+    const rows = mapShopifyOrdersToCsvRows(orders, {
+      locationById,
+      selectedLocationIds,
+    });
     sendJson(res, 200, {
       shop: connection.shop_domain,
       count: rows.length,
@@ -674,6 +853,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/shopify/connection" && req.method === "GET") {
     await handleShopifyConnection(req, res);
+    return true;
+  }
+  if (pathname === "/api/shopify/locations" && req.method === "GET") {
+    await handleShopifyLocations(req, res, requestUrl);
     return true;
   }
   if (pathname === "/api/shopify/import-orders" && req.method === "POST") {

@@ -306,6 +306,15 @@ const providerTrigger = document.getElementById("providerTrigger");
 const providerMenu = document.getElementById("providerMenu");
 const providerStatus = document.getElementById("providerStatus");
 const shopifyProviderOption = document.querySelector('.provider-option[data-provider="shopify"]');
+const shopifySettingsTrigger = document.getElementById("shopifySettingsTrigger");
+const shopifySettingsModal = document.getElementById("shopifySettingsModal");
+const shopifySettingsClose = document.getElementById("shopifySettingsClose");
+const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
+const shopifySettingsSave = document.getElementById("shopifySettingsSave");
+const shopifySettingsStatus = document.getElementById("shopifySettingsStatus");
+const shopifyLocationsToggle = document.getElementById("shopifyLocationsToggle");
+const shopifyLocationsSummary = document.getElementById("shopifyLocationsSummary");
+const shopifyLocationsList = document.getElementById("shopifyLocationsList");
 
 // CSV modal
 const csvModal = document.getElementById("csvModal");
@@ -400,6 +409,10 @@ let historyLoadRequestToken = 0;
 let customsGhostVisible = false;
 let providerStatusTimer = 0;
 let shopifyConnection = null;
+let shopifyLocationsCache = [];
+let shopifyLocationDraftSelection = new Set();
+let shopifyLocationsCollapsed = false;
+let shopifySettingsBusy = false;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
   "domestic",
@@ -779,6 +792,293 @@ function setShopifyProviderConnectedState(isConnected) {
   shopifyProviderOption.classList.toggle("is-connected", Boolean(isConnected));
 }
 
+function setShopifySettingsModalOpen(open) {
+  if (!shopifySettingsModal) return;
+  shopifySettingsModal.classList.toggle("is-closed", !open);
+}
+
+function setShopifySettingsStatus(message = "", options = {}) {
+  if (!shopifySettingsStatus) return;
+  const { kind = "info" } = options;
+  shopifySettingsStatus.textContent = String(message || "").trim();
+  shopifySettingsStatus.classList.remove("is-success", "is-error");
+  if (kind === "success") {
+    shopifySettingsStatus.classList.add("is-success");
+  } else if (kind === "error") {
+    shopifySettingsStatus.classList.add("is-error");
+  }
+}
+
+function normalizeShopifyLocationId(value) {
+  const asString = String(value ?? "").trim();
+  if (!asString) return "";
+  const numeric = Number(asString);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return String(Math.trunc(numeric));
+  }
+  return asString;
+}
+
+function normalizeShopifyLocationIdList(values) {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  values.forEach((value) => {
+    const id = normalizeShopifyLocationId(value);
+    if (!id) return;
+    seen.add(id);
+  });
+  return Array.from(seen);
+}
+
+function getShopifyLocationSettingsKey(userId, shopDomain) {
+  const user = String(userId || "").trim();
+  const shop = normalizeShopDomain(shopDomain);
+  if (!user || !shop) return "";
+  return `shipr-shopify-location-settings-${user}-${shop}`;
+}
+
+function loadShopifyLocationSelection(userId, shopDomain) {
+  const key = getShopifyLocationSettingsKey(userId, shopDomain);
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return normalizeShopifyLocationIdList(parsed);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function saveShopifyLocationSelection(userId, shopDomain, selectedLocationIds) {
+  const key = getShopifyLocationSettingsKey(userId, shopDomain);
+  if (!key) return;
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify(normalizeShopifyLocationIdList(selectedLocationIds))
+    );
+  } catch (_error) {
+    // Ignore local storage errors (quota/private mode).
+  }
+}
+
+function getSavedShopifyLocationSelection() {
+  if (!currentUser?.id || !shopifyConnection?.shop) return [];
+  return loadShopifyLocationSelection(currentUser.id, shopifyConnection.shop);
+}
+
+function getShopifySelectedLocationSummary(locations, selectedIds) {
+  if (!Array.isArray(locations) || locations.length === 0) {
+    return "No fulfillment locations found";
+  }
+  const selectedSet = new Set(normalizeShopifyLocationIdList(selectedIds));
+  if (!selectedSet.size) return "No locations selected";
+
+  const selected = locations.filter((location) => selectedSet.has(location.id));
+  if (selected.length === locations.length) {
+    const names = selected.map((location) => location.name).filter(Boolean);
+    return names.length ? `${names.join(", ")} (All)` : "All locations";
+  }
+
+  const names = selected.map((location) => location.name).filter(Boolean);
+  if (names.length <= 2) return names.join(", ");
+  return `${names[0]}, ${names[1]} +${names.length - 2} more`;
+}
+
+function setShopifyLocationsCollapsed(collapsed) {
+  if (!shopifyLocationsToggle || !shopifyLocationsList) return;
+  const picker = shopifyLocationsToggle.closest(".shopify-locations-picker");
+  shopifyLocationsCollapsed = Boolean(collapsed);
+  if (picker) {
+    picker.classList.toggle("is-collapsed", shopifyLocationsCollapsed);
+  }
+}
+
+function setShopifySettingsBusy(isBusy) {
+  shopifySettingsBusy = Boolean(isBusy);
+  if (shopifySettingsSave) {
+    shopifySettingsSave.disabled = shopifySettingsBusy;
+    const label = shopifySettingsSave.querySelector("span");
+    if (label) {
+      label.textContent = shopifySettingsBusy ? "Saving..." : "Save Settings";
+    }
+  }
+  if (shopifySettingsCancel) {
+    shopifySettingsCancel.disabled = shopifySettingsBusy;
+  }
+  if (shopifySettingsClose) {
+    shopifySettingsClose.disabled = shopifySettingsBusy;
+  }
+  if (shopifyLocationsToggle) {
+    shopifyLocationsToggle.disabled = shopifySettingsBusy;
+  }
+}
+
+function getShopifyLocationMeta(location) {
+  const city = String(location?.city || "").trim();
+  const region = String(location?.region || "").trim();
+  const country = String(location?.country || "").trim();
+  return [city, region, country].filter(Boolean).join(", ");
+}
+
+function renderShopifySettingsLocations() {
+  if (!shopifyLocationsList || !shopifyLocationsSummary) return;
+  const locations = Array.isArray(shopifyLocationsCache) ? shopifyLocationsCache : [];
+  const validIds = new Set(locations.map((location) => location.id));
+  const nextSelection = new Set();
+  shopifyLocationDraftSelection.forEach((id) => {
+    if (validIds.has(id)) {
+      nextSelection.add(id);
+    }
+  });
+  shopifyLocationDraftSelection = nextSelection;
+
+  shopifyLocationsSummary.textContent = getShopifySelectedLocationSummary(
+    locations,
+    Array.from(shopifyLocationDraftSelection)
+  );
+  shopifyLocationsList.innerHTML = "";
+
+  if (!locations.length) {
+    const empty = document.createElement("div");
+    empty.className = "shopify-location-item";
+    empty.innerHTML = `<div></div><div><div class="shopify-location-item-title">No locations available</div></div>`;
+    shopifyLocationsList.appendChild(empty);
+    return;
+  }
+
+  const allRow = document.createElement("label");
+  allRow.className = "shopify-location-item";
+  const allChecked = shopifyLocationDraftSelection.size === locations.length;
+  allRow.innerHTML = `
+    <input type="checkbox" data-role="all" ${allChecked ? "checked" : ""} />
+    <div>
+      <div class="shopify-location-item-title">All Locations</div>
+      <div class="shopify-location-item-meta">Mirror Shopify location routing</div>
+    </div>
+  `;
+  shopifyLocationsList.appendChild(allRow);
+
+  locations.forEach((location) => {
+    const row = document.createElement("label");
+    row.className = "shopify-location-item";
+    const isChecked = shopifyLocationDraftSelection.has(location.id);
+    const meta = getShopifyLocationMeta(location);
+    row.innerHTML = `
+      <input type="checkbox" data-location-id="${location.id}" ${isChecked ? "checked" : ""} />
+      <div>
+        <div class="shopify-location-item-title">${location.name}</div>
+        <div class="shopify-location-item-meta">${meta || "No address details"}</div>
+      </div>
+    `;
+    shopifyLocationsList.appendChild(row);
+  });
+}
+
+async function fetchShopifyLocations(shopDomain) {
+  const shop = normalizeShopDomain(shopDomain);
+  if (!shop) {
+    throw new Error("Connect Shopify before opening fulfillment settings.");
+  }
+  const query = new URLSearchParams();
+  query.set("shop", shop);
+  const data = await fetchApiWithAuth(`/api/shopify/locations?${query.toString()}`);
+  const locations = Array.isArray(data?.locations) ? data.locations : [];
+  return locations
+    .map((location) => ({
+      id: normalizeShopifyLocationId(location?.id),
+      name: String(location?.name || "").trim(),
+      city: String(location?.city || "").trim(),
+      region: String(location?.region || "").trim(),
+      country: String(location?.country || "").trim(),
+    }))
+    .filter((location) => location.id && location.name);
+}
+
+async function openShopifySettingsModal() {
+  if (!currentUser?.id) {
+    setProviderStatus("Sign in before configuring Shopify locations.", { kind: "error" });
+    return;
+  }
+  if (!shopifyConnection?.shop) {
+    setProviderStatus("Connect Shopify before opening fulfillment settings.", {
+      kind: "error",
+    });
+    return;
+  }
+
+  setShopifySettingsModalOpen(true);
+  setShopifySettingsBusy(true);
+  setShopifySettingsStatus("Loading Shopify locations...");
+  setShopifyLocationsCollapsed(false);
+
+  try {
+    const locations = await fetchShopifyLocations(shopifyConnection.shop);
+    shopifyLocationsCache = locations;
+    const savedSelection = loadShopifyLocationSelection(currentUser.id, shopifyConnection.shop);
+    const savedSet = new Set(savedSelection);
+    const validSaved = locations
+      .map((location) => location.id)
+      .filter((id) => savedSet.has(id));
+
+    shopifyLocationDraftSelection = new Set(
+      validSaved.length ? validSaved : locations.map((location) => location.id)
+    );
+    renderShopifySettingsLocations();
+    setShopifySettingsStatus("");
+  } catch (error) {
+    const message = String(error?.message || "Could not load Shopify locations.");
+    if (
+      /connection expired|reconnect shopify|invalid api key or access token|unrecognized login|wrong password/i.test(
+        message
+      )
+    ) {
+      shopifyConnection = null;
+      updateShopifyProviderStatus();
+    }
+    shopifyLocationsCache = [];
+    shopifyLocationDraftSelection = new Set();
+    renderShopifySettingsLocations();
+    setShopifySettingsStatus(message, { kind: "error" });
+  } finally {
+    setShopifySettingsBusy(false);
+  }
+}
+
+function closeShopifySettingsModal() {
+  if (shopifySettingsBusy) return;
+  setShopifySettingsModalOpen(false);
+}
+
+function getSelectedShopifyLocationIdsForImport() {
+  return getSavedShopifyLocationSelection();
+}
+
+async function saveShopifySettings() {
+  if (!currentUser?.id || !shopifyConnection?.shop) {
+    setShopifySettingsStatus("Connect Shopify first.", { kind: "error" });
+    return;
+  }
+  const selectedIds = normalizeShopifyLocationIdList(Array.from(shopifyLocationDraftSelection));
+  if (!selectedIds.length) {
+    setShopifySettingsStatus("Select at least one location.", { kind: "error" });
+    return;
+  }
+
+  setShopifySettingsBusy(true);
+  try {
+    saveShopifyLocationSelection(currentUser.id, shopifyConnection.shop, selectedIds);
+    setProviderStatus("Shopify fulfillment settings updated.", { kind: "success" });
+    setShopifySettingsStatus("Settings saved.", { kind: "success" });
+    window.setTimeout(() => {
+      closeShopifySettingsModal();
+    }, 150);
+  } finally {
+    setShopifySettingsBusy(false);
+  }
+}
+
 function normalizeShopDomain(value) {
   let normalized = String(value || "")
     .trim()
@@ -989,11 +1289,13 @@ async function importShopifyOrders(shop) {
 
   try {
     setProviderStatus(`Importing orders from ${normalizedShop}...`, { persist: true });
+    const selectedLocationIds = getSelectedShopifyLocationIdsForImport();
     const data = await fetchApiWithAuth("/api/shopify/import-orders", {
       method: "POST",
       body: JSON.stringify({
         shop: normalizedShop,
         limit: 50,
+        selectedLocationIds,
       }),
     });
     const rows = mapShopifyImportRows(data?.rows);
@@ -4275,6 +4577,9 @@ function setAuthView(session, options = {}) {
   }
   if (!isAuthed) {
     setReceiptModalOpen(false);
+    setShopifySettingsModalOpen(false);
+    shopifyLocationsCache = [];
+    shopifyLocationDraftSelection = new Set();
     setMainView("builder", { push: false, animate: false });
     resetAccountPreview();
     updateRoute({ view: "login" }, { replace: true });
@@ -5669,6 +5974,7 @@ document.addEventListener("keydown", (event) => {
   if (isTextEntryElement(event.target)) return;
   if (receiptModal && !receiptModal.classList.contains("is-closed")) return;
   if (restrictedGoodsModal && !restrictedGoodsModal.classList.contains("is-closed")) return;
+  if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isAccountOpen = accountPageSection && !accountPageSection.classList.contains("is-hidden");
@@ -5692,6 +5998,13 @@ document.addEventListener("keydown", (event) => {
     if (handled) {
       event.preventDefault();
     }
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) {
+    closeShopifySettingsModal();
   }
 });
 
@@ -6256,6 +6569,80 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
     }
   });
 });
+
+if (shopifySettingsTrigger) {
+  shopifySettingsTrigger.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (providerDropdown) {
+      providerDropdown.classList.remove("is-open");
+    }
+    await openShopifySettingsModal();
+  });
+}
+
+if (shopifyLocationsToggle) {
+  shopifyLocationsToggle.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setShopifyLocationsCollapsed(!shopifyLocationsCollapsed);
+  });
+}
+
+if (shopifyLocationsList) {
+  shopifyLocationsList.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.dataset.role === "all") {
+      if (target.checked) {
+        shopifyLocationDraftSelection = new Set(
+          shopifyLocationsCache.map((location) => location.id)
+        );
+      } else {
+        shopifyLocationDraftSelection = new Set();
+      }
+      renderShopifySettingsLocations();
+      return;
+    }
+    const locationId = normalizeShopifyLocationId(target.dataset.locationId);
+    if (!locationId) return;
+    if (target.checked) {
+      shopifyLocationDraftSelection.add(locationId);
+    } else {
+      shopifyLocationDraftSelection.delete(locationId);
+    }
+    renderShopifySettingsLocations();
+  });
+}
+
+if (shopifySettingsSave) {
+  shopifySettingsSave.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await saveShopifySettings();
+  });
+}
+
+if (shopifySettingsClose) {
+  shopifySettingsClose.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeShopifySettingsModal();
+  });
+}
+
+if (shopifySettingsCancel) {
+  shopifySettingsCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeShopifySettingsModal();
+  });
+}
+
+if (shopifySettingsModal) {
+  shopifySettingsModal.addEventListener("click", (event) => {
+    if (event.target === shopifySettingsModal) {
+      closeShopifySettingsModal();
+    }
+  });
+}
 
 // ── CSV upload modal ──
 
