@@ -27,6 +27,26 @@ const SUPABASE_PUBLISHABLE_KEY = String(
 ).trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const SHOPIFY_TOKEN_ENCRYPTION_KEY = String(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim();
+const REGISTRATION_INVITES_TABLE = "registration_invites";
+const ADMIN_SETTINGS_TABLE = "admin_settings";
+const HISTORY_TABLE = "label_generations";
+const PASSWORD_MIN_LENGTH = 10;
+const DEFAULT_INVITE_EXPIRY_DAYS = 14;
+const MAX_INVITE_EXPIRY_DAYS = 90;
+const ADMIN_SETTINGS_SCOPE = "global";
+const DEFAULT_ADMIN_SETTINGS = {
+  carrier_discount_pct: 25,
+  client_discount_pct: 20,
+};
+const RETAIL_BASE_RATE = {
+  Economy: 7.1,
+  Priority: 12.2,
+  "International Express": 21.8,
+};
+const INVITE_ADMIN_EMAILS = String(process.env.INVITE_ADMIN_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
 
 const oauthStateStore = new Map();
 
@@ -299,6 +319,653 @@ async function supabaseServiceRequest(pathnameWithQuery, options = {}) {
     },
   });
   return response;
+}
+
+function normalizeInviteToken(value) {
+  return String(value || "").trim();
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmailFormat(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function hashInviteToken(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function parseInviteExpiryDays(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_INVITE_EXPIRY_DAYS;
+  return Math.max(1, Math.min(MAX_INVITE_EXPIRY_DAYS, Math.round(numeric)));
+}
+
+function canManageRegistrationInvites(user) {
+  if (!user || !user.id) return false;
+  if (user?.user_metadata?.app_admin === true) return true;
+  if (!INVITE_ADMIN_EMAILS.length) return true;
+  const email = normalizeEmail(user.email || "");
+  return Boolean(email && INVITE_ADMIN_EMAILS.includes(email));
+}
+
+function normalizePercent(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(100, Number(numeric.toFixed(2))));
+}
+
+function normalizeAdminSettings(rawSettings = {}) {
+  return {
+    carrier_discount_pct: normalizePercent(
+      rawSettings?.carrier_discount_pct,
+      DEFAULT_ADMIN_SETTINGS.carrier_discount_pct
+    ),
+    client_discount_pct: normalizePercent(
+      rawSettings?.client_discount_pct,
+      DEFAULT_ADMIN_SETTINGS.client_discount_pct
+    ),
+    updated_at: String(rawSettings?.updated_at || "").trim(),
+    updated_by: rawSettings?.updated_by || null,
+    storage_ready: rawSettings?.storage_ready !== false,
+  };
+}
+
+function inviteIsRevoked(invite) {
+  return Boolean(String(invite?.revoked_at || "").trim());
+}
+
+function getInviteStatus(invite) {
+  if (invite?.claimed_at) return "claimed";
+  if (inviteIsRevoked(invite)) return "revoked";
+  if (inviteIsExpired(invite)) return "expired";
+  return "open";
+}
+
+function monthsBetweenInclusive(startValue, endValue = Date.now()) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+  const years = end.getFullYear() - start.getFullYear();
+  const months = end.getMonth() - start.getMonth();
+  return Math.max(1, years * 12 + months + 1);
+}
+
+function getEstimatedRetailTotal(serviceType, quantity, fallbackTotal = 0) {
+  const retailRate = Number(RETAIL_BASE_RATE[String(serviceType || "").trim()] || 0);
+  if (retailRate > 0) {
+    return retailRate * Math.max(0, Number(quantity) || 0);
+  }
+  return Math.max(0, Number(fallbackTotal) || 0);
+}
+
+function buildAdminClientMetrics(user, historyRows, settings) {
+  const rows = Array.isArray(historyRows) ? historyRows : [];
+  const totalLabels = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.quantity) || 0), 0);
+  const totalRevenue = rows.reduce(
+    (sum, row) => sum + Math.max(0, Number(row?.total_price) || 0),
+    0
+  );
+  const estimatedRetail = rows.reduce(
+    (sum, row) =>
+      sum +
+      getEstimatedRetailTotal(row?.service_type, row?.quantity, Number(row?.total_price) || 0),
+    0
+  );
+  const carrierDiscountPct = normalizePercent(settings?.carrier_discount_pct, 0);
+  const estimatedCarrierCost = Number(
+    (estimatedRetail * (1 - carrierDiscountPct / 100)).toFixed(2)
+  );
+  const totalProfit = Number((totalRevenue - estimatedCarrierCost).toFixed(2));
+  const activeMonths = monthsBetweenInclusive(user?.created_at || Date.now(), Date.now());
+  const mrr = Number((totalRevenue / activeMonths).toFixed(2));
+  const mrp = Number((totalProfit / activeMonths).toFixed(2));
+  const avgParcelsPerMonth = Number((totalLabels / activeMonths).toFixed(1));
+  const lastGenerationAt = rows.reduce((latest, row) => {
+    const createdAt = String(row?.created_at || "").trim();
+    if (!createdAt) return latest;
+    if (!latest) return createdAt;
+    return Date.parse(createdAt) > Date.parse(latest) ? createdAt : latest;
+  }, "");
+
+  let activityStatus = "dormant";
+  if (lastGenerationAt) {
+    const ageDays = (Date.now() - Date.parse(lastGenerationAt)) / (1000 * 60 * 60 * 24);
+    if (ageDays <= 30) {
+      activityStatus = "active";
+    } else if (ageDays <= 90) {
+      activityStatus = "quiet";
+    }
+  } else if (totalLabels > 0) {
+    activityStatus = "quiet";
+  }
+
+  return {
+    total_labels: totalLabels,
+    total_revenue_ex_vat: Number(totalRevenue.toFixed(2)),
+    estimated_carrier_cost_ex_vat: estimatedCarrierCost,
+    total_profit_ex_vat: totalProfit,
+    mrr_ex_vat: mrr,
+    mrp_ex_vat: mrp,
+    avg_parcels_per_month: avgParcelsPerMonth,
+    last_generation_at: lastGenerationAt || null,
+    avg_payment_days: null,
+    last_invoice_tracking: totalRevenue > 0 ? "Billing not live" : "No billable activity",
+    activity_status: activityStatus,
+  };
+}
+
+function buildAdminClientSummary(clients = [], invites = []) {
+  const activeClients = clients.filter((client) => client?.metrics?.activity_status === "active").length;
+  const openInvites = invites.filter((invite) => getInviteStatus(invite) === "open").length;
+  const totalRevenue = clients.reduce(
+    (sum, client) => sum + Math.max(0, Number(client?.metrics?.total_revenue_ex_vat) || 0),
+    0
+  );
+  const totalProfit = clients.reduce(
+    (sum, client) => sum + Number(client?.metrics?.total_profit_ex_vat || 0),
+    0
+  );
+  return {
+    total_clients: clients.length,
+    active_clients: activeClients,
+    open_invites: openInvites,
+    total_revenue_ex_vat: Number(totalRevenue.toFixed(2)),
+    total_profit_ex_vat: Number(totalProfit.toFixed(2)),
+  };
+}
+
+function normalizeRegistrationProfile(rawProfile) {
+  const profile = rawProfile && typeof rawProfile === "object" ? rawProfile : {};
+  return {
+    companyName: String(profile.companyName || "").trim(),
+    contactName: String(profile.contactName || "").trim(),
+    contactEmail: normalizeEmail(profile.contactEmail || ""),
+    contactPhone: String(profile.contactPhone || "").trim(),
+    billingAddress: String(profile.billingAddress || "").trim(),
+    taxId: String(profile.taxId || "").trim(),
+    customerId: String(profile.customerId || "").trim(),
+  };
+}
+
+function inviteIsExpired(invite) {
+  const expiresAt = String(invite?.expires_at || "").trim();
+  if (!expiresAt) return true;
+  const expiresMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresMs)) return true;
+  return Date.now() > expiresMs;
+}
+
+function mapInviteToPublic(invite) {
+  return {
+    email: normalizeEmail(invite?.invited_email || ""),
+    companyName: String(invite?.company_name || "").trim(),
+    contactName: String(invite?.contact_name || "").trim(),
+    contactEmail: normalizeEmail(invite?.contact_email || ""),
+    contactPhone: String(invite?.contact_phone || "").trim(),
+    billingAddress: String(invite?.billing_address || "").trim(),
+    taxId: String(invite?.tax_id || "").trim(),
+    customerId: String(invite?.customer_id || "").trim(),
+    planName: String(invite?.plan_name || "Growth").trim() || "Growth",
+  };
+}
+
+function buildRegistrationMetadata(invite, submittedProfile, email, preferredLanguage = "en") {
+  const inviteProfile = mapInviteToPublic(invite);
+  return {
+    company_name: submittedProfile.companyName || inviteProfile.companyName || "",
+    contact_name: submittedProfile.contactName || inviteProfile.contactName || "",
+    contact_email:
+      submittedProfile.contactEmail || inviteProfile.contactEmail || normalizeEmail(email),
+    contact_phone: submittedProfile.contactPhone || inviteProfile.contactPhone || "",
+    billing_address: submittedProfile.billingAddress || inviteProfile.billingAddress || "",
+    tax_id: submittedProfile.taxId || inviteProfile.taxId || "",
+    customer_id: submittedProfile.customerId || inviteProfile.customerId || "",
+    plan_name: inviteProfile.planName || "Growth",
+    registration_source: "invite",
+    preferred_language: String(preferredLanguage || "en").trim().toLowerCase() || "en",
+  };
+}
+
+async function getRegistrationInviteByToken(token) {
+  const inviteToken = normalizeInviteToken(token);
+  if (!inviteToken) return null;
+  const tokenHash = hashInviteToken(inviteToken);
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,invited_email,company_name,contact_name,contact_email,contact_phone,billing_address,tax_id,customer_id,plan_name,expires_at,claimed_at,revoked_at"
+  );
+  params.set("token_hash", `eq.${tokenHash}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${REGISTRATION_INVITES_TABLE}?${params.toString()}`,
+    {
+      method: "GET",
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Invite lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) return null;
+  return rows[0];
+}
+
+async function insertRegistrationInvite({
+  tokenHash,
+  tokenEncrypted,
+  invitedEmail,
+  expiresAt,
+  createdBy,
+}) {
+  const response = await supabaseServiceRequest(`/rest/v1/${REGISTRATION_INVITES_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([
+      {
+        token_hash: tokenHash,
+        token_encrypted: tokenEncrypted || null,
+        invited_email: invitedEmail || null,
+        expires_at: expiresAt,
+        created_by: createdBy || null,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not create invite (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy }) {
+  const safeInvitedEmail = normalizeEmail(invitedEmail || "");
+  const expiryDays = parseInviteExpiryDays(expiresInDays);
+  const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashInviteToken(token);
+    try {
+      await insertRegistrationInvite({
+        tokenHash,
+        tokenEncrypted: encryptToken(token),
+        invitedEmail: safeInvitedEmail,
+        expiresAt,
+        createdBy,
+      });
+      return {
+        token,
+        expiresAt,
+      };
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("23505") || message.includes("duplicate key")) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Could not create invite. Please try again.");
+}
+
+async function listRegistrationInvites({ createdBy, limit = 20 }) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,invited_email,expires_at,created_at,claimed_at,claimed_email,created_by,token_encrypted,revoked_at,revoked_by"
+  );
+  params.set("order", "created_at.desc");
+  params.set("limit", String(safeLimit));
+  if (createdBy) {
+    params.set("created_by", `eq.${createdBy}`);
+  }
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${REGISTRATION_INVITES_TABLE}?${params.toString()}`,
+    {
+      method: "GET",
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Invite history lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function revokeRegistrationInvite(inviteId, revokedBy) {
+  const safeInviteId = String(inviteId || "").trim();
+  if (!safeInviteId) {
+    throw new Error("Invite id is required.");
+  }
+
+  const selectParams = new URLSearchParams();
+  selectParams.set("select", "id,claimed_at,revoked_at");
+  selectParams.set("id", `eq.${safeInviteId}`);
+  selectParams.set("limit", "1");
+
+  const existingResponse = await supabaseServiceRequest(
+    `/rest/v1/${REGISTRATION_INVITES_TABLE}?${selectParams.toString()}`,
+    { method: "GET" }
+  );
+  if (!existingResponse.ok) {
+    const details = await existingResponse.text().catch(() => "");
+    throw new Error(`Could not load invite (${existingResponse.status}) ${details}`.trim());
+  }
+  const existingRows = await existingResponse.json().catch(() => []);
+  const existingInvite = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (!existingInvite?.id) {
+    throw new Error("Invite not found.");
+  }
+  if (existingInvite.claimed_at) {
+    throw new Error("Claimed invites cannot be revoked.");
+  }
+  if (existingInvite.revoked_at) {
+    throw new Error("Invite has already been revoked.");
+  }
+
+  const updateParams = new URLSearchParams();
+  updateParams.set("id", `eq.${safeInviteId}`);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${REGISTRATION_INVITES_TABLE}?${updateParams.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        revoked_at: new Date().toISOString(),
+        revoked_by: revokedBy || null,
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not revoke invite (${response.status}) ${details}`.trim());
+  }
+}
+
+async function listSupabaseUsers(limit = 200) {
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+  const pageSize = Math.min(100, safeLimit);
+  const users = [];
+  for (let page = 1; users.length < safeLimit && page <= 20; page += 1) {
+    const response = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${pageSize}`,
+      {
+        method: "GET",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      }
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        payload?.msg ||
+        payload?.error_description ||
+        payload?.error ||
+        `Could not load clients (${response.status}).`;
+      throw new Error(String(message).trim());
+    }
+    const pageUsers = Array.isArray(payload?.users) ? payload.users : [];
+    users.push(...pageUsers);
+    if (pageUsers.length < pageSize) break;
+  }
+  return users.slice(0, safeLimit);
+}
+
+async function listGenerationHistoryRows(limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(20000, Number(limit) || 5000));
+  const pageSize = 1000;
+  const rows = [];
+  for (let start = 0; start < safeLimit; start += pageSize) {
+    const end = Math.min(safeLimit - 1, start + pageSize - 1);
+    const params = new URLSearchParams();
+    params.set("select", "user_id,created_at,service_type,quantity,total_price,payload");
+    params.set("order", "created_at.desc");
+    const response = await supabaseServiceRequest(
+      `/rest/v1/${HISTORY_TABLE}?${params.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          Range: `${start}-${end}`,
+          "Range-Unit": "items",
+        },
+      }
+    );
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      throw new Error(`Could not load label history (${response.status}) ${details}`.trim());
+    }
+    const pageRows = await response.json().catch(() => []);
+    if (!Array.isArray(pageRows) || !pageRows.length) break;
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getAdminSettings() {
+  const params = new URLSearchParams();
+  params.set("select", "scope,carrier_discount_pct,client_discount_pct,updated_at,updated_by");
+  params.set("scope", `eq.${ADMIN_SETTINGS_SCOPE}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${ADMIN_SETTINGS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*admin_settings/i.test(details)) {
+      return {
+        ...DEFAULT_ADMIN_SETTINGS,
+        updated_at: "",
+        updated_by: null,
+        storage_ready: false,
+      };
+    }
+    throw new Error(`Could not load admin settings (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const settingsRow = Array.isArray(rows) && rows.length ? rows[0] : DEFAULT_ADMIN_SETTINGS;
+  return normalizeAdminSettings(settingsRow);
+}
+
+async function saveAdminSettings(userId, payload) {
+  const normalized = normalizeAdminSettings(payload);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${ADMIN_SETTINGS_TABLE}?on_conflict=scope`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify([
+        {
+          scope: ADMIN_SETTINGS_SCOPE,
+          carrier_discount_pct: normalized.carrier_discount_pct,
+          client_discount_pct: normalized.client_discount_pct,
+          updated_at: new Date().toISOString(),
+          updated_by: userId || null,
+        },
+      ]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not save admin settings (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return normalizeAdminSettings(Array.isArray(rows) && rows.length ? rows[0] : normalized);
+}
+
+function buildInviteUrl(baseUrl, invite) {
+  const encrypted = String(invite?.token_encrypted || "").trim();
+  if (!encrypted) return "";
+  try {
+    const token = decryptToken(encrypted);
+    const inviteUrl = new URL("/register", baseUrl);
+    inviteUrl.searchParams.set("invite", token);
+    return inviteUrl.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function mapInviteHistoryRow(invite, baseUrl) {
+  return {
+    id: invite?.id || null,
+    invited_email: normalizeEmail(invite?.invited_email || ""),
+    expires_at: invite?.expires_at || null,
+    created_at: invite?.created_at || null,
+    claimed_at: invite?.claimed_at || null,
+    claimed_email: normalizeEmail(invite?.claimed_email || ""),
+    revoked_at: invite?.revoked_at || null,
+    invite_url: buildInviteUrl(baseUrl, invite),
+  };
+}
+
+function shouldIncludeAdminClient(user) {
+  if (!user?.id) return false;
+  if (user?.user_metadata?.app_admin === true) return false;
+  const email = normalizeEmail(user.email || "");
+  if (email && INVITE_ADMIN_EMAILS.includes(email)) return false;
+  return true;
+}
+
+async function buildAdminDashboard(baseUrl) {
+  const [settings, invites, users, historyRows] = await Promise.all([
+    getAdminSettings(),
+    listRegistrationInvites({ limit: 50 }),
+    listSupabaseUsers(250),
+    listGenerationHistoryRows(10000),
+  ]);
+
+  const historyByUserId = new Map();
+  historyRows.forEach((row) => {
+    const userId = String(row?.user_id || "").trim();
+    if (!userId) return;
+    if (!historyByUserId.has(userId)) {
+      historyByUserId.set(userId, []);
+    }
+    historyByUserId.get(userId).push(row);
+  });
+
+  const clients = users
+    .filter(shouldIncludeAdminClient)
+    .map((user) => ({
+      user: {
+        id: user.id,
+        email: normalizeEmail(user.email || ""),
+        created_at: user.created_at || null,
+        user_metadata: user.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {},
+      },
+      metrics: buildAdminClientMetrics(user, historyByUserId.get(user.id) || [], settings),
+    }))
+    .sort((left, right) => {
+      const leftValue = Date.parse(left?.metrics?.last_generation_at || left?.user?.created_at || 0);
+      const rightValue = Date.parse(right?.metrics?.last_generation_at || right?.user?.created_at || 0);
+      return rightValue - leftValue;
+    });
+
+  const inviteHistory = invites.map((invite) => mapInviteHistoryRow(invite, baseUrl));
+  return {
+    settings,
+    invites: inviteHistory,
+    clients,
+    summary: buildAdminClientSummary(clients, invites),
+  };
+}
+
+async function markRegistrationInviteClaimed(inviteId, userId, email) {
+  if (!inviteId || !userId) return;
+  const params = new URLSearchParams();
+  params.set("id", `eq.${inviteId}`);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${REGISTRATION_INVITES_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        claimed_at: new Date().toISOString(),
+        claimed_user_id: userId,
+        claimed_email: normalizeEmail(email),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed to mark invite as claimed (${response.status}) ${details}`.trim());
+  }
+}
+
+async function ensureAccountSettingsRow(userId) {
+  if (!userId) return;
+  const response = await supabaseServiceRequest(
+    "/rest/v1/account_settings?on_conflict=user_id",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify([
+        {
+          user_id: userId,
+          warehouse_origins: [],
+          updated_at: new Date().toISOString(),
+        },
+      ]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed creating account settings (${response.status}) ${details}`.trim());
+  }
+}
+
+async function createSupabaseUserWithMetadata(email, password, userMetadata) {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: normalizeEmail(email),
+      password: String(password || ""),
+      email_confirm: true,
+      user_metadata: userMetadata,
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      payload?.msg || payload?.error_description || payload?.error || "Could not create account.";
+    throw new Error(`${message}`.trim());
+  }
+  if (!payload || typeof payload !== "object" || !payload.id) {
+    throw new Error("Account creation response was invalid.");
+  }
+  return payload;
 }
 
 async function exchangeShopifyAccessToken(shop, code) {
@@ -696,6 +1363,253 @@ function assertShopifyAppConfig() {
   }
 }
 
+async function handleCreateRegistrationInvite(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to create client invites." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const invitedEmail = normalizeEmail(body?.invitedEmail || "");
+  if (!invitedEmail) {
+    sendJson(res, 400, { error: "Client email is required." });
+    return;
+  }
+  if (!isValidEmailFormat(invitedEmail)) {
+    sendJson(res, 400, { error: "Invalid client email format." });
+    return;
+  }
+
+  try {
+    const created = await createRegistrationInvite({
+      invitedEmail,
+      expiresInDays: body?.expiresInDays,
+      createdBy: user.id,
+    });
+    const inviteUrl = new URL("/register", buildPublicBaseUrl(req));
+    inviteUrl.searchParams.set("invite", created.token);
+    sendJson(res, 200, {
+      ok: true,
+      inviteUrl: inviteUrl.toString(),
+      expiresAt: created.expiresAt,
+      invitedEmail: invitedEmail || null,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not create invite." });
+  }
+}
+
+async function handleListRegistrationInvites(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to create client invites." });
+    return;
+  }
+
+  const limit = Number(requestUrl.searchParams.get("limit") || "20");
+  try {
+    const invites = await listRegistrationInvites({
+      createdBy: null,
+      limit,
+    });
+    sendJson(res, 200, {
+      invites: invites.map((invite) => mapInviteHistoryRow(invite, buildPublicBaseUrl(req))),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load invite history." });
+  }
+}
+
+async function handleAdminStatus(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  sendJson(res, 200, { allowed: canManageRegistrationInvites(user) });
+}
+
+async function handleAdminDashboard(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to access the admin panel." });
+    return;
+  }
+  try {
+    const dashboard = await buildAdminDashboard(buildPublicBaseUrl(req));
+    sendJson(res, 200, dashboard);
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load admin dashboard." });
+  }
+}
+
+async function handleAdminSettingsSave(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to update admin settings." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  try {
+    const settings = await saveAdminSettings(user.id, body || {});
+    sendJson(res, 200, { ok: true, settings });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not save admin settings." });
+  }
+}
+
+async function handleAdminInviteRevoke(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to revoke client invites." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const inviteId = String(body?.inviteId || "").trim();
+  if (!inviteId) {
+    sendJson(res, 400, { error: "Invite id is required." });
+    return;
+  }
+
+  try {
+    await revokeRegistrationInvite(inviteId, user.id);
+    sendJson(res, 200, { ok: true });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not revoke invite." });
+  }
+}
+
+async function handleRegisterInviteValidate(_req, res, requestUrl) {
+  const token = normalizeInviteToken(requestUrl.searchParams.get("token"));
+  if (!token) {
+    sendJson(res, 400, { error: "Registration link required." });
+    return;
+  }
+  try {
+    const invite = await getRegistrationInviteByToken(token);
+    if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
+      sendJson(res, 410, { error: "This registration link is invalid or expired." });
+      return;
+    }
+    sendJson(res, 200, {
+      valid: true,
+      invite: mapInviteToPublic(invite),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not validate registration link." });
+  }
+}
+
+async function handleRegisterWithInvite(req, res) {
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const token = normalizeInviteToken(body?.token);
+  const email = normalizeEmail(body?.email);
+  const password = String(body?.password || "");
+  const profile = normalizeRegistrationProfile(body?.profile);
+  const preferredLanguage = String(body?.preferredLanguage || "en").trim().toLowerCase();
+
+  if (!token) {
+    sendJson(res, 400, { error: "Registration link required." });
+    return;
+  }
+  if (!email || !password) {
+    sendJson(res, 400, { error: "Email and password are required." });
+    return;
+  }
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    sendJson(res, 400, {
+      error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+    });
+    return;
+  }
+
+  const requiredProfileValues = [
+    profile.companyName,
+    profile.contactName,
+    profile.contactEmail,
+    profile.contactPhone,
+    profile.billingAddress,
+    profile.taxId,
+  ];
+  if (requiredProfileValues.some((value) => !String(value || "").trim())) {
+    sendJson(res, 400, { error: "All registration fields are required except Customer ID." });
+    return;
+  }
+
+  try {
+    const invite = await getRegistrationInviteByToken(token);
+    if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
+      sendJson(res, 410, { error: "This registration link is invalid or expired." });
+      return;
+    }
+
+    const metadata = buildRegistrationMetadata(invite, profile, email, preferredLanguage);
+    const createdUser = await createSupabaseUserWithMetadata(email, password, metadata);
+
+    await ensureAccountSettingsRow(createdUser.id);
+    await markRegistrationInviteClaimed(invite.id, createdUser.id, email);
+
+    sendJson(res, 200, {
+      ok: true,
+      email,
+      userId: createdUser.id,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not complete registration." });
+  }
+}
+
 async function handleShopifyInstallLink(req, res, requestUrl) {
   assertShopifyAppConfig();
   const user = await getAuthenticatedUser(req);
@@ -1002,6 +1916,38 @@ async function handleShopifyImportOrders(req, res) {
 
 async function handleApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
+  if (pathname === "/api/admin/status" && req.method === "GET") {
+    await handleAdminStatus(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/dashboard" && req.method === "GET") {
+    await handleAdminDashboard(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/settings" && req.method === "POST") {
+    await handleAdminSettingsSave(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/invites/revoke" && req.method === "POST") {
+    await handleAdminInviteRevoke(req, res);
+    return true;
+  }
+  if (pathname === "/api/auth/invites" && req.method === "GET") {
+    await handleListRegistrationInvites(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/auth/invites" && req.method === "POST") {
+    await handleCreateRegistrationInvite(req, res);
+    return true;
+  }
+  if (pathname === "/api/auth/register-invite" && req.method === "GET") {
+    await handleRegisterInviteValidate(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/auth/register" && req.method === "POST") {
+    await handleRegisterWithInvite(req, res);
+    return true;
+  }
   if (pathname === "/api/shopify/install-link" && req.method === "POST") {
     await handleShopifyInstallLink(req, res, requestUrl);
     return true;

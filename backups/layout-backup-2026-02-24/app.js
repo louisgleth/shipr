@@ -82,12 +82,9 @@ const AUTH_PARTICLES_WARMUP_STEPS = 42;
 const VAT_RATE = 0.21;
 const TOTAL_STEPS = 4;
 const CUSTOMS_MAX_ITEMS = 12;
-const REPORT_RANGE_PRESETS = [7, 30, 90, 365];
 const ROUTE_PATHS = {
   login: "/login",
-  register: "/register",
   account: "/account",
-  admin: "/admin",
   history: "/history",
   reports: "/reports",
 };
@@ -100,684 +97,11 @@ const STEP_ROUTE_PATHS = {
 const ROUTE_SUFFIXES = [
   "/index.html",
   ROUTE_PATHS.login,
-  ROUTE_PATHS.register,
   ROUTE_PATHS.account,
-  ROUTE_PATHS.admin,
   ROUTE_PATHS.history,
   ROUTE_PATHS.reports,
   ...Object.values(STEP_ROUTE_PATHS),
 ];
-const LANGUAGE_STORAGE_KEY = "shipr-language";
-const SUPPORTED_LANGUAGES = new Set(["en", "fr", "nl"]);
-const LANGUAGE_LOCALE = {
-  en: "en-GB",
-  fr: "fr-BE",
-  nl: "nl-BE",
-};
-const TRANSLATION_ATTRS = ["placeholder", "title", "aria-label"];
-const TRANSLATIONS = {
-  "Portal": { fr: "Portail", nl: "Portaal" },
-  "Shipide logo": { fr: "Logo Shipide", nl: "Shipide-logo" },
-  "Sign in to continue": { fr: "Connectez-vous pour continuer", nl: "Log in om verder te gaan" },
-  "Complete your account registration": {
-    fr: "Finalisez l’inscription de votre compte",
-    nl: "Voltooi je accountregistratie",
-  },
-  "Use your email and password.": {
-    fr: "Utilisez votre e-mail et votre mot de passe.",
-    nl: "Gebruik je e-mailadres en wachtwoord.",
-  },
-  "Use your invite link to create your secure account and billing profile.": {
-    fr: "Utilisez votre lien d’invitation pour créer votre compte sécurisé et votre profil de facturation.",
-    nl: "Gebruik je uitnodigingslink om je beveiligde account en facturatieprofiel aan te maken.",
-  },
-  "Use your email and password. New users can create an account below.": {
-    fr: "Utilisez votre e-mail et votre mot de passe. Les nouveaux utilisateurs peuvent créer un compte ci-dessous.",
-    nl: "Gebruik je e-mailadres en wachtwoord. Nieuwe gebruikers kunnen hieronder een account aanmaken.",
-  },
-  "Email": { fr: "E-mail", nl: "E-mail" },
-  "Password": { fr: "Mot de passe", nl: "Wachtwoord" },
-  "Confirm Password": { fr: "Confirmer le mot de passe", nl: "Bevestig wachtwoord" },
-  "Access & Contact": { fr: "Accès & Contact", nl: "Toegang & Contact" },
-  "Credentials and primary account contact.": {
-    fr: "Identifiants et contact principal du compte.",
-    nl: "Inloggegevens en hoofdcontact van het account.",
-  },
-  "Sign-in credentials and primary billing contact.": {
-    fr: "Identifiants de connexion et contact principal de facturation.",
-    nl: "Inloggegevens en primair facturatiecontact.",
-  },
-  "Billing & Compliance": { fr: "Facturation & Conformité", nl: "Facturatie & Compliance" },
-  "Monthly invoice profile and tax details.": {
-    fr: "Profil de facturation mensuelle et informations fiscales.",
-    nl: "Maandelijks factuurprofiel en fiscale gegevens.",
-  },
-  "Invoice identity and tax details for monthly billing.": {
-    fr: "Identité de facturation et informations fiscales pour la facturation mensuelle.",
-    nl: "Factuuridentiteit en fiscale gegevens voor maandelijkse facturatie.",
-  },
-  "Registration link required.": {
-    fr: "Lien d’inscription requis.",
-    nl: "Registratielink vereist.",
-  },
-  "This registration link is invalid or expired.": {
-    fr: "Ce lien d’inscription est invalide ou expiré.",
-    nl: "Deze registratielink is ongeldig of verlopen.",
-  },
-  "Invitation verified. Complete your details to activate access.": {
-    fr: "Invitation vérifiée. Complétez vos informations pour activer l’accès.",
-    nl: "Uitnodiging bevestigd. Vul je gegevens in om toegang te activeren.",
-  },
-  "Validating invitation...": { fr: "Validation de l’invitation...", nl: "Uitnodiging valideren..." },
-  "Register Account": { fr: "Créer le compte", nl: "Account registreren" },
-  "Creating account...": { fr: "Création du compte...", nl: "Account aanmaken..." },
-  "Account created. Signing you in...": {
-    fr: "Compte créé. Connexion en cours...",
-    nl: "Account aangemaakt. Je wordt ingelogd...",
-  },
-  "Could not create account.": {
-    fr: "Impossible de créer le compte.",
-    nl: "Kon account niet aanmaken.",
-  },
-  "Registration is disabled.": { fr: "L’inscription est désactivée.", nl: "Registratie is uitgeschakeld." },
-  "Company Name": { fr: "Nom de l’entreprise", nl: "Bedrijfsnaam" },
-  "Point of Contact": { fr: "Personne de contact", nl: "Contactpersoon" },
-  "Contact Email": { fr: "E-mail contact", nl: "E-mail contact" },
-  "Phone": { fr: "Téléphone", nl: "Telefoon" },
-  "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "N° TVA", nl: "Btw-nummer" },
-  "Customer ID": { fr: "ID client", nl: "Klant-ID" },
-  "All registration fields are required except Customer ID.": {
-    fr: "Tous les champs d’inscription sont requis sauf l’ID client.",
-    nl: "Alle registratievelden zijn verplicht behalve Klant-ID.",
-  },
-  "Password must be at least {min} characters.": {
-    fr: "Le mot de passe doit comporter au moins {min} caractères.",
-    nl: "Het wachtwoord moet minstens {min} tekens bevatten.",
-  },
-  "Passwords do not match.": {
-    fr: "Les mots de passe ne correspondent pas.",
-    nl: "Wachtwoorden komen niet overeen.",
-  },
-  "Invite email does not match this registration link.": {
-    fr: "L’e-mail ne correspond pas à ce lien d’inscription.",
-    nl: "Het e-mailadres komt niet overeen met deze registratielink.",
-  },
-  "Creating invite...": { fr: "Création de l’invitation...", nl: "Uitnodiging maken..." },
-  "Sign In": { fr: "Se connecter", nl: "Inloggen" },
-  "Create Account": { fr: "Créer un compte", nl: "Account aanmaken" },
-  "Forgot Password?": { fr: "Mot de passe oublié ?", nl: "Wachtwoord vergeten?" },
-  "Account": { fr: "Compte", nl: "Account" },
-  "History": { fr: "Historique", nl: "Historiek" },
-  "Reports": { fr: "Rapports", nl: "Rapporten" },
-  "Language": { fr: "Langue", nl: "Taal" },
-  "Build, confirm, and preview your postage label in minutes.": {
-    fr: "Créez, confirmez et prévisualisez votre étiquette d’expédition en quelques minutes.",
-    nl: "Maak, bevestig en bekijk je verzendlabel in enkele minuten.",
-  },
-  "A minimal, high-trust label pipeline: enter details, choose a service, confirm invoice details, and receive a crisp PDF ready to print.": {
-    fr: "Un flux minimal et fiable : saisissez les informations, choisissez un service, confirmez la facture et obtenez un PDF prêt à imprimer.",
-    nl: "Een minimale, betrouwbare flow: voer gegevens in, kies een service, bevestig factuurgegevens en ontvang een scherpe printklare PDF.",
-  },
-  "Label Info": { fr: "Infos Étiquette", nl: "Labelinfo" },
-  "Shipment Details": { fr: "Détails d’expédition", nl: "Zendingsdetails" },
-  "Sender, recipient, parcel": { fr: "Expéditeur, destinataire, colis", nl: "Afzender, ontvanger, pakket" },
-  "Label Selection": { fr: "Choix Étiquette", nl: "Labelkeuze" },
-  "Service Selection": { fr: "Choix du service", nl: "Servicekeuze" },
-  "Carrier & Service": { fr: "Transporteur & Service", nl: "Vervoerder & Service" },
-  "Service, speed, cost": { fr: "Service, délai, coût", nl: "Service, snelheid, kost" },
-  "Carrier, speed, price": { fr: "Transporteur, délai, prix", nl: "Vervoerder, snelheid, prijs" },
-  "Delivery option and pricing": {
-    fr: "Option de livraison et tarification",
-    nl: "Leveringsoptie en prijs",
-  },
-  "Invoice Confirm": { fr: "Confirmation Facture", nl: "Factuurbevestiging" },
-  "Invoice Review": { fr: "Vérification facture", nl: "Factuurcontrole" },
-  "Billing details, monthly invoice": { fr: "Coordonnées de facturation, facture mensuelle", nl: "Factuurgegevens, maandfactuur" },
-  "Billing profile, monthly invoice": { fr: "Profil de facturation, facture mensuelle", nl: "Factuurprofiel, maandfactuur" },
-  "Billing profile and approval": {
-    fr: "Profil de facturation et validation",
-    nl: "Factuurprofiel en bevestiging",
-  },
-  "Label PDF": { fr: "PDF Étiquette", nl: "Label-PDF" },
-  "Label Output": { fr: "Sortie étiquettes", nl: "Labeloutput" },
-  "Labels & PDF": { fr: "Étiquettes & PDF", nl: "Labels & PDF" },
-  "Preview and download": { fr: "Prévisualiser et télécharger", nl: "Bekijken en downloaden" },
-  "Order Summary": { fr: "Résumé de commande", nl: "Besteloverzicht" },
-  "Your Account": { fr: "Votre compte", nl: "Jouw account" },
-  "Service": { fr: "Service", nl: "Service" },
-  "Carrier": { fr: "Transporteur", nl: "Vervoerder" },
-  "Effective Discount": { fr: "Remise effective", nl: "Effectieve korting" },
-  "Next Invoice Amount": { fr: "Montant prochaine facture", nl: "Volgend factuurbedrag" },
-  "Next Invoice Date": { fr: "Date prochaine facture", nl: "Volgende factuurdatum" },
-  "Need Help?": { fr: "Besoin d’aide ?", nl: "Hulp nodig?" },
-  "Chat with us": { fr: "Chatter avec nous", nl: "Chat met ons" },
-  "Economy Carrier": { fr: "Transporteur Économie", nl: "Economy-vervoerder" },
-  "Priority Carrier": { fr: "Transporteur Prioritaire", nl: "Prioriteit-vervoerder" },
-  "International Carrier": { fr: "Transporteur International", nl: "Internationale vervoerder" },
-  "Carrier Network": { fr: "Réseau transporteur", nl: "Vervoerdersnetwerk" },
-  "Unit Price": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
-  "Quantity": { fr: "Quantité", nl: "Aantal" },
-  "Total": { fr: "Total", nl: "Totaal" },
-  "Tracking": { fr: "Suivi", nl: "Tracking" },
-  "Label ID": { fr: "ID étiquette", nl: "Label-ID" },
-  "Choose your label service": { fr: "Choisissez votre service d’étiquette", nl: "Kies je labelservice" },
-  "Select your delivery service. Pricing updates instantly.": { fr: "Sélectionnez votre service de livraison. Le prix se met à jour instantanément.", nl: "Selecteer je leveringsservice. De prijs wordt meteen bijgewerkt." },
-  "Economy": { fr: "Économie", nl: "Economy" },
-  "Reliable, cost-efficient": { fr: "Fiable, économique", nl: "Betrouwbaar, kostenefficiënt" },
-  "TRACKING INCLUDED": { fr: "SUIVI INCLUS", nl: "TRACKING INBEGREPEN" },
-  "4x6 PDF": { fr: "PDF 4x6", nl: "4x6 PDF" },
-  "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
-  "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
-  "SIGNATURE READY": { fr: "SIGNATURE PRÊTE", nl: "HANDTEKENING KLAAR" },
-  "INSURED": { fr: "ASSURÉ", nl: "VERZEKERD" },
-  "International Express": { fr: "Express International", nl: "Internationaal Express" },
-  "Cross-border, priority routing": { fr: "Transfrontalier, routage prioritaire", nl: "Grensoverschrijdend, prioritaire routing" },
-  "CUSTOMS READY": { fr: "DOUANE PRÊTE", nl: "DOUANE KLAAR" },
-  "GLOBAL ETA": { fr: "DÉLAI MONDIAL", nl: "GLOBALE ETA" },
-  "Label Quantity": { fr: "Quantité d’étiquettes", nl: "Aantal labels" },
-  "Back": { fr: "Retour", nl: "Terug" },
-  "Continue": { fr: "Continuer", nl: "Doorgaan" },
-  "Enter label information": { fr: "Saisir les informations de l’étiquette", nl: "Labelinformatie invoeren" },
-  "Add sender, recipient, and parcel details — or import from a provider.": {
-    fr: "Ajoutez les informations expéditeur, destinataire et colis — ou importez depuis un fournisseur.",
-    nl: "Voeg afzender-, ontvanger- en pakketgegevens toe — of importeer via een provider.",
-  },
-  "Import from provider": { fr: "Importer depuis un fournisseur", nl: "Importeren vanuit provider" },
-  "Connected": { fr: "Connecté", nl: "Verbonden" },
-  "Amazon Seller": { fr: "Vendeur Amazon", nl: "Amazon Seller" },
-  "Upload CSV": { fr: "Importer CSV", nl: "CSV uploaden" },
-  "Auto-fill": { fr: "Auto-remplir", nl: "Auto-invullen" },
-  "Auto CSV": { fr: "Auto CSV", nl: "Auto CSV" },
-  "Complete all required fields or use Auto-generate CSV.": { fr: "Complétez tous les champs requis ou utilisez la génération CSV automatique.", nl: "Vul alle verplichte velden in of gebruik Auto-generate CSV." },
-  "Sender": { fr: "Expéditeur", nl: "Afzender" },
-  "Recipient": { fr: "Destinataire", nl: "Ontvanger" },
-  "Name": { fr: "Nom", nl: "Naam" },
-  "Street": { fr: "Rue", nl: "Straat" },
-  "Country": { fr: "Pays", nl: "Land" },
-  "City": { fr: "Ville", nl: "Stad" },
-  "Region / Province": { fr: "Région / Province", nl: "Regio / Provincie" },
-  "Postal Code": { fr: "Code postal", nl: "Postcode" },
-  "Parcel": { fr: "Colis", nl: "Pakket" },
-  "Weight (kg)": { fr: "Poids (kg)", nl: "Gewicht (kg)" },
-  "Weight": { fr: "Poids", nl: "Gewicht" },
-  "Dimensions (cm)": { fr: "Dimensions (cm)", nl: "Afmetingen (cm)" },
-  "Dims (L x W x H, cm)": { fr: "Dims (L x l x H, cm)", nl: "Afm. (L x B x H, cm)" },
-  "CSV Batch Upload": { fr: "Import CSV en lot", nl: "CSV-batch upload" },
-  "Imported rows ready for review.": { fr: "Lignes importées prêtes à être vérifiées.", nl: "Geïmporteerde rijen klaar voor controle." },
-  "Edit": { fr: "Modifier", nl: "Bewerken" },
-  "Editing": { fr: "Édition", nl: "Bewerken" },
-  "Ship From": { fr: "Expédier depuis", nl: "Verzenden vanuit" },
-  "Customs Declaration": { fr: "Déclaration en douane", nl: "Douaneaangifte" },
-  "Complete this declaration for destinations that require customs processing.": { fr: "Complétez cette déclaration pour les destinations nécessitant un traitement douanier.", nl: "Vul deze aangifte in voor bestemmingen die douaneafhandeling vereisen." },
-  "Complete required customs declaration fields before continuing.": { fr: "Complétez les champs obligatoires de la déclaration douanière avant de continuer.", nl: "Vul de verplichte douanevelden in voordat je verdergaat." },
-  "Parcel Summary": { fr: "Résumé du colis", nl: "Pakketoverzicht" },
-  "Content Description": { fr: "Description du contenu", nl: "Inhoudsbeschrijving" },
-  "Shipment Type": { fr: "Type d’expédition", nl: "Type verzending" },
-  "Select type": { fr: "Sélectionner un type", nl: "Type selecteren" },
-  "Sale of goods": { fr: "Vente de marchandises", nl: "Verkoop van goederen" },
-  "Gift": { fr: "Cadeau", nl: "Geschenk" },
-  "Commercial sample": { fr: "Échantillon commercial", nl: "Commercieel staal" },
-  "Returned goods": { fr: "Marchandises retournées", nl: "Retourgoederen" },
-  "Documents": { fr: "Documents", nl: "Documenten" },
-  "Other": { fr: "Autre", nl: "Andere" },
-  "Sender Customs Reference (optional)": { fr: "Référence douanière expéditeur (optionnel)", nl: "Douanereferentie afzender (optioneel)" },
-  "Importer / Recipient Reference (optional)": { fr: "Référence importateur / destinataire (optionnel)", nl: "Referentie importeur / ontvanger (optioneel)" },
-  "Verify that the shipment content is allowed.": { fr: "Vérifiez que le contenu de l’envoi est autorisé.", nl: "Controleer of de inhoud van de zending is toegestaan." },
-  "Review restricted goods list": { fr: "Consulter la liste des marchandises interdites", nl: "Bekijk lijst met beperkte goederen" },
-  "Declared Items": { fr: "Articles déclarés", nl: "Aangegeven items" },
-  "Add Item": { fr: "Ajouter un article", nl: "Item toevoegen" },
-  "Confirm invoice information": { fr: "Confirmer les informations de facturation", nl: "Factuurinformatie bevestigen" },
-  "No charge now. These details are used for your month-end invoice.": { fr: "Aucun débit maintenant. Ces informations seront utilisées pour votre facture de fin de mois.", nl: "Nu geen kosten. Deze gegevens worden gebruikt voor je maandfactuur." },
-  "Invoice Recipient": { fr: "Destinataire de la facture", nl: "Factuurontvanger" },
-  "Company": { fr: "Entreprise", nl: "Bedrijf" },
-  "Point of Contact": { fr: "Personne de contact", nl: "Contactpersoon" },
-  "Phone": { fr: "Téléphone", nl: "Telefoon" },
-  "Phone Number": { fr: "Numéro de téléphone", nl: "Telefoonnummer" },
-  "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "N° TVA", nl: "Btw-nummer" },
-  "Account Manager": { fr: "Account manager", nl: "Accountmanager" },
-  "Monthly Invoice Preview": { fr: "Aperçu de facture mensuelle", nl: "Voorbeeld maandfactuur" },
-  "Label service": { fr: "Service d’étiquette", nl: "Labelservice" },
-  "Subtotal (ex VAT)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "Subtotal (ex. vat)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "Subtotal (EX. VAT)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "VAT (21%)": { fr: "TVA (21%)", nl: "Btw (21%)" },
-  "Total (incl VAT)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
-  "Total (incl. vat)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
-  "Total (INCL. VAT)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
-  "This order will be added to your monthly invoice. If you want your information to be changed, please contact your account manager.": {
-    fr: "Cette commande sera ajoutée à votre facture mensuelle. Si vous souhaitez modifier vos informations, contactez votre account manager.",
-    nl: "Deze bestelling wordt toegevoegd aan je maandfactuur. Als je gegevens moeten wijzigen, neem contact op met je accountmanager.",
-  },
-  "Confirm & Generate": { fr: "Confirmer & Générer", nl: "Bevestigen & Genereren" },
-  "Your label is ready": { fr: "Votre étiquette est prête", nl: "Je label is klaar" },
-  "Preview the PDF and download the label for printing.": { fr: "Prévisualisez le PDF et téléchargez l’étiquette à imprimer.", nl: "Bekijk de PDF en download het label om te printen." },
-  "Download PDF": { fr: "Télécharger PDF", nl: "PDF downloaden" },
-  "Start New Label": { fr: "Nouvelle Étiquette", nl: "Nieuw label starten" },
-  "PDF Preview": { fr: "Aperçu PDF", nl: "PDF-voorbeeld" },
-  "Batch Queue": { fr: "File d’attente lot", nl: "Batchwachtrij" },
-  "Label Summary": { fr: "Résumé d’étiquette", nl: "Labelsamenvatting" },
-  "TRACKING": { fr: "SUIVI", nl: "TRACKING" },
-  "FROM": { fr: "DE", nl: "VAN" },
-  "TO": { fr: "VERS", nl: "NAAR" },
-  "WEIGHT": { fr: "POIDS", nl: "GEWICHT" },
-  "DIMENSIONS": { fr: "DIMENSIONS", nl: "AFMETINGEN" },
-  "Account Overview": { fr: "Vue du compte", nl: "Accountoverzicht" },
-  "Review account profile details and manage your shipping-origin presets.": { fr: "Consultez les informations du compte et gérez vos adresses d’expédition.", nl: "Bekijk accountgegevens en beheer je verzendorigines." },
-  "Back to Builder": { fr: "Retour au builder", nl: "Terug naar builder" },
-  "Sign Out": { fr: "Se déconnecter", nl: "Uitloggen" },
-  "Account Information": { fr: "Informations du compte", nl: "Accountinformatie" },
-  "Company Name": { fr: "Nom de l’entreprise", nl: "Bedrijfsnaam" },
-  "Contact Email": { fr: "E-mail contact", nl: "E-mail contact" },
-  "Customer ID": { fr: "ID client", nl: "Klant-ID" },
-  "Plan": { fr: "Plan", nl: "Plan" },
-  "To update account information, please contact your account manager.": { fr: "Pour modifier les informations du compte, veuillez contacter votre account manager.", nl: "Neem contact op met je accountmanager om accountinformatie te wijzigen." },
-  "Shipping Origins": { fr: "Origines d’expédition", nl: "Verzendorigines" },
-  "Add Warehouse": { fr: "Ajouter un entrepôt", nl: "Magazijn toevoegen" },
-  "Save Origins": { fr: "Enregistrer les origines", nl: "Origines opslaan" },
-  "Sign in to manage shipping origins.": { fr: "Connectez-vous pour gérer les origines d’expédition.", nl: "Log in om verzendorigines te beheren." },
-  "Client Invitations": { fr: "Invitations client", nl: "Klantuitnodigingen" },
-  "Create Client": { fr: "Créer client", nl: "Klant aanmaken" },
-  "Client Email (optional)": { fr: "E-mail client (optionnel)", nl: "Klant-e-mail (optioneel)" },
-  "Link Expiry": { fr: "Expiration du lien", nl: "Linkverval" },
-  "7 days": { fr: "7 jours", nl: "7 dagen" },
-  "14 days": { fr: "14 jours", nl: "14 dagen" },
-  "30 days": { fr: "30 jours", nl: "30 dagen" },
-  "60 days": { fr: "60 jours", nl: "60 dagen" },
-  "Registration URL": { fr: "URL d’inscription", nl: "Registratie-URL" },
-  "Copy URL": { fr: "Copier l’URL", nl: "URL kopiëren" },
-  "Invite link created.": { fr: "Lien d’invitation créé.", nl: "Uitnodigingslink aangemaakt." },
-  "Invite URL copied.": { fr: "URL d’invitation copiée.", nl: "Uitnodigings-URL gekopieerd." },
-  "Invalid client email format.": { fr: "Format d’e-mail client invalide.", nl: "Ongeldig formaat voor klant-e-mail." },
-  "You are not allowed to create client invites.": { fr: "Vous n’êtes pas autorisé à créer des invitations client.", nl: "Je bent niet gemachtigd om klantuitnodigingen te maken." },
-  "Recent links": { fr: "Liens récents", nl: "Recente links" },
-  "No invites yet.": { fr: "Aucune invitation pour l’instant.", nl: "Nog geen uitnodigingen." },
-  "Loading invites...": { fr: "Chargement des invitations...", nl: "Uitnodigingen laden..." },
-  "No email lock": { fr: "Sans e-mail verrouillé", nl: "Zonder e-mailvergrendeling" },
-  "Created {date}": { fr: "Créé {date}", nl: "Aangemaakt {date}" },
-  "Expires {date}": { fr: "Vervalt {date}", nl: "Verloopt {date}" },
-  "Claimed {date}": { fr: "Réclamé {date}", nl: "Geclaimd {date}" },
-  "Open": { fr: "Ouvert", nl: "Open" },
-  "Claimed": { fr: "Réclamé", nl: "Geclaimd" },
-  "Expired": { fr: "Expiré", nl: "Verlopen" },
-  "Generation History": { fr: "Historique des générations", nl: "Generatiehistoriek" },
-  "Review previous generations, preview label PDFs, and export receipts.": { fr: "Consultez les générations précédentes, prévisualisez les PDF et exportez les reçus.", nl: "Bekijk eerdere generaties, label-PDF’s en exporteer bonnen." },
-  "Generations": { fr: "Générations", nl: "Generaties" },
-  "Sign in to view previous generations.": { fr: "Connectez-vous pour voir les générations précédentes.", nl: "Log in om vorige generaties te bekijken." },
-  "Generation Preview": { fr: "Aperçu de génération", nl: "Generatievoorbeeld" },
-  "Select a generation to preview labels and receipt details.": { fr: "Sélectionnez une génération pour voir les étiquettes et le reçu.", nl: "Selecteer een generatie om labels en bondetails te bekijken." },
-  "Select a generation to view PDFs and receipt details.": { fr: "Sélectionnez une génération pour afficher les PDF et les détails du reçu.", nl: "Selecteer een generatie om PDF's en bondetails te bekijken." },
-  "Download Label PDF": { fr: "Télécharger PDF étiquette", nl: "Label-PDF downloaden" },
-  "Download Labels (.PDF)": { fr: "Télécharger les étiquettes (.PDF)", nl: "Labels downloaden (.PDF)" },
-  "View Receipt": { fr: "Voir le reçu", nl: "Bon bekijken" },
-  "No label PDF selected yet. Choose a generation to preview.": { fr: "Aucun PDF d’étiquette sélectionné. Choisissez une génération pour prévisualiser.", nl: "Nog geen label-PDF geselecteerd. Kies een generatie om te bekijken." },
-  "Shipping Reports": { fr: "Rapports d’expédition", nl: "Verzendrapporten" },
-  "Interactive visibility into savings, payments, shipment volume, services, and destinations.": { fr: "Vue interactive des économies, paiements, volumes, services et destinations.", nl: "Interactief inzicht in besparingen, betalingen, volume, services en bestemmingen." },
-  "All Time": { fr: "Toute la période", nl: "Alle tijd" },
-  "Last 7 Days": { fr: "7 derniers jours", nl: "Laatste 7 dagen" },
-  "Last 30 Days": { fr: "30 derniers jours", nl: "Laatste 30 dagen" },
-  "Last 90 Days": { fr: "90 derniers jours", nl: "Laatste 90 dagen" },
-  "Last Year": { fr: "Dernière année", nl: "Afgelopen jaar" },
-  "Custom": { fr: "Personnalisé", nl: "Aangepast" },
-  "Custom Range": { fr: "Période personnalisée", nl: "Aangepast bereik" },
-  "Time frame": { fr: "Période", nl: "Tijdsperiode" },
-  "From": { fr: "Du", nl: "Van" },
-  "To": { fr: "Au", nl: "Tot" },
-  "Apply Range": { fr: "Appliquer", nl: "Bereik toepassen" },
-  "Savings vs Retail": { fr: "Économies vs public", nl: "Besparing vs retail" },
-  "Estimated discount captured": { fr: "Remise estimée capturée", nl: "Geschatte gerealiseerde korting" },
-  "Pending Returns": { fr: "Retours en attente", nl: "Openstaande retouren" },
-  "Return labels waiting action": { fr: "Étiquettes retour en attente", nl: "Retourlabels wachten op actie" },
-  "Pending Label Refunds": { fr: "Remboursements en attente", nl: "Openstaande labelterugbetalingen" },
-  "Unused or voided labels": { fr: "Étiquettes non utilisées ou annulées", nl: "Ongebruikte of geannuleerde labels" },
-  "Account Balance": { fr: "Solde du compte", nl: "Rekeningsaldo" },
-  "Monthly billing cycle": { fr: "Cycle de facturation mensuel", nl: "Maandelijkse facturatiecyclus" },
-  "Settled at month end": { fr: "Soldé en fin de mois", nl: "Verrekend op einde maand" },
-  "Total Shipping Costs": { fr: "Coûts totaux d’expédition", nl: "Totale verzendkosten" },
-  "EX VAT": { fr: "HORS TVA", nl: "EXCL. BTW" },
-  "ex. vat": { fr: "hors TVA", nl: "excl. btw" },
-  "incl. vat": { fr: "TVA incl.", nl: "incl. btw" },
-  "EX. VAT": { fr: "HORS TVA", nl: "EXCL. BTW" },
-  "INCL. VAT": { fr: "TVA INCL.", nl: "INCL. BTW" },
-  "Service charges in selected range": { fr: "Frais de service sur la période", nl: "Servicekosten in geselecteerde periode" },
-  "Carrier Adjustments": { fr: "Ajustements transporteur", nl: "Carrier-correcties" },
-  "Post-label carrier corrections": { fr: "Corrections transporteur post-étiquette", nl: "Carrier-correcties na label" },
-  "Total Payments": { fr: "Paiements totaux", nl: "Totale betalingen" },
-  "Daily spend trend (ex VAT)": { fr: "Tendance des dépenses quotidiennes (hors TVA)", nl: "Dagelijkse uitgaventrend (excl. btw)" },
-  "Daily spend trend (ex. vat)": {
-    fr: "Tendance des dépenses quotidiennes (hors TVA)",
-    nl: "Dagelijkse uitgaventrend (excl. btw)",
-  },
-  "Daily spend trend (EX. VAT)": {
-    fr: "Tendance des dépenses quotidiennes (hors TVA)",
-    nl: "Dagelijkse uitgaventrend (excl. btw)",
-  },
-  "Average Cost": { fr: "Coût moyen", nl: "Gemiddelde kost" },
-  "Average label price by day": { fr: "Prix moyen d’étiquette par jour", nl: "Gemiddelde labelprijs per dag" },
-  "Avg. Domestic": { fr: "Moy. domestique", nl: "Gem. binnenlands" },
-  "Recipient zone: domestic": { fr: "Zone destinataire : domestique", nl: "Ontvangerszone: binnenlands" },
-  "Avg. International": { fr: "Moy. international", nl: "Gem. internationaal" },
-  "Recipient zone: international": { fr: "Zone destinataire : international", nl: "Ontvangerszone: internationaal" },
-  "New Shipments": { fr: "Nouveaux envois", nl: "Nieuwe zendingen" },
-  "Created in selected range": { fr: "Créés sur la période sélectionnée", nl: "Aangemaakt in geselecteerde periode" },
-  "Delivery Issues": { fr: "Problèmes de livraison", nl: "Leveringsproblemen" },
-  "Flagged as delayed / exception": { fr: "Signalés en retard / exception", nl: "Gemarkeerd als vertraagd / uitzondering" },
-  "Total Shipments": { fr: "Total envois", nl: "Totale zendingen" },
-  "Daily label volume": { fr: "Volume quotidien d’étiquettes", nl: "Dagelijks labelvolume" },
-  "Services": { fr: "Services", nl: "Services" },
-  "Label mix by service type": { fr: "Répartition par type de service", nl: "Labelmix per servicetype" },
-  "labels": { fr: "étiquettes", nl: "labels" },
-  "0 labels analyzed": { fr: "0 étiquettes analysées", nl: "0 labels geanalyseerd" },
-  "Recipient Zones": { fr: "Zones destinataire", nl: "Ontvangerszones" },
-  "Distribution from Zone 1 to Zone 9": { fr: "Répartition de la Zone 1 à la Zone 9", nl: "Verdeling van Zone 1 tot Zone 9" },
-  "Top Domestic Regions": { fr: "Principales régions domestiques", nl: "Top binnenlandse regio’s" },
-  "Most frequent domestic destinations by region": { fr: "Destinations domestiques les plus fréquentes par région", nl: "Meest voorkomende binnenlandse bestemmingen per regio" },
-  "Labels": { fr: "Étiquettes", nl: "Labels" },
-  "Spend": { fr: "Dépenses", nl: "Spend" },
-  "Top International Countries": { fr: "Principaux pays internationaux", nl: "Top internationale landen" },
-  "Most frequent non-domestic destinations": { fr: "Destinations non domestiques les plus fréquentes", nl: "Meest voorkomende niet-binnenlandse bestemmingen" },
-  "Shopify Fulfillment Settings": { fr: "Paramètres Shopify Fulfillment", nl: "Shopify fulfillment-instellingen" },
-  "Select Fulfillment Locations": { fr: "Sélectionner les emplacements de fulfillment", nl: "Fulfillmentlocaties selecteren" },
-  "Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.": {
-    fr: "Sélectionnez un emplacement pour forcer les commandes importées. Sélectionnez tous les emplacements pour refléter le routage Shopify.",
-    nl: "Selecteer één locatie om geïmporteerde bestellingen te overschrijven. Selecteer alle locaties om Shopify-routing te volgen.",
-  },
-  "Locations": { fr: "Emplacements", nl: "Locaties" },
-  "Loading locations...": { fr: "Chargement des emplacements...", nl: "Locaties laden..." },
-  "Cancel": { fr: "Annuler", nl: "Annuleren" },
-  "Save Settings": { fr: "Enregistrer", nl: "Instellingen opslaan" },
-  "Upload CSV file": { fr: "Importer un fichier CSV", nl: "CSV-bestand uploaden" },
-  "Drop your CSV here, or": { fr: "Déposez votre CSV ici, ou", nl: "Sleep je CSV hierheen, of" },
-  "browse": { fr: "parcourir", nl: "bladeren" },
-  ".csv files only": { fr: "fichiers .csv uniquement", nl: "alleen .csv-bestanden" },
-  "Expected Fields": { fr: "Champs attendus", nl: "Verwachte velden" },
-  "Name, street, city, region, postal code, country": { fr: "Nom, rue, ville, région, code postal, pays", nl: "Naam, straat, stad, regio, postcode, land" },
-  "Weight and dimensions (or length, width, height)": { fr: "Poids et dimensions (ou longueur, largeur, hauteur)", nl: "Gewicht en afmetingen (of lengte, breedte, hoogte)" },
-  "Optional warehouse / origin fields": { fr: "Champs optionnels d’entrepôt / d’origine", nl: "Optionele magazijn-/originevelden" },
-  "Map Columns": { fr: "Mapper les colonnes", nl: "Kolommen mappen" },
-  "Auto-mapped columns ready for review": { fr: "Colonnes mappées automatiquement prêtes à vérifier", nl: "Automatisch gemapte kolommen klaar voor controle" },
-  "Expected Field": { fr: "Champ attendu", nl: "Verwacht veld" },
-  "CSV Column": { fr: "Colonne CSV", nl: "CSV-kolom" },
-  "Sample": { fr: "Exemple", nl: "Voorbeeld" },
-  "Upload a valid CSV with at least one data row.": { fr: "Importez un CSV valide avec au moins une ligne de données.", nl: "Upload een geldige CSV met minstens één gegevensrij." },
-  "Apply Mapping": { fr: "Appliquer le mapping", nl: "Mapping toepassen" },
-  "Receipt": { fr: "Reçu", nl: "Bon" },
-  "Label": { fr: "Étiquette", nl: "Label" },
-  "Price ex VAT": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
-  "Price incl VAT": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
-  "Price ex. vat": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
-  "Price incl. vat": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
-  "Price EX. VAT": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
-  "Price INCL. VAT": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
-  "Download Receipt PDF": { fr: "Télécharger le reçu PDF", nl: "Bon-PDF downloaden" },
-  "Restricted Goods": { fr: "Marchandises interdites", nl: "Beperkte goederen" },
-  "Shopify fulfillment settings": { fr: "paramètres Shopify fulfillment", nl: "Shopify fulfillment-instellingen" },
-  "e.g. Cotton t-shirt, 100% cotton": { fr: "ex. T-shirt coton, 100% coton", nl: "bv. Katoenen T-shirt, 100% katoen" },
-  "Label PDF preview": { fr: "Aperçu PDF étiquette", nl: "Label-PDF voorbeeld" },
-  "Account label PDF preview": { fr: "Aperçu PDF compte", nl: "Account label-PDF voorbeeld" },
-  "Total payments chart": { fr: "Graphique paiements totaux", nl: "Grafiek totale betalingen" },
-  "Average cost chart": { fr: "Graphique coût moyen", nl: "Grafiek gemiddelde kost" },
-  "Total shipments chart": { fr: "Graphique total envois", nl: "Grafiek totale zendingen" },
-  "Service distribution chart": { fr: "Graphique répartition services", nl: "Grafiek serviceverdeling" },
-  "Domestic regions map": { fr: "Carte des régions domestiques", nl: "Kaart binnenlandse regio's" },
-  "International countries map": { fr: "Carte des pays internationaux", nl: "Kaart internationale landen" },
-  "Current postal legislation prohibits sending mail or parcels with the following contents:": {
-    fr: "La législation postale actuelle interdit l’envoi de courrier ou colis contenant les éléments suivants :",
-    nl: "De huidige postwetgeving verbiedt het verzenden van post of pakketten met de volgende inhoud:",
-  },
-  "Dangerous goods are items whose shape, nature, or packaging can endanger people or damage other shipments, postal equipment, or third-party goods. Some everyday products are also prohibited in the postal network, including lighters, perfumes, manicure products, glue, paint, flammable liquids, aerosols, pressurized deodorants, hair dyes, and lithium batteries.": {
-    fr: "Les marchandises dangereuses sont des objets dont la forme, la nature ou l’emballage peuvent mettre des personnes en danger ou endommager d’autres envois, l’équipement postal ou des biens tiers. Certains produits du quotidien sont aussi interdits dans le réseau postal, notamment les briquets, parfums, produits de manucure, colle, peinture, liquides inflammables, aérosols, déodorants sous pression, colorations capillaires et batteries au lithium.",
-    nl: "Gevaarlijke goederen zijn items waarvan de vorm, aard of verpakking mensen in gevaar kan brengen of andere zendingen, postapparatuur of goederen van derden kan beschadigen. Sommige alledaagse producten zijn ook verboden in het postnetwerk, waaronder aanstekers, parfums, manicureproducten, lijm, verf, brandbare vloeistoffen, aerosols, onder druk staande deodoranten, haarkleurmiddelen en lithiumbatterijen.",
-  },
-  "Dangerous Goods": { fr: "Marchandises dangereuses", nl: "Gevaarlijke goederen" },
-  "A specific exception exists for certain lithium batteries. Refer to the dangerous goods overview for the complete rules and detailed list.": {
-    fr: "Une exception spécifique existe pour certaines batteries au lithium. Consultez l’aperçu des marchandises dangereuses pour les règles complètes.",
-    nl: "Voor bepaalde lithiumbatterijen bestaat een specifieke uitzondering. Raadpleeg het overzicht van gevaarlijke goederen voor alle regels.",
-  },
-  "Prohibited Items": { fr: "Objets interdits", nl: "Verboden artikelen" },
-  "Drugs, narcotics, and psychotropic substances.": { fr: "Drogues, stupéfiants et substances psychotropes.", nl: "Drugs, verdovende middelen en psychotrope stoffen." },
-  "Weapons, essential weapon components, and ammunition; imitation weapons; knives, swords, daggers, and other sharpened or cutting objects.": {
-    fr: "Armes, composants essentiels d’armes et munitions ; armes factices ; couteaux, épées, poignards et autres objets tranchants ou coupants.",
-    nl: "Wapens, essentiële wapenonderdelen en munitie; imitatie-wapens; messen, zwaarden, dolken en andere geslepen of snijdende voorwerpen.",
-  },
-  "Items, writings, or substances whose import, export, production, circulation, distribution, use, possession, sale, or transport is generally prohibited by law.": {
-    fr: "Objets, écrits ou substances dont l’importation, l’exportation, la production, la circulation, la distribution, l’usage, la détention, la vente ou le transport est généralement interdit par la loi.",
-    nl: "Items, geschriften of stoffen waarvan invoer, uitvoer, productie, circulatie, distributie, gebruik, bezit, verkoop of vervoer wettelijk verboden is.",
-  },
-  "Items with markings or inscriptions contrary to public order or accepted standards of decency.": {
-    fr: "Objets portant des inscriptions contraires à l’ordre public ou aux bonnes mœurs.",
-    nl: "Items met markeringen of opschriften die strijdig zijn met openbare orde of goede zeden.",
-  },
-  "Shipments whose destination or contents are prohibited under trade law.": {
-    fr: "Envois dont la destination ou le contenu est interdit par le droit du commerce.",
-    nl: "Zendingen waarvan bestemming of inhoud verboden is onder handelswetgeving.",
-  },
-  "Shipments containing counterfeit goods.": { fr: "Envois contenant des marchandises contrefaites.", nl: "Zendingen met namaakgoederen." },
-  "Coins, banknotes, and bearer securities.": { fr: "Pièces de monnaie, billets de banque et titres au porteur.", nl: "Munten, bankbiljetten en effecten aan toonder." },
-  "Jewelry (except costume jewelry without gold, silver, or precious stones), artworks, collections, animal skins, and other high-value materials.": {
-    fr: "Bijoux (sauf bijoux fantaisie sans or, argent ou pierres précieuses), œuvres d’art, collections, peaux d’animaux et autres matériaux de grande valeur.",
-    nl: "Juwelen (behalve fantasiejuwelen zonder goud, zilver of edelstenen), kunstwerken, verzamelingen, dierenhuiden en andere hoogwaardige materialen.",
-  },
-  "Parcels with a declared value above €5,000.": { fr: "Colis avec une valeur déclarée supérieure à 5 000 €.", nl: "Pakketten met een aangegeven waarde boven €5.000." },
-  "Supabase auth is not configured.": { fr: "L’authentification Supabase n’est pas configurée.", nl: "Supabase-auth is niet geconfigureerd." },
-  "Email and password are required.": { fr: "E-mail et mot de passe requis.", nl: "E-mail en wachtwoord zijn verplicht." },
-  "Signing In...": { fr: "Connexion...", nl: "Inloggen..." },
-  "Creating...": { fr: "Création...", nl: "Aanmaken..." },
-  "Account created. If confirmation is enabled, approve the email then sign in.": { fr: "Compte créé. Si la confirmation est activée, validez l’e-mail puis connectez-vous.", nl: "Account aangemaakt. Als bevestiging actief is, bevestig je e-mail en log daarna in." },
-  "Enter your email address, then click Forgot password.": { fr: "Entrez votre e-mail, puis cliquez sur Mot de passe oublié.", nl: "Vul je e-mailadres in en klik daarna op Wachtwoord vergeten." },
-  "If that email exists, a reset link has been sent. Check your inbox.": { fr: "Si cet e-mail existe, un lien de réinitialisation a été envoyé. Vérifiez votre boîte mail.", nl: "Als dit e-mailadres bestaat, is een resetlink verzonden. Controleer je inbox." },
-  "Supabase client failed to initialize.": { fr: "Échec d’initialisation du client Supabase.", nl: "Supabase-client kon niet worden geïnitialiseerd." },
-  "Sign in before configuring Shopify locations.": { fr: "Connectez-vous avant de configurer les emplacements Shopify.", nl: "Log in voordat je Shopify-locaties configureert." },
-  "Connect Shopify before opening fulfillment settings.": { fr: "Connectez Shopify avant d’ouvrir les paramètres de fulfillment.", nl: "Verbind Shopify voordat je fulfillmentinstellingen opent." },
-  "Connect Shopify before saving settings.": { fr: "Connectez Shopify avant d’enregistrer les paramètres.", nl: "Verbind Shopify voordat je instellingen opslaat." },
-  "Loading Shopify locations...": { fr: "Chargement des emplacements Shopify...", nl: "Shopify-locaties laden..." },
-  "Could not load Shopify locations.": { fr: "Impossible de charger les emplacements Shopify.", nl: "Kan Shopify-locaties niet laden." },
-  "Connect Shopify first.": { fr: "Connectez Shopify d’abord.", nl: "Verbind eerst Shopify." },
-  "Select at least one location.": { fr: "Sélectionnez au moins un emplacement.", nl: "Selecteer minstens één locatie." },
-  "Shopify fulfillment settings updated.": { fr: "Paramètres Shopify fulfillment mis à jour.", nl: "Shopify fulfillment-instellingen bijgewerkt." },
-  "Settings saved.": { fr: "Paramètres enregistrés.", nl: "Instellingen opgeslagen." },
-  "Could not save Shopify settings.": { fr: "Impossible d’enregistrer les paramètres Shopify.", nl: "Kan Shopify-instellingen niet opslaan." },
-  "Saving...": { fr: "Enregistrement...", nl: "Opslaan..." },
-  "{count} selected": { fr: "{count} sélectionné(s)", nl: "{count} geselecteerd" },
-  "{count} selected (all)": { fr: "{count} sélectionné(s) (tous)", nl: "{count} geselecteerd (alle)" },
-  "No locations available": { fr: "Aucun emplacement disponible", nl: "Geen locaties beschikbaar" },
-  "All Locations": { fr: "Tous les emplacements", nl: "Alle locaties" },
-  "Mirror Shopify location routing": { fr: "Reproduire le routage Shopify", nl: "Shopify-locatierouting volgen" },
-  "No address details": { fr: "Aucune adresse", nl: "Geen adresgegevens" },
-  "You must be signed in to use provider import.": { fr: "Vous devez être connecté pour utiliser l’import fournisseur.", nl: "Je moet ingelogd zijn om providerimport te gebruiken." },
-  "Shopify request timed out. Check Worker route and secrets.": { fr: "La requête Shopify a expiré. Vérifiez la route Worker et les secrets.", nl: "Shopify-verzoek time-out. Controleer Worker-route en secrets." },
-  "Could not load Shopify connection.": { fr: "Impossible de charger la connexion Shopify.", nl: "Kan Shopify-verbinding niet laden." },
-  "Shopify connected: {shop}": { fr: "Shopify connecté : {shop}", nl: "Shopify verbonden: {shop}" },
-  "Shopify connected.": { fr: "Shopify connecté.", nl: "Shopify verbonden." },
-  "Could not connect Shopify.": { fr: "Impossible de connecter Shopify.", nl: "Kon Shopify niet verbinden." },
-  "No usable {sourceLabel} rows found.": { fr: "Aucune ligne {sourceLabel} exploitable trouvée.", nl: "Geen bruikbare {sourceLabel}-rijen gevonden." },
-  "Enter your Shopify store domain (example: your-store.myshopify.com)": { fr: "Entrez le domaine de votre boutique Shopify (exemple : your-store.myshopify.com)", nl: "Voer je Shopify-winkeldomein in (voorbeeld: your-store.myshopify.com)" },
-  "Enter a valid .myshopify.com domain.": { fr: "Entrez un domaine .myshopify.com valide.", nl: "Voer een geldig .myshopify.com-domein in." },
-  "Connecting Shopify...": { fr: "Connexion à Shopify...", nl: "Shopify verbinden..." },
-  "Shopify install URL was not returned.": { fr: "L’URL d’installation Shopify n’a pas été renvoyée.", nl: "Shopify-installatie-URL werd niet teruggegeven." },
-  "Could not start Shopify connect flow.": { fr: "Impossible de démarrer la connexion Shopify.", nl: "Kon Shopify-verbindingsflow niet starten." },
-  "Shopify locations endpoint is not live yet. Deploy the latest API worker (or restart the local Node server) and try again.": {
-    fr: "L’endpoint Shopify locations n’est pas encore en ligne. Déployez le dernier worker API (ou redémarrez le serveur local Node) puis réessayez.",
-    nl: "De Shopify-locaties endpoint is nog niet live. Deploy de nieuwste API-worker (of herstart de lokale Node-server) en probeer opnieuw.",
-  },
-  "Connect Shopify before importing.": { fr: "Connectez Shopify avant d’importer.", nl: "Verbind Shopify vóór import." },
-  "Importing orders from {shop}...": { fr: "Import des commandes depuis {shop}...", nl: "Bestellingen importeren van {shop}..." },
-  "Imported {count} orders from {shop}.": { fr: "{count} commandes importées depuis {shop}.", nl: "{count} bestellingen geïmporteerd van {shop}." },
-  "Imported {count} Shopify orders": { fr: "{count} commandes Shopify importées", nl: "{count} Shopify-bestellingen geïmporteerd" },
-  "Shopify connection expired. Click Shopify again to reconnect.": { fr: "Connexion Shopify expirée. Cliquez à nouveau sur Shopify pour reconnecter.", nl: "Shopify-verbinding verlopen. Klik opnieuw op Shopify om te herverbinden." },
-  "Sign in before importing from Shopify.": { fr: "Connectez-vous avant d’importer depuis Shopify.", nl: "Log in vóór importeren vanuit Shopify." },
-  "Shopify import failed.": { fr: "Échec de l’import Shopify.", nl: "Shopify-import mislukt." },
-  "Sign in to use account shipping origins.": { fr: "Connectez-vous pour utiliser les origines d’expédition du compte.", nl: "Log in om account-verzendorigines te gebruiken." },
-  "Sign in to manage account shipping origins.": { fr: "Connectez-vous pour gérer les origines d’expédition du compte.", nl: "Log in om account-verzendorigines te beheren." },
-  "Add at least one shipping origin in Account settings.": { fr: "Ajoutez au moins une origine d’expédition dans les paramètres du compte.", nl: "Voeg minstens één verzendorigine toe in accountinstellingen." },
-  "Add at least one shipping origin in Account settings before continuing.": { fr: "Ajoutez au moins une origine d’expédition dans les paramètres du compte avant de continuer.", nl: "Voeg minstens één verzendorigine toe in accountinstellingen voordat je verdergaat." },
-  "Sender is fixed to your only saved shipping origin.": { fr: "L’expéditeur est fixé à votre seule origine enregistrée.", nl: "Afzender staat vast op je enige opgeslagen oorsprong." },
-  "No saved ship-from origin. Add one in Account settings.": { fr: "Aucune origine d’expédition enregistrée. Ajoutez-en une dans les paramètres du compte.", nl: "Geen opgeslagen verzendorigine. Voeg er een toe in accountinstellingen." },
-  "Ship from is controlled by your Shopify": { fr: "L’origine d’expédition est contrôlée par vos", nl: "Ship from wordt beheerd door je Shopify" },
-  "fulfillment settings": { fr: "paramètres fulfillment", nl: "fulfillment-instellingen" },
-  "for this import.": { fr: "pour cet import.", nl: "voor deze import." },
-  "Ship from is controlled by your Shopify fulfillment settings for this import.": { fr: "L’origine d’expédition est pilotée par vos paramètres Shopify fulfillment pour cet import.", nl: "Ship from wordt bepaald door je Shopify fulfillment-instellingen voor deze import." },
-  "Using your only saved ship-from origin.": { fr: "Utilisation de votre seule origine enregistrée.", nl: "Je enige opgeslagen verzendorigine wordt gebruikt." },
-  "Choose which origin to apply to this batch.": { fr: "Choisissez l’origine à appliquer à ce lot.", nl: "Kies welke oorsprong op deze batch wordt toegepast." },
-  "Unsaved changes in shipping origins.": { fr: "Modifications non enregistrées dans les origines d’expédition.", nl: "Niet-opgeslagen wijzigingen in verzendorigines." },
-  "Origin": { fr: "Origine", nl: "Oorsprong" },
-  "Warehouse": { fr: "Entrepôt", nl: "Magazijn" },
-  "warehouse": { fr: "entrepôt", nl: "magazijn" },
-  "Applied {name} to sender details.": { fr: "{name} appliqué aux données expéditeur.", nl: "{name} toegepast op afzendergegevens." },
-  "Physical": { fr: "Physique", nl: "Fysiek" },
-  "Return": { fr: "Retour", nl: "Retour" },
-  "Same as physical": { fr: "Identique au physique", nl: "Zelfde als fysiek" },
-  "Not set": { fr: "Non défini", nl: "Niet ingesteld" },
-  "Origin Label": { fr: "Nom de l’origine", nl: "Naam oorsprong" },
-  "Sender Name": { fr: "Nom expéditeur", nl: "Naam afzender" },
-  "Sender/Company name": { fr: "Nom expéditeur/entreprise", nl: "Naam afzender/bedrijf" },
-  "Default": { fr: "Par défaut", nl: "Standaard" },
-  "Same Return Address": { fr: "Même adresse de retour", nl: "Zelfde retouradres" },
-  "Return Name": { fr: "Nom de retour", nl: "Retournaam" },
-  "Return Street": { fr: "Rue de retour", nl: "Retourstraat" },
-  "Return City": { fr: "Ville de retour", nl: "Retourstad" },
-  "Return Region": { fr: "Région de retour", nl: "Retourregio" },
-  "Return Postal Code": { fr: "Code postal retour", nl: "Retourpostcode" },
-  "Return Country": { fr: "Pays de retour", nl: "Retourland" },
-  "Return sender/company": { fr: "Nom retour/entreprise", nl: "Retourafzender/bedrijf" },
-  "Apply": { fr: "Appliquer", nl: "Toepassen" },
-  "Remove": { fr: "Supprimer", nl: "Verwijderen" },
-  "Add at least one warehouse origin.": { fr: "Ajoutez au moins une origine d’entrepôt.", nl: "Voeg minstens één magazijnoorsprong toe." },
-  "Maximum {max} warehouses reached.": { fr: "Maximum de {max} entrepôts atteint.", nl: "Maximum {max} magazijnen bereikt." },
-  "At least one warehouse origin is required.": { fr: "Au moins une origine d’entrepôt est requise.", nl: "Minstens één magazijnoorsprong is vereist." },
-  "Loading shipping origins...": { fr: "Chargement des origines d’expédition...", nl: "Verzendorigines laden..." },
-  "Shipping origins synced from your account.": { fr: "Origines d’expédition synchronisées depuis votre compte.", nl: "Verzendorigines gesynchroniseerd vanuit je account." },
-  "Showing browser-saved origins. Click Save Origins to sync.": { fr: "Origines locales affichées. Cliquez sur Enregistrer les origines pour synchroniser.", nl: "Browser-opgeslagen origines getoond. Klik op Origines opslaan om te synchroniseren." },
-  "Add your shipping origin and click Save Origins.": { fr: "Ajoutez votre origine d’expédition puis cliquez sur Enregistrer les origines.", nl: "Voeg je verzendorigine toe en klik op Origines opslaan." },
-  "Saving shipping origins...": { fr: "Enregistrement des origines d’expédition...", nl: "Verzendorigines opslaan..." },
-  "Could not sync to account. Supabase client is unavailable.": { fr: "Impossible de synchroniser au compte. Client Supabase indisponible.", nl: "Kan niet met account synchroniseren. Supabase-client is niet beschikbaar." },
-  "Could not sync shipping origins: {error}": { fr: "Impossible de synchroniser les origines d’expédition : {error}", nl: "Kan verzendorigines niet synchroniseren: {error}" },
-  "unknown error": { fr: "erreur inconnue", nl: "onbekende fout" },
-  "Shipping origins saved to your account.": { fr: "Origines d’expédition enregistrées sur votre compte.", nl: "Verzendorigines opgeslagen in je account." },
-  "No shipping origins configured yet.": { fr: "Aucune origine d’expédition configurée pour l’instant.", nl: "Nog geen verzendorigines geconfigureerd." },
-  "{prefix}: origin label is required.": { fr: "{prefix} : le nom de l’origine est requis.", nl: "{prefix}: oorsprongsnaam is verplicht." },
-  "{prefix}: sender name is required.": { fr: "{prefix} : le nom expéditeur est requis.", nl: "{prefix}: afzendernaam is verplicht." },
-  "{prefix}: street is required.": { fr: "{prefix} : la rue est requise.", nl: "{prefix}: straat is verplicht." },
-  "{prefix}: city is required.": { fr: "{prefix} : la ville est requise.", nl: "{prefix}: stad is verplicht." },
-  "{prefix}: postal code is required.": { fr: "{prefix} : le code postal est requis.", nl: "{prefix}: postcode is verplicht." },
-  "{prefix}: country is required.": { fr: "{prefix} : le pays est requis.", nl: "{prefix}: land is verplicht." },
-  "{prefix}: return sender name is required when using a custom return address.": { fr: "{prefix} : le nom retour est requis avec une adresse retour personnalisée.", nl: "{prefix}: retourafzender is verplicht bij een aangepast retouradres." },
-  "{prefix}: return street is required when using a custom return address.": { fr: "{prefix} : la rue retour est requise avec une adresse retour personnalisée.", nl: "{prefix}: retourstraat is verplicht bij een aangepast retouradres." },
-  "{prefix}: return city is required when using a custom return address.": { fr: "{prefix} : la ville retour est requise avec une adresse retour personnalisée.", nl: "{prefix}: retourstad is verplicht bij een aangepast retouradres." },
-  "{prefix}: return postal code is required when using a custom return address.": { fr: "{prefix} : le code postal retour est requis avec une adresse retour personnalisée.", nl: "{prefix}: retourpostcode is verplicht bij een aangepast retouradres." },
-  "{prefix}: return country is required when using a custom return address.": { fr: "{prefix} : le pays retour est requis avec une adresse retour personnalisée.", nl: "{prefix}: retourland is verplicht bij een aangepast retouradres." },
-  "No generations yet.": { fr: "Aucune génération pour l’instant.", nl: "Nog geen generaties." },
-  "Label generation": { fr: "Génération d’étiquette", nl: "Labelgeneratie" },
-  "{count} labels • ex. vat {ex} • incl. vat {incl}": {
-    fr: "{count} étiquettes • hors TVA {ex} • TVA incl. {incl}",
-    nl: "{count} labels • excl. btw {ex} • incl. btw {incl}",
-  },
-  "Loading previous generations...": { fr: "Chargement des générations précédentes...", nl: "Vorige generaties laden..." },
-  "No preview-ready generations yet.": { fr: "Aucune génération prête pour prévisualisation.", nl: "Nog geen generaties klaar voor preview." },
-  "No previous generations yet.": { fr: "Aucune génération précédente.", nl: "Nog geen vorige generaties." },
-  "Sync delayed. Showing last synced history.": { fr: "Synchronisation en retard. Affichage du dernier historique synchronisé.", nl: "Synchronisatie vertraagd. Laatst gesynchroniseerde historiek getoond." },
-  "Showing browser-saved history for this account.": { fr: "Affichage de l’historique enregistré dans le navigateur pour ce compte.", nl: "Browser-opgeslagen historiek voor dit account wordt getoond." },
-  "No browser history saved for this account yet.": { fr: "Aucun historique navigateur enregistré pour ce compte.", nl: "Nog geen browserhistoriek opgeslagen voor dit account." },
-  "Sync delayed. Showing previously loaded history.": { fr: "Synchronisation en retard. Affichage de l’historique déjà chargé.", nl: "Synchronisatie vertraagd. Eerder geladen historiek wordt getoond." },
-  "Could not load history right now. Please refresh in a moment.": { fr: "Impossible de charger l’historique pour le moment. Veuillez actualiser.", nl: "Kan historiek nu niet laden. Vernieuw zo meteen." },
-  "Date": { fr: "Date", nl: "Datum" },
-  "Order": { fr: "Commande", nl: "Bestelling" },
-  "EX": { fr: "HT", nl: "EX" },
-  "INCL": { fr: "TTC", nl: "INCL" },
-  "VAT ({vat}%)": { fr: "TVA ({vat}%)", nl: "Btw ({vat}%)" },
-  "Unit (ex VAT)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (incl VAT)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
-  "Unit (ex. vat)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (incl. vat)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
-  "Unit (EX. VAT)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (INCL. VAT)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
-  "SHIPR RECEIPT": { fr: "REÇU SHIPR", nl: "SHIPR BON" },
-  "LABEL BREAKDOWN": { fr: "DÉTAIL DES ÉTIQUETTES", nl: "LABELOVERZICHT" },
-  "label-batch": { fr: "lot-etiquettes", nl: "label-batch" },
-  "label-order": { fr: "commande-etiquette", nl: "label-order" },
-  "{service} • {count} labels • ex. vat {ex} • vat {vat} • incl. vat {incl}": {
-    fr: "{service} • {count} étiquettes • hors TVA {ex} • TVA {vat} • TVA incl. {incl}",
-    nl: "{service} • {count} labels • excl. btw {ex} • btw {vat} • incl. btw {incl}",
-  },
-  "{service} • {count} labels • EX. VAT {ex} • VAT {vat} • INCL. VAT {incl}": {
-    fr: "{service} • {count} étiquettes • HORS TVA {ex} • TVA {vat} • TVA INCL. {incl}",
-    nl: "{service} • {count} labels • EXCL. BTW {ex} • BTW {vat} • INCL. BTW {incl}",
-  },
-  "{count} labels • EX. VAT {ex} • INCL. VAT {incl}": {
-    fr: "{count} étiquettes • HORS TVA {ex} • TVA INCL. {incl}",
-    nl: "{count} labels • EXCL. BTW {ex} • INCL. BTW {incl}",
-  },
-  "{count} labels analyzed": { fr: "{count} étiquettes analysées", nl: "{count} labels geanalyseerd" },
-  "{count} labels": { fr: "{count} étiquettes", nl: "{count} labels" },
-  "{amount} pending": { fr: "{amount} en attente", nl: "{amount} in behandeling" },
-  "ex. vat • incl. vat {amount}": {
-    fr: "hors TVA • TVA incl. {amount}",
-    nl: "excl. btw • incl. btw {amount}",
-  },
-  "EX. VAT • INCL. VAT {amount}": {
-    fr: "HORS TVA • TVA INCL. {amount}",
-    nl: "EXCL. BTW • INCL. BTW {amount}",
-  },
-  "7 days": { fr: "7 jours", nl: "7 dagen" },
-  "30 days": { fr: "30 jours", nl: "30 dagen" },
-  "90 days": { fr: "90 jours", nl: "90 dagen" },
-  "1 year": { fr: "1 an", nl: "1 jaar" },
-  "{count} events": { fr: "{count} événements", nl: "{count} events" },
-  "{amount} spend": { fr: "{amount} dépenses", nl: "{amount} spend" },
-  "{rate}% rate": { fr: "{rate}% taux", nl: "{rate}% ratio" },
-  "Payments": { fr: "Paiements", nl: "Betalingen" },
-  "Average Cost": { fr: "Coût moyen", nl: "Gemiddelde kost" },
-  "Shipments": { fr: "Envois", nl: "Zendingen" },
-  "No service data in this range.": { fr: "Aucune donnée de service sur cette période.", nl: "Geen servicedata in dit bereik." },
-  "Zone {index}": { fr: "Zone {index}", nl: "Zone {index}" },
-  "No domestic region data yet.": { fr: "Aucune donnée régionale domestique pour l’instant.", nl: "Nog geen binnenlandse regiogegevens." },
-  "No international country data yet.": { fr: "Aucune donnée pays internationale pour l’instant.", nl: "Nog geen internationale landgegevens." },
-  "Unknown": { fr: "Inconnu", nl: "Onbekend" },
-  "Unknown Service": { fr: "Service inconnu", nl: "Onbekende service" },
-  "North Region": { fr: "Région Nord", nl: "Noordelijke regio" },
-  "South Region": { fr: "Région Sud", nl: "Zuidelijke regio" },
-  "Capital Region": { fr: "Région Capitale", nl: "Hoofdstedelijke regio" },
-  "Region": { fr: "Région", nl: "Regio" },
-  "Could not parse this CSV. Please check the file format and try again.": { fr: "Impossible de lire ce CSV. Vérifiez le format et réessayez.", nl: "Kon deze CSV niet verwerken. Controleer het formaat en probeer opnieuw." },
-  "No rows detected": { fr: "Aucune ligne détectée", nl: "Geen rijen gedetecteerd" },
-  "{file} • {rows} rows • {columns} columns": { fr: "{file} • {rows} lignes • {columns} colonnes", nl: "{file} • {rows} rijen • {columns} kolommen" },
-  "Required": { fr: "Obligatoire", nl: "Verplicht" },
-  "Not mapped": { fr: "Non mappé", nl: "Niet gemapt" },
-  "Column {index}": { fr: "Colonne {index}", nl: "Kolom {index}" },
-  "No sample": { fr: "Aucun exemple", nl: "Geen voorbeeld" },
-  "Map required fields: {fields}.": { fr: "Mappez les champs obligatoires : {fields}.", nl: "Map verplichte velden: {fields}." },
-  "Required fields must map to separate CSV columns ({fields}).": { fr: "Les champs obligatoires doivent être mappés sur des colonnes CSV distinctes ({fields}).", nl: "Verplichte velden moeten op aparte CSV-kolommen worden gemapt ({fields})." },
-  "This mapping produced no usable rows. Adjust mapping and try again.": { fr: "Ce mapping ne produit aucune ligne exploitable. Ajustez puis réessayez.", nl: "Deze mapping leverde geen bruikbare rijen op. Pas mapping aan en probeer opnieuw." },
-  "Map CSV columns": { fr: "Mapper les colonnes CSV", nl: "CSV-kolommen mappen" },
-  "Preparing Label...": { fr: "Préparation de l’étiquette...", nl: "Label voorbereiden..." },
-  "{country} is outside the customs union. Complete declaration details before service selection.": {
-    fr: "{country} est hors union douanière. Complétez la déclaration avant de choisir le service.",
-    nl: "{country} ligt buiten de douane-unie. Vul de aangifte in vóór je een service kiest.",
-  },
-  "{count} destinations are outside the customs union. Complete declaration details before service selection.": {
-    fr: "{count} destinations sont hors union douanière. Complétez la déclaration avant de choisir le service.",
-    nl: "{count} bestemmingen liggen buiten de douane-unie. Vul de aangifte in vóór je een service kiest.",
-  },
-  "Item {index}": { fr: "Article {index}", nl: "Item {index}" },
-  "Provide a precise product description and material/composition.": {
-    fr: "Indiquez une description précise du produit et sa matière/composition.",
-    nl: "Geef een precieze productbeschrijving en materiaal/samenstelling.",
-  },
-  "Item Description": { fr: "Description de l’article", nl: "Itemomschrijving" },
-  "Number of Items": { fr: "Nombre d’articles", nl: "Aantal items" },
-  "Value (EUR)": { fr: "Valeur (EUR)", nl: "Waarde (EUR)" },
-  "Origin of Items": { fr: "Origine des articles", nl: "Oorsprong van items" },
-  "HS Tariff Code (optional)": { fr: "Code tarifaire SH (optionnel)", nl: "HS-tariefcode (optioneel)" },
-  "Imported from {provider}": { fr: "Importé depuis {provider}", nl: "Geïmporteerd van {provider}" },
-  "Failed to load domestic regions GeoJSON ({status})": { fr: "Échec du chargement GeoJSON régions ({status})", nl: "Laden van GeoJSON-regio's mislukt ({status})" },
-  "Failed to load world GeoJSON ({status})": { fr: "Échec du chargement GeoJSON monde ({status})", nl: "Laden van wereld-GeoJSON mislukt ({status})" },
-  "Unknown history fetch error": { fr: "Erreur inconnue lors du chargement de l’historique", nl: "Onbekende fout bij laden van historiek" },
-  "Supabase unavailable": { fr: "Supabase indisponible", nl: "Supabase niet beschikbaar" },
-  "Could not load this page preview.": { fr: "Impossible de charger cet aperçu.", nl: "Kan deze preview niet laden." },
-  "Domestic map data unavailable": { fr: "Données cartographiques domestiques indisponibles", nl: "Binnenlandse kaartdata niet beschikbaar" },
-  "Request failed ({status})": { fr: "Requête échouée ({status})", nl: "Verzoek mislukt ({status})" },
-};
 // Toggle to compare auth logo layouts quickly:
 // "inline" => logo replaces Shipr header block inside card.
 // "stack" => logo above the card (previous behavior).
@@ -853,20 +177,8 @@ const supabaseClient =
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
 const authForm = document.getElementById("authForm");
-const authTitle = document.getElementById("authTitle");
-const authSubtitle = document.getElementById("authSubtitle");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
-const authPasswordConfirm = document.getElementById("authPasswordConfirm");
-const authRegisterOnlyFields = document.querySelectorAll(".auth-register-field");
-const authCompanyName = document.getElementById("authCompanyName");
-const authContactName = document.getElementById("authContactName");
-const authContactEmail = document.getElementById("authContactEmail");
-const authContactPhone = document.getElementById("authContactPhone");
-const authBillingAddress = document.getElementById("authBillingAddress");
-const authTaxId = document.getElementById("authTaxId");
-const authCustomerId = document.getElementById("authCustomerId");
-const authInviteStatus = document.getElementById("authInviteStatus");
 const authError = document.getElementById("authError");
 const authSignIn = document.getElementById("authSignIn");
 const authSignUp = document.getElementById("authSignUp");
@@ -879,16 +191,13 @@ const appLogoLottie = document.getElementById("appLogoLottie");
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
-const openAdminPageButton = document.getElementById("openAdminPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
-const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeHistoryPageButton = document.getElementById("closeHistoryPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
-const adminPageSection = document.getElementById("adminPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
 const accountCompanyName = document.getElementById("accountCompanyName");
@@ -898,38 +207,11 @@ const accountContactPhone = document.getElementById("accountContactPhone");
 const accountBillingAddress = document.getElementById("accountBillingAddress");
 const accountTaxId = document.getElementById("accountTaxId");
 const accountCustomerId = document.getElementById("accountCustomerId");
-const accountAccountManager = document.getElementById("accountAccountManager");
-const languageSelect = document.getElementById("languageSelect");
+const accountPlan = document.getElementById("accountPlan");
 const warehouseStatus = document.getElementById("warehouseStatus");
 const warehouseList = document.getElementById("warehouseList");
 const warehouseAddButton = document.getElementById("warehouseAdd");
 const warehouseSaveButton = document.getElementById("warehouseSave");
-const clientInviteEmailInput = document.getElementById("clientInviteEmail");
-const clientInviteExpirySelect = document.getElementById("clientInviteExpiry");
-const clientInviteCreateButton = document.getElementById("clientInviteCreateButton");
-const clientInviteResult = document.getElementById("clientInviteResult");
-const clientInviteUrlInput = document.getElementById("clientInviteUrl");
-const clientInviteCopyButton = document.getElementById("clientInviteCopyButton");
-const clientInviteStatus = document.getElementById("clientInviteStatus");
-const clientInviteHistoryEmpty = document.getElementById("clientInviteHistoryEmpty");
-const clientInviteHistoryList = document.getElementById("clientInviteHistoryList");
-const clientInviteResultEmail = document.getElementById("clientInviteResultEmail");
-const clientInviteResultExpiry = document.getElementById("clientInviteResultExpiry");
-const adminSummaryClients = document.getElementById("adminSummaryClients");
-const adminSummaryActiveClients = document.getElementById("adminSummaryActiveClients");
-const adminSummaryInvites = document.getElementById("adminSummaryInvites");
-const adminSummaryRevenue = document.getElementById("adminSummaryRevenue");
-const adminSummaryProfit = document.getElementById("adminSummaryProfit");
-const adminSummaryProfitMeta = document.getElementById("adminSummaryProfitMeta");
-const adminCarrierDiscountInput = document.getElementById("adminCarrierDiscount");
-const adminClientDiscountInput = document.getElementById("adminClientDiscount");
-const adminSettingsPreview = document.getElementById("adminSettingsPreview");
-const adminSettingsSaveButton = document.getElementById("adminSettingsSaveButton");
-const adminClientSearchInput = document.getElementById("adminClientSearch");
-const adminClientFilterSelect = document.getElementById("adminClientFilter");
-const adminClientSortSelect = document.getElementById("adminClientSort");
-const adminClientsEmpty = document.getElementById("adminClientsEmpty");
-const adminClientsList = document.getElementById("adminClientsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
 const accountHistoryList = document.getElementById("accountHistoryList");
 const accountPreviewMeta = document.getElementById("accountPreviewMeta");
@@ -944,7 +226,6 @@ const receiptModalClose = document.getElementById("receiptModalClose");
 const receiptSummary = document.getElementById("receiptSummary");
 const receiptTableBody = document.querySelector("#receiptTable tbody");
 const receiptDownloadPdf = document.getElementById("receiptDownloadPdf");
-const toastStack = document.getElementById("toastStack");
 const reportsRangeButtons = document.querySelectorAll("[data-report-range]");
 const reportsCustomRange = document.getElementById("reportsCustomRange");
 const reportsStartDate = document.getElementById("reportsStartDate");
@@ -1001,7 +282,7 @@ const summaryPrice = document.getElementById("summaryPrice");
 const summaryQty = document.getElementById("summaryQty");
 const summaryTotal = document.getElementById("summaryTotal");
 const summaryTracking = document.getElementById("summaryTracking");
-const summaryChatButton = document.getElementById("summaryChatButton");
+const summaryLabelId = document.getElementById("summaryLabelId");
 const paymentService = document.getElementById("paymentService");
 const paymentTotal = document.getElementById("paymentTotal");
 const invoiceQty = document.getElementById("invoiceQty");
@@ -1118,11 +399,6 @@ const previewDims = document.getElementById("previewDims");
 let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
 let currentUser = null;
-let activeLanguage = "en";
-let authMode = "login";
-let authInviteToken = "";
-let authInviteData = null;
-let authInviteValidationToken = 0;
 let historyRecords = [];
 let historyStore = "supabase";
 let accountActiveRecord = null;
@@ -1137,30 +413,13 @@ let warehouseLoadRequestToken = 0;
 let warehouseEnteringIds = new Set();
 let authParticlesStarted = false;
 let currentMainView = "builder";
-let adminAccessAllowed = false;
-let adminDashboardLoading = false;
-let adminDashboardLoaded = false;
-let adminDashboardState = null;
-let adminClients = [];
-let adminClientSearch = "";
-let adminClientFilter = "all";
-let adminClientSort = "recent";
-let adminSettingsDraft = {
-  carrier_discount_pct: 25,
-  client_discount_pct: 20,
-};
-let adminSettingsSaved = {
-  carrier_discount_pct: 25,
-  client_discount_pct: 20,
-};
-let adminInviteActionBusyIds = new Set();
 let authShellTransitionToken = 0;
 let mainViewTransitionToken = 0;
 let csvMappingDraft = null;
 let csvModalStepState = "upload";
 let csvModalStepTransitionToken = 0;
 let reportsRangeDays = 30;
-let reportsRangeMode = "all";
+let reportsRangeMode = "preset";
 let reportsCustomStart = "";
 let reportsCustomEnd = "";
 let reportsActiveServiceIndex = -1;
@@ -1177,10 +436,6 @@ let shopifyLocationsCache = [];
 let shopifyLocationDraftSelection = new Set();
 let shopifySavedLocationSelection = [];
 let shopifySettingsBusy = false;
-let clientInviteBusy = false;
-let clientInviteHistory = [];
-const translationTextNodeBase = new WeakMap();
-const translationAttrBase = new WeakMap();
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
   "domestic",
@@ -1408,30 +663,13 @@ function getRelativeRoutePath(pathname) {
   return normalized;
 }
 
-function getInviteTokenFromLocation(location = window.location) {
-  const params = new URLSearchParams(location.search || "");
-  const queryToken = String(params.get("invite") || params.get("token") || "").trim();
-  if (queryToken) return queryToken;
-  const relativePath = getRelativeRoutePath(location.pathname || "/");
-  if (relativePath.startsWith(`${ROUTE_PATHS.register}/`)) {
-    return decodeURIComponent(relativePath.slice(ROUTE_PATHS.register.length + 1)).trim();
-  }
-  return "";
-}
-
 function parseRouteFromLocation() {
   const path = getRelativeRoutePath(window.location.pathname);
   if (path === ROUTE_PATHS.login) {
     return { view: "login" };
   }
-  if (path === ROUTE_PATHS.register || path.startsWith(`${ROUTE_PATHS.register}/`)) {
-    return { view: "register", inviteToken: getInviteTokenFromLocation(window.location) };
-  }
   if (path === ROUTE_PATHS.account) {
     return { view: "account" };
-  }
-  if (path === ROUTE_PATHS.admin) {
-    return { view: "admin" };
   }
   if (path === ROUTE_PATHS.history) {
     return { view: "history" };
@@ -1448,9 +686,6 @@ function parseRouteFromLocation() {
   const hash = window.location.hash || "";
   if (hash === "#account") {
     return { view: "account" };
-  }
-  if (hash === "#admin") {
-    return { view: "admin" };
   }
   if (hash === "#history") {
     return { view: "history" };
@@ -1474,14 +709,8 @@ function routeToPath(route) {
   if (route.view === "login") {
     return buildRoutePath(ROUTE_PATHS.login);
   }
-  if (route.view === "register") {
-    return buildRoutePath(ROUTE_PATHS.register);
-  }
   if (route.view === "account") {
     return buildRoutePath(ROUTE_PATHS.account);
-  }
-  if (route.view === "admin") {
-    return buildRoutePath(ROUTE_PATHS.admin);
   }
   if (route.view === "history") {
     return buildRoutePath(ROUTE_PATHS.history);
@@ -1497,9 +726,6 @@ function routeToState(route) {
     const step = clampStep(route?.step || state.step);
     return { view: "builder", step, customs: Boolean(route?.customs && step === 1) };
   }
-  if (route.view === "register") {
-    return { view: "register", inviteToken: String(route?.inviteToken || "").trim() };
-  }
   return { view: route.view };
 }
 
@@ -1513,8 +739,7 @@ function updateRoute(route, options = {}) {
   const sameState =
     history.state?.view === nextState.view &&
     Number(history.state?.step || 0) === Number(nextState.step || 0) &&
-    Boolean(history.state?.customs) === Boolean(nextState.customs) &&
-    String(history.state?.inviteToken || "") === String(nextState?.inviteToken || "");
+    Boolean(history.state?.customs) === Boolean(nextState.customs);
 
   if (replace) {
     if (!samePath || !sameState) {
@@ -1535,17 +760,13 @@ async function ensureReportsGeoDataLoaded() {
   reportsGeoLoadPromise = Promise.all([
     fetch(REPORT_DOMESTIC_GEOJSON_URL).then((response) => {
       if (!response.ok) {
-        throw new Error(
-          tr("Failed to load domestic regions GeoJSON ({status})", { status: response.status })
-        );
+        throw new Error(`Failed to load domestic regions GeoJSON (${response.status})`);
       }
       return response.json();
     }),
     fetch(REPORT_WORLD_GEOJSON_URL).then((response) => {
       if (!response.ok) {
-        throw new Error(
-          tr("Failed to load world GeoJSON ({status})", { status: response.status })
-        );
+        throw new Error(`Failed to load world GeoJSON (${response.status})`);
       }
       return response.json();
     }),
@@ -1575,303 +796,26 @@ function normalizeNameKey(value) {
     .trim();
 }
 
-function normalizeLanguageCode(value) {
-  const code = String(value || "").trim().toLowerCase();
-  if (SUPPORTED_LANGUAGES.has(code)) return code;
-  if (code.startsWith("fr")) return "fr";
-  if (code.startsWith("nl")) return "nl";
-  if (code.startsWith("en")) return "en";
-  return "en";
-}
-
-function getUiLocale() {
-  return LANGUAGE_LOCALE[activeLanguage] || LANGUAGE_LOCALE.en;
-}
-
-function normalizeTranslationKey(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function interpolateTranslation(template, vars = {}) {
-  return String(template || "").replace(/\{(\w+)\}/g, (_match, key) => {
-    if (vars && Object.prototype.hasOwnProperty.call(vars, key)) {
-      return String(vars[key]);
-    }
-    return `{${key}}`;
-  });
-}
-
-function tr(baseText, vars = {}) {
-  const baseKey = normalizeTranslationKey(baseText);
-  if (!baseKey) return "";
-  const entry = TRANSLATIONS[baseKey];
-  const template =
-    activeLanguage === "en"
-      ? baseKey
-      : entry && typeof entry === "object" && entry[activeLanguage]
-        ? entry[activeLanguage]
-        : baseKey;
-  return interpolateTranslation(template, vars);
-}
-
-function translateServiceName(service) {
-  const normalized = String(service || "").trim();
-  if (!normalized) return tr("Label generation");
-  return tr(normalized);
-}
-
-function translateDomesticRegionName(name) {
-  const normalized = normalizeNameKey(name);
-  if (normalized === normalizeNameKey("North Region")) return tr("North Region");
-  if (normalized === normalizeNameKey("South Region")) return tr("South Region");
-  if (normalized === normalizeNameKey("Capital Region")) return tr("Capital Region");
-  return name;
-}
-
-function applyStaticTranslations(root = document.body) {
-  if (!root) return;
-  const walker = document.createTreeWalker(
-    root,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        if (!node || !node.nodeValue || !node.parentElement) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        const parentTag = node.parentElement.tagName;
-        if (parentTag === "SCRIPT" || parentTag === "STYLE") {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    },
-    false
-  );
-
-  let textNode = walker.nextNode();
-  while (textNode) {
-    const baseValue = translationTextNodeBase.has(textNode)
-      ? translationTextNodeBase.get(textNode)
-      : textNode.nodeValue;
-    if (!translationTextNodeBase.has(textNode)) {
-      translationTextNodeBase.set(textNode, baseValue);
-    }
-    const source = String(baseValue || "");
-    const leading = source.match(/^\s*/)?.[0] || "";
-    const trailing = source.match(/\s*$/)?.[0] || "";
-    const core = source.trim();
-    if (core) {
-      textNode.nodeValue = `${leading}${tr(core)}${trailing}`;
-    }
-    textNode = walker.nextNode();
-  }
-
-  const elements = root.querySelectorAll("*");
-  elements.forEach((element) => {
-    let attrCache = translationAttrBase.get(element);
-    if (!attrCache) {
-      attrCache = {};
-      translationAttrBase.set(element, attrCache);
-    }
-    TRANSLATION_ATTRS.forEach((attrName) => {
-      if (!element.hasAttribute(attrName)) return;
-      if (!Object.prototype.hasOwnProperty.call(attrCache, attrName)) {
-        attrCache[attrName] = element.getAttribute(attrName) || "";
-      }
-      const source = String(attrCache[attrName] || "");
-      if (!source.trim()) return;
-      element.setAttribute(attrName, tr(source));
-    });
-  });
-}
-
-function getStoredLanguagePreference() {
-  try {
-    return normalizeLanguageCode(localStorage.getItem(LANGUAGE_STORAGE_KEY));
-  } catch (_error) {
-    return "en";
-  }
-}
-
-function setStoredLanguagePreference(language) {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, normalizeLanguageCode(language));
-  } catch (_error) {
-    // Ignore storage write failures.
-  }
-}
-
-async function saveLanguagePreference(language) {
-  if (!supabaseClient || !currentUser?.id) return;
-  const nextLanguage = normalizeLanguageCode(language);
-  const existing = normalizeLanguageCode(currentUser?.user_metadata?.preferred_language);
-  if (existing === nextLanguage) return;
-  const metadata = { ...(currentUser?.user_metadata || {}), preferred_language: nextLanguage };
-  const { data, error } = await supabaseClient.auth.updateUser({ data: metadata });
-  if (!error && data?.user) {
-    currentUser = data.user;
-  }
-}
-
-function resolvePreferredLanguage(user) {
-  const userPref = normalizeLanguageCode(user?.user_metadata?.preferred_language);
-  if (SUPPORTED_LANGUAGES.has(userPref)) return userPref;
-  const localPref = getStoredLanguagePreference();
-  if (SUPPORTED_LANGUAGES.has(localPref)) return localPref;
-  const browserPref = normalizeLanguageCode(navigator.language || "en");
-  return browserPref;
-}
-
-function refreshTranslatedRuntime() {
-  updateSummary();
-  if (paymentService && state?.selection?.type) {
-    paymentService.textContent = translateServiceName(state.selection.type);
-  }
-  if (previewService && state?.selection?.type) {
-    previewService.textContent = translateServiceName(state.selection.type);
-  }
-  renderSenderOriginSelector();
-  renderCsvShipFromSelector();
-  renderWarehouseList();
-  renderCustomsItems();
-  updateCustomsScopeMeta();
-  renderAccountHistoryList();
-  renderAccountBatchList();
-  if (accountActiveRecord) {
-    renderReceiptDetails(accountActiveRecord);
-  }
-  renderReportsDashboard();
-  renderShopifySettingsLocations();
-  renderClientInviteHistory(clientInviteHistory);
-  renderAdminSummary(adminDashboardState?.summary || {});
-  renderAdminSettingsPreview();
-  renderAdminClientsList();
-  if (csvMappingDraft) {
-    renderCsvMappingTable();
-  }
-}
-
-async function setLanguage(language, options = {}) {
-  const { persist = false } = options;
-  const nextLanguage = normalizeLanguageCode(language);
-  if (nextLanguage === activeLanguage && !persist) {
-    if (languageSelect) {
-      languageSelect.value = nextLanguage;
-    }
-    return;
-  }
-  activeLanguage = nextLanguage;
-  document.documentElement.setAttribute("lang", nextLanguage);
-  setStoredLanguagePreference(nextLanguage);
-  if (languageSelect) {
-    languageSelect.value = nextLanguage;
-  }
-  applyStaticTranslations(document.body);
-  refreshTranslatedRuntime();
-  if (persist) {
-    await saveLanguagePreference(nextLanguage);
-  }
-}
-
-function showToast(message, options = {}) {
-  if (!toastStack) return;
-  const text = String(message || "").trim();
-  if (!text) return;
-  const { title = "", tone = "info", duration = 3400 } = options;
-  const toast = document.createElement("div");
-  toast.className = `toast is-${tone}`;
-
-  const main = document.createElement("div");
-  main.className = "toast-main";
-
-  const icon = document.createElement("span");
-  icon.className = `toast-icon is-${tone}`;
-  icon.setAttribute("aria-hidden", "true");
-  icon.innerHTML = getToastIconSvg(tone);
-
-  const body = document.createElement("div");
-  body.className = "toast-body";
-
-  if (title) {
-    const titleEl = document.createElement("div");
-    titleEl.className = "toast-title";
-    titleEl.textContent = String(title).trim();
-    body.appendChild(titleEl);
-  }
-
-  const messageEl = document.createElement("div");
-  messageEl.className = "toast-message";
-  messageEl.textContent = text;
-  body.appendChild(messageEl);
-
-  main.appendChild(icon);
-  main.appendChild(body);
-  toast.appendChild(main);
-  toastStack.prepend(toast);
-  updateToastStackLayout();
-
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      toast.classList.add("is-visible");
-    });
-  });
-
-  const dismiss = () => {
-    toast.classList.remove("is-visible");
-    toast.classList.add("is-exit");
-    window.setTimeout(() => {
-      toast.remove();
-      updateToastStackLayout();
-    }, 420);
-  };
-
-  window.setTimeout(dismiss, Math.max(1800, Number(duration) || 3400));
-}
-
-function updateToastStackLayout() {
-  if (!toastStack) return;
-  const toasts = Array.from(toastStack.querySelectorAll(".toast"));
-  toasts.forEach((toast, index) => {
-    const depth = Math.min(index, 3);
-    const offset = depth * 14;
-    const scale = 1 - depth * 0.035;
-    const opacity = 1 - depth * 0.14;
-    toast.style.setProperty("--stack-offset", `${offset}px`);
-    toast.style.setProperty("--stack-scale", `${scale}`);
-    toast.style.setProperty("--stack-opacity", `${Math.max(0.45, opacity)}`);
-    toast.style.setProperty("--stack-z", `${100 - index}`);
-  });
-}
-
-function getToastIconSvg(tone) {
-  if (tone === "success") {
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.4l2.3 2.3 4.7-5.1"/></svg>';
-  }
-  if (tone === "error") {
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.7 21 19.3H3L12 3.7Z"/><path d="M12 9v4.6"/><circle cx="12" cy="16.9" r="0.8" fill="currentColor" stroke="none"/></svg>';
-  }
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.2v5"/><circle cx="12" cy="7.3" r="0.8" fill="currentColor" stroke="none"/></svg>';
-}
-
 function setProviderStatus(message = "", options = {}) {
   if (!providerStatus) return;
-  const { kind = "info", persist = false, toast = !persist } = options;
-  const text = String(message || "").trim();
-  providerStatus.textContent = persist ? text : "";
+  const { kind = "info", persist = false } = options;
+  providerStatus.textContent = String(message || "").trim();
   providerStatus.classList.remove("is-success", "is-error");
-  if (persist && kind === "success") {
+  if (kind === "success") {
     providerStatus.classList.add("is-success");
-  } else if (persist && kind === "error") {
+  } else if (kind === "error") {
     providerStatus.classList.add("is-error");
   }
   if (providerStatusTimer) {
     window.clearTimeout(providerStatusTimer);
     providerStatusTimer = 0;
   }
-  if (toast && text) {
-    showToast(text, { tone: kind });
+  if (!persist && providerStatus.textContent) {
+    providerStatusTimer = window.setTimeout(() => {
+      providerStatus.textContent = "";
+      providerStatus.classList.remove("is-success", "is-error");
+      providerStatusTimer = 0;
+    }, 2800);
   }
 }
 
@@ -1887,17 +831,13 @@ function setShopifySettingsModalOpen(open) {
 
 function setShopifySettingsStatus(message = "", options = {}) {
   if (!shopifySettingsStatus) return;
-  const { kind = "info", toast = kind !== "info" } = options;
-  const text = String(message || "").trim();
-  shopifySettingsStatus.textContent = kind === "info" ? text : "";
+  const { kind = "info" } = options;
+  shopifySettingsStatus.textContent = String(message || "").trim();
   shopifySettingsStatus.classList.remove("is-success", "is-error");
-  if (kind === "success" && !toast) {
+  if (kind === "success") {
     shopifySettingsStatus.classList.add("is-success");
-  } else if (kind === "error" && !toast) {
+  } else if (kind === "error") {
     shopifySettingsStatus.classList.add("is-error");
-  }
-  if (toast && text) {
-    showToast(text, { tone: kind });
   }
 }
 
@@ -1944,7 +884,7 @@ async function fetchShopifySavedSettings(shopDomain) {
 async function saveShopifySavedSettings(shopDomain, selectedLocationIds) {
   const shop = normalizeShopDomain(shopDomain);
   if (!shop) {
-    throw new Error(tr("Connect Shopify before saving settings."));
+    throw new Error("Connect Shopify before saving settings.");
   }
   let data = null;
   const payload = {
@@ -1972,16 +912,16 @@ async function saveShopifySavedSettings(shopDomain, selectedLocationIds) {
 
 function getShopifySelectedLocationSummary(locations, selectedIds) {
   if (!Array.isArray(locations) || locations.length === 0) {
-    return tr("No locations available");
+    return "No locations";
   }
   const selectedSet = new Set(normalizeShopifyLocationIdList(selectedIds));
-  if (!selectedSet.size) return tr("{count} selected", { count: 0 });
+  if (!selectedSet.size) return "0 selected";
 
   const selected = locations.filter((location) => selectedSet.has(location.id));
   if (selected.length === locations.length) {
-    return tr("{count} selected (all)", { count: selected.length });
+    return `${selected.length} selected (all)`;
   }
-  return tr("{count} selected", { count: selected.length });
+  return `${selected.length} selected`;
 }
 
 function setShopifySettingsBusy(isBusy) {
@@ -1990,7 +930,7 @@ function setShopifySettingsBusy(isBusy) {
     shopifySettingsSave.disabled = shopifySettingsBusy;
     const label = shopifySettingsSave.querySelector("span");
     if (label) {
-      label.textContent = shopifySettingsBusy ? tr("Saving...") : tr("Save Settings");
+      label.textContent = shopifySettingsBusy ? "Saving..." : "Save Settings";
     }
   }
   if (shopifySettingsCancel) {
@@ -2029,7 +969,7 @@ function renderShopifySettingsLocations() {
   if (!locations.length) {
     const empty = document.createElement("div");
     empty.className = "shopify-location-empty";
-    empty.textContent = tr("No locations available");
+    empty.textContent = "No locations available";
     shopifyLocationsList.appendChild(empty);
     return;
   }
@@ -2041,11 +981,11 @@ function renderShopifySettingsLocations() {
   allRow.dataset.role = "all";
   allRow.setAttribute("aria-pressed", allChecked ? "true" : "false");
   allRow.innerHTML = `
-      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
-      <div>
-        <div class="shopify-location-item-title">${tr("All Locations")}</div>
-        <div class="shopify-location-item-meta">${tr("Mirror Shopify location routing")}</div>
-      </div>
+    <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
+    <div>
+      <div class="shopify-location-item-title">All Locations</div>
+      <div class="shopify-location-item-meta">Mirror Shopify location routing</div>
+    </div>
   `;
   shopifyLocationsList.appendChild(allRow);
 
@@ -2061,7 +1001,7 @@ function renderShopifySettingsLocations() {
       <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
       <div>
         <div class="shopify-location-item-title">${location.name}</div>
-        <div class="shopify-location-item-meta">${meta || tr("No address details")}</div>
+        <div class="shopify-location-item-meta">${meta || "No address details"}</div>
       </div>
     `;
     shopifyLocationsList.appendChild(row);
@@ -2071,7 +1011,7 @@ function renderShopifySettingsLocations() {
 async function fetchShopifyLocations(shopDomain) {
   const shop = normalizeShopDomain(shopDomain);
   if (!shop) {
-    throw new Error(tr("Connect Shopify before opening fulfillment settings."));
+    throw new Error("Connect Shopify before opening fulfillment settings.");
   }
   const query = new URLSearchParams();
   query.set("shop", shop);
@@ -2085,9 +1025,7 @@ async function fetchShopifyLocations(shopDomain) {
         data = await fetchApiWithAuth(`/api/shopify/location?${query.toString()}`);
       } catch (_fallbackError) {
         throw new Error(
-          tr(
-            "Shopify locations endpoint is not live yet. Deploy the latest API worker (or restart the local Node server) and try again."
-          )
+          "Shopify locations endpoint is not live yet. Deploy the latest API worker (or restart the local Node server) and try again."
         );
       }
     } else {
@@ -2108,11 +1046,11 @@ async function fetchShopifyLocations(shopDomain) {
 
 async function openShopifySettingsModal() {
   if (!currentUser?.id) {
-    setProviderStatus(tr("Sign in before configuring Shopify locations."), { kind: "error" });
+    setProviderStatus("Sign in before configuring Shopify locations.", { kind: "error" });
     return;
   }
   if (!shopifyConnection?.shop) {
-    setProviderStatus(tr("Connect Shopify before opening fulfillment settings."), {
+    setProviderStatus("Connect Shopify before opening fulfillment settings.", {
       kind: "error",
     });
     return;
@@ -2120,7 +1058,7 @@ async function openShopifySettingsModal() {
 
   setShopifySettingsModalOpen(true);
   setShopifySettingsBusy(true);
-  setShopifySettingsStatus(tr("Loading Shopify locations..."));
+  setShopifySettingsStatus("Loading Shopify locations...");
 
   try {
     const [locations, savedSelection] = await Promise.all([
@@ -2140,7 +1078,7 @@ async function openShopifySettingsModal() {
     renderShopifySettingsLocations();
     setShopifySettingsStatus("");
   } catch (error) {
-    const message = String(error?.message || tr("Could not load Shopify locations."));
+    const message = String(error?.message || "Could not load Shopify locations.");
     if (
       /connection expired|reconnect shopify|invalid api key or access token|unrecognized login|wrong password/i.test(
         message
@@ -2166,12 +1104,12 @@ function closeShopifySettingsModal() {
 
 async function saveShopifySettings() {
   if (!currentUser?.id || !shopifyConnection?.shop) {
-    setShopifySettingsStatus(tr("Connect Shopify first."), { kind: "error" });
+    setShopifySettingsStatus("Connect Shopify first.", { kind: "error" });
     return;
   }
   const selectedIds = normalizeShopifyLocationIdList(Array.from(shopifyLocationDraftSelection));
   if (!selectedIds.length) {
-    setShopifySettingsStatus(tr("Select at least one location."), { kind: "error" });
+    setShopifySettingsStatus("Select at least one location.", { kind: "error" });
     return;
   }
 
@@ -2179,13 +1117,13 @@ async function saveShopifySettings() {
   try {
     const savedSelection = await saveShopifySavedSettings(shopifyConnection.shop, selectedIds);
     shopifySavedLocationSelection = savedSelection;
-    setProviderStatus(tr("Shopify fulfillment settings updated."), { kind: "success" });
-    setShopifySettingsStatus(tr("Settings saved."), { kind: "success" });
+    setProviderStatus("Shopify fulfillment settings updated.", { kind: "success" });
+    setShopifySettingsStatus("Settings saved.", { kind: "success" });
     window.setTimeout(() => {
       closeShopifySettingsModal();
     }, 150);
   } catch (error) {
-    setShopifySettingsStatus(error?.message || tr("Could not save Shopify settings."), {
+    setShopifySettingsStatus(error?.message || "Could not save Shopify settings.", {
       kind: "error",
     });
   } finally {
@@ -2221,7 +1159,7 @@ async function fetchApiWithAuth(path, options = {}) {
   const { timeoutMs = 15000, ...requestOptions } = options;
   const token = await getAuthAccessToken();
   if (!token) {
-    throw new Error(tr("You must be signed in to use provider import."));
+    throw new Error("You must be signed in to use provider import.");
   }
   const headers = new Headers(requestOptions.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
@@ -2246,677 +1184,17 @@ async function fetchApiWithAuth(path, options = {}) {
       const message =
         (payload && typeof payload === "object" && payload.error) ||
         (typeof payload === "string" ? payload : "") ||
-        tr("Request failed ({status})", { status: response.status });
+        `Request failed (${response.status})`;
       throw new Error(message);
     }
     return payload;
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error(tr("Shopify request timed out. Check Worker route and secrets."));
+      throw new Error("Shopify request timed out. Check Worker route and secrets.");
     }
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
-  }
-}
-
-function isValidEmailFormat(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
-}
-
-function isInviteExpired(invite) {
-  const expiresAt = String(invite?.expires_at || "").trim();
-  if (!expiresAt) return true;
-  const ms = Date.parse(expiresAt);
-  if (!Number.isFinite(ms)) return true;
-  return ms < Date.now();
-}
-
-function isInviteRevoked(invite) {
-  return Boolean(String(invite?.revoked_at || "").trim());
-}
-
-function getClientInviteStatus(invite) {
-  if (invite?.claimed_at) return "claimed";
-  if (isInviteRevoked(invite)) return "revoked";
-  if (isInviteExpired(invite)) return "expired";
-  return "open";
-}
-
-function formatInviteStatusLabel(status, invite) {
-  if (status === "claimed") {
-    return invite?.claimed_at
-      ? tr("Claimed {date}", { date: formatHistoryDate(invite.claimed_at) })
-      : tr("Claimed");
-  }
-  if (status === "revoked") {
-    return invite?.revoked_at
-      ? tr("Revoked {date}", { date: formatHistoryDate(invite.revoked_at) })
-      : tr("Revoked");
-  }
-  if (status === "expired") return tr("Expired");
-  return tr("Open");
-}
-
-function canRevokeInvite(invite) {
-  return getClientInviteStatus(invite) === "open";
-}
-
-function renderClientInviteHistory(invites = []) {
-  if (!clientInviteHistoryList || !clientInviteHistoryEmpty) return;
-  clientInviteHistory = Array.isArray(invites) ? invites.slice() : [];
-  clientInviteHistoryList.innerHTML = "";
-  if (!Array.isArray(invites) || invites.length === 0) {
-    clientInviteHistoryEmpty.textContent = tr("No invites yet.");
-    clientInviteHistoryEmpty.classList.remove("is-hidden");
-    return;
-  }
-
-  clientInviteHistoryEmpty.classList.add("is-hidden");
-  invites.forEach((invite) => {
-    const item = document.createElement("div");
-    item.className = "invite-history-item";
-
-    const main = document.createElement("div");
-    main.className = "invite-history-main";
-    const status = getClientInviteStatus(invite);
-
-    const top = document.createElement("div");
-    top.className = "invite-history-top";
-
-    const email = document.createElement("div");
-    email.className = "invite-history-email";
-    email.textContent = invite?.invited_email ? String(invite.invited_email) : "--";
-
-    const badge = document.createElement("div");
-    badge.className = `invite-history-badge is-${status}`;
-    badge.textContent = formatInviteStatusLabel(status, invite);
-    top.appendChild(email);
-    top.appendChild(badge);
-
-    const urlRow = document.createElement("div");
-    urlRow.className = "invite-history-url-row";
-
-    const inviteUrl = String(invite?.invite_url || "").trim();
-    const urlValue = document.createElement("div");
-    urlValue.className = `invite-history-url${inviteUrl ? "" : " is-unavailable"}`;
-    urlValue.textContent = inviteUrl || tr("Stored URL unavailable for this invite.");
-    urlRow.appendChild(urlValue);
-
-    const copyButton = document.createElement("button");
-    copyButton.type = "button";
-    copyButton.className = "btn btn-secondary btn-sm";
-    copyButton.dataset.inviteCopy = String(invite?.id || "");
-    copyButton.disabled = !inviteUrl;
-    copyButton.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
-      <span>${tr("Copy URL")}</span>
-    `;
-    urlRow.appendChild(copyButton);
-
-    const revokeButton = document.createElement("button");
-    revokeButton.type = "button";
-    revokeButton.className = "btn btn-ghost btn-sm";
-    revokeButton.dataset.inviteRevoke = String(invite?.id || "");
-    revokeButton.disabled =
-      !canRevokeInvite(invite) || adminInviteActionBusyIds.has(String(invite?.id || ""));
-    revokeButton.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
-      <span>${adminInviteActionBusyIds.has(String(invite?.id || "")) ? tr("Revoking...") : tr("Revoke")}</span>
-    `;
-    urlRow.appendChild(revokeButton);
-
-    const meta = document.createElement("div");
-    meta.className = "invite-history-meta";
-    const createdText = tr("Created {date}", { date: formatHistoryDate(invite?.created_at) });
-    const expiresText = tr("Expires {date}", { date: formatHistoryDate(invite?.expires_at) });
-    const extraText =
-      status === "claimed" && invite?.claimed_email
-        ? tr("Claimed by {email}", { email: invite.claimed_email })
-        : status === "revoked"
-          ? tr("Invite revoked")
-          : "";
-    meta.textContent = [createdText, expiresText, extraText].filter(Boolean).join(" • ");
-
-    main.appendChild(top);
-    main.appendChild(urlRow);
-    main.appendChild(meta);
-
-    item.appendChild(main);
-    clientInviteHistoryList.appendChild(item);
-  });
-}
-
-async function loadClientInviteHistory(options = {}) {
-  const { quiet = false } = options;
-  if (!currentUser) {
-    renderClientInviteHistory([]);
-    return;
-  }
-  if (!quiet) {
-    renderClientInviteHistory([]);
-    if (clientInviteHistoryEmpty) {
-      clientInviteHistoryEmpty.textContent = tr("Loading invites...");
-      clientInviteHistoryEmpty.classList.remove("is-hidden");
-    }
-  }
-  try {
-    const payload = await fetchApiWithAuth("/api/auth/invites?limit=20");
-    const invites = Array.isArray(payload?.invites) ? payload.invites : [];
-    renderClientInviteHistory(invites);
-  } catch (error) {
-    renderClientInviteHistory([]);
-    if (clientInviteHistoryEmpty) {
-      clientInviteHistoryEmpty.textContent = error?.message || tr("No invites yet.");
-      clientInviteHistoryEmpty.classList.remove("is-hidden");
-    }
-  }
-}
-
-function setClientInviteStatus(message = "", options = {}) {
-  if (!clientInviteStatus) return;
-  const { tone = "info", persist = tone === "info", toast = !persist } = options;
-  const text = String(message || "").trim();
-  clientInviteStatus.textContent = persist ? text : "";
-  clientInviteStatus.classList.remove("is-error", "is-success");
-  if (toast && text) {
-    showToast(text, { tone: tone === "muted" ? "info" : tone });
-  }
-  if (!clientInviteStatus.textContent) return;
-  if (tone === "error") {
-    clientInviteStatus.classList.add("is-error");
-  } else if (tone === "success") {
-    clientInviteStatus.classList.add("is-success");
-  }
-}
-
-function setClientInviteResult(url = "", meta = {}) {
-  if (!clientInviteResult || !clientInviteUrlInput) return;
-  const value = String(url || "").trim();
-  if (!value) {
-    clientInviteResult.classList.add("is-hidden");
-    clientInviteUrlInput.value = "";
-    if (clientInviteResultEmail) {
-      clientInviteResultEmail.textContent = "--";
-    }
-    if (clientInviteResultExpiry) {
-      clientInviteResultExpiry.textContent = "--";
-    }
-    if (clientInviteCopyButton) {
-      clientInviteCopyButton.disabled = true;
-    }
-    return;
-  }
-  clientInviteUrlInput.value = value;
-  if (clientInviteResultEmail) {
-    clientInviteResultEmail.textContent = String(meta?.invitedEmail || "").trim() || "--";
-  }
-  if (clientInviteResultExpiry) {
-    clientInviteResultExpiry.textContent = meta?.expiresAt ? formatHistoryDate(meta.expiresAt) : "--";
-  }
-  clientInviteResult.classList.remove("is-hidden");
-  if (clientInviteCopyButton) {
-    clientInviteCopyButton.disabled = false;
-  }
-}
-
-function setClientInviteBusy(isBusy) {
-  clientInviteBusy = Boolean(isBusy);
-  if (clientInviteEmailInput) {
-    clientInviteEmailInput.disabled = clientInviteBusy;
-  }
-  if (clientInviteExpirySelect) {
-    clientInviteExpirySelect.disabled = clientInviteBusy;
-  }
-  if (clientInviteCreateButton) {
-    clientInviteCreateButton.disabled = clientInviteBusy;
-    const label = clientInviteCreateButton.querySelector("span");
-    const nextLabel = clientInviteBusy ? tr("Creating invite...") : tr("Create Client");
-    if (label) {
-      label.textContent = nextLabel;
-    } else {
-      clientInviteCreateButton.textContent = nextLabel;
-    }
-  }
-  if (clientInviteCopyButton) {
-    clientInviteCopyButton.disabled =
-      clientInviteBusy || !String(clientInviteUrlInput?.value || "").trim();
-  }
-}
-
-async function createClientInvite() {
-  if (clientInviteBusy) return;
-  const invitedEmail = String(clientInviteEmailInput?.value || "").trim().toLowerCase();
-  if (!invitedEmail) {
-    setClientInviteStatus(tr("Client email is required."), { tone: "error" });
-    return;
-  }
-  if (!isValidEmailFormat(invitedEmail)) {
-    setClientInviteStatus(tr("Invalid client email format."), { tone: "error" });
-    return;
-  }
-  const expiresInDays = Math.max(1, Math.min(90, Number(clientInviteExpirySelect?.value) || 14));
-  setClientInviteStatus("");
-  setClientInviteBusy(true);
-  try {
-    const payload = await fetchApiWithAuth("/api/auth/invites", {
-      method: "POST",
-      body: JSON.stringify({
-        invitedEmail: invitedEmail || null,
-        expiresInDays,
-      }),
-    });
-    const inviteUrl = String(payload?.inviteUrl || "").trim();
-    if (!inviteUrl) {
-      throw new Error(tr("Could not create account."));
-    }
-    setClientInviteResult(inviteUrl, {
-      invitedEmail,
-      expiresAt: payload?.expiresAt,
-    });
-    setClientInviteStatus(tr("Invite link created."), { tone: "success" });
-    if (clientInviteEmailInput) {
-      clientInviteEmailInput.value = "";
-    }
-    await loadAdminDashboard({ quiet: true });
-  } catch (error) {
-    setClientInviteStatus(error?.message || tr("Could not create account."), { tone: "error" });
-  } finally {
-    setClientInviteBusy(false);
-  }
-}
-
-async function copyClientInviteUrl() {
-  const inviteUrl = String(clientInviteUrlInput?.value || "").trim();
-  if (!inviteUrl) return;
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(inviteUrl);
-    } else {
-      clientInviteUrlInput.focus();
-      clientInviteUrlInput.select();
-      document.execCommand("copy");
-    }
-    setClientInviteStatus(tr("Invite URL copied."), { tone: "success" });
-  } catch (_error) {
-    setClientInviteStatus(inviteUrl, { tone: "info" });
-  }
-}
-
-async function copyInviteHistoryUrl(inviteId) {
-  const invite = clientInviteHistory.find((entry) => String(entry?.id || "") === String(inviteId || ""));
-  const inviteUrl = String(invite?.invite_url || "").trim();
-  if (!inviteUrl) return;
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(inviteUrl);
-    } else {
-      setClientInviteResult(inviteUrl);
-      await copyClientInviteUrl();
-      return;
-    }
-    showToast(tr("Invite URL copied."), { tone: "success" });
-  } catch (_error) {
-    showToast(inviteUrl, { tone: "info" });
-  }
-}
-
-function setAdminInviteActionBusy(inviteId, isBusy) {
-  const safeId = String(inviteId || "").trim();
-  if (!safeId) return;
-  if (isBusy) {
-    adminInviteActionBusyIds.add(safeId);
-  } else {
-    adminInviteActionBusyIds.delete(safeId);
-  }
-  renderClientInviteHistory(clientInviteHistory);
-}
-
-async function revokeClientInvite(inviteId) {
-  const safeId = String(inviteId || "").trim();
-  if (!safeId || adminInviteActionBusyIds.has(safeId)) return;
-  setAdminInviteActionBusy(safeId, true);
-  try {
-    await fetchApiWithAuth("/api/admin/invites/revoke", {
-      method: "POST",
-      body: JSON.stringify({ inviteId: safeId }),
-    });
-    showToast(tr("Invite revoked."), { tone: "success" });
-    await loadAdminDashboard({ quiet: true });
-  } catch (error) {
-    showToast(error?.message || tr("Could not revoke invite."), { tone: "error" });
-  } finally {
-    setAdminInviteActionBusy(safeId, false);
-  }
-}
-
-function formatPercent(value) {
-  return `${Number(value || 0).toFixed(1).replace(/\.0$/, "")}%`;
-}
-
-function getAdminSettingsDraft() {
-  return {
-    carrier_discount_pct: Math.max(
-      0,
-      Math.min(100, Number(adminCarrierDiscountInput?.value) || adminSettingsDraft.carrier_discount_pct || 0)
-    ),
-    client_discount_pct: Math.max(
-      0,
-      Math.min(100, Number(adminClientDiscountInput?.value) || adminSettingsDraft.client_discount_pct || 0)
-    ),
-  };
-}
-
-function hasAdminSettingsChanges() {
-  const draft = getAdminSettingsDraft();
-  return (
-    Number(draft.carrier_discount_pct).toFixed(2) !==
-      Number(adminSettingsSaved.carrier_discount_pct || 0).toFixed(2) ||
-    Number(draft.client_discount_pct).toFixed(2) !==
-      Number(adminSettingsSaved.client_discount_pct || 0).toFixed(2)
-  );
-}
-
-function renderAdminSettingsPreview() {
-  if (!adminSettingsPreview) return;
-  const draft = getAdminSettingsDraft();
-  const retainedDiscount = Math.max(0, draft.carrier_discount_pct - draft.client_discount_pct);
-  adminSettingsPreview.innerHTML = `
-    <div>${tr("Carrier keeps {carrier} and clients receive {client}. Retained margin: {retained}.", {
-      carrier: formatPercent(draft.carrier_discount_pct),
-      client: formatPercent(draft.client_discount_pct),
-      retained: formatPercent(retainedDiscount),
-    })}</div>
-    <div class="admin-settings-meter">
-      <span class="admin-settings-meter-fill" style="width:${Math.min(100, draft.carrier_discount_pct)}%"></span>
-      <span class="admin-settings-meter-fill is-secondary" style="width:${Math.min(100, draft.client_discount_pct)}%"></span>
-    </div>
-  `;
-  if (adminSettingsSaveButton) {
-    adminSettingsSaveButton.disabled = adminDashboardLoading || !hasAdminSettingsChanges();
-  }
-}
-
-function applyAdminSettings(settings = {}) {
-  adminSettingsSaved = {
-    carrier_discount_pct: Number(settings?.carrier_discount_pct) || 0,
-    client_discount_pct: Number(settings?.client_discount_pct) || 0,
-  };
-  adminSettingsDraft = { ...adminSettingsSaved };
-  if (adminCarrierDiscountInput) {
-    adminCarrierDiscountInput.value = String(adminSettingsSaved.carrier_discount_pct);
-  }
-  if (adminClientDiscountInput) {
-    adminClientDiscountInput.value = String(adminSettingsSaved.client_discount_pct);
-  }
-  renderAdminSettingsPreview();
-}
-
-function renderAdminSummary(summary = {}) {
-  if (adminSummaryClients) {
-    adminSummaryClients.textContent = String(summary?.total_clients ?? 0);
-  }
-  if (adminSummaryActiveClients) {
-    adminSummaryActiveClients.textContent = tr("{count} active", {
-      count: Number(summary?.active_clients) || 0,
-    });
-  }
-  if (adminSummaryInvites) {
-    adminSummaryInvites.textContent = String(summary?.open_invites ?? 0);
-  }
-  if (adminSummaryRevenue) {
-    adminSummaryRevenue.textContent = formatMoney(summary?.total_revenue_ex_vat || 0);
-  }
-  if (adminSummaryProfit) {
-    adminSummaryProfit.textContent = formatMoney(summary?.total_profit_ex_vat || 0);
-    adminSummaryProfit.classList.toggle(
-      "is-negative",
-      Number(summary?.total_profit_ex_vat || 0) < 0
-    );
-  }
-  if (adminSummaryProfitMeta) {
-    adminSummaryProfitMeta.textContent = tr("Based on current discount rules");
-  }
-}
-
-function getAdminClientProfile(client) {
-  return buildMockAccountProfile(client?.user || null) || {
-    companyName: "--",
-    contactName: "--",
-    contactEmail: client?.user?.email || "--",
-    contactPhone: "--",
-    billingAddress: "--",
-    taxId: "--",
-    customerId: "--",
-    accountManager: "--",
-  };
-}
-
-function getAdminActivityLabel(status) {
-  if (status === "active") return tr("Active");
-  if (status === "quiet") return tr("Quiet");
-  return tr("Dormant");
-}
-
-function getAdminClientValueClass(value) {
-  if (Number(value || 0) < 0) return "admin-client-value is-negative";
-  if (Number(value || 0) > 0) return "admin-client-value is-positive";
-  return "admin-client-value";
-}
-
-function renderAdminClientsList() {
-  if (!adminClientsList || !adminClientsEmpty) return;
-  adminClientsList.innerHTML = "";
-  let filtered = Array.isArray(adminClients) ? adminClients.slice() : [];
-
-  const search = String(adminClientSearch || "").trim().toLowerCase();
-  if (search) {
-    filtered = filtered.filter((client) => {
-      const profile = getAdminClientProfile(client);
-      const haystack = [
-        profile.companyName,
-        profile.contactName,
-        profile.contactEmail,
-        profile.customerId,
-        profile.accountManager,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(search);
-    });
-  }
-
-  if (adminClientFilter !== "all") {
-    filtered = filtered.filter(
-      (client) => String(client?.metrics?.activity_status || "dormant") === adminClientFilter
-    );
-  }
-
-  filtered.sort((left, right) => {
-    if (adminClientSort === "revenue") {
-      return (Number(right?.metrics?.total_revenue_ex_vat) || 0) - (Number(left?.metrics?.total_revenue_ex_vat) || 0);
-    }
-    if (adminClientSort === "profit") {
-      return (Number(right?.metrics?.total_profit_ex_vat) || 0) - (Number(left?.metrics?.total_profit_ex_vat) || 0);
-    }
-    if (adminClientSort === "mrr") {
-      return (Number(right?.metrics?.mrr_ex_vat) || 0) - (Number(left?.metrics?.mrr_ex_vat) || 0);
-    }
-    if (adminClientSort === "signup") {
-      return Date.parse(right?.user?.created_at || 0) - Date.parse(left?.user?.created_at || 0);
-    }
-    if (adminClientSort === "volume") {
-      return (Number(right?.metrics?.avg_parcels_per_month) || 0) - (Number(left?.metrics?.avg_parcels_per_month) || 0);
-    }
-    return Date.parse(right?.metrics?.last_generation_at || right?.user?.created_at || 0) -
-      Date.parse(left?.metrics?.last_generation_at || left?.user?.created_at || 0);
-  });
-
-  if (!filtered.length) {
-    adminClientsEmpty.textContent = adminDashboardLoading
-      ? tr("Loading client accounts...")
-      : tr("No client accounts match the current filter.");
-    adminClientsEmpty.classList.remove("is-hidden");
-    return;
-  }
-
-  adminClientsEmpty.classList.add("is-hidden");
-  filtered.forEach((client) => {
-    const profile = getAdminClientProfile(client);
-    const metrics = client?.metrics || {};
-    const row = document.createElement("article");
-    row.className = "admin-client-row";
-    row.innerHTML = `
-      <div class="admin-client-identity">
-        <div class="admin-client-name">${profile.companyName}</div>
-        <div class="admin-client-meta">${profile.contactName} • ${profile.contactEmail} • ${profile.contactPhone}</div>
-        <div class="admin-client-address">${profile.billingAddress}</div>
-        <div class="admin-client-submeta mono">${profile.customerId} • ${profile.accountManager}</div>
-      </div>
-      <div class="admin-client-stack">
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Total Revenue")}</span>
-          <span class="admin-client-value">${formatMoney(metrics.total_revenue_ex_vat || 0)}</span>
-        </div>
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Total Profit")}</span>
-          <span class="${getAdminClientValueClass(metrics.total_profit_ex_vat)}">${formatMoney(metrics.total_profit_ex_vat || 0)}</span>
-        </div>
-      </div>
-      <div class="admin-client-stack">
-        <div class="admin-client-metric">
-          <span class="admin-client-key">MRR</span>
-          <span class="admin-client-value">${formatMoney(metrics.mrr_ex_vat || 0)}</span>
-        </div>
-        <div class="admin-client-metric">
-          <span class="admin-client-key">MRP</span>
-          <span class="${getAdminClientValueClass(metrics.mrp_ex_vat)}">${formatMoney(metrics.mrp_ex_vat || 0)}</span>
-        </div>
-      </div>
-      <div class="admin-client-stack">
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Parcels / Month")}</span>
-          <span class="admin-client-value">${Number(metrics.avg_parcels_per_month || 0).toFixed(1)}</span>
-        </div>
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Last Generation")}</span>
-          <span class="admin-client-value">${metrics.last_generation_at ? formatHistoryDate(metrics.last_generation_at) : "--"}</span>
-        </div>
-      </div>
-      <div class="admin-client-stack">
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Registered")}</span>
-          <span class="admin-client-value">${client?.user?.created_at ? formatHistoryDate(client.user.created_at) : "--"}</span>
-        </div>
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Avg. Payment Time")}</span>
-          <span class="admin-client-value">${metrics.avg_payment_days != null ? `${metrics.avg_payment_days} ${tr("days")}` : "--"}</span>
-        </div>
-      </div>
-      <div class="admin-client-stack">
-        <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Invoice Tracking")}</span>
-          <div class="admin-client-pills">
-            <span class="admin-client-pill is-${metrics.activity_status || "dormant"}">${getAdminActivityLabel(metrics.activity_status || "dormant")}</span>
-            <span class="admin-client-pill is-billing">${metrics.last_invoice_tracking || tr("Billing not live")}</span>
-          </div>
-        </div>
-      </div>
-    `;
-    adminClientsList.appendChild(row);
-  });
-}
-
-async function loadAdminAccessStatus(options = {}) {
-  const { quiet = false } = options;
-  if (!currentUser) {
-    adminAccessAllowed = false;
-    if (openAdminPageButton) {
-      openAdminPageButton.classList.add("is-hidden");
-    }
-    return false;
-  }
-  try {
-    const payload = await fetchApiWithAuth("/api/admin/status", { timeoutMs: 8000 });
-    adminAccessAllowed = Boolean(payload?.allowed);
-  } catch (error) {
-    adminAccessAllowed = false;
-    if (!quiet) {
-      showToast(error?.message || tr("Could not verify admin access."), { tone: "error" });
-    }
-  }
-  if (openAdminPageButton) {
-    openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
-  }
-  if (!adminAccessAllowed && currentMainView === "admin") {
-    setAdminPageVisible(false, { replace: true });
-  }
-  return adminAccessAllowed;
-}
-
-async function loadAdminDashboard(options = {}) {
-  const { quiet = false } = options;
-  if (!currentUser) return false;
-  const hasAccess = adminAccessAllowed || (await loadAdminAccessStatus({ quiet: true }));
-  if (!hasAccess) {
-    adminDashboardLoaded = false;
-    adminDashboardState = null;
-    adminClients = [];
-    renderAdminClientsList();
-    if (currentMainView === "admin") {
-      setAdminPageVisible(false, { replace: true });
-    }
-    if (!quiet) {
-      showToast(tr("You are not allowed to access the admin panel."), { tone: "error" });
-    }
-    return false;
-  }
-  adminDashboardLoading = true;
-  renderAdminClientsList();
-  try {
-    const payload = await fetchApiWithAuth("/api/admin/dashboard", { timeoutMs: 20000 });
-    adminDashboardState = payload && typeof payload === "object" ? payload : {};
-    clientInviteHistory = Array.isArray(adminDashboardState?.invites) ? adminDashboardState.invites : [];
-    adminClients = Array.isArray(adminDashboardState?.clients) ? adminDashboardState.clients : [];
-    renderAdminSummary(adminDashboardState?.summary || {});
-    renderClientInviteHistory(clientInviteHistory);
-    applyAdminSettings(adminDashboardState?.settings || {});
-    adminDashboardLoaded = true;
-    renderAdminClientsList();
-    return true;
-  } catch (error) {
-    adminDashboardLoaded = false;
-    adminDashboardState = null;
-    adminClients = [];
-    renderAdminClientsList();
-    if (!quiet) {
-      showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
-    }
-    return false;
-  } finally {
-    adminDashboardLoading = false;
-    renderAdminSettingsPreview();
-  }
-}
-
-async function saveAdminSettings() {
-  if (adminDashboardLoading || !hasAdminSettingsChanges()) return;
-  const payload = getAdminSettingsDraft();
-  adminDashboardLoading = true;
-  renderAdminSettingsPreview();
-  try {
-    const response = await fetchApiWithAuth("/api/admin/settings", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    applyAdminSettings(response?.settings || payload);
-    showToast(tr("Discount settings saved."), { tone: "success" });
-    await loadAdminDashboard({ quiet: true });
-  } catch (error) {
-    showToast(error?.message || tr("Could not save admin settings."), { tone: "error" });
-  } finally {
-    adminDashboardLoading = false;
-    renderAdminSettingsPreview();
   }
 }
 
@@ -2958,7 +1236,7 @@ async function loadShopifyConnectionStatus(options = {}) {
     shopifySavedLocationSelection = [];
     updateShopifyProviderStatus();
     if (!quiet) {
-      setProviderStatus(error.message || tr("Could not load Shopify connection."), {
+      setProviderStatus(error.message || "Could not load Shopify connection.", {
         kind: "error",
       });
     }
@@ -2974,12 +1252,12 @@ function consumeShopifyCallbackParams() {
   if (status === "connected") {
     const shop = normalizeShopDomain(params.get("shop"));
     if (shop) {
-      setProviderStatus(tr("Shopify connected: {shop}", { shop }), { kind: "success" });
+      setProviderStatus(`Shopify connected: ${shop}`, { kind: "success" });
     } else {
-      setProviderStatus(tr("Shopify connected."), { kind: "success" });
+      setProviderStatus("Shopify connected.", { kind: "success" });
     }
   } else if (status === "error") {
-    const message = String(params.get("message") || "").trim() || tr("Could not connect Shopify.");
+    const message = String(params.get("message") || "").trim() || "Could not connect Shopify.";
     setProviderStatus(message, { kind: "error" });
   }
 
@@ -3014,7 +1292,7 @@ function mapShopifyImportRows(rows) {
 function applyImportedRows(rows, sourceLabel, options = {}) {
   const { source = "provider" } = options;
   if (!Array.isArray(rows) || rows.length === 0) {
-    throw new Error(tr("No usable {sourceLabel} rows found.", { sourceLabel }));
+    throw new Error(`No usable ${sourceLabel} rows found.`);
   }
   clearBatchState();
   state.csvRows = rows;
@@ -3035,27 +1313,27 @@ function applyImportedRows(rows, sourceLabel, options = {}) {
 async function beginShopifyInstall() {
   const defaultShop = shopifyConnection?.shop || "";
   const typed = window.prompt(
-    tr("Enter your Shopify store domain (example: your-store.myshopify.com)"),
+    "Enter your Shopify store domain (example: your-store.myshopify.com)",
     defaultShop
   );
   if (typed === null) return;
   const shop = normalizeShopDomain(typed);
   if (!shop) {
-    setProviderStatus(tr("Enter a valid .myshopify.com domain."), { kind: "error" });
+    setProviderStatus("Enter a valid .myshopify.com domain.", { kind: "error" });
     return;
   }
   try {
-    setProviderStatus(tr("Connecting Shopify..."), { persist: true });
+    setProviderStatus("Connecting Shopify...", { persist: true });
     const data = await fetchApiWithAuth("/api/shopify/install-link", {
       method: "POST",
       body: JSON.stringify({ shop }),
     });
     if (!data || typeof data !== "object" || !data.url) {
-      throw new Error(tr("Shopify install URL was not returned."));
+      throw new Error("Shopify install URL was not returned.");
     }
     window.location.assign(String(data.url));
   } catch (error) {
-    setProviderStatus(error.message || tr("Could not start Shopify connect flow."), {
+    setProviderStatus(error.message || "Could not start Shopify connect flow.", {
       kind: "error",
     });
   }
@@ -3064,17 +1342,12 @@ async function beginShopifyInstall() {
 async function importShopifyOrders(shop) {
   const normalizedShop = normalizeShopDomain(shop);
   if (!normalizedShop) {
-    setProviderStatus(tr("Connect Shopify before importing."), { kind: "error" });
+    setProviderStatus("Connect Shopify before importing.", { kind: "error" });
     return;
   }
 
   try {
-    setProviderStatus(
-      tr("Importing orders from {shop}...", {
-        shop: normalizedShop,
-      }),
-      { persist: true }
-    );
+    setProviderStatus(`Importing orders from ${normalizedShop}...`, { persist: true });
     const data = await fetchApiWithAuth("/api/shopify/import-orders", {
       method: "POST",
       body: JSON.stringify({
@@ -3084,24 +1357,18 @@ async function importShopifyOrders(shop) {
     });
     const rows = mapShopifyImportRows(data?.rows);
     applyImportedRows(rows, "Shopify", { source: "provider-shopify" });
-    setProviderStatus(
-      tr("Imported {count} orders from {shop}.", {
-        count: rows.length,
-        shop: normalizedShop,
-      }),
-      { kind: "success" }
-    );
+    setProviderStatus(`Imported ${rows.length} orders from ${normalizedShop}.`, {
+      kind: "success",
+    });
     const triggerText = providerTrigger?.querySelector("span");
     if (triggerText) {
-      triggerText.textContent = tr("Imported {count} Shopify orders", {
-        count: rows.length,
-      });
+      triggerText.textContent = `Imported ${rows.length} Shopify orders`;
       window.setTimeout(() => {
-        triggerText.textContent = tr("Import from provider");
+        triggerText.textContent = "Import from provider";
       }, 2200);
     }
   } catch (error) {
-    const message = String(error?.message || tr("Shopify import failed."));
+    const message = String(error?.message || "Shopify import failed.");
     if (
       /connection expired|reconnect shopify|invalid api key or access token|unrecognized login|wrong password/i.test(
         message
@@ -3110,13 +1377,10 @@ async function importShopifyOrders(shop) {
       shopifyConnection = null;
       shopifySavedLocationSelection = [];
       updateShopifyProviderStatus();
-      setProviderStatus(
-        tr("Shopify connection expired. Click Shopify again to reconnect."),
-        {
-          kind: "error",
-          persist: true,
-        }
-      );
+      setProviderStatus("Shopify connection expired. Click Shopify again to reconnect.", {
+        kind: "error",
+        persist: true,
+      });
       return;
     }
     setProviderStatus(message, { kind: "error" });
@@ -3125,7 +1389,7 @@ async function importShopifyOrders(shop) {
 
 async function handleShopifyProviderAction() {
   if (!currentUser) {
-    setProviderStatus(tr("Sign in before importing from Shopify."), { kind: "error" });
+    setProviderStatus("Sign in before importing from Shopify.", { kind: "error" });
     return;
   }
   if (!shopifyConnection?.shop) {
@@ -3663,12 +1927,7 @@ const CSV_WAREHOUSE_ALIASES = [
   "origin_location",
 ];
 
-const mockAccountManagers = [
-  "Lea Martin",
-  "Noah Peeters",
-  "Eva Janssens",
-  "Milan Dubois",
-];
+const mockPlans = ["Starter", "Growth", "Scale", "Enterprise"];
 const mockCompanySuffixes = [
   "Logistics",
   "Commerce",
@@ -3733,7 +1992,7 @@ function wait(ms) {
 
 async function fetchSupabaseHistoryRows(userId) {
   if (!supabaseClient || !userId) {
-    return { data: [], error: new Error(tr("Supabase unavailable")) };
+    return { data: [], error: new Error("Supabase unavailable") };
   }
 
   let lastError = null;
@@ -3754,7 +2013,7 @@ async function fetchSupabaseHistoryRows(userId) {
       return { data, error: null };
     }
 
-    lastError = error || new Error(tr("Unknown history fetch error"));
+    lastError = error || new Error("Unknown history fetch error");
   }
 
   return { data: [], error: lastError };
@@ -3764,7 +2023,7 @@ function formatHistoryDate(value) {
   if (!value) return "--";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--";
-  return date.toLocaleString(getUiLocale(), {
+  return date.toLocaleString([], {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -3783,7 +2042,7 @@ function formatHistoryHeadlineParts(value) {
   }
   const day = String(date.getDate()).padStart(2, "0");
   const month = date
-    .toLocaleString(getUiLocale(), { month: "short" })
+    .toLocaleString("en-GB", { month: "short" })
     .replace(".", "");
   const year = date.getFullYear();
   const hour = String(date.getHours()).padStart(2, "0");
@@ -3826,35 +2085,6 @@ function buildMockAccountProfile(user) {
   const email = (user.email || "").toLowerCase();
   const localPart = email.split("@")[0] || "shipr";
   const seed = hashString(user.id || email || localPart);
-  const metadata = user?.user_metadata || {};
-  const metadataProfile = {
-    companyName: String(metadata.company_name || metadata.companyName || "").trim(),
-    contactName: String(metadata.contact_name || metadata.contactName || "").trim(),
-    contactEmail: String(metadata.contact_email || metadata.contactEmail || "").trim(),
-    contactPhone: String(metadata.contact_phone || metadata.contactPhone || "").trim(),
-    billingAddress: String(metadata.billing_address || metadata.billingAddress || "").trim(),
-    taxId: String(metadata.tax_id || metadata.taxId || "").trim(),
-    customerId: String(metadata.customer_id || metadata.customerId || "").trim(),
-    accountManager: String(
-      metadata.account_manager || metadata.accountManager || ""
-    ).trim(),
-  };
-  const hasMetadataProfile = Object.values(metadataProfile).some((value) =>
-    Boolean(String(value || "").trim())
-  );
-  if (hasMetadataProfile) {
-    return {
-      companyName: metadataProfile.companyName || "--",
-      contactName: metadataProfile.contactName || "--",
-      contactEmail: metadataProfile.contactEmail || email || "--",
-      contactPhone: metadataProfile.contactPhone || "--",
-      billingAddress: metadataProfile.billingAddress || "--",
-      taxId: metadataProfile.taxId || "--",
-      customerId: metadataProfile.customerId || "--",
-      accountManager: metadataProfile.accountManager || pickBySeed(mockAccountManagers, seed, 6),
-    };
-  }
-
   const cleanedBase = localPart
     .replace(/[^a-z0-9]+/gi, " ")
     .trim();
@@ -3881,7 +2111,7 @@ function buildMockAccountProfile(user) {
     billingAddress: `${streetNumber} ${streetName}, ${city}, ${stateCode} ${zip}, ${country}`,
     taxId: `EU-${taxCore}`,
     customerId: `CUST-${customerCore}`,
-    accountManager: pickBySeed(mockAccountManagers, seed, 6),
+    plan: pickBySeed(mockPlans, seed, 6),
   };
 }
 
@@ -3896,7 +2126,7 @@ function renderAccountProfile(user) {
         billingAddress: profile.billingAddress,
         taxId: profile.taxId,
         customerId: profile.customerId,
-        accountManager: profile.accountManager,
+        plan: profile.plan,
       }
     : {
         companyName: "--",
@@ -3906,7 +2136,7 @@ function renderAccountProfile(user) {
         billingAddress: "--",
         taxId: "--",
         customerId: "--",
-        accountManager: "--",
+        plan: "--",
       };
 
   if (accountCompanyName) accountCompanyName.textContent = values.companyName;
@@ -3916,7 +2146,7 @@ function renderAccountProfile(user) {
   if (accountBillingAddress) accountBillingAddress.textContent = values.billingAddress;
   if (accountTaxId) accountTaxId.textContent = values.taxId;
   if (accountCustomerId) accountCustomerId.textContent = values.customerId;
-  if (accountAccountManager) accountAccountManager.textContent = values.accountManager;
+  if (accountPlan) accountPlan.textContent = values.plan;
 
   if (invoiceCompany) invoiceCompany.textContent = values.companyName;
   if (invoiceContact) invoiceContact.textContent = values.contactName;
@@ -4114,16 +2344,12 @@ function buildOriginChoiceButton(origin, options = {}) {
   button.innerHTML = `
     <span class="origin-choice-check" aria-hidden="true"><span class="origin-choice-check-fill"></span></span>
     <span>
-      <span class="origin-choice-name">${escapeHtml(
-        origin.name || tr("Origin")
-      )}</span>
-      <span class="origin-choice-meta">${tr("Physical")}: ${escapeHtml(
-        formatWarehouseAddressLine(origin)
-      )}</span>
-      <span class="origin-choice-meta">${tr("Return")}: ${
+      <span class="origin-choice-name">${escapeHtml(origin.name || "Origin")}</span>
+      <span class="origin-choice-meta">Physical: ${escapeHtml(formatWarehouseAddressLine(origin))}</span>
+      <span class="origin-choice-meta">Return: ${
         origin.sameReturnAddress
-          ? tr("Same as physical")
-          : escapeHtml(formatWarehouseAddressLine(origin, { useReturn: true }) || tr("Not set"))
+          ? "Same as physical"
+          : escapeHtml(formatWarehouseAddressLine(origin, { useReturn: true }) || "Not set")
       }</span>
     </span>
   `;
@@ -4135,7 +2361,7 @@ function renderSenderOriginSelector() {
   senderOriginSelector.innerHTML = "";
 
   if (!currentUser) {
-    senderOriginNote.textContent = tr("Sign in to use account shipping origins.");
+    senderOriginNote.textContent = "Sign in to use account shipping origins.";
     if (inputMap.senderName) inputMap.senderName.value = "";
     if (inputMap.senderStreet) inputMap.senderStreet.value = "";
     if (inputMap.senderCity) inputMap.senderCity.value = "";
@@ -4146,7 +2372,7 @@ function renderSenderOriginSelector() {
   }
 
   if (!warehouseRecords.length) {
-    senderOriginNote.textContent = tr("Add at least one shipping origin in Account settings.");
+    senderOriginNote.textContent = "Add at least one shipping origin in Account settings.";
     if (inputMap.senderName) inputMap.senderName.value = "";
     if (inputMap.senderStreet) inputMap.senderStreet.value = "";
     if (inputMap.senderCity) inputMap.senderCity.value = "";
@@ -4171,7 +2397,7 @@ function renderSenderOriginSelector() {
   });
 
   senderOriginNote.textContent = locked
-    ? tr("Sender is fixed to your only saved shipping origin.")
+    ? "Sender is fixed to your only saved shipping origin."
     : "";
 }
 
@@ -4190,13 +2416,13 @@ function renderCsvShipFromSelector() {
   csvShipFromSelector.classList.toggle("is-locked", lockedByProvider);
   if (lockedByProvider) {
     csvShipFromNote.innerHTML =
-      `${tr("Ship from is controlled by your Shopify")} <button type="button" class="csv-ship-from-note-link" data-action="open-shopify-settings">${tr("fulfillment settings")}</button> ${tr("for this import.")}`;
+      'Ship from is controlled by your Shopify <button type="button" class="csv-ship-from-note-link" data-action="open-shopify-settings">fulfillment settings</button> for this import.';
     return;
   }
 
   csvShipFromNote.innerHTML = "";
   if (!warehouseRecords.length) {
-    csvShipFromNote.textContent = tr("No saved ship-from origin. Add one in Account settings.");
+    csvShipFromNote.textContent = "No saved ship-from origin. Add one in Account settings.";
     return;
   }
 
@@ -4211,9 +2437,14 @@ function renderCsvShipFromSelector() {
     csvShipFromSelector.appendChild(button);
   });
 
+  if (lockedByProvider) {
+    csvShipFromNote.textContent =
+      "Ship from is controlled by your Shopify fulfillment settings for this import.";
+    return;
+  }
   csvShipFromNote.textContent = singleOrigin
-    ? tr("Using your only saved ship-from origin.")
-    : tr("Choose which origin to apply to this batch.");
+    ? "Using your only saved ship-from origin."
+    : "Choose which origin to apply to this batch.";
 }
 
 function syncCsvRowsWithSelectedOrigin(options = {}) {
@@ -4266,27 +2497,17 @@ function applyWarehouseToSender(origin, options = {}) {
   syncInfoState();
   updatePreview();
   if (announce) {
-    setWarehouseStatus(
-      tr("Applied {name} to sender details.", {
-        name: origin.name || tr("warehouse"),
-      }),
-      {
+    setWarehouseStatus(`Applied ${origin.name || "warehouse"} to sender details.`, {
       tone: "success",
-      }
-    );
+    });
   }
 }
 
 function setWarehouseStatus(message, options = {}) {
-  const { tone = "muted", persist = !["error", "success"].includes(tone), toast = !persist } =
-    options;
+  const { tone = "muted" } = options;
   if (!warehouseStatus) return;
-  const text = String(message || "").trim();
-  warehouseStatus.textContent = persist ? text : "";
+  warehouseStatus.textContent = String(message || "").trim();
   warehouseStatus.classList.remove("is-error", "is-success");
-  if (toast && text) {
-    showToast(text, { tone: tone === "muted" ? "info" : tone });
-  }
   if (tone === "error") {
     warehouseStatus.classList.add("is-error");
   } else if (tone === "success") {
@@ -4305,7 +2526,7 @@ function updateWarehouseControls() {
       disabledBase || !warehouseDirty || warehouseRecords.length === 0;
     const label = warehouseSaveButton.querySelector("span");
     if (label) {
-      label.textContent = warehouseSaving ? tr("Saving...") : tr("Save Origins");
+      label.textContent = warehouseSaving ? "Saving..." : "Save Origins";
     }
   }
 }
@@ -4315,7 +2536,7 @@ function setWarehouseDirty(isDirty, options = {}) {
   warehouseDirty = Boolean(isDirty);
   updateWarehouseControls();
   if (warehouseDirty && announce) {
-    setWarehouseStatus(tr("Unsaved changes in shipping origins."));
+    setWarehouseStatus("Unsaved changes in shipping origins.");
   }
 }
 
@@ -4358,7 +2579,7 @@ function renderWarehouseList() {
   if (!currentUser) {
     const empty = document.createElement("div");
     empty.className = "warehouse-empty";
-    empty.textContent = tr("Sign in to manage account shipping origins.");
+    empty.textContent = "Sign in to manage account shipping origins.";
     warehouseList.appendChild(empty);
     updateWarehouseControls();
     renderSenderOriginSelector();
@@ -4369,7 +2590,7 @@ function renderWarehouseList() {
   if (!warehouseRecords.length) {
     const empty = document.createElement("div");
     empty.className = "warehouse-empty";
-    empty.textContent = tr("No shipping origins configured yet.");
+    empty.textContent = "No shipping origins configured yet.";
     warehouseList.appendChild(empty);
     updateWarehouseControls();
     renderSenderOriginSelector();
@@ -4393,7 +2614,7 @@ function renderWarehouseList() {
 
     const name = document.createElement("span");
     name.className = "warehouse-card-name";
-    name.textContent = origin.name || `${tr("Origin")} ${index + 1}`;
+    name.textContent = origin.name || `Origin ${index + 1}`;
 
     title.appendChild(name);
 
@@ -4410,7 +2631,7 @@ function renderWarehouseList() {
     defaultBox.setAttribute("aria-hidden", "true");
 
     const defaultText = document.createElement("span");
-    defaultText.textContent = tr("Default");
+    defaultText.textContent = "Default";
 
     defaultToggle.appendChild(defaultBox);
     defaultToggle.appendChild(defaultText);
@@ -4419,20 +2640,20 @@ function renderWarehouseList() {
     const grid = document.createElement("div");
     grid.className = "warehouse-grid";
     grid.appendChild(
-      createWarehouseField(tr("Origin Label"), "name", origin.name, {
-        placeholder: `${tr("Origin")} ${index + 1}`,
+      createWarehouseField("Origin Label", "name", origin.name, {
+        placeholder: `Origin ${index + 1}`,
       })
     );
     grid.appendChild(
-      createWarehouseField(tr("Sender Name"), "senderName", origin.senderName, {
-        placeholder: tr("Sender/Company name"),
+      createWarehouseField("Sender Name", "senderName", origin.senderName, {
+        placeholder: "Sender/Company name",
       })
     );
-    grid.appendChild(createWarehouseField(tr("Street"), "street", origin.street, { wide: true }));
-    grid.appendChild(createWarehouseField(tr("City"), "city", origin.city));
-    grid.appendChild(createWarehouseField(tr("Region"), "region", origin.region));
-    grid.appendChild(createWarehouseField(tr("Postal Code"), "postalCode", origin.postalCode));
-    grid.appendChild(createWarehouseField(tr("Country"), "country", origin.country));
+    grid.appendChild(createWarehouseField("Street", "street", origin.street, { wide: true }));
+    grid.appendChild(createWarehouseField("City", "city", origin.city));
+    grid.appendChild(createWarehouseField("Region", "region", origin.region));
+    grid.appendChild(createWarehouseField("Postal Code", "postalCode", origin.postalCode));
+    grid.appendChild(createWarehouseField("Country", "country", origin.country));
 
     const returnToggle = document.createElement("button");
     returnToggle.type = "button";
@@ -4445,7 +2666,7 @@ function renderWarehouseList() {
     returnToggleBox.setAttribute("aria-hidden", "true");
 
     const returnToggleText = document.createElement("span");
-    returnToggleText.textContent = tr("Same Return Address");
+    returnToggleText.textContent = "Same Return Address";
 
     returnToggle.appendChild(returnToggleBox);
     returnToggle.appendChild(returnToggleText);
@@ -4455,30 +2676,24 @@ function renderWarehouseList() {
       returnGrid = document.createElement("div");
       returnGrid.className = "warehouse-return-grid";
       returnGrid.appendChild(
-        createWarehouseField(tr("Return Name"), "returnSenderName", origin.returnSenderName, {
-          placeholder: tr("Return sender/company"),
+        createWarehouseField("Return Name", "returnSenderName", origin.returnSenderName, {
+          placeholder: "Return sender/company",
         })
       );
       returnGrid.appendChild(
-        createWarehouseField(tr("Return Street"), "returnStreet", origin.returnStreet, {
+        createWarehouseField("Return Street", "returnStreet", origin.returnStreet, {
           wide: true,
         })
       );
+      returnGrid.appendChild(createWarehouseField("Return City", "returnCity", origin.returnCity));
       returnGrid.appendChild(
-        createWarehouseField(tr("Return City"), "returnCity", origin.returnCity)
+        createWarehouseField("Return Region", "returnRegion", origin.returnRegion)
       );
       returnGrid.appendChild(
-        createWarehouseField(tr("Return Region"), "returnRegion", origin.returnRegion)
+        createWarehouseField("Return Postal Code", "returnPostalCode", origin.returnPostalCode)
       );
       returnGrid.appendChild(
-        createWarehouseField(
-          tr("Return Postal Code"),
-          "returnPostalCode",
-          origin.returnPostalCode
-        )
-      );
-      returnGrid.appendChild(
-        createWarehouseField(tr("Return Country"), "returnCountry", origin.returnCountry)
+        createWarehouseField("Return Country", "returnCountry", origin.returnCountry)
       );
     }
 
@@ -4492,14 +2707,14 @@ function renderWarehouseList() {
     applyButton.type = "button";
     applyButton.className = "btn btn-secondary btn-sm";
     applyButton.dataset.warehouseAction = "apply";
-    applyButton.textContent = tr("Apply");
+    applyButton.textContent = "Apply";
     applyButton.disabled = warehouseSaving;
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "btn btn-ghost btn-sm";
     removeButton.dataset.warehouseAction = "remove";
-    removeButton.textContent = tr("Remove");
+    removeButton.textContent = "Remove";
     removeButton.disabled = warehouseSaving || warehouseRecords.length <= 1;
 
     controlGroup.appendChild(applyButton);
@@ -4578,7 +2793,7 @@ function buildNewWarehouseRecord() {
   const senderNameSeed = String(accountCompanyName?.textContent || "").trim();
   return normalizeWarehouseRecord({
     id: generateWarehouseId(),
-    name: `${tr("Origin")} ${nextNumber}`,
+    name: `Origin ${nextNumber}`,
     senderName: senderNameSeed === "--" ? "" : senderNameSeed,
     country: "France",
     isDefault: warehouseRecords.length === 0,
@@ -4587,102 +2802,64 @@ function buildNewWarehouseRecord() {
 
 function validateWarehouseRecords(records) {
   if (!Array.isArray(records) || !records.length) {
-    return { ok: false, message: tr("Add at least one warehouse origin."), records: [] };
+    return { ok: false, message: "Add at least one warehouse origin.", records: [] };
   }
 
   const normalized = normalizeWarehouseRecords(records);
   for (let i = 0; i < normalized.length; i += 1) {
     const origin = normalized[i];
-    const prefix = origin.name || `${tr("Origin")} ${i + 1}`;
+    const prefix = origin.name || `Origin ${i + 1}`;
     if (!origin.name) {
-      return {
-        ok: false,
-        message: tr("{prefix}: origin label is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: origin label is required.`, records: normalized };
     }
     if (!origin.senderName) {
-      return {
-        ok: false,
-        message: tr("{prefix}: sender name is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: sender name is required.`, records: normalized };
     }
     if (!origin.street) {
-      return {
-        ok: false,
-        message: tr("{prefix}: street is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: street is required.`, records: normalized };
     }
     if (!origin.city) {
-      return {
-        ok: false,
-        message: tr("{prefix}: city is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: city is required.`, records: normalized };
     }
     if (!origin.postalCode) {
-      return {
-        ok: false,
-        message: tr("{prefix}: postal code is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: postal code is required.`, records: normalized };
     }
     if (!origin.country) {
-      return {
-        ok: false,
-        message: tr("{prefix}: country is required.", { prefix }),
-        records: normalized,
-      };
+      return { ok: false, message: `${prefix}: country is required.`, records: normalized };
     }
     if (!origin.sameReturnAddress) {
       if (!origin.returnSenderName) {
         return {
           ok: false,
-          message: tr(
-            "{prefix}: return sender name is required when using a custom return address.",
-            { prefix }
-          ),
+          message: `${prefix}: return sender name is required when using a custom return address.`,
           records: normalized,
         };
       }
       if (!origin.returnStreet) {
         return {
           ok: false,
-          message: tr(
-            "{prefix}: return street is required when using a custom return address.",
-            { prefix }
-          ),
+          message: `${prefix}: return street is required when using a custom return address.`,
           records: normalized,
         };
       }
       if (!origin.returnCity) {
         return {
           ok: false,
-          message: tr("{prefix}: return city is required when using a custom return address.", {
-            prefix,
-          }),
+          message: `${prefix}: return city is required when using a custom return address.`,
           records: normalized,
         };
       }
       if (!origin.returnPostalCode) {
         return {
           ok: false,
-          message: tr(
-            "{prefix}: return postal code is required when using a custom return address.",
-            { prefix }
-          ),
+          message: `${prefix}: return postal code is required when using a custom return address.`,
           records: normalized,
         };
       }
       if (!origin.returnCountry) {
         return {
           ok: false,
-          message: tr(
-            "{prefix}: return country is required when using a custom return address.",
-            { prefix }
-          ),
+          message: `${prefix}: return country is required when using a custom return address.`,
           records: normalized,
         };
       }
@@ -4715,7 +2892,7 @@ function toWarehouseOriginsPayload(records) {
 
 async function fetchSupabaseWarehouseOrigins(userId) {
   if (!supabaseClient || !userId) {
-    return { origins: [], error: new Error(tr("Supabase unavailable")) };
+    return { origins: [], error: new Error("Supabase unavailable") };
   }
   const { data, error } = await supabaseClient
     .from(ACCOUNT_SETTINGS_TABLE)
@@ -4732,7 +2909,7 @@ async function fetchSupabaseWarehouseOrigins(userId) {
 
 async function saveSupabaseWarehouseOrigins(userId, origins) {
   if (!supabaseClient || !userId) {
-    return { origins: [], error: new Error(tr("Supabase unavailable")) };
+    return { origins: [], error: new Error("Supabase unavailable") };
   }
   const payload = toWarehouseOriginsPayload(origins);
   const { data, error } = await supabaseClient
@@ -4769,12 +2946,12 @@ async function loadWarehouseSettings(options = {}) {
     warehouseSaving = false;
     state.shipFromOriginId = "";
     renderWarehouseList();
-    setWarehouseStatus(tr("Sign in to manage shipping origins."));
+    setWarehouseStatus("Sign in to manage shipping origins.");
     return;
   }
 
   if (!quiet) {
-    setWarehouseStatus(tr("Loading shipping origins..."));
+    setWarehouseStatus("Loading shipping origins...");
   }
 
   let nextRecords = [];
@@ -4816,11 +2993,11 @@ async function loadWarehouseSettings(options = {}) {
   renderWarehouseList();
 
   if (source === "supabase") {
-    setWarehouseStatus(tr("Shipping origins synced from your account."));
+    setWarehouseStatus("Shipping origins synced from your account.");
   } else if (source === "local") {
-    setWarehouseStatus(tr("Showing browser-saved origins. Click Save Origins to sync."));
+    setWarehouseStatus("Showing browser-saved origins. Click Save Origins to sync.");
   } else {
-    setWarehouseStatus(tr("Add your shipping origin and click Save Origins."));
+    setWarehouseStatus("Add your shipping origin and click Save Origins.");
   }
 
   maybeApplyDefaultWarehouseToSender();
@@ -4838,14 +3015,14 @@ async function saveWarehouseSettings() {
   warehouseRecords = validation.records;
   warehouseSaving = true;
   renderWarehouseList();
-  setWarehouseStatus(tr("Saving shipping origins..."));
+  setWarehouseStatus("Saving shipping origins...");
 
   const userId = currentUser.id;
   let savedOrigins = toWarehouseOriginsPayload(warehouseRecords);
   if (!supabaseClient) {
     warehouseSaving = false;
     renderWarehouseList();
-    setWarehouseStatus(tr("Could not sync to account. Supabase client is unavailable."), {
+    setWarehouseStatus("Could not sync to account. Supabase client is unavailable.", {
       tone: "error",
     });
     setWarehouseDirty(true, { announce: false });
@@ -4856,14 +3033,9 @@ async function saveWarehouseSettings() {
   if (error) {
     warehouseSaving = false;
     renderWarehouseList();
-    setWarehouseStatus(
-      tr("Could not sync shipping origins: {error}", {
-        error: error.message || tr("unknown error"),
-      }),
-      {
-        tone: "error",
-      }
-    );
+    setWarehouseStatus(`Could not sync shipping origins: ${error.message || "unknown error"}`, {
+      tone: "error",
+    });
     setWarehouseDirty(true, { announce: false });
     return;
   }
@@ -4876,7 +3048,7 @@ async function saveWarehouseSettings() {
   warehouseEnteringIds.clear();
   renderWarehouseList();
 
-  setWarehouseStatus(tr("Shipping origins saved to your account."), { tone: "success" });
+  setWarehouseStatus("Shipping origins saved to your account.", { tone: "success" });
   maybeApplyDefaultWarehouseToSender();
 }
 
@@ -4888,7 +3060,7 @@ function resetWarehouseState() {
   warehouseEnteringIds.clear();
   state.shipFromOriginId = "";
   renderWarehouseList();
-  setWarehouseStatus(tr("Sign in to manage shipping origins."));
+  setWarehouseStatus("Sign in to manage shipping origins.");
 }
 
 function calculateRecordTotals(record) {
@@ -4982,11 +3154,7 @@ function runMainViewTransition(mutate, options = {}) {
 function setMainView(view, options = {}) {
   const { push = true, replace = false, animate = true } = options;
   const nextView =
-    view === "account" ||
-    view === "admin" ||
-    view === "history" ||
-    view === "reports" ||
-    view === "builder"
+    view === "account" || view === "history" || view === "reports" || view === "builder"
       ? view
       : "builder";
   const viewChanged = nextView !== currentMainView;
@@ -4998,9 +3166,6 @@ function setMainView(view, options = {}) {
     }
     if (accountPageSection) {
       accountPageSection.classList.toggle("is-hidden", nextView !== "account");
-    }
-    if (adminPageSection) {
-      adminPageSection.classList.toggle("is-hidden", nextView !== "admin");
     }
     if (historyPageSection) {
       historyPageSection.classList.toggle("is-hidden", nextView !== "history");
@@ -5031,10 +3196,6 @@ function setMainView(view, options = {}) {
       updateRoute({ view: "account" }, { replace });
       return;
     }
-    if (nextView === "admin") {
-      updateRoute({ view: "admin" }, { replace });
-      return;
-    }
     if (nextView === "history") {
       updateRoute({ view: "history" }, { replace });
       return;
@@ -5049,10 +3210,6 @@ function setMainView(view, options = {}) {
 
 function setAccountPageVisible(visible, options = {}) {
   setMainView(visible ? "account" : "builder", options);
-}
-
-function setAdminPageVisible(visible, options = {}) {
-  setMainView(visible ? "admin" : "builder", options);
 }
 
 function setReportsPageVisible(visible, options = {}) {
@@ -5195,9 +3352,7 @@ function resetAccountPreview() {
     accountPdfFrame.src = "";
   }
   if (accountPreviewMeta) {
-    accountPreviewMeta.textContent = tr(
-      "Select a generation to preview labels and receipt details."
-    );
+    accountPreviewMeta.textContent = "Select a generation to preview labels and receipt details.";
   }
   if (accountDownloadPdf) {
     accountDownloadPdf.disabled = true;
@@ -5220,7 +3375,7 @@ function renderAccountHistoryList() {
   if (!currentUser) {
     const empty = document.createElement("div");
     empty.className = "account-history-empty";
-    empty.textContent = tr("Sign in to view previous generations.");
+    empty.textContent = "Sign in to view previous generations.";
     accountHistoryList.appendChild(empty);
     return;
   }
@@ -5228,7 +3383,7 @@ function renderAccountHistoryList() {
   if (!historyRecords.length) {
     const empty = document.createElement("div");
     empty.className = "account-history-empty";
-    empty.textContent = tr("No generations yet.");
+    empty.textContent = "No generations yet.";
     accountHistoryList.appendChild(empty);
     return;
   }
@@ -5246,7 +3401,7 @@ function renderAccountHistoryList() {
 
     const service = document.createElement("span");
     service.className = "account-record-service";
-    service.textContent = translateServiceName(record.service_type || "Label generation");
+    service.textContent = record.service_type || "Label generation";
 
     const date = document.createElement("span");
     date.className = "account-record-date";
@@ -5265,11 +3420,9 @@ function renderAccountHistoryList() {
 
     const meta = document.createElement("div");
     meta.className = "account-record-meta mono";
-    meta.textContent = tr("{count} labels • EX. VAT {ex} • INCL. VAT {incl}", {
-      count: totals.quantity,
-      ex: formatMoney(totals.totalExVat),
-      incl: formatMoney(totals.totalIncVat),
-    });
+    meta.textContent = `${totals.quantity} labels • EX ${formatMoney(
+      totals.totalExVat
+    )} • INCL ${formatMoney(totals.totalIncVat)}`;
 
     item.appendChild(head);
     item.appendChild(meta);
@@ -5323,7 +3476,7 @@ async function loadGenerationHistory(options = {}) {
 
     if (selectionIndex === -1) {
       resetAccountPreview();
-      setAccountHistoryStatus(tr("No preview-ready generations yet."));
+      setAccountHistoryStatus("No preview-ready generations yet.");
       refreshReportsIfVisible();
       return;
     }
@@ -5335,14 +3488,14 @@ async function loadGenerationHistory(options = {}) {
   if (!currentUser) {
     historyRecords = [];
     historyStore = "supabase";
-    setAccountHistoryStatus(tr("Sign in to view previous generations."));
+    setAccountHistoryStatus("Sign in to view previous generations.");
     renderAccountHistoryList();
     resetAccountPreview();
     renderReportsDashboard();
     return;
   }
 
-  setAccountHistoryStatus(tr("Loading previous generations..."));
+  setAccountHistoryStatus("Loading previous generations...");
   const previousRecordId = !preferLatest ? accountActiveRecord?.id : null;
 
   if (supabaseClient) {
@@ -5354,8 +3507,8 @@ async function loadGenerationHistory(options = {}) {
       saveServerHistoryCache(requestedUserId, data);
       applyLoadedRecords(
         data,
-        tr("Select a generation to view PDFs and receipt details."),
-        tr("No previous generations yet.")
+        "Select a generation to view PDFs and receipt details.",
+        "No previous generations yet."
       );
       return;
     }
@@ -5367,8 +3520,8 @@ async function loadGenerationHistory(options = {}) {
       historyStore = "supabase-cache";
       applyLoadedRecords(
         serverCachedRecords,
-        tr("Sync delayed. Showing last synced history."),
-        tr("No previous generations yet.")
+        "Sync delayed. Showing last synced history.",
+        "No previous generations yet."
       );
       return;
     }
@@ -5382,8 +3535,8 @@ async function loadGenerationHistory(options = {}) {
     historyStore = "local";
     applyLoadedRecords(
       localRecords,
-      tr("Showing browser-saved history for this account."),
-      tr("No browser history saved for this account yet.")
+      "Showing browser-saved history for this account.",
+      "No browser history saved for this account yet."
     );
     return;
   }
@@ -5393,8 +3546,8 @@ async function loadGenerationHistory(options = {}) {
     historyStore = "memory";
     applyLoadedRecords(
       priorRecords,
-      tr("Sync delayed. Showing previously loaded history."),
-      tr("No previous generations yet.")
+      "Sync delayed. Showing previously loaded history.",
+      "No previous generations yet."
     );
     return;
   }
@@ -5403,8 +3556,8 @@ async function loadGenerationHistory(options = {}) {
   historyStore = "local";
   applyLoadedRecords(
     [],
-    tr("Showing browser-saved history for this account."),
-    tr("Could not load history right now. Please refresh in a moment.")
+    "Showing browser-saved history for this account.",
+    "Could not load history right now. Please refresh in a moment."
   );
 }
 
@@ -5511,7 +3664,7 @@ function renderAccountBatchList() {
     button.className = `batch-item${index === accountActiveLabelIndex ? " is-active" : ""}`;
     button.dataset.accountLabelIndex = String(index);
     button.innerHTML = `
-      <div class="batch-index">${tr("Label")} ${label.index}</div>
+      <div class="batch-index">Label ${label.index}</div>
       <div class="batch-meta mono">${label.trackingId}</div>
       <div class="batch-meta mono">${label.labelId}</div>
     `;
@@ -5537,22 +3690,20 @@ function selectAccountLabel(index) {
 function renderReceiptDetails(record) {
   if (!receiptSummary || !receiptTableBody || !record) return;
   const totals = calculateRecordTotals(record);
-  const serviceType = translateServiceName(
-    record.payload?.selection?.type || record.service_type || "--"
-  );
+  const serviceType = record.payload?.selection?.type || record.service_type || "--";
   const labels = accountLabels.length ? accountLabels : record.payload?.labels || [];
 
   receiptSummary.innerHTML = "";
   const summaryRows = [
-    [tr("Service"), serviceType],
-    [tr("Date"), formatHistoryDate(record.created_at)],
-    [tr("Order"), record.id || "--"],
-    [tr("Quantity"), String(totals.quantity)],
-    [tr("Subtotal (EX. VAT)"), formatMoney(totals.totalExVat)],
-    [tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) }), formatMoney(totals.vatAmount)],
-    [tr("Total (INCL. VAT)"), formatMoney(totals.totalIncVat)],
-    [tr("Unit (EX. VAT)"), formatMoney(totals.unitExVat)],
-    [tr("Unit (INCL. VAT)"), formatMoney(totals.unitIncVat)],
+    ["Service", serviceType],
+    ["Date", formatHistoryDate(record.created_at)],
+    ["Order", record.id || "--"],
+    ["Quantity", String(totals.quantity)],
+    ["Subtotal (ex VAT)", formatMoney(totals.totalExVat)],
+    [`VAT (${Math.round(VAT_RATE * 100)}%)`, formatMoney(totals.vatAmount)],
+    ["Total (incl VAT)", formatMoney(totals.totalIncVat)],
+    ["Unit (ex VAT)", formatMoney(totals.unitExVat)],
+    ["Unit (incl VAT)", formatMoney(totals.unitIncVat)],
   ];
 
   summaryRows.forEach(([label, value]) => {
@@ -5616,27 +3767,23 @@ function downloadReceiptPdfFile() {
     : accountActiveRecord.payload?.labels || [];
 
   const lines = [
-    tr("SHIPR RECEIPT"),
-    `${tr("Order")}: ${accountActiveRecord.id || "--"}`,
-    `${tr("Date")}: ${formatHistoryDate(accountActiveRecord.created_at)}`,
-    `${tr("Service")}: ${translateServiceName(serviceType)}`,
-    `${tr("Quantity")}: ${totals.quantity}`,
-    `${tr("Subtotal (EX. VAT)")}: ${formatMoney(totals.totalExVat)}`,
-    `${tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) })}: ${formatMoney(
-      totals.vatAmount
-    )}`,
-    `${tr("Total (INCL. VAT)")}: ${formatMoney(totals.totalIncVat)}`,
+    "SHIPR RECEIPT",
+    `Order: ${accountActiveRecord.id || "--"}`,
+    `Date: ${formatHistoryDate(accountActiveRecord.created_at)}`,
+    `Service: ${serviceType}`,
+    `Quantity: ${totals.quantity}`,
+    `Subtotal (EX VAT): ${formatMoney(totals.totalExVat)}`,
+    `VAT (${Math.round(VAT_RATE * 100)}%): ${formatMoney(totals.vatAmount)}`,
+    `Total (INCL VAT): ${formatMoney(totals.totalIncVat)}`,
     "",
-    tr("LABEL BREAKDOWN"),
+    "LABEL BREAKDOWN",
   ];
 
   labels.forEach((label, index) => {
     lines.push(
-      `${index + 1}. ${label.labelId || "--"} | ${label.trackingId || "--"} | ${tr(
-        "EX. VAT"
-      )} ${formatMoney(totals.unitExVat)} | ${tr("INCL. VAT")} ${formatMoney(
-        totals.unitIncVat
-      )}`
+      `${index + 1}. ${label.labelId || "--"} | ${label.trackingId || "--"} | EX ${formatMoney(
+        totals.unitExVat
+      )} | INCL ${formatMoney(totals.unitIncVat)}`
     );
   });
 
@@ -5650,7 +3797,7 @@ function downloadReceiptPdfFile() {
     lineHeight: 14,
   });
   const url = URL.createObjectURL(blob);
-  triggerFileDownload(url, `receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
+  triggerFileDownload(url, `receipt-${accountActiveRecord.id || "label-order"}.pdf`);
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
@@ -5664,9 +3811,7 @@ function selectAccountRecord(index) {
   accountActiveLabelIndex = 0;
   revokeAccountPdfUrls();
 
-  const serviceType = translateServiceName(
-    record.payload?.selection?.type || record.service_type || "Label"
-  );
+  const serviceType = record.payload?.selection?.type || record.service_type || "Label";
   accountLabels = labels.map((saved, idx) => {
     const label = {
       index: saved.index || idx + 1,
@@ -5689,16 +3834,9 @@ function selectAccountRecord(index) {
 
   const totals = calculateRecordTotals(record);
   if (accountPreviewMeta) {
-    accountPreviewMeta.textContent = tr(
-      "{service} • {count} labels • EX. VAT {ex} • VAT {vat} • INCL. VAT {incl}",
-      {
-      service: serviceType,
-      count: totals.quantity,
-      ex: formatMoney(totals.totalExVat),
-      vat: formatMoney(totals.vatAmount),
-      incl: formatMoney(totals.totalIncVat),
-      }
-    );
+    accountPreviewMeta.textContent = `${serviceType} • ${totals.quantity} labels • EX ${formatMoney(
+      totals.totalExVat
+    )} • VAT ${formatMoney(totals.vatAmount)} • INCL ${formatMoney(totals.totalIncVat)}`;
   }
 
   if (accountDownloadPdf) {
@@ -5732,12 +3870,12 @@ function toDayStart(value) {
 
 function formatReportAxisDate(date) {
   if (!date) return "--";
-  return date.toLocaleDateString(getUiLocale(), { month: "numeric", day: "numeric" });
+  return date.toLocaleDateString([], { month: "numeric", day: "numeric" });
 }
 
 function formatReportTooltipDate(date) {
   if (!date) return "--";
-  return date.toLocaleDateString(getUiLocale(), { month: "short", day: "numeric" });
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function formatDateInputValue(date) {
@@ -5782,7 +3920,7 @@ function getRecordCreatedDay(record) {
 }
 
 function getRecordServiceType(record) {
-  return record?.payload?.selection?.type || record?.service_type || tr("Unknown Service");
+  return record?.payload?.selection?.type || record?.service_type || "Unknown Service";
 }
 
 function getRecordLabels(record) {
@@ -5853,34 +3991,7 @@ function formatSignedMoney(value) {
 
 function setReportsCustomRangeVisible(visible) {
   if (!reportsCustomRange) return;
-  reportsCustomRange.classList.toggle("is-open", Boolean(visible));
-  reportsCustomRange.setAttribute("aria-hidden", visible ? "false" : "true");
-}
-
-function getSafeReportsRangeDays(value = reportsRangeDays) {
-  return REPORT_RANGE_PRESETS.includes(Number(value)) ? Number(value) : 30;
-}
-
-function getAllTimeReportBounds(today) {
-  const normalizedToday = toDayStart(today || new Date());
-  const recordDays = historyRecords
-    .map((record) => toDayStart(getRecordCreatedDay(record)))
-    .filter(Boolean)
-    .sort((left, right) => left - right);
-
-  if (!recordDays.length) {
-    const fallbackStart = new Date(normalizedToday);
-    fallbackStart.setDate(fallbackStart.getDate() - 29);
-    return {
-      start: fallbackStart,
-      end: normalizedToday,
-    };
-  }
-
-  return {
-    start: recordDays[0],
-    end: recordDays[recordDays.length - 1] > normalizedToday ? normalizedToday : recordDays[recordDays.length - 1],
-  };
+  reportsCustomRange.classList.toggle("is-hidden", !visible);
 }
 
 function getReportsRangeSettings() {
@@ -5903,18 +4014,9 @@ function getReportsRangeSettings() {
     }
   }
 
-  if (reportsRangeMode === "all") {
-    const { start, end } = getAllTimeReportBounds(today);
-    return {
-      mode: "all",
-      start,
-      end,
-      days: Math.max(1, Math.round((end - start) / 86400000) + 1),
-      rangeToken: "all",
-    };
-  }
-
-  const safeRange = getSafeReportsRangeDays();
+  const safeRange = [7, 30, 90, 365].includes(Number(reportsRangeDays))
+    ? Number(reportsRangeDays)
+    : 30;
   const start = new Date(today);
   start.setDate(start.getDate() - (safeRange - 1));
   return {
@@ -6291,9 +4393,7 @@ function renderReportsServices(model) {
         2 * Math.PI * 72
       ).toFixed(2)} 0" stroke-dashoffset="0"></circle>
     `;
-    reportServicesLegend.innerHTML = `<div class="reports-empty">${tr(
-      "No service data in this range."
-    )}</div>`;
+    reportServicesLegend.innerHTML = `<div class="reports-empty">No service data in this range.</div>`;
     reportsActiveServiceIndex = -1;
     return;
   }
@@ -6330,7 +4430,7 @@ function renderReportsServices(model) {
     row.innerHTML = `
       <span class="reports-legend-left">
         <span class="reports-legend-dot" style="background:${service.color}"></span>
-        <span class="reports-legend-name">${translateServiceName(service.name)}</span>
+        <span class="reports-legend-name">${service.name}</span>
       </span>
       <span class="reports-legend-value mono">${service.count} • ${formatMoney(service.spend)}</span>
     `;
@@ -6369,15 +4469,13 @@ function renderReportsZones(model) {
     zone.className = "reports-zone";
     zone.innerHTML = `
       <div class="reports-zone-bar"></div>
-      <div class="reports-zone-label mono">${tr("Zone {index}", { index: zoneIndex })}</div>
+      <div class="reports-zone-label mono">Zone ${zoneIndex}</div>
       <div class="reports-zone-value mono">${count}</div>
     `;
     const bar = zone.querySelector(".reports-zone-bar");
     const scale = Math.max(0.06, count / maxZone);
     bar.style.transform = `scaleY(${scale.toFixed(3)})`;
-    zone.title = `${tr("Zone {index}", { index: zoneIndex })}: ${tr("{count} labels", {
-      count,
-    })}`;
+    zone.title = `Zone ${zoneIndex}: ${count} labels`;
     zone.addEventListener("mouseenter", () => zone.classList.add("is-active"));
     zone.addEventListener("mouseleave", () => zone.classList.remove("is-active"));
     reportZones.appendChild(zone);
@@ -6421,7 +4519,7 @@ function renderReportsLocationTable(
       wrapper.appendChild(text);
       nameCell.appendChild(wrapper);
     } else {
-      nameCell.textContent = translateDomesticRegionName(row.name);
+      nameCell.textContent = row.name;
     }
 
     const countCell = document.createElement("td");
@@ -6549,7 +4647,7 @@ function renderReportsCountriesMap(model) {
   const shapeEls = reportCountriesMap.querySelectorAll("[data-country-key]");
   shapeEls.forEach((shapeEl) => {
     const key = shapeEl.getAttribute("data-country-key") || "";
-    const name = shapeEl.getAttribute("data-country-name") || tr("Unknown");
+    const name = shapeEl.getAttribute("data-country-name") || "Unknown";
     const row = byCountryKey.get(key);
     shapeEl.addEventListener("mouseenter", () => {
       setReportsCountryHighlight(key);
@@ -6557,8 +4655,8 @@ function renderReportsCountriesMap(model) {
       const x = bbox.x + bbox.width / 2;
       const y = bbox.y + bbox.height / 2;
       const line = row
-        ? `${name} • ${tr("{count} labels", { count: row.count })} • ${formatMoney(row.spend)}`
-        : `${name} • ${tr("{count} labels", { count: 0 })} • ${formatMoney(0)}`;
+        ? `${name} • ${row.count} labels • ${formatMoney(row.spend)}`
+        : `${name} • 0 labels • ${formatMoney(0)}`;
       showMapTooltip(reportCountriesMapTooltip, reportCountriesMap, x, y, line);
     });
     shapeEl.addEventListener("mouseleave", () => {
@@ -6579,9 +4677,7 @@ function renderReportsRegionsMap(model) {
   if (!reportsDomesticGeoJson?.features?.length) {
     reportRegionsMap.innerHTML = `
       <rect class="reports-map-bg" x="0" y="0" width="360" height="220"></rect>
-      <text x="180" y="112" text-anchor="middle" class="reports-map-label">${tr(
-        "Domestic map data unavailable"
-      )}</text>
+      <text x="180" y="112" text-anchor="middle" class="reports-map-label">Domestic map data unavailable</text>
     `;
     return;
   }
@@ -6635,9 +4731,7 @@ function renderReportsRegionsMap(model) {
         reportRegionsMap,
         x,
         y,
-        `${province} (${translateDomesticRegionName(region)}) • ${tr("{count} labels", {
-          count: row.count,
-        })} • ${formatMoney(row.spend)}`
+        `${province} (${region}) • ${row.count} labels • ${formatMoney(row.spend)}`
       );
     });
     shapeEl.addEventListener("mouseleave", () => {
@@ -6654,37 +4748,32 @@ function renderReportsRegionsMap(model) {
 
 function setReportRangeButtons(rangeToken) {
   reportsRangeButtons.forEach((button) => {
-    const token = String(button.dataset.reportRange || "");
-    button.classList.toggle("is-active", token === String(rangeToken));
+    const token = button.dataset.reportRange;
+    const buttonToken = token === "custom" ? "custom" : Number(token);
+    button.classList.toggle("is-active", buttonToken === rangeToken);
   });
 }
 
 function seedReportsCustomDatesFromPreset() {
-  const currentSettings =
-    reportsRangeMode === "all"
-      ? (() => {
-          const today = toDayStart(new Date());
-          const allTime = getAllTimeReportBounds(today);
-          return { start: allTime.start, end: allTime.end };
-        })()
-      : getReportsRangeSettings();
-  const start = toDayStart(currentSettings.start);
-  const end = toDayStart(currentSettings.end);
+  const today = toDayStart(new Date());
+  const safeRange = [7, 30, 90, 365].includes(Number(reportsRangeDays))
+    ? Number(reportsRangeDays)
+    : 30;
+  const start = new Date(today);
+  start.setDate(start.getDate() - (safeRange - 1));
   reportsCustomStart = formatDateInputValue(start);
-  reportsCustomEnd = formatDateInputValue(end);
+  reportsCustomEnd = formatDateInputValue(today);
   if (reportsStartDate) reportsStartDate.value = reportsCustomStart;
   if (reportsEndDate) reportsEndDate.value = reportsCustomEnd;
 }
 
 function activateCustomReportsRangePicker() {
+  reportsRangeMode = "custom";
   if (!reportsCustomStart || !reportsCustomEnd) {
     seedReportsCustomDatesFromPreset();
   }
-  reportsRangeMode = "custom";
   setReportRangeButtons("custom");
   setReportsCustomRangeVisible(true);
-  if (reportsStartDate) reportsStartDate.classList.remove("is-invalid");
-  if (reportsEndDate) reportsEndDate.classList.remove("is-invalid");
 }
 
 function applyCustomReportsRange() {
@@ -6725,31 +4814,21 @@ function renderReportsDashboard() {
 
   if (reportSavingsValue) reportSavingsValue.textContent = formatMoney(model.totalSavings);
   if (reportSavingsMeta) {
-    reportSavingsMeta.textContent = tr("{count} labels analyzed", {
-      count: model.totalShipments,
-    });
+    reportSavingsMeta.textContent = `${model.totalShipments} labels analyzed`;
   }
 
   if (reportPendingReturnsValue) {
-    reportPendingReturnsValue.textContent = tr("{count} labels", {
-      count: model.pendingReturnsCount,
-    });
+    reportPendingReturnsValue.textContent = `${model.pendingReturnsCount} labels`;
   }
   if (reportPendingReturnsMeta) {
-    reportPendingReturnsMeta.textContent = tr("{amount} pending", {
-      amount: formatMoney(model.pendingReturnsAmount),
-    });
+    reportPendingReturnsMeta.textContent = `${formatMoney(model.pendingReturnsAmount)} pending`;
   }
 
   if (reportPendingRefundsValue) {
-    reportPendingRefundsValue.textContent = tr("{count} labels", {
-      count: model.pendingRefundsCount,
-    });
+    reportPendingRefundsValue.textContent = `${model.pendingRefundsCount} labels`;
   }
   if (reportPendingRefundsMeta) {
-    reportPendingRefundsMeta.textContent = tr("{amount} pending", {
-      amount: formatMoney(model.pendingRefundsAmount),
-    });
+    reportPendingRefundsMeta.textContent = `${formatMoney(model.pendingRefundsAmount)} pending`;
   }
 
   if (reportAccountBalanceValue) {
@@ -6759,17 +4838,15 @@ function renderReportsDashboard() {
     reportTotalShippingCostsValue.textContent = formatMoney(model.totalShippingCosts);
   }
   if (reportTotalShippingCostsMeta) {
-    reportTotalShippingCostsMeta.textContent = tr("EX. VAT • INCL. VAT {amount}", {
-      amount: formatMoney(model.totalShippingCosts * (1 + VAT_RATE)),
-    });
+    reportTotalShippingCostsMeta.textContent = `EX VAT • INCL ${formatMoney(
+      model.totalShippingCosts * (1 + VAT_RATE)
+    )}`;
   }
   if (reportCarrierAdjustmentsValue) {
     reportCarrierAdjustmentsValue.textContent = formatSignedMoney(model.carrierAdjustments);
   }
   if (reportCarrierAdjustmentsMeta) {
-    reportCarrierAdjustmentsMeta.textContent = tr("{count} events", {
-      count: model.adjustmentEvents,
-    });
+    reportCarrierAdjustmentsMeta.textContent = `${model.adjustmentEvents} events`;
   }
 
   if (reportTotalPaymentsValue) {
@@ -6782,33 +4859,25 @@ function renderReportsDashboard() {
     reportAvgDomesticValue.textContent = formatMoney(model.avgDomestic);
   }
   if (reportAvgDomesticMeta) {
-    reportAvgDomesticMeta.textContent = tr("{count} labels", {
-      count: model.avgDomesticCount,
-    });
+    reportAvgDomesticMeta.textContent = `${model.avgDomesticCount} labels`;
   }
   if (reportAvgInternationalValue) {
     reportAvgInternationalValue.textContent = formatMoney(model.avgInternational);
   }
   if (reportAvgInternationalMeta) {
-    reportAvgInternationalMeta.textContent = tr("{count} labels", {
-      count: model.avgInternationalCount,
-    });
+    reportAvgInternationalMeta.textContent = `${model.avgInternationalCount} labels`;
   }
   if (reportNewShipmentsValue) {
     reportNewShipmentsValue.textContent = String(model.newShipments);
   }
   if (reportNewShipmentsMeta) {
-    reportNewShipmentsMeta.textContent = tr("{amount} spend", {
-      amount: formatMoney(model.totalShippingCosts),
-    });
+    reportNewShipmentsMeta.textContent = `${formatMoney(model.totalShippingCosts)} spend`;
   }
   if (reportDeliveryIssuesValue) {
     reportDeliveryIssuesValue.textContent = String(model.deliveryIssues);
   }
   if (reportDeliveryIssuesMeta) {
-    reportDeliveryIssuesMeta.textContent = tr("{rate}% rate", {
-      rate: model.deliveryIssueRate.toFixed(2),
-    });
+    reportDeliveryIssuesMeta.textContent = `${model.deliveryIssueRate.toFixed(2)}% rate`;
   }
   if (reportTotalShipmentsValue) {
     reportTotalShipmentsValue.textContent = String(model.totalShipments);
@@ -6821,7 +4890,7 @@ function renderReportsDashboard() {
     points: model.buckets,
     valueKey: "payments",
     valueFormatter: formatMoney,
-    tooltipLabel: tr("Payments"),
+    tooltipLabel: "Payments",
   });
   renderReportLineChart({
     svgEl: reportAverageCostChart,
@@ -6830,7 +4899,7 @@ function renderReportsDashboard() {
     points: model.buckets,
     valueKey: "averageCost",
     valueFormatter: formatMoney,
-    tooltipLabel: tr("Average Cost"),
+    tooltipLabel: "Average Cost",
   });
   renderReportLineChart({
     svgEl: reportShipmentsChart,
@@ -6838,15 +4907,15 @@ function renderReportsDashboard() {
     tooltipEl: reportShipmentsTooltip,
     points: model.buckets,
     valueKey: "shipments",
-    valueFormatter: (value) => tr("{count} labels", { count: Math.round(value) }),
-    tooltipLabel: tr("Shipments"),
+    valueFormatter: (value) => `${Math.round(value)} labels`,
+    tooltipLabel: "Shipments",
   });
   renderReportsServices(model);
   renderReportsZones(model);
   renderReportsLocationTable(
     reportTopRegionsBody,
     model.topRegions,
-    tr("No domestic region data yet."),
+    "No domestic region data yet.",
     {
       rowKey: (row) => row.name,
       onHover: (key) => setReportsRegionHighlight(key),
@@ -6855,7 +4924,7 @@ function renderReportsDashboard() {
   renderReportsLocationTable(
     reportTopCountriesBody,
     model.topCountries,
-    tr("No international country data yet."),
+    "No international country data yet.",
     {
       withFlags: true,
       rowKey: (row) => normalizeNameKey(row.name),
@@ -6879,278 +4948,31 @@ function setAuthMessage(message, { isError = true } = {}) {
   authError.classList.toggle("is-info", Boolean(message) && !isError);
 }
 
-function setAuthInviteStatus(message = "", options = {}) {
-  if (!authInviteStatus) return;
-  const { tone = "info" } = options;
-  const text = String(message || "").trim();
-  authInviteStatus.textContent = text;
-  authInviteStatus.classList.toggle("is-visible", Boolean(text));
-  authInviteStatus.classList.remove("is-error", "is-success");
-  if (!text) return;
-  if (tone === "error") {
-    authInviteStatus.classList.add("is-error");
-  } else if (tone === "success") {
-    authInviteStatus.classList.add("is-success");
-  }
-}
-
-function setAuthMode(mode, options = {}) {
-  const { inviteToken = "" } = options;
-  authMode = mode === "register" ? "register" : "login";
-  const isRegister = authMode === "register";
-  authInviteToken = String(inviteToken || "").trim();
-
-  if (authGate) {
-    authGate.classList.toggle("is-register-mode", isRegister);
-  }
-  if (authForm) {
-    authForm.classList.toggle("is-register-mode", isRegister);
-  }
-  if (authRegisterOnlyFields?.length) {
-    authRegisterOnlyFields.forEach((field) => {
-      field.classList.toggle("is-hidden", !isRegister);
-    });
-  }
-  if (authForgotPassword) {
-    authForgotPassword.classList.toggle("is-hidden", isRegister);
-  }
-  if (authTitle) {
-    authTitle.textContent = isRegister
-      ? tr("Complete your account registration")
-      : tr("Sign in to continue");
-  }
-  if (authSubtitle) {
-    authSubtitle.textContent = isRegister
-      ? tr("Use your invite link to create your secure account and billing profile.")
-      : tr("Use your email and password.");
-  }
-  if (authSignIn) {
-    authSignIn.disabled = isRegister;
-    const label = authSignIn.querySelector("span");
-    const nextLabel = isRegister ? tr("Register Account") : tr("Sign In");
-    if (label) {
-      label.textContent = nextLabel;
-    } else {
-      authSignIn.textContent = nextLabel;
-    }
-  }
-  if (authPassword) {
-    authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
-  }
-  if (authPasswordConfirm) {
-    authPasswordConfirm.required = isRegister;
-    if (!isRegister) {
-      authPasswordConfirm.value = "";
-    }
-  }
-  if (authEmail) {
-    authEmail.readOnly = false;
-  }
-  const requiredFields = [
-    authCompanyName,
-    authContactName,
-    authContactEmail,
-    authContactPhone,
-    authBillingAddress,
-    authTaxId,
-  ];
-  requiredFields.forEach((input) => {
-    if (!input) return;
-    input.required = isRegister;
-  });
-  if (authCustomerId) {
-    authCustomerId.required = false;
-  }
-  if (!isRegister) {
-    setAuthInviteStatus("");
-    authInviteData = null;
-  }
-}
-
-function applyInviteDefaults(invite = {}) {
-  if (authEmail) {
-    authEmail.readOnly = false;
-  }
-  if (authCompanyName && invite.companyName) authCompanyName.value = invite.companyName;
-  if (authContactName && invite.contactName) authContactName.value = invite.contactName;
-  if (authContactEmail) {
-    authContactEmail.value = invite.contactEmail || authContactEmail.value || "";
-  }
-  if (authContactPhone && invite.contactPhone) authContactPhone.value = invite.contactPhone;
-  if (authBillingAddress && invite.billingAddress) authBillingAddress.value = invite.billingAddress;
-  if (authTaxId && invite.taxId) authTaxId.value = invite.taxId;
-  if (authCustomerId && invite.customerId) authCustomerId.value = invite.customerId;
-}
-
-function collectRegistrationProfile() {
-  return {
-    companyName: String(authCompanyName?.value || "").trim(),
-    contactName: String(authContactName?.value || "").trim(),
-    contactEmail: String(authContactEmail?.value || "").trim().toLowerCase(),
-    contactPhone: String(authContactPhone?.value || "").trim(),
-    billingAddress: String(authBillingAddress?.value || "").trim(),
-    taxId: String(authTaxId?.value || "").trim(),
-    customerId: String(authCustomerId?.value || "").trim(),
-  };
-}
-
-async function fetchPublicApi(path, options = {}) {
-  const { timeoutMs = 15000, ...requestOptions } = options;
-  const headers = new Headers(requestOptions.headers || {});
-  if (requestOptions.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => {
-    controller.abort("request-timeout");
-  }, Math.max(3000, Number(timeoutMs) || 15000));
-  try {
-    const response = await fetch(path, {
-      ...requestOptions,
-      headers,
-      signal: controller.signal,
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-      ? await response.json().catch(() => ({}))
-      : await response.text().catch(() => "");
-    if (!response.ok) {
-      const message =
-        (payload && typeof payload === "object" && payload.error) ||
-        (typeof payload === "string" ? payload : "") ||
-        tr("Request failed ({status})", { status: response.status });
-      throw new Error(message);
-    }
-    return payload;
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error(tr("Request failed ({status})", { status: "timeout" }));
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-async function loadRegistrationInvite(token) {
-  const requestToken = ++authInviteValidationToken;
-  const inviteToken = String(token || "").trim();
-  let inviteIsValid = false;
-  authInviteToken = inviteToken;
-  authInviteData = null;
-
-  if (!inviteToken) {
-    setAuthInviteStatus("", { tone: "info" });
-    setAuthMessage(tr("Registration link required."));
-    if (authSignIn) {
-      authSignIn.disabled = true;
-    }
-    return;
-  }
-
-  setAuthMessage("");
-  setAuthInviteStatus(tr("Validating invitation..."));
-  setAuthBusy(true, tr("Validating invitation..."), "");
-
-  try {
-    const payload = await fetchPublicApi(
-      `/api/auth/register-invite?token=${encodeURIComponent(inviteToken)}`
-    );
-    if (requestToken !== authInviteValidationToken) return;
-    authInviteData = payload?.invite || null;
-    applyInviteDefaults(authInviteData || {});
-    inviteIsValid = true;
-    setAuthInviteStatus(tr("Invitation verified. Complete your details to activate access."), {
-      tone: "success",
-    });
-    setAuthMessage("");
-  } catch (error) {
-    if (requestToken !== authInviteValidationToken) return;
-    authInviteData = null;
-    setAuthInviteStatus(tr("This registration link is invalid or expired."), {
-      tone: "error",
-    });
-    setAuthMessage(error?.message || tr("This registration link is invalid or expired."));
-  } finally {
-    if (requestToken === authInviteValidationToken) {
-      setAuthBusy(false, tr("Register Account"), "");
-      if (authSignIn) {
-        authSignIn.disabled = !inviteIsValid;
-      }
-    }
-  }
-}
-
-function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Create Account")) {
+function setAuthBusy(isBusy, signInLabel = "Sign In", signUpLabel = "Create Account") {
   if (authEmail) authEmail.disabled = isBusy;
   if (authPassword) authPassword.disabled = isBusy;
-  [
-    authPasswordConfirm,
-    authCompanyName,
-    authContactName,
-    authContactEmail,
-    authContactPhone,
-    authBillingAddress,
-    authTaxId,
-    authCustomerId,
-  ].forEach((input) => {
-    if (input) input.disabled = isBusy;
-  });
-  if (authForgotPassword) {
-    authForgotPassword.disabled = isBusy;
-  }
   if (authSignIn) {
     authSignIn.disabled = isBusy;
-    const label = authSignIn.querySelector("span");
-    if (label) {
-      label.textContent = signInLabel;
-    } else {
-      authSignIn.textContent = signInLabel;
-    }
+    authSignIn.textContent = signInLabel;
   }
   if (authSignUp) {
     authSignUp.disabled = isBusy;
-    const label = authSignUp.querySelector("span");
-    if (label) {
-      label.textContent = signUpLabel;
-    } else {
-      authSignUp.textContent = signUpLabel;
-    }
+    authSignUp.textContent = signUpLabel;
   }
 }
 
 function setAuthView(session, options = {}) {
   const { animate = true } = options;
   currentUser = session?.user || null;
-  setClientInviteBusy(false);
-  void setLanguage(resolvePreferredLanguage(currentUser), { persist: false });
   const isAuthed = Boolean(currentUser);
-  const route = parseRouteFromLocation();
   renderAccountProfile(currentUser);
   if (isAuthed) {
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
-    loadAdminAccessStatus({ quiet: true });
-    if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
-      const localPref = getStoredLanguagePreference();
-      if (SUPPORTED_LANGUAGES.has(localPref)) {
-        void saveLanguagePreference(localPref);
-      }
-    }
   } else {
     resetWarehouseState();
     shopifyConnection = null;
     updateShopifyProviderStatus();
-    adminAccessAllowed = false;
-    adminDashboardLoaded = false;
-    adminDashboardState = null;
-    adminClients = [];
-    clientInviteHistory = [];
-    renderClientInviteHistory([]);
-    setClientInviteStatus("");
-    setClientInviteResult("");
-    renderAdminSummary({});
-    renderAdminClientsList();
   }
   transitionShellVisibility(isAuthed, { animate });
   if (accountChip) {
@@ -7172,9 +4994,6 @@ function setAuthView(session, options = {}) {
   if (openAccountPageButton) {
     openAccountPageButton.classList.toggle("is-hidden", !isAuthed);
   }
-  if (openAdminPageButton) {
-    openAdminPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
-  }
   if (openHistoryPageButton) {
     openHistoryPageButton.classList.toggle("is-hidden", !isAuthed);
   }
@@ -7187,167 +5006,97 @@ function setAuthView(session, options = {}) {
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedLocationSelection = [];
-    setClientInviteResult("");
-    setClientInviteStatus("");
-    if (clientInviteEmailInput) {
-      clientInviteEmailInput.value = "";
-    }
-    if (adminCarrierDiscountInput) {
-      adminCarrierDiscountInput.value = "";
-    }
-    if (adminClientDiscountInput) {
-      adminClientDiscountInput.value = "";
-    }
     setMainView("builder", { push: false, animate: false });
     resetAccountPreview();
-    if (route.view === "register") {
-      setAuthMode("register", { inviteToken: route.inviteToken });
-      void loadRegistrationInvite(route.inviteToken);
-    } else {
-      setAuthMode("login");
-      updateRoute({ view: "login" }, { replace: true });
-    }
+    updateRoute({ view: "login" }, { replace: true });
     return;
   }
 
-  setAuthMode("login");
-  if (route.view === "login" || route.view === "register") {
+  const route = parseRouteFromLocation();
+  if (route.view === "login") {
     updateRoute({ view: "builder", step: state.step }, { replace: true });
   }
 }
 
 async function signInWithPassword() {
   if (!supabaseClient) {
-    setAuthMessage(tr("Supabase auth is not configured."));
+    setAuthMessage("Supabase auth is not configured.");
     return;
   }
   const email = authEmail?.value.trim().toLowerCase() || "";
   const password = authPassword?.value || "";
   if (!email || !password) {
-    setAuthMessage(tr("Email and password are required."));
+    setAuthMessage("Email and password are required.");
     return;
   }
   setAuthMessage("");
-  setAuthBusy(true, tr("Signing In..."), "");
+  setAuthBusy(true, "Signing In...", "Create Account");
   const { error } = await supabaseClient.auth.signInWithPassword({
     email,
     password,
   });
-  setAuthBusy(false, tr("Sign In"), "");
+  setAuthBusy(false, "Sign In", "Create Account");
   if (error) {
     setAuthMessage(error.message);
-  }
-}
-
-function validateRegistrationProfile(profile) {
-  const required = [
-    profile.companyName,
-    profile.contactName,
-    profile.contactEmail,
-    profile.contactPhone,
-    profile.billingAddress,
-    profile.taxId,
-  ];
-  return required.every((value) => Boolean(String(value || "").trim()));
-}
-
-async function registerWithInvite() {
-  if (!supabaseClient) {
-    setAuthMessage(tr("Supabase auth is not configured."));
-    return;
-  }
-  const inviteToken = String(authInviteToken || getInviteTokenFromLocation(window.location)).trim();
-  if (!inviteToken) {
-    setAuthMessage(tr("Registration link required."));
-    return;
-  }
-  const email = String(authEmail?.value || "").trim().toLowerCase();
-  const password = String(authPassword?.value || "");
-  const confirmPassword = String(authPasswordConfirm?.value || "");
-  const profile = collectRegistrationProfile();
-  if (!email || !password) {
-    setAuthMessage(tr("Email and password are required."));
-    return;
-  }
-  if (password !== confirmPassword) {
-    setAuthMessage(tr("Passwords do not match."));
-    return;
-  }
-  if (password.length < 10) {
-    setAuthMessage(tr("Password must be at least {min} characters.", { min: 10 }));
-    return;
-  }
-  if (!validateRegistrationProfile(profile)) {
-    setAuthMessage(tr("All registration fields are required except Customer ID."));
-    return;
-  }
-
-  setAuthMessage("");
-  setAuthBusy(true, tr("Creating account..."), "");
-  try {
-    await fetchPublicApi("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({
-        token: inviteToken,
-        email,
-        password,
-        profile,
-        preferredLanguage: activeLanguage,
-      }),
-    });
-    setAuthMessage(tr("Account created. Signing you in..."), {
-      isError: false,
-    });
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setAuthMessage(error.message);
-    }
-  } catch (error) {
-    setAuthMessage(error?.message || tr("Registration is disabled."));
-  } finally {
-    setAuthBusy(false, tr("Register Account"), "");
   }
 }
 
 async function signUpWithPassword() {
-  if (authMode === "register") {
-    await registerWithInvite();
-    return;
-  }
-  setAuthMessage(tr("Registration is disabled."));
-}
-
-async function resetPassword() {
   if (!supabaseClient) {
-    setAuthMessage(tr("Supabase auth is not configured."));
+    setAuthMessage("Supabase auth is not configured.");
     return;
   }
   const email = authEmail?.value.trim().toLowerCase() || "";
-  if (!email) {
-    setAuthMessage(tr("Enter your email address, then click Forgot password."));
+  const password = authPassword?.value || "";
+  if (!email || !password) {
+    setAuthMessage("Email and password are required.");
     return;
   }
   setAuthMessage("");
-  setAuthBusy(true, tr("Sign In"), "");
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
+  setAuthBusy(true, "Sign In", "Creating...");
+  const { error } = await supabaseClient.auth.signUp({
+    email,
+    password,
   });
-  setAuthBusy(false, tr("Sign In"), "");
+  setAuthBusy(false, "Sign In", "Create Account");
   if (error) {
     setAuthMessage(error.message);
     return;
   }
-  setAuthMessage(tr("If that email exists, a reset link has been sent. Check your inbox."), {
+  setAuthMessage(
+    "Account created. If confirmation is enabled, approve the email then sign in.",
+    { isError: false }
+  );
+}
+
+async function resetPassword() {
+  if (!supabaseClient) {
+    setAuthMessage("Supabase auth is not configured.");
+    return;
+  }
+  const email = authEmail?.value.trim().toLowerCase() || "";
+  if (!email) {
+    setAuthMessage("Enter your email address, then click Forgot password.");
+    return;
+  }
+  setAuthMessage("");
+  setAuthBusy(true, "Sign In", "Create Account");
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+  setAuthBusy(false, "Sign In", "Create Account");
+  if (error) {
+    setAuthMessage(error.message);
+    return;
+  }
+  setAuthMessage("If that email exists, a reset link has been sent. Check your inbox.", {
     isError: false,
   });
 }
 
 async function initializeAuth() {
   if (!supabaseClient) {
-    setAuthMessage(tr("Supabase client failed to initialize."));
+    setAuthMessage("Supabase client failed to initialize.");
     setAuthView(null, { animate: false });
     return;
   }
@@ -7366,8 +5115,6 @@ async function initializeAuth() {
   const isAuthed = Boolean(session);
   if (isAuthed && initialRoute.view === "account") {
     setMainView("account", { push: false, animate: false });
-  } else if (isAuthed && initialRoute.view === "admin") {
-    setMainView("admin", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "reports") {
@@ -7385,13 +5132,9 @@ async function initializeAuth() {
     preferLatest:
       isAuthed &&
       (initialRoute.view === "account" ||
-        initialRoute.view === "admin" ||
         initialRoute.view === "history" ||
         initialRoute.view === "reports"),
   });
-  if (isAuthed && initialRoute.view === "admin") {
-    await loadAdminDashboard({ quiet: true });
-  }
   supabaseClient.auth.onAuthStateChange(async (_event, updatedSession) => {
     setAuthMessage("");
     setAuthView(updatedSession, { animate: true });
@@ -7407,9 +5150,6 @@ async function initializeAuth() {
     const route = parseRouteFromLocation();
     if (route.view === "account") {
       setMainView("account", { push: false, animate: false });
-    } else if (route.view === "admin") {
-      setMainView("admin", { push: false, animate: false });
-      await loadAdminDashboard({ quiet: true });
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
@@ -7424,10 +5164,7 @@ async function initializeAuth() {
     }
     await loadGenerationHistory({
       preferLatest:
-        route.view === "account" ||
-        route.view === "admin" ||
-        route.view === "history" ||
-        route.view === "reports",
+        route.view === "account" || route.view === "history" || route.view === "reports",
     });
   });
 }
@@ -7664,7 +5401,7 @@ function setCsvEditMode(enabled) {
   if (csvEditToggle) {
     csvEditToggle.classList.toggle("is-active", enabled);
     const label = csvEditToggle.querySelector("span");
-    if (label) label.textContent = enabled ? tr("Editing") : tr("Edit");
+    if (label) label.textContent = enabled ? "Editing" : "Edit";
   }
   renderCsvTable();
 }
@@ -7814,60 +5551,17 @@ stepperItems.forEach((item) => {
   });
 });
 
-function getSummaryCarrierLabel() {
-  return "Bpost";
-}
-
-function getSummaryDiscountRate() {
-  const service = normalizeNameKey(state.selection.type);
-  if (service === normalizeNameKey("Economy")) return 21;
-  if (service === normalizeNameKey("Priority")) return 16;
-  if (service === normalizeNameKey("International Express")) return 13;
-  return 15;
-}
-
-function getNextInvoiceDateLabel() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const endOfMonth = new Date(year, month + 1, 0);
-  return endOfMonth.toLocaleDateString(getUiLocale(), {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function updateSummary() {
+  summaryService.textContent = state.selection.type;
   const quantity = getQuantity();
   const total = state.selection.price * quantity;
-  const discountRate = getSummaryDiscountRate();
-  const projectedInvoiceAmount = Number((42 + total * 3.2).toFixed(2));
-
-  if (summaryService) {
-    summaryService.textContent = getSummaryCarrierLabel();
-  }
-  if (summaryPrice) {
-    summaryPrice.textContent = `${discountRate}%`;
-  }
-  if (summaryQty) {
-    summaryQty.textContent = formatMoney(projectedInvoiceAmount);
-  }
-  if (summaryTotal) {
-    summaryTotal.textContent = getNextInvoiceDateLabel();
-  }
-  if (summaryTracking) {
-    summaryTracking.textContent = tr("Chat with us");
-  }
-}
-
-function openSupportChat() {
-  window.location.href =
-    "mailto:support@shipide.com?subject=Shipide%20Portal%20Support&body=Hi%20Shipide%20team%2C%0A%0AI%20need%20help%20with%20my%20account.";
-}
-
-if (summaryChatButton) {
-  summaryChatButton.addEventListener("click", openSupportChat);
+  const activeLabel = getActiveLabel();
+  const activeData = activeLabel.data || state.info;
+  summaryPrice.textContent = formatMoney(state.selection.price);
+  summaryQty.textContent = String(quantity);
+  summaryTotal.textContent = formatMoney(total);
+  summaryTracking.textContent = activeLabel.trackingId || "--";
+  summaryLabelId.textContent = activeLabel.labelId || "--";
 }
 
 function updatePayment() {
@@ -8006,20 +5700,14 @@ function updateCustomsScopeMeta() {
   const outsideEu = uniqueCountries.filter((country) => !isEuCountry(country));
   if (!outsideEu.length) {
     customsScopeMeta.textContent =
-      tr("Complete this declaration for destinations that require customs processing.");
+      "Complete this declaration for destinations that require customs processing.";
     return;
   }
   if (outsideEu.length === 1) {
-    customsScopeMeta.textContent = tr(
-      "{country} is outside the customs union. Complete declaration details before service selection.",
-      { country: outsideEu[0] }
-    );
+    customsScopeMeta.textContent = `${outsideEu[0]} is outside the customs union. Complete declaration details before service selection.`;
     return;
   }
-  customsScopeMeta.textContent = tr(
-    "{count} destinations are outside the customs union. Complete declaration details before service selection.",
-    { count: outsideEu.length }
-  );
+  customsScopeMeta.textContent = `${outsideEu.length} destinations are outside the customs union. Complete declaration details before service selection.`;
 }
 
 function buildCustomsItemsPayload() {
@@ -8049,7 +5737,7 @@ function renderCustomsItems() {
 
     const title = document.createElement("div");
     title.className = "customs-item-title";
-    title.textContent = tr("Item {index}", { index: index + 1 });
+    title.textContent = `Item ${index + 1}`;
     head.appendChild(title);
 
     if (state.customs.items.length > 1) {
@@ -8059,22 +5747,18 @@ function renderCustomsItems() {
       remove.dataset.customsItemAction = "remove";
       remove.dataset.customsItemIndex = String(index);
       remove.innerHTML =
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/></svg><span>${tr(
-          "Remove"
-        )}</span>`;
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Remove</span>';
       head.appendChild(remove);
     }
 
     const note = document.createElement("div");
     note.className = "customs-note";
     note.innerHTML =
-      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 9v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>${tr(
-        "Provide a precise product description and material/composition."
-      )}</span>`;
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 9v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Provide a precise product description and material/composition.</span>';
 
     const descriptionField = document.createElement("label");
     descriptionField.className = "field";
-    descriptionField.innerHTML = `<span>${tr("Item Description")}</span><input type="text" data-customs-item-field="description" value="${escapeHtml(
+    descriptionField.innerHTML = `<span>Item Description</span><input type="text" data-customs-item-field="description" value="${escapeHtml(
       item.description
     )}" />`;
 
@@ -8083,19 +5767,19 @@ function renderCustomsItems() {
 
     const quantityField = document.createElement("label");
     quantityField.className = "field";
-    quantityField.innerHTML = `<span>${tr("Number of Items")}</span><input type="number" min="1" step="1" data-customs-item-field="quantity" value="${escapeHtml(
+    quantityField.innerHTML = `<span>Number of Items</span><input type="number" min="1" step="1" data-customs-item-field="quantity" value="${escapeHtml(
       item.quantity
     )}" />`;
 
     const weightField = document.createElement("label");
     weightField.className = "field";
-    weightField.innerHTML = `<span>${tr("Weight (kg)")}</span><input type="number" min="0.01" step="0.01" data-customs-item-field="weightKg" value="${escapeHtml(
+    weightField.innerHTML = `<span>Weight (kg)</span><input type="number" min="0.01" step="0.01" data-customs-item-field="weightKg" value="${escapeHtml(
       item.weightKg
     )}" />`;
 
     const valueField = document.createElement("label");
     valueField.className = "field";
-    valueField.innerHTML = `<span>${tr("Value (EUR)")}</span><div class="customs-currency"><span class="customs-currency-prefix">€</span><input type="number" min="0" step="0.01" data-customs-item-field="valueEur" value="${escapeHtml(
+    valueField.innerHTML = `<span>Value (EUR)</span><div class="customs-currency"><span class="customs-currency-prefix">€</span><input type="number" min="0" step="0.01" data-customs-item-field="valueEur" value="${escapeHtml(
       item.valueEur
     )}" /></div>`;
 
@@ -8109,7 +5793,7 @@ function renderCustomsItems() {
     const originField = document.createElement("label");
     originField.className = "field";
     originField.innerHTML =
-      `<span>${tr("Origin of Items")}</span><div class="country-input-wrap customs-origin-wrap"><span class="customs-origin-flag"></span><input type="text" data-customs-item-field="originCountry" /></div>`;
+      '<span>Origin of Items</span><div class="country-input-wrap customs-origin-wrap"><span class="customs-origin-flag"></span><input type="text" data-customs-item-field="originCountry" /></div>';
     const originInput = originField.querySelector("input");
     const originFlag = originField.querySelector(".customs-origin-flag");
     if (originInput) originInput.value = item.originCountry;
@@ -8117,7 +5801,7 @@ function renderCustomsItems() {
 
     const hsField = document.createElement("label");
     hsField.className = "field";
-    hsField.innerHTML = `<span>${tr("HS Tariff Code (optional)")}</span><input type="text" data-customs-item-field="hsCode" value="${escapeHtml(
+    hsField.innerHTML = `<span>HS Tariff Code (optional)</span><input type="text" data-customs-item-field="hsCode" value="${escapeHtml(
       item.hsCode
     )}" />`;
 
@@ -8200,7 +5884,7 @@ function validateCustomsDeclaration() {
   });
 
   if (!isValid) {
-    setCustomsError(tr("Complete required customs declaration fields before continuing."));
+    setCustomsError("Complete required customs declaration fields before continuing.");
     return false;
   }
   setCustomsError("");
@@ -8384,9 +6068,8 @@ function validateLabelInfo() {
   const selectedOrigin = ensureSelectedWarehouseOrigin();
   if (!selectedOrigin) {
     if (senderOriginNote) {
-      senderOriginNote.textContent = tr(
-        "Add at least one shipping origin in Account settings before continuing."
-      );
+      senderOriginNote.textContent =
+        "Add at least one shipping origin in Account settings before continuing.";
     }
     if (labelError) {
       labelError.classList.add("is-visible");
@@ -8410,10 +6093,6 @@ Object.entries(inputMap).forEach(([_, input]) => {
 if (authForm) {
   authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (authMode === "register") {
-      await registerWithInvite();
-      return;
-    }
     await signInWithPassword();
   });
 }
@@ -8444,18 +6123,6 @@ if (openAccountPageButton) {
   });
 }
 
-if (openAdminPageButton) {
-  openAdminPageButton.addEventListener("click", async () => {
-    const hasAccess = await loadAdminAccessStatus({ quiet: true });
-    if (!hasAccess) {
-      showToast(tr("You are not allowed to access the admin panel."), { tone: "error" });
-      return;
-    }
-    setAdminPageVisible(true);
-    await loadAdminDashboard({ quiet: true });
-  });
-}
-
 if (openHistoryPageButton) {
   openHistoryPageButton.addEventListener("click", async () => {
     setHistoryPageVisible(true);
@@ -8477,12 +6144,6 @@ if (closeAccountPageButton) {
   });
 }
 
-if (closeAdminPageButton) {
-  closeAdminPageButton.addEventListener("click", () => {
-    setAdminPageVisible(false);
-  });
-}
-
 if (closeReportsPageButton) {
   closeReportsPageButton.addEventListener("click", () => {
     setReportsPageVisible(false);
@@ -8495,111 +6156,13 @@ if (closeHistoryPageButton) {
   });
 }
 
-if (languageSelect) {
-  languageSelect.addEventListener("change", async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLSelectElement)) return;
-    await setLanguage(target.value, { persist: true });
-  });
-}
-
-if (clientInviteCreateButton) {
-  clientInviteCreateButton.addEventListener("click", async () => {
-    await createClientInvite();
-  });
-}
-
-if (clientInviteCopyButton) {
-  clientInviteCopyButton.addEventListener("click", async () => {
-    await copyClientInviteUrl();
-  });
-}
-
-if (clientInviteEmailInput) {
-  clientInviteEmailInput.addEventListener("input", () => {
-    setClientInviteStatus("");
-  });
-}
-
-if (clientInviteExpirySelect) {
-  clientInviteExpirySelect.addEventListener("change", () => {
-    setClientInviteStatus("");
-  });
-}
-
-if (clientInviteHistoryList) {
-  clientInviteHistoryList.addEventListener("click", async (event) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
-    const copyButton = target.closest("[data-invite-copy]");
-    if (copyButton instanceof HTMLElement) {
-      await copyInviteHistoryUrl(copyButton.dataset.inviteCopy);
-      return;
-    }
-    const revokeButton = target.closest("[data-invite-revoke]");
-    if (revokeButton instanceof HTMLElement) {
-      await revokeClientInvite(revokeButton.dataset.inviteRevoke);
-    }
-  });
-}
-
-if (adminCarrierDiscountInput) {
-  adminCarrierDiscountInput.addEventListener("input", () => {
-    renderAdminSettingsPreview();
-  });
-}
-
-if (adminClientDiscountInput) {
-  adminClientDiscountInput.addEventListener("input", () => {
-    renderAdminSettingsPreview();
-  });
-}
-
-if (adminSettingsSaveButton) {
-  adminSettingsSaveButton.addEventListener("click", async () => {
-    await saveAdminSettings();
-  });
-}
-
-if (adminClientSearchInput) {
-  adminClientSearchInput.addEventListener("input", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    adminClientSearch = target.value || "";
-    renderAdminClientsList();
-  });
-}
-
-if (adminClientFilterSelect) {
-  adminClientFilterSelect.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLSelectElement)) return;
-    adminClientFilter = String(target.value || "all");
-    renderAdminClientsList();
-  });
-}
-
-if (adminClientSortSelect) {
-  adminClientSortSelect.addEventListener("change", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLSelectElement)) return;
-    adminClientSort = String(target.value || "recent");
-    renderAdminClientsList();
-  });
-}
-
 if (warehouseAddButton) {
   warehouseAddButton.addEventListener("click", () => {
     if (!currentUser || warehouseSaving) return;
     if (warehouseRecords.length >= WAREHOUSE_MAX_COUNT) {
-      setWarehouseStatus(
-        tr("Maximum {max} warehouses reached.", {
-          max: WAREHOUSE_MAX_COUNT,
-        }),
-        {
+      setWarehouseStatus(`Maximum ${WAREHOUSE_MAX_COUNT} warehouses reached.`, {
         tone: "error",
-        }
-      );
+      });
       return;
     }
     const newOrigin = buildNewWarehouseRecord();
@@ -8637,7 +6200,7 @@ if (warehouseList) {
     if (field === "name") {
       const label = card.querySelector(".warehouse-card-name");
       if (label) {
-        label.textContent = value || `${tr("Warehouse")} ${index + 1}`;
+        label.textContent = value || `Warehouse ${index + 1}`;
       }
     }
 
@@ -8673,14 +6236,9 @@ if (warehouseList) {
 
     if (action === "apply") {
       setSelectedWarehouseOrigin(warehouseId, { syncCsv: true });
-      setWarehouseStatus(
-        tr("Applied {name} to sender details.", {
-          name: warehouseRecords[index].name || tr("warehouse"),
-        }),
-        {
-          tone: "success",
-        }
-      );
+      setWarehouseStatus(`Applied ${warehouseRecords[index].name || "warehouse"} to sender details.`, {
+        tone: "success",
+      });
       return;
     }
 
@@ -8728,7 +6286,7 @@ if (warehouseList) {
 
     if (action === "remove") {
       if (warehouseRecords.length <= 1) {
-        setWarehouseStatus(tr("At least one warehouse origin is required."), {
+        setWarehouseStatus("At least one warehouse origin is required.", {
           tone: "error",
         });
         return;
@@ -8849,21 +6407,13 @@ if (customsContinueButton) {
 
 reportsRangeButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const token = String(button.dataset.reportRange || "all");
+    const token = button.dataset.reportRange;
     if (token === "custom") {
       activateCustomReportsRangePicker();
       return;
     }
-    if (token === "all") {
-      reportsRangeMode = "all";
-      setReportsCustomRangeVisible(false);
-      if (reportsStartDate) reportsStartDate.classList.remove("is-invalid");
-      if (reportsEndDate) reportsEndDate.classList.remove("is-invalid");
-      renderReportsDashboard();
-      return;
-    }
     const nextRange = Number(token);
-    if (!REPORT_RANGE_PRESETS.includes(nextRange)) return;
+    if (![7, 30, 90, 365].includes(nextRange)) return;
     reportsRangeMode = "preset";
     reportsRangeDays = nextRange;
     setReportsCustomRangeVisible(false);
@@ -9115,7 +6665,7 @@ if (payButton) {
 
     payButton.disabled = true;
     const originalMarkup = payButton.innerHTML;
-    payButton.innerHTML = tr("Preparing Label...");
+    payButton.innerHTML = "Preparing Label...";
 
     setTimeout(() => {
       payButton.disabled = false;
@@ -9508,7 +7058,7 @@ function resetAll() {
     csvEditToggle.disabled = true;
     csvEditToggle.classList.remove("is-active");
     const label = csvEditToggle.querySelector("span");
-    if (label) label.textContent = tr("Edit");
+    if (label) label.textContent = "Edit";
   }
   if (quantityInput) {
     quantityInput.value = 1;
@@ -9562,9 +7112,9 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
     autoFill();
     const triggerText = providerTrigger?.querySelector("span");
     if (triggerText) {
-      triggerText.textContent = tr("Imported from {provider}", { provider: optionLabel });
+      triggerText.textContent = `Imported from ${optionLabel}`;
       window.setTimeout(() => {
-        triggerText.textContent = tr("Import from provider");
+        triggerText.textContent = "Import from provider";
       }, 2000);
     }
   });
@@ -9654,7 +7204,7 @@ function setCsvModalStep(step, options = {}) {
 
   if (!csvUploadStep || !csvMappingStep) {
     if (modalTitle) {
-      modalTitle.textContent = isMapping ? tr("Map CSV columns") : tr("Upload CSV file");
+      modalTitle.textContent = isMapping ? "Map CSV columns" : "Upload CSV file";
     }
     csvModalStepState = nextStep;
     return;
@@ -9664,7 +7214,7 @@ function setCsvModalStep(step, options = {}) {
     csvUploadStep.classList.toggle("is-active", !isMapping);
     csvMappingStep.classList.toggle("is-active", isMapping);
     if (modalTitle) {
-      modalTitle.textContent = isMapping ? tr("Map CSV columns") : tr("Upload CSV file");
+      modalTitle.textContent = isMapping ? "Map CSV columns" : "Upload CSV file";
     }
     csvModalStepState = nextStep;
     return;
@@ -9673,7 +7223,7 @@ function setCsvModalStep(step, options = {}) {
   const currentStep = csvModalStepState;
   if (currentStep === nextStep) {
     if (modalTitle) {
-      modalTitle.textContent = isMapping ? tr("Map CSV columns") : tr("Upload CSV file");
+      modalTitle.textContent = isMapping ? "Map CSV columns" : "Upload CSV file";
     }
     return;
   }
@@ -9692,7 +7242,7 @@ function setCsvModalStep(step, options = {}) {
   if (modalTitle) {
     window.setTimeout(() => {
       if (transitionToken !== csvModalStepTransitionToken) return;
-      modalTitle.textContent = isMapping ? tr("Map CSV columns") : tr("Upload CSV file");
+      modalTitle.textContent = isMapping ? "Map CSV columns" : "Upload CSV file";
     }, Math.floor(CSV_MODAL_STEP_SWITCH_DELAY_MS * 0.85));
   }
 }
@@ -9704,7 +7254,7 @@ function resetCsvMappingFlow() {
     csvMappingBody.innerHTML = "";
   }
   if (csvMapMeta) {
-    csvMapMeta.textContent = tr("Auto-mapped columns ready for review");
+    csvMapMeta.textContent = "Auto-mapped columns ready for review";
   }
   setCsvMapError("");
   setCsvModalStep("upload", { animate: false });
@@ -9802,12 +7352,12 @@ function handleCsvFile(file) {
     const analysis = analyzeCsvText(text);
     if (!analysis) {
       setCsvModalStep("mapping");
-      setCsvMapError(tr("Could not parse this CSV. Please check the file format and try again."));
+      setCsvMapError("Could not parse this CSV. Please check the file format and try again.");
       if (csvMappingBody) {
         csvMappingBody.innerHTML = "";
       }
       if (csvMapMeta) {
-        csvMapMeta.textContent = tr("No rows detected");
+        csvMapMeta.textContent = "No rows detected";
       }
       return;
     }
@@ -10207,11 +7757,7 @@ function renderCsvMappingTable() {
   const { analysis, mapping, fileName } = csvMappingDraft;
   csvMappingBody.innerHTML = "";
   if (csvMapMeta) {
-    csvMapMeta.textContent = tr("{file} • {rows} rows • {columns} columns", {
-      file: fileName,
-      rows: analysis.rows.length,
-      columns: analysis.headers.length,
-    });
+    csvMapMeta.textContent = `${fileName} • ${analysis.rows.length} rows • ${analysis.headers.length} columns`;
   }
 
   const orderedColumns = getCsvColumnsRequiredFirst();
@@ -10227,7 +7773,7 @@ function renderCsvMappingTable() {
     if (CSV_REQUIRED_FIELDS.has(column.key)) {
       const badge = document.createElement("span");
       badge.className = "csv-map-required";
-      badge.textContent = tr("Required");
+      badge.textContent = "Required";
       fieldWrap.appendChild(badge);
     }
     fieldCell.appendChild(fieldWrap);
@@ -10239,13 +7785,13 @@ function renderCsvMappingTable() {
 
     const noneOption = document.createElement("option");
     noneOption.value = "-1";
-    noneOption.textContent = tr("Not mapped");
+    noneOption.textContent = "Not mapped";
     select.appendChild(noneOption);
 
     analysis.headers.forEach((header, index) => {
       const option = document.createElement("option");
       option.value = String(index);
-      option.textContent = header || tr("Column {index}", { index: index + 1 });
+      option.textContent = header || `Column ${index + 1}`;
       select.appendChild(option);
     });
 
@@ -10282,7 +7828,7 @@ function updateCsvMappingSample(key) {
   const mappedIndex = Number(csvMappingDraft.mapping[key]);
   const sampleValue = findCsvSampleValue(csvMappingDraft.analysis, key, mappedIndex);
   if (!sampleValue) {
-    sampleEl.textContent = tr("No sample");
+    sampleEl.textContent = "No sample";
     sampleEl.classList.add("is-empty");
     return;
   }
@@ -10359,9 +7905,7 @@ function applyCsvMapping() {
     csvMappingDraft.analysis
   );
   if (missingRequired.length) {
-    setCsvMapError(
-      tr("Map required fields: {fields}.", { fields: missingRequired.join(", ") })
-    );
+    setCsvMapError(`Map required fields: ${missingRequired.join(", ")}.`);
     return;
   }
 
@@ -10373,16 +7917,14 @@ function applyCsvMapping() {
     const [firstConflict] = requiredConflicts;
     const conflictLabels = firstConflict.map((key) => getCsvColumnLabel(key));
     setCsvMapError(
-      tr("Required fields must map to separate CSV columns ({fields}).", {
-        fields: conflictLabels.join(" + "),
-      })
+      `Required fields must map to separate CSV columns (${conflictLabels.join(" + ")}).`
     );
     return;
   }
 
   const rows = buildCsvRowsFromAnalysis(csvMappingDraft.analysis, csvMappingDraft.mapping);
   if (!rows.length) {
-    setCsvMapError(tr("This mapping produced no usable rows. Adjust mapping and try again."));
+    setCsvMapError("This mapping produced no usable rows. Adjust mapping and try again.");
     return;
   }
 
@@ -10504,18 +8046,10 @@ const initialStep =
   initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
 
 goToStep(initialStep, { push: false, regenerate: false });
-if (initialRoute.view === "register") {
-  history.replaceState(
-    routeToState(initialRoute),
-    "",
-    `${window.location.pathname}${window.location.search || ""}`
-  );
-} else {
-  updateRoute(
-    initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
-    { replace: true }
-  );
-}
+updateRoute(
+  initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
+  { replace: true }
+);
 
 window.addEventListener("popstate", (event) => {
   const route =
@@ -10525,25 +8059,13 @@ window.addEventListener("popstate", (event) => {
 
   if (!currentUser) {
     setMainView("builder", { push: false });
-    if (route.view === "register") {
-      setAuthMode("register", { inviteToken: route.inviteToken });
-      void loadRegistrationInvite(route.inviteToken);
-    } else {
-      setAuthMode("login");
-      updateRoute({ view: "login" }, { replace: true });
-    }
+    updateRoute({ view: "login" }, { replace: true });
     return;
   }
 
   if (route.view === "account") {
     setMainView("account", { push: false });
     loadWarehouseSettings({ quiet: true });
-    return;
-  }
-
-  if (route.view === "admin") {
-    setMainView("admin", { push: false });
-    loadAdminDashboard({ quiet: true });
     return;
   }
 
@@ -10580,5 +8102,4 @@ resetWarehouseState();
 initializeAuthLogo();
 initializeAppLogo();
 initializeAuthParticles();
-void setLanguage(resolvePreferredLanguage(null), { persist: false });
 initializeAuth();

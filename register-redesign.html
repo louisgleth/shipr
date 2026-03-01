@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shipide — Create Your Account</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+    :root {
+      --primary: #00060f;
+      --surface: #0d111a;
+      --surface-2: #141a26;
+      --panel: rgb(28, 32, 38);
+      --card: #0d111a;
+      --accent: rgb(119, 71, 227);
+      --accent-soft: rgba(119, 71, 227, 0.12);
+      --accent-glow: rgba(119, 71, 227, 0.25);
+      --text: #f1f4fb;
+      --text-secondary: #9aa3b2;
+      --muted: #6b7280;
+      --stroke: rgba(255,255,255,0.07);
+      --stroke-focus: rgba(119, 71, 227, 0.5);
+      --success: #34d399;
+      --success-soft: rgba(52, 211, 153, 0.1);
+      --error: #f87171;
+      --error-soft: rgba(248, 113, 113, 0.1);
+      --radius: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--primary);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ── */
+    .register-page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+    }
+
+    /* ── Left Panel — Brand / Welcome ── */
+    .register-brand {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 60px 56px;
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .register-brand::before {
+      content: '';
+      position: absolute;
+      top: -40%; right: -30%;
+      width: 80%; height: 120%;
+      background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    .brand-content {
+      position: relative;
+      z-index: 1;
+      max-width: 440px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+
+    .brand-logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+    }
+
+    .brand-logo-icon svg { width: 20px; height: 20px; }
+
+    .brand-logo-text {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-portal {
+      font-size: 20px;
+      font-weight: 300;
+      color: var(--text-secondary);
+      margin-left: 2px;
+    }
+
+    .brand-headline {
+      font-size: 32px;
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+
+    .brand-headline span {
+      background: linear-gradient(135deg, var(--text) 40%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .brand-sub {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 40px;
+    }
+
+    .brand-features {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .brand-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .brand-feature-icon {
+      width: 38px; height: 38px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand-feature-icon svg {
+      width: 18px; height: 18px;
+      stroke: var(--accent);
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    .brand-feature-text h4 {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 3px;
+    }
+
+    .brand-feature-text p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+
+    /* ── Right Panel — Form ── */
+    .register-form-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 40px;
+      position: relative;
+      overflow-y: auto;
+    }
+
+    .form-container {
+      width: 100%;
+      max-width: 460px;
+    }
+
+    /* ── Progress Stepper ── */
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 36px;
+    }
+
+    .stepper-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      position: relative;
+    }
+
+    .stepper-step:not(:last-child)::after {
+      content: '';
+      flex: 1;
+      height: 2px;
+      background: var(--stroke);
+      margin: 0 12px;
+      border-radius: 1px;
+      transition: background 0.5s var(--ease);
+    }
+
+    .stepper-step.is-done:not(:last-child)::after {
+      background: var(--accent);
+    }
+
+    .step-num {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 2px solid var(--stroke);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: all 0.4s var(--ease);
+      position: relative;
+    }
+
+    .stepper-step.is-active .step-num {
+      border-color: var(--accent);
+      color: var(--text);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 4px var(--accent-glow);
+    }
+
+    .stepper-step.is-done .step-num {
+      border-color: var(--success);
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .stepper-step.is-done .step-num .num-text { display: none; }
+
+    .step-num .check-icon {
+      display: none;
+      width: 14px; height: 14px;
+      stroke: var(--success);
+      fill: none;
+      stroke-width: 2.5;
+    }
+
+    .stepper-step.is-done .step-num .check-icon { display: block; }
+
+    .step-label {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: color 0.3s var(--ease);
+      display: none;
+    }
+
+    .stepper-step.is-active .step-label { color: var(--text); display: block; }
+
+    /* ── Step Content ── */
+    .step-content {
+      display: none;
+      animation: stepIn 0.45s var(--ease) both;
+    }
+
+    .step-content.is-active { display: block; }
+
+    @keyframes stepIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .step-header {
+      margin-bottom: 28px;
+    }
+
+    .step-header h2 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .step-header p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* ── Invite Banner ── */
+    .invite-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      background: var(--success-soft);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: var(--success);
+      line-height: 1.4;
+    }
+
+    .invite-banner svg {
+      width: 18px; height: 18px;
+      flex-shrink: 0;
+      stroke: var(--success);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .invite-banner.is-error {
+      background: var(--error-soft);
+      border-color: rgba(248, 113, 113, 0.2);
+      color: var(--error);
+    }
+
+    .invite-banner.is-error svg { stroke: var(--error); }
+
+    .invite-banner.is-validating {
+      background: var(--accent-soft);
+      border-color: rgba(119, 71, 227, 0.2);
+      color: var(--accent);
+    }
+
+    .invite-banner.is-validating svg { stroke: var(--accent); }
+
+    /* ── Form Fields ── */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .field-label .optional {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .field input::placeholder { color: var(--muted); }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--stroke-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .field input.is-valid {
+      border-color: rgba(52, 211, 153, 0.4);
+    }
+
+    .field input.is-error {
+      border-color: rgba(248, 113, 113, 0.5);
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .field-error {
+      font-size: 11px;
+      color: var(--error);
+      display: none;
+    }
+
+    .field-error.is-visible { display: block; }
+
+    /* ── Password Strength ── */
+    .pw-strength {
+      display: flex;
+      gap: 4px;
+      margin-top: 2px;
+    }
+
+    .pw-bar {
+      flex: 1;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--stroke);
+      transition: background 0.3s ease;
+    }
+
+    .pw-bar.is-filled { background: var(--error); }
+    .pw-strength.is-medium .pw-bar.is-filled { background: #fbbf24; }
+    .pw-strength.is-strong .pw-bar.is-filled { background: var(--success); }
+
+    .pw-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+      transition: color 0.3s ease;
+    }
+
+    /* ── Action Buttons ── */
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .btn {
+      height: 46px;
+      padding: 0 24px;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      transition: all 0.25s var(--ease);
+    }
+
+    .btn svg {
+      width: 16px; height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .btn-primary {
+      flex: 1;
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--stroke);
+    }
+
+    .btn-ghost:hover { border-color: var(--text-secondary); color: var(--text); }
+
+    /* ── Summary Review ── */
+    .review-card {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .review-card-title {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .review-edit-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.2s ease;
+    }
+
+    .review-edit-btn:hover { background: var(--accent-soft); }
+
+    .review-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .review-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 13px;
+    }
+
+    .review-row .label { color: var(--text-secondary); }
+    .review-row .value { color: var(--text); font-weight: 500; text-align: right; }
+
+    /* ── Success State ── */
+    .success-state {
+      text-align: center;
+      padding: 40px 0;
+      animation: stepIn 0.5s var(--ease) both;
+    }
+
+    .success-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: var(--success-soft);
+      display: grid;
+      place-items: center;
+      margin: 0 auto 24px;
+    }
+
+    .success-icon svg {
+      width: 28px; height: 28px;
+      stroke: var(--success);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .success-state h2 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .success-state p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    /* ── Global form error ── */
+    .form-message {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      margin-bottom: 18px;
+      display: none;
+      line-height: 1.4;
+    }
+
+    .form-message.is-visible { display: block; }
+    .form-message.is-error { background: var(--error-soft); color: var(--error); border: 1px solid rgba(248,113,113,0.15); }
+    .form-message.is-success { background: var(--success-soft); color: var(--success); border: 1px solid rgba(52,211,153,0.15); }
+
+    /* ── Footer ── */
+    .form-footer {
+      text-align: center;
+      margin-top: 28px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .form-footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .form-footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .register-page {
+        grid-template-columns: 1fr;
+      }
+      .register-brand {
+        display: none;
+      }
+      .register-form-panel {
+        padding: 32px 20px;
+      }
+      .form-container {
+        max-width: 100%;
+      }
+      .mobile-brand {
+        display: flex !important;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 32px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .field-row { grid-template-columns: 1fr; }
+      .stepper { gap: 0; }
+      .step-label { display: none !important; }
+    }
+
+    .mobile-brand { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="register-page">
+
+  <!-- ── Left: Brand / Welcome ── -->
+  <div class="register-brand">
+    <div class="brand-content">
+      <div class="brand-logo">
+        <div class="brand-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span class="brand-logo-text">Shipide</span>
+        <span class="brand-portal">Portal</span>
+      </div>
+
+      <h1 class="brand-headline">
+        <span>Ship smarter with discounted postage labels.</span>
+      </h1>
+      <p class="brand-sub">
+        You've been invited to create your Shipide Portal account. Set up takes less than 2 minutes.
+      </p>
+
+      <div class="brand-features">
+        <div class="brand-feature">
+          <div class="brand-feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <div class="brand-feature-text">
+            <h4>Discounted Carrier Rates</h4>
+            <p>Access pre-negotiated pricing on Bpost, DHL, and more — up to 40% off retail.</p>
+          </div>
+        </div>
+        <div class="brand-feature">
+          <div class="brand-feature-icon">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </div>
+          <div class="brand-feature-text">
+            <h4>One-Click Label Generation</h4>
+            <p>Generate shipping labels in seconds. Import from Shopify, CSV, or enter manually.</p>
+          </div>
+        </div>
+        <div class="brand-feature">
+          <div class="brand-feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="brand-feature-text">
+            <h4>Monthly Invoicing</h4>
+            <p>No per-label payments. Everything is bundled into a single monthly invoice.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right: Form ── -->
+  <div class="register-form-panel">
+    <div class="form-container">
+
+      <!-- Mobile-only brand -->
+      <div class="mobile-brand">
+        <div class="brand-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span class="brand-logo-text" style="font-size:18px;font-weight:600;">Shipide</span>
+        <span class="brand-portal" style="font-size:18px;">Portal</span>
+      </div>
+
+      <!-- Stepper -->
+      <div class="stepper" id="stepper">
+        <div class="stepper-step is-active" data-step="1">
+          <div class="step-num">
+            <span class="num-text">1</span>
+            <svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span class="step-label">Account</span>
+        </div>
+        <div class="stepper-step" data-step="2">
+          <div class="step-num">
+            <span class="num-text">2</span>
+            <svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span class="step-label">Company</span>
+        </div>
+        <div class="stepper-step" data-step="3">
+          <div class="step-num">
+            <span class="num-text">3</span>
+            <svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span class="step-label">Billing</span>
+        </div>
+      </div>
+
+      <!-- Invite Status Banner -->
+      <div class="invite-banner" id="inviteBanner">
+        <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span id="inviteBannerText">Invitation verified — you're all set to create your account.</span>
+      </div>
+
+      <!-- Global form error -->
+      <div class="form-message" id="formMessage"></div>
+
+      <!-- ══ STEP 1: Credentials ══ -->
+      <div class="step-content is-active" data-panel="1">
+        <div class="step-header">
+          <h2>Create your login</h2>
+          <p>Choose your email and a secure password for your account.</p>
+        </div>
+
+        <div class="field-group">
+          <div class="field">
+            <label class="field-label" for="regEmail">Email address</label>
+            <input type="email" id="regEmail" placeholder="you@company.com" autocomplete="email" />
+            <div class="field-error" id="emailError">Please enter a valid email address</div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="regPassword">Password</label>
+            <input type="password" id="regPassword" placeholder="Minimum 10 characters" autocomplete="new-password" />
+            <div class="pw-strength" id="pwStrength">
+              <div class="pw-bar" data-i="1"></div>
+              <div class="pw-bar" data-i="2"></div>
+              <div class="pw-bar" data-i="3"></div>
+              <div class="pw-bar" data-i="4"></div>
+            </div>
+            <div class="pw-label" id="pwLabel"></div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="regPasswordConfirm">Confirm password</label>
+            <input type="password" id="regPasswordConfirm" placeholder="Re-enter your password" autocomplete="new-password" />
+            <div class="field-error" id="confirmError">Passwords don't match</div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" id="step1Next" disabled>
+            <span>Continue</span>
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </div>
+
+        <div class="form-footer">
+          Already have an account? <a href="/">Sign in</a>
+        </div>
+      </div>
+
+      <!-- ══ STEP 2: Company & Contact ══ -->
+      <div class="step-content" data-panel="2">
+        <div class="step-header">
+          <h2>Company details</h2>
+          <p>Tell us about your business and who we should contact.</p>
+        </div>
+
+        <div class="field-group">
+          <div class="field">
+            <label class="field-label" for="regCompany">Company name</label>
+            <input type="text" id="regCompany" placeholder="Acme Logistics NV" autocomplete="organization" />
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="regContact">Contact name</label>
+              <input type="text" id="regContact" placeholder="Jan Peeters" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="regContactEmail">Contact email</label>
+              <input type="email" id="regContactEmail" placeholder="jan@acme.be" autocomplete="email" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="regPhone">Phone number</label>
+            <input type="tel" id="regPhone" placeholder="+32 2 123 45 67" autocomplete="tel" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="step2Back">
+            <svg viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <span>Back</span>
+          </button>
+          <button class="btn btn-primary" id="step2Next" disabled>
+            <span>Continue</span>
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ STEP 3: Billing + Review ══ -->
+      <div class="step-content" data-panel="3">
+        <div class="step-header">
+          <h2>Billing &amp; review</h2>
+          <p>Add your billing details and confirm everything looks right.</p>
+        </div>
+
+        <div class="field-group">
+          <div class="field">
+            <label class="field-label" for="regBilling">Billing address</label>
+            <input type="text" id="regBilling" placeholder="Wetstraat 1, 1000 Brussels" autocomplete="street-address" />
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="regTax">Tax ID (VAT)</label>
+              <input type="text" id="regTax" placeholder="BE0123456789" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="regCustomer">
+                Customer ID <span class="optional">optional</span>
+              </label>
+              <input type="text" id="regCustomer" placeholder="If provided by Shipide" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Review Summary -->
+        <div style="margin-top: 24px;">
+          <div class="review-card">
+            <div class="review-card-title">
+              Account Summary
+              <button class="review-edit-btn" data-goto="1">Edit</button>
+            </div>
+            <div class="review-rows">
+              <div class="review-row">
+                <span class="label">Email</span>
+                <span class="value" id="reviewEmail">—</span>
+              </div>
+              <div class="review-row">
+                <span class="label">Company</span>
+                <span class="value" id="reviewCompany">—</span>
+              </div>
+              <div class="review-row">
+                <span class="label">Contact</span>
+                <span class="value" id="reviewContact">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="step3Back">
+            <svg viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <span>Back</span>
+          </button>
+          <button class="btn btn-primary" id="submitBtn" disabled>
+            <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>Create Account</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ SUCCESS ══ -->
+      <div class="step-content" data-panel="success">
+        <div class="success-state">
+          <div class="success-icon">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <h2>Account created!</h2>
+          <p>You're all set. Redirecting you to your Shipide Portal dashboard...</p>
+          <button class="btn btn-primary" style="margin:0 auto;" onclick="window.location='/'">
+            <span>Go to Dashboard</span>
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Elements ──
+  const steps = document.querySelectorAll('.stepper-step');
+  const panels = document.querySelectorAll('.step-content');
+  const pwInput = document.getElementById('regPassword');
+  const pwConfirm = document.getElementById('regPasswordConfirm');
+  const pwStrength = document.getElementById('pwStrength');
+  const pwLabel = document.getElementById('pwLabel');
+
+  let currentStep = 1;
+
+  // ── Navigation ──
+  function goToStep(n) {
+    currentStep = n;
+
+    steps.forEach(s => {
+      const sn = +s.dataset.step;
+      s.classList.toggle('is-active', sn === n);
+      s.classList.toggle('is-done', sn < n);
+    });
+
+    panels.forEach(p => {
+      const pn = p.dataset.panel;
+      if (pn === 'success') {
+        p.classList.toggle('is-active', n === 'success');
+      } else {
+        p.classList.toggle('is-active', +pn === n);
+      }
+    });
+
+    // Populate review on step 3
+    if (n === 3) {
+      document.getElementById('reviewEmail').textContent = document.getElementById('regEmail').value || '—';
+      document.getElementById('reviewCompany').textContent = document.getElementById('regCompany').value || '—';
+      document.getElementById('reviewContact').textContent = document.getElementById('regContact').value || '—';
+      validateStep3();
+    }
+  }
+
+  // ── Step 1 Validation ──
+  function validateStep1() {
+    const email = document.getElementById('regEmail').value.trim();
+    const pw = pwInput.value;
+    const pwc = pwConfirm.value;
+
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const pwOk = pw.length >= 10;
+    const matchOk = pw === pwc && pwc.length > 0;
+
+    document.getElementById('emailError').classList.toggle('is-visible', email.length > 0 && !emailOk);
+    document.getElementById('confirmError').classList.toggle('is-visible', pwc.length > 0 && !matchOk);
+
+    document.getElementById('step1Next').disabled = !(emailOk && pwOk && matchOk);
+  }
+
+  // ── Password Strength ──
+  function updatePwStrength() {
+    const pw = pwInput.value;
+    let score = 0;
+    if (pw.length >= 6) score++;
+    if (pw.length >= 10) score++;
+    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+    if (/[^a-zA-Z0-9]/.test(pw)) score++;
+
+    const bars = pwStrength.querySelectorAll('.pw-bar');
+    bars.forEach((b, i) => b.classList.toggle('is-filled', i < score));
+
+    pwStrength.classList.remove('is-medium', 'is-strong');
+    if (score >= 3) pwStrength.classList.add('is-strong');
+    else if (score >= 2) pwStrength.classList.add('is-medium');
+
+    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    pwLabel.textContent = pw.length > 0 ? labels[score] || '' : '';
+  }
+
+  pwInput.addEventListener('input', () => { updatePwStrength(); validateStep1(); });
+  pwConfirm.addEventListener('input', validateStep1);
+  document.getElementById('regEmail').addEventListener('input', validateStep1);
+
+  document.getElementById('step1Next').addEventListener('click', () => goToStep(2));
+  document.getElementById('step2Back').addEventListener('click', () => goToStep(1));
+  document.getElementById('step2Next').addEventListener('click', () => goToStep(3));
+  document.getElementById('step3Back').addEventListener('click', () => goToStep(2));
+
+  // ── Step 2 Validation ──
+  function validateStep2() {
+    const fields = ['regCompany', 'regContact', 'regContactEmail', 'regPhone'];
+    const allFilled = fields.every(id => document.getElementById(id).value.trim().length > 0);
+    document.getElementById('step2Next').disabled = !allFilled;
+  }
+
+  ['regCompany', 'regContact', 'regContactEmail', 'regPhone'].forEach(id => {
+    document.getElementById(id).addEventListener('input', validateStep2);
+  });
+
+  // ── Step 3 Validation ──
+  function validateStep3() {
+    const billing = document.getElementById('regBilling').value.trim();
+    const tax = document.getElementById('regTax').value.trim();
+    document.getElementById('submitBtn').disabled = !(billing && tax);
+  }
+
+  ['regBilling', 'regTax', 'regCustomer'].forEach(id => {
+    document.getElementById(id).addEventListener('input', validateStep3);
+  });
+
+  // ── Submit ──
+  document.getElementById('submitBtn').addEventListener('click', () => {
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('submitBtn').querySelector('span').textContent = 'Creating account...';
+
+    // Simulate API call
+    setTimeout(() => {
+      goToStep('success');
+      steps.forEach(s => s.classList.add('is-done'));
+      steps.forEach(s => s.classList.remove('is-active'));
+    }, 1500);
+  });
+
+  // ── Edit buttons in review ──
+  document.querySelectorAll('.review-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => goToStep(+btn.dataset.goto));
+  });
+</script>
+
+</body>
+</html>
