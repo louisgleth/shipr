@@ -943,10 +943,14 @@
             <div>
               <div class="preview-title">Client Overview</div>
               <p class="panel-sub admin-panel-sub">
-                Financial metrics are computed from portal label history and current discount settings. Invoice timing will populate once billing is live.
+                Financial metrics are computed from portal label history and current discount settings. Payment tracking adapts to each client billing mode.
               </p>
             </div>
             <div class="admin-clients-toolbar">
+              <button type="button" class="btn btn-secondary btn-sm admin-mock-button" id="adminMockDataButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v16"/><path d="M4 12h16"/><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+                <span>Fill Mock Data</span>
+              </button>
               <label class="field admin-toolbar-field">
                 <span>Search</span>
                 <input type="text" id="adminClientSearch" placeholder="Company, contact, email, customer ID" />
@@ -1420,19 +1424,8 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div class="receipt-summary" id="receiptSummary"></div>
-        <div class="receipt-table-wrap">
-          <table class="receipt-table" id="receiptTable">
-            <thead>
-              <tr>
-                <th>Label</th>
-                <th>Tracking</th>
-                <th>Price EX. VAT</th>
-                <th>Price INCL. VAT</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="receipt-stage" id="receiptStage">
+          <div class="receipt-document" id="receiptDocument"></div>
         </div>
         <div class="panel-actions receipt-actions">
           <button type="button" class="btn btn-secondary btn-accent" id="receiptDownloadPdf">
@@ -1502,6 +1495,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="countries.js"></script>
     <script src="app.js"></script>
   </body>

@@ -4,6 +4,7 @@ const DEFAULT_SHOPIFY_SCOPES = "read_orders,read_locations";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
 const REGISTRATION_INVITES_TABLE = "registration_invites";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
+const CLIENT_BILLING_PREF_TABLE = "client_billing_preferences";
 const HISTORY_TABLE = "label_generations";
 const PASSWORD_MIN_LENGTH = 10;
 const DEFAULT_INVITE_EXPIRY_DAYS = 14;
@@ -12,6 +13,10 @@ const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
+};
+const DEFAULT_CLIENT_BILLING_PREF = {
+  invoice_enabled: true,
+  card_enabled: false,
 };
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
@@ -45,6 +50,9 @@ export default {
       }
       if (pathname === "/api/admin/invites/revoke" && request.method === "POST") {
         return handleAdminInviteRevoke(request, env);
+      }
+      if (pathname === "/api/admin/client-billing" && request.method === "POST") {
+        return handleAdminClientBillingSave(request, env);
       }
       if (pathname === "/api/auth/invites" && request.method === "GET") {
         return handleListRegistrationInvites(request, env, url);
@@ -428,7 +436,30 @@ function getEstimatedRetailTotal(serviceType, quantity, fallbackTotal = 0) {
   return Math.max(0, Number(fallbackTotal) || 0);
 }
 
-function buildAdminClientMetrics(user, historyRows, settings) {
+function normalizeClientBillingPreference(value) {
+  const raw = value && typeof value === "object" ? value : {};
+  let invoiceEnabled =
+    raw.invoice_enabled === false ? false : raw.invoice_enabled === true ? true : true;
+  let cardEnabled = raw.card_enabled === true;
+  if (!invoiceEnabled && !cardEnabled) {
+    invoiceEnabled = true;
+  }
+  return {
+    invoice_enabled: invoiceEnabled,
+    card_enabled: cardEnabled,
+    updated_at: raw.updated_at || null,
+    updated_by: raw.updated_by || null,
+  };
+}
+
+function getClientPaymentMode(pref) {
+  const normalized = normalizeClientBillingPreference(pref);
+  if (normalized.invoice_enabled && normalized.card_enabled) return "hybrid";
+  if (normalized.card_enabled) return "card";
+  return "invoice";
+}
+
+function buildAdminClientMetrics(user, historyRows, settings, billingPreference) {
   const rows = Array.isArray(historyRows) ? historyRows : [];
   const totalLabels = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.quantity) || 0), 0);
   const totalRevenue = rows.reduce(
@@ -469,6 +500,17 @@ function buildAdminClientMetrics(user, historyRows, settings) {
     activityStatus = "quiet";
   }
 
+  const normalizedBilling = normalizeClientBillingPreference(billingPreference);
+  const paymentMode = getClientPaymentMode(normalizedBilling);
+  let avgPaymentDays = null;
+  let lastInvoiceTracking = totalRevenue > 0 ? "Billing not live" : "No billable activity";
+  if (paymentMode === "card") {
+    avgPaymentDays = totalRevenue > 0 ? 0 : null;
+    lastInvoiceTracking = totalRevenue > 0 ? "Card auto-charge" : "No billable activity";
+  } else if (paymentMode === "hybrid") {
+    lastInvoiceTracking = totalRevenue > 0 ? "Hybrid billing" : "No billable activity";
+  }
+
   return {
     total_labels: totalLabels,
     total_revenue_ex_vat: Number(totalRevenue.toFixed(2)),
@@ -478,8 +520,11 @@ function buildAdminClientMetrics(user, historyRows, settings) {
     mrp_ex_vat: mrp,
     avg_parcels_per_month: avgParcelsPerMonth,
     last_generation_at: lastGenerationAt || null,
-    avg_payment_days: null,
-    last_invoice_tracking: totalRevenue > 0 ? "Billing not live" : "No billable activity",
+    avg_payment_days: avgPaymentDays,
+    last_invoice_tracking: lastInvoiceTracking,
+    payment_mode: paymentMode,
+    invoice_enabled: normalizedBilling.invoice_enabled,
+    card_enabled: normalizedBilling.card_enabled,
     activity_status: activityStatus,
   };
 }
@@ -803,6 +848,62 @@ async function listGenerationHistoryRows(env, limit = 5000) {
   return rows;
 }
 
+async function listClientBillingPreferences(env, limit = 2000) {
+  const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 2000));
+  const params = new URLSearchParams();
+  params.set("select", "user_id,invoice_enabled,card_enabled,updated_at,updated_by");
+  params.set("order", "updated_at.desc.nullslast");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${CLIENT_BILLING_PREF_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*client_billing_preferences/i.test(details)) {
+      return [];
+    }
+    throw new Error(`Could not load client billing settings (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function saveClientBillingPreference(env, adminUserId, userId, payload) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  const normalized = normalizeClientBillingPreference(payload);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${CLIENT_BILLING_PREF_TABLE}?on_conflict=user_id`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify([
+        {
+          user_id: safeUserId,
+          invoice_enabled: normalized.invoice_enabled,
+          card_enabled: normalized.card_enabled,
+          updated_at: new Date().toISOString(),
+          updated_by: adminUserId || null,
+        },
+      ]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not save billing settings (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return normalizeClientBillingPreference(Array.isArray(rows) && rows.length ? rows[0] : normalized);
+}
+
 async function getAdminSettings(env) {
   const params = new URLSearchParams();
   params.set("select", "scope,carrier_discount_pct,client_discount_pct,updated_at,updated_by");
@@ -895,11 +996,12 @@ function shouldIncludeAdminClient(user, env) {
 }
 
 async function buildAdminDashboard(request, env) {
-  const [settings, invites, users, historyRows] = await Promise.all([
+  const [settings, invites, users, historyRows, billingPreferences] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
     listSupabaseUsers(env, 250),
     listGenerationHistoryRows(env, 10000),
+    listClientBillingPreferences(env, 2000),
   ]);
 
   const historyByUserId = new Map();
@@ -912,6 +1014,13 @@ async function buildAdminDashboard(request, env) {
     historyByUserId.get(userId).push(row);
   });
 
+  const billingByUserId = new Map();
+  billingPreferences.forEach((row) => {
+    const userId = String(row?.user_id || "").trim();
+    if (!userId) return;
+    billingByUserId.set(userId, normalizeClientBillingPreference(row));
+  });
+
   const clients = users
     .filter((user) => shouldIncludeAdminClient(user, env))
     .map((user) => ({
@@ -922,7 +1031,13 @@ async function buildAdminDashboard(request, env) {
         user_metadata:
           user.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {},
       },
-      metrics: buildAdminClientMetrics(user, historyByUserId.get(user.id) || [], settings),
+      billing: billingByUserId.get(user.id) || { ...DEFAULT_CLIENT_BILLING_PREF },
+      metrics: buildAdminClientMetrics(
+        user,
+        historyByUserId.get(user.id) || [],
+        settings,
+        billingByUserId.get(user.id) || DEFAULT_CLIENT_BILLING_PREF
+      ),
     }))
     .sort((left, right) => {
       const leftValue = Date.parse(left?.metrics?.last_generation_at || left?.user?.created_at || 0);
@@ -1458,6 +1573,50 @@ async function handleAdminSettingsSave(request, env) {
     return jsonResponse({ ok: true, settings });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not save admin settings." }, 500);
+  }
+}
+
+async function handleAdminClientBillingSave(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to update client billing settings." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  const targetUserId = String(body?.userId || "").trim();
+  if (!targetUserId) {
+    return jsonResponse({ error: "Client id is required." }, 400);
+  }
+  const invoiceEnabled = body?.invoiceEnabled !== false;
+  const cardEnabled = body?.cardEnabled === true;
+  if (!invoiceEnabled && !cardEnabled) {
+    return jsonResponse({ error: "At least one payment method must remain enabled." }, 400);
+  }
+
+  try {
+    const billing = await saveClientBillingPreference(env, user.id, targetUserId, {
+      invoice_enabled: invoiceEnabled,
+      card_enabled: cardEnabled,
+    });
+    return jsonResponse({
+      ok: true,
+      userId: targetUserId,
+      billing,
+    });
+  } catch (error) {
+    return jsonResponse(
+      { error: error?.message || "Could not update client billing settings." },
+      500
+    );
   }
 }
 

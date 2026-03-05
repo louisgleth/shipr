@@ -210,7 +210,42 @@ const TRANSLATIONS = {
   "Account": { fr: "Compte", nl: "Account" },
   "History": { fr: "Historique", nl: "Historiek" },
   "Reports": { fr: "Rapports", nl: "Rapporten" },
+  "Admin Panel": { fr: "Panneau admin", nl: "Adminpaneel" },
   "Language": { fr: "Langue", nl: "Taal" },
+  "Fill Mock Data": { fr: "Charger des données fictives", nl: "Mockdata laden" },
+  "Restore Live Data": { fr: "Restaurer les données live", nl: "Live data herstellen" },
+  "Mock data loaded (frontend only).": {
+    fr: "Données fictives chargées (frontend uniquement).",
+    nl: "Mockdata geladen (alleen frontend).",
+  },
+  "Live admin data restored.": {
+    fr: "Données admin live restaurées.",
+    nl: "Live admindata hersteld.",
+  },
+  "Payment Methods": { fr: "Modes de paiement", nl: "Betaalmethodes" },
+  "Invoice": { fr: "Facture", nl: "Factuur" },
+  "Card": { fr: "Carte", nl: "Kaart" },
+  "Instant": { fr: "Instant", nl: "Instant" },
+  "Payment Tracking": { fr: "Suivi du paiement", nl: "Betalingsopvolging" },
+  "Invoice Tracking": { fr: "Suivi facture", nl: "Factuuropvolging" },
+  "Invoice billing": { fr: "Facturation sur facture", nl: "Facturatie via factuur" },
+  "Card auto-charge": { fr: "Prélèvement carte auto", nl: "Automatische kaartbetaling" },
+  "Hybrid billing": { fr: "Facturation hybride", nl: "Hybride facturatie" },
+  "No billable activity": { fr: "Aucune activité facturable", nl: "Geen factureerbare activiteit" },
+  "Invoice sent · pending": { fr: "Facture envoyée · en attente", nl: "Factuur verzonden · in afwachting" },
+  "Reminder sent (D-1)": { fr: "Rappel envoyé (J-1)", nl: "Herinnering verzonden (D-1)" },
+  "Client billing updated.": {
+    fr: "Configuration de paiement client mise à jour.",
+    nl: "Klantbetalingsinstelling bijgewerkt.",
+  },
+  "At least one payment method must remain enabled.": {
+    fr: "Au moins un mode de paiement doit rester activé.",
+    nl: "Minstens één betaalmethode moet ingeschakeld blijven.",
+  },
+  "Could not update client billing settings.": {
+    fr: "Impossible de mettre à jour la configuration de paiement client.",
+    nl: "Kon klantbetalingsinstellingen niet bijwerken.",
+  },
   "Build, confirm, and preview your postage label in minutes.": {
     fr: "Créez, confirmez et prévisualisez votre étiquette d’expédition en quelques minutes.",
     nl: "Maak, bevestig en bekijk je verzendlabel in enkele minuten.",
@@ -503,6 +538,8 @@ const TRANSLATIONS = {
   "Upload a valid CSV with at least one data row.": { fr: "Importez un CSV valide avec au moins une ligne de données.", nl: "Upload een geldige CSV met minstens één gegevensrij." },
   "Apply Mapping": { fr: "Appliquer le mapping", nl: "Mapping toepassen" },
   "Receipt": { fr: "Reçu", nl: "Bon" },
+  "Operational Receipt": { fr: "Reçu opérationnel", nl: "Operationeel ontvangstbewijs" },
+  "Reference copy": { fr: "Copie de référence", nl: "Referentiekopie" },
   "Label": { fr: "Étiquette", nl: "Label" },
   "Price ex VAT": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
   "Price incl VAT": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
@@ -511,6 +548,64 @@ const TRANSLATIONS = {
   "Price EX. VAT": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
   "Price INCL. VAT": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
   "Download Receipt PDF": { fr: "Télécharger le reçu PDF", nl: "Bon-PDF downloaden" },
+  "Prepared for the shipping batch shown below.": {
+    fr: "Préparé pour le lot d’expédition affiché ci-dessous.",
+    nl: "Opgesteld voor de hieronder getoonde verzendbatch.",
+  },
+  "Receipt Details": { fr: "Détails du reçu", nl: "Ontvangstbewijsdetails" },
+  "Issued To": { fr: "Émis pour", nl: "Uitgegeven aan" },
+  "Issued By": { fr: "Émis par", nl: "Uitgegeven door" },
+  "Receipt No.": { fr: "N° reçu", nl: "Bonnr." },
+  "Issued": { fr: "Émis le", nl: "Uitgegeven" },
+  "Batch Size": { fr: "Taille du lot", nl: "Batchgrootte" },
+  "Unit Rate": { fr: "Tarif unitaire", nl: "Eenheidstarief" },
+  "Average Unit Rate": { fr: "Tarif unitaire moyen", nl: "Gemiddeld eenheidstarief" },
+  "Billing Profile": { fr: "Profil de facturation", nl: "Facturatieprofiel" },
+  "Contact": { fr: "Contact", nl: "Contact" },
+  "Tax Profile": { fr: "Profil fiscal", nl: "Fiscaal profiel" },
+  "Recipient Batch": { fr: "Lot destinataires", nl: "Ontvangersbatch" },
+  "One line per generated label in this order.": {
+    fr: "Une ligne par étiquette générée dans cette commande.",
+    nl: "Eén regel per gegenereerd label in deze bestelling.",
+  },
+  "Destination": { fr: "Destination", nl: "Bestemming" },
+  "Parcel": { fr: "Colis", nl: "Pakket" },
+  "Weight": { fr: "Poids", nl: "Gewicht" },
+  "Prepared from Shipide Portal history.": {
+    fr: "Préparé depuis l’historique Shipide Portal.",
+    nl: "Opgesteld vanuit de Shipide Portal-historiek.",
+  },
+  "Document generated {date}": { fr: "Document généré {date}", nl: "Document gegenereerd {date}" },
+  "Questions about billing should be handled through your monthly invoice workflow.": {
+    fr: "Les questions de facturation doivent être traitées via votre processus de facture mensuelle.",
+    nl: "Vragen over facturatie moeten via je maandelijkse factuurproces worden afgehandeld.",
+  },
+  "Company Information": { fr: "Informations société", nl: "Bedrijfsinformatie" },
+  "Tax Notice": { fr: "Mention fiscale", nl: "Fiscale melding" },
+  "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery.": {
+    fr: "Ce reçu est fourni à titre de référence opérationnelle uniquement. Il n’est pas valable à des fins fiscales ou comptables. Votre facture est le seul document fiscal valable pour la comptabilité et la récupération de TVA.",
+    nl: "Dit ontvangstbewijs wordt alleen ter operationele referentie verstrekt. Het is niet geldig voor fiscale of boekhoudkundige doeleinden. Je factuur is het enige geldige fiscale document voor boekhouding en btw-recuperatie.",
+  },
+  "Preparing receipt PDF...": {
+    fr: "Préparation du PDF du reçu...",
+    nl: "PDF van ontvangstbewijs voorbereiden...",
+  },
+  "Receipt PDF ready.": { fr: "PDF du reçu prêt.", nl: "PDF van ontvangstbewijs klaar." },
+  "Could not generate receipt PDF.": {
+    fr: "Impossible de générer le PDF du reçu.",
+    nl: "Kon de PDF van het ontvangstbewijs niet genereren.",
+  },
+  "Summary": { fr: "Résumé", nl: "Samenvatting" },
+  "Generated Labels": { fr: "Étiquettes générées", nl: "Gegenereerde labels" },
+  "Compact operational summary for this shipment batch.": {
+    fr: "Résumé opérationnel compact pour ce lot d’expédition.",
+    nl: "Compact operationeel overzicht voor deze verzendbatch.",
+  },
+  "One line per generated label.": {
+    fr: "Une ligne par étiquette générée.",
+    nl: "Eén regel per gegenereerd label.",
+  },
+  "Amount": { fr: "Montant", nl: "Bedrag" },
   "Restricted Goods": { fr: "Marchandises interdites", nl: "Beperkte goederen" },
   "Shopify fulfillment settings": { fr: "paramètres Shopify fulfillment", nl: "Shopify fulfillment-instellingen" },
   "e.g. Cotton t-shirt, 100% cotton": { fr: "ex. T-shirt coton, 100% coton", nl: "bv. Katoenen T-shirt, 100% katoen" },
@@ -928,6 +1023,7 @@ const adminSettingsSaveButton = document.getElementById("adminSettingsSaveButton
 const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
+const adminMockDataButton = document.getElementById("adminMockDataButton");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
 const adminClientsList = document.getElementById("adminClientsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
@@ -941,8 +1037,7 @@ const accountBatchPreview = document.getElementById("accountBatchPreview");
 const accountPdfFrame = document.getElementById("accountPdfFrame");
 const receiptModal = document.getElementById("receiptModal");
 const receiptModalClose = document.getElementById("receiptModalClose");
-const receiptSummary = document.getElementById("receiptSummary");
-const receiptTableBody = document.querySelector("#receiptTable tbody");
+const receiptDocument = document.getElementById("receiptDocument");
 const receiptDownloadPdf = document.getElementById("receiptDownloadPdf");
 const toastStack = document.getElementById("toastStack");
 const reportsRangeButtons = document.querySelectorAll("[data-report-range]");
@@ -1154,6 +1249,9 @@ let adminSettingsSaved = {
   client_discount_pct: 20,
 };
 let adminInviteActionBusyIds = new Set();
+let adminClientBillingBusyIds = new Set();
+let adminMockModeEnabled = false;
+let adminMockSnapshot = null;
 let authShellTransitionToken = 0;
 let mainViewTransitionToken = 0;
 let csvMappingDraft = null;
@@ -1747,6 +1845,7 @@ function refreshTranslatedRuntime() {
   renderClientInviteHistory(clientInviteHistory);
   renderAdminSummary(adminDashboardState?.summary || {});
   renderAdminSettingsPreview();
+  renderAdminMockDataButton();
   renderAdminClientsList();
   if (csvMappingDraft) {
     renderCsvMappingTable();
@@ -2692,6 +2791,32 @@ function getAdminClientProfile(client) {
   };
 }
 
+function normalizeAdminClientBilling(client) {
+  const raw = client?.billing && typeof client.billing === "object" ? client.billing : {};
+  let invoiceEnabled = raw.invoice_enabled !== false;
+  let cardEnabled = raw.card_enabled === true;
+  if (!invoiceEnabled && !cardEnabled) {
+    invoiceEnabled = true;
+  }
+  return {
+    invoice_enabled: invoiceEnabled,
+    card_enabled: cardEnabled,
+  };
+}
+
+function getAdminClientPaymentMode(client) {
+  const billing = normalizeAdminClientBilling(client);
+  if (billing.invoice_enabled && billing.card_enabled) return "hybrid";
+  if (billing.card_enabled) return "card";
+  return "invoice";
+}
+
+function getAdminPaymentModeLabel(mode) {
+  if (mode === "hybrid") return `${tr("Invoice")} + ${tr("Card")}`;
+  if (mode === "card") return tr("Card");
+  return tr("Invoice");
+}
+
 function getAdminActivityLabel(status) {
   if (status === "active") return tr("Active");
   if (status === "quiet") return tr("Quiet");
@@ -2702,6 +2827,32 @@ function getAdminClientValueClass(value) {
   if (Number(value || 0) < 0) return "admin-client-value is-negative";
   if (Number(value || 0) > 0) return "admin-client-value is-positive";
   return "admin-client-value";
+}
+
+function isAdminClientBillingBusy(userId) {
+  return adminClientBillingBusyIds.has(String(userId || ""));
+}
+
+function setAdminClientBillingBusy(userId, isBusy) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return;
+  if (isBusy) {
+    adminClientBillingBusyIds.add(safeUserId);
+  } else {
+    adminClientBillingBusyIds.delete(safeUserId);
+  }
+  renderAdminClientsList();
+}
+
+function renderAdminMockDataButton() {
+  if (!adminMockDataButton) return;
+  const label = adminMockDataButton.querySelector("span");
+  const nextLabel = adminMockModeEnabled ? tr("Restore Live Data") : tr("Fill Mock Data");
+  if (label) {
+    label.textContent = nextLabel;
+  } else {
+    adminMockDataButton.textContent = nextLabel;
+  }
 }
 
 function renderAdminClientsList() {
@@ -2764,6 +2915,18 @@ function renderAdminClientsList() {
   filtered.forEach((client) => {
     const profile = getAdminClientProfile(client);
     const metrics = client?.metrics || {};
+    const billing = normalizeAdminClientBilling(client);
+    const paymentMode = metrics.payment_mode || getAdminClientPaymentMode(client);
+    const paymentTrackingLabel =
+      paymentMode === "invoice" ? tr("Invoice Tracking") : tr("Payment Tracking");
+    const paymentTimingLabel =
+      paymentMode === "card" && Number(metrics.avg_payment_days) === 0
+        ? tr("Instant")
+        : metrics.avg_payment_days != null
+          ? `${metrics.avg_payment_days} ${tr("days")}`
+          : "--";
+    const userId = String(client?.user?.id || "").trim();
+    const billingBusy = isAdminClientBillingBusy(userId);
     const row = document.createElement("article");
     row.className = "admin-client-row";
     row.innerHTML = `
@@ -2810,21 +2973,352 @@ function renderAdminClientsList() {
         </div>
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Avg. Payment Time")}</span>
-          <span class="admin-client-value">${metrics.avg_payment_days != null ? `${metrics.avg_payment_days} ${tr("days")}` : "--"}</span>
+          <span class="admin-client-value">${paymentTimingLabel}</span>
         </div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
-          <span class="admin-client-key">${tr("Invoice Tracking")}</span>
+          <span class="admin-client-key">${tr("Payment Methods")}</span>
+          <div class="admin-client-methods">
+            <button
+              type="button"
+              class="admin-client-method-toggle${billing.invoice_enabled ? " is-active" : ""}"
+              data-admin-billing-toggle="invoice"
+              data-admin-client-id="${userId}"
+              ${billingBusy ? "disabled" : ""}
+            >
+              <span class="admin-client-method-box" aria-hidden="true"></span>
+              <span>${tr("Invoice")}</span>
+            </button>
+            <button
+              type="button"
+              class="admin-client-method-toggle${billing.card_enabled ? " is-active" : ""}"
+              data-admin-billing-toggle="card"
+              data-admin-client-id="${userId}"
+              ${billingBusy ? "disabled" : ""}
+            >
+              <span class="admin-client-method-box" aria-hidden="true"></span>
+              <span>${tr("Card")}</span>
+            </button>
+          </div>
+          <span class="admin-client-method-mode mono">${getAdminPaymentModeLabel(paymentMode)}</span>
+        </div>
+      </div>
+      <div class="admin-client-stack">
+        <div class="admin-client-metric">
+          <span class="admin-client-key">${paymentTrackingLabel}</span>
           <div class="admin-client-pills">
             <span class="admin-client-pill is-${metrics.activity_status || "dormant"}">${getAdminActivityLabel(metrics.activity_status || "dormant")}</span>
-            <span class="admin-client-pill is-billing">${metrics.last_invoice_tracking || tr("Billing not live")}</span>
+            <span class="admin-client-pill is-billing">${formatAdminTrackingStatus(metrics.last_invoice_tracking)}</span>
           </div>
         </div>
       </div>
     `;
     adminClientsList.appendChild(row);
   });
+}
+
+function buildAdminSummaryFromClients(clients = [], openInvites = 0) {
+  const rows = Array.isArray(clients) ? clients : [];
+  const activeClients = rows.filter((client) => client?.metrics?.activity_status === "active").length;
+  const totalRevenue = rows.reduce(
+    (sum, client) => sum + Math.max(0, Number(client?.metrics?.total_revenue_ex_vat) || 0),
+    0
+  );
+  const totalProfit = rows.reduce(
+    (sum, client) => sum + Number(client?.metrics?.total_profit_ex_vat || 0),
+    0
+  );
+  return {
+    total_clients: rows.length,
+    active_clients: activeClients,
+    open_invites: Number(openInvites) || 0,
+    total_revenue_ex_vat: Number(totalRevenue.toFixed(2)),
+    total_profit_ex_vat: Number(totalProfit.toFixed(2)),
+  };
+}
+
+function normalizeBillingForMetrics(billing) {
+  const normalized = normalizeAdminClientBilling({ billing });
+  return {
+    invoice_enabled: normalized.invoice_enabled,
+    card_enabled: normalized.card_enabled,
+  };
+}
+
+function applyBillingToClientMetrics(metrics = {}, billing) {
+  const normalizedBilling = normalizeBillingForMetrics(billing);
+  const nextMetrics = { ...(metrics || {}) };
+  const paymentMode =
+    normalizedBilling.invoice_enabled && normalizedBilling.card_enabled
+      ? "hybrid"
+      : normalizedBilling.card_enabled
+        ? "card"
+        : "invoice";
+  const hasRevenue = Number(nextMetrics.total_revenue_ex_vat || 0) > 0;
+  nextMetrics.payment_mode = paymentMode;
+  nextMetrics.invoice_enabled = normalizedBilling.invoice_enabled;
+  nextMetrics.card_enabled = normalizedBilling.card_enabled;
+  if (paymentMode === "card") {
+    nextMetrics.avg_payment_days = hasRevenue ? 0 : null;
+    nextMetrics.last_invoice_tracking = hasRevenue ? "Card auto-charge" : "No billable activity";
+  } else if (paymentMode === "hybrid") {
+    nextMetrics.last_invoice_tracking = hasRevenue ? "Hybrid billing" : "No billable activity";
+  } else if (!String(nextMetrics.last_invoice_tracking || "").trim()) {
+    nextMetrics.last_invoice_tracking = hasRevenue ? "Billing not live" : "No billable activity";
+  }
+  return nextMetrics;
+}
+
+function updateAdminClientBillingState(userId, billing) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return false;
+  let updated = false;
+  const applyUpdate = (client) => {
+    if (String(client?.user?.id || "").trim() !== safeUserId) {
+      return client;
+    }
+    updated = true;
+    return {
+      ...client,
+      billing: normalizeBillingForMetrics(billing),
+      metrics: applyBillingToClientMetrics(client?.metrics || {}, billing),
+    };
+  };
+  adminClients = adminClients.map(applyUpdate);
+  if (adminDashboardState && Array.isArray(adminDashboardState.clients)) {
+    adminDashboardState = {
+      ...adminDashboardState,
+      clients: adminDashboardState.clients.map(applyUpdate),
+    };
+  }
+  return updated;
+}
+
+function formatAdminTrackingStatus(status) {
+  const value = String(status || "").trim();
+  if (!value) return tr("Billing not live");
+  return tr(value);
+}
+
+function buildMockAdminClients() {
+  const now = Date.now();
+  const rows = [
+    {
+      companyName: "Nordlane Commerce",
+      contactName: "Sophie Van Dijk",
+      email: "ops@nordlane.eu",
+      customerId: "CUST-502194",
+      accountManager: "A. Lambert",
+      billingAddress: "Cantersteen 12, 1000 Brussels, Belgium",
+      payment: { invoice_enabled: true, card_enabled: false },
+      metrics: {
+        total_revenue_ex_vat: 19640.5,
+        total_profit_ex_vat: 4880.45,
+        mrr_ex_vat: 3273.42,
+        mrp_ex_vat: 813.41,
+        avg_parcels_per_month: 284.6,
+        avg_payment_days: 18,
+        last_invoice_tracking: "Invoice sent · pending",
+        activity_status: "active",
+      },
+    },
+    {
+      companyName: "Kite Retail Group",
+      contactName: "Thomas Meers",
+      email: "finance@kiteretail.eu",
+      customerId: "CUST-874300",
+      accountManager: "N. Martin",
+      billingAddress: "Avenue Louise 221, 1050 Brussels, Belgium",
+      payment: { invoice_enabled: false, card_enabled: true },
+      metrics: {
+        total_revenue_ex_vat: 8470.2,
+        total_profit_ex_vat: 2123.5,
+        mrr_ex_vat: 1411.7,
+        mrp_ex_vat: 353.92,
+        avg_parcels_per_month: 112.3,
+        avg_payment_days: 0,
+        last_invoice_tracking: "Card auto-charge",
+        activity_status: "active",
+      },
+    },
+    {
+      companyName: "Arta Home",
+      contactName: "Camille Dupont",
+      email: "shipping@arta-home.com",
+      customerId: "CUST-719255",
+      accountManager: "A. Lambert",
+      billingAddress: "Rue des Guillemins 18, 4000 Liège, Belgium",
+      payment: { invoice_enabled: true, card_enabled: true },
+      metrics: {
+        total_revenue_ex_vat: 12324.1,
+        total_profit_ex_vat: 2840.12,
+        mrr_ex_vat: 1027.01,
+        mrp_ex_vat: 236.68,
+        avg_parcels_per_month: 96.7,
+        avg_payment_days: 8,
+        last_invoice_tracking: "Hybrid billing",
+        activity_status: "quiet",
+      },
+    },
+    {
+      companyName: "Veldmark Health",
+      contactName: "Lina Verbeek",
+      email: "logistics@veldmark.eu",
+      customerId: "CUST-402881",
+      accountManager: "M. Rossi",
+      billingAddress: "Koning Albertlaan 64, 9000 Ghent, Belgium",
+      payment: { invoice_enabled: true, card_enabled: false },
+      metrics: {
+        total_revenue_ex_vat: 4380.0,
+        total_profit_ex_vat: 911.44,
+        mrr_ex_vat: 547.5,
+        mrp_ex_vat: 113.93,
+        avg_parcels_per_month: 44.8,
+        avg_payment_days: 29,
+        last_invoice_tracking: "Reminder sent (D-1)",
+        activity_status: "quiet",
+      },
+    },
+    {
+      companyName: "Heliox Parts",
+      contactName: "Noah Jacobs",
+      email: "labels@helioxparts.com",
+      customerId: "CUST-638512",
+      accountManager: "N. Martin",
+      billingAddress: "Industrieweg 10, 3001 Leuven, Belgium",
+      payment: { invoice_enabled: false, card_enabled: true },
+      metrics: {
+        total_revenue_ex_vat: 2160.4,
+        total_profit_ex_vat: 422.12,
+        mrr_ex_vat: 180.03,
+        mrp_ex_vat: 35.18,
+        avg_parcels_per_month: 21.1,
+        avg_payment_days: 0,
+        last_invoice_tracking: "Card auto-charge",
+        activity_status: "dormant",
+      },
+    },
+  ];
+
+  return rows.map((row, index) => {
+    const createdAt = new Date(now - (index + 1) * 1000 * 60 * 60 * 24 * 35).toISOString();
+    const lastGenerationAt = new Date(now - (index + 1) * 1000 * 60 * 60 * 24 * (index * 6 + 2)).toISOString();
+    const metrics = applyBillingToClientMetrics(
+      {
+        ...row.metrics,
+        last_generation_at: lastGenerationAt,
+      },
+      row.payment
+    );
+    return {
+      user: {
+        id: `mock-client-${index + 1}`,
+        email: row.email,
+        created_at: createdAt,
+        user_metadata: {
+          company_name: row.companyName,
+          contact_name: row.contactName,
+          contact_email: row.email,
+          contact_phone: "+32 2 555 01 0" + index,
+          billing_address: row.billingAddress,
+          customer_id: row.customerId,
+          account_manager: row.accountManager,
+        },
+      },
+      billing: normalizeBillingForMetrics(row.payment),
+      metrics,
+    };
+  });
+}
+
+function toggleAdminMockData() {
+  if (adminDashboardLoading) return;
+  if (!adminMockModeEnabled) {
+    adminMockSnapshot = {
+      clients: JSON.parse(JSON.stringify(adminClients || [])),
+      summary: JSON.parse(JSON.stringify(adminDashboardState?.summary || {})),
+    };
+    const mockClients = buildMockAdminClients();
+    adminClients = mockClients;
+    adminMockModeEnabled = true;
+    const openInvites = Number(adminDashboardState?.summary?.open_invites || 0);
+    adminDashboardState = {
+      ...(adminDashboardState || {}),
+      clients: mockClients,
+      summary: buildAdminSummaryFromClients(mockClients, openInvites),
+    };
+    renderAdminSummary(adminDashboardState.summary || {});
+    renderAdminClientsList();
+    renderAdminMockDataButton();
+    showToast(tr("Mock data loaded (frontend only)."), { tone: "info" });
+    return;
+  }
+
+  adminMockModeEnabled = false;
+  if (adminMockSnapshot) {
+    adminClients = Array.isArray(adminMockSnapshot.clients) ? adminMockSnapshot.clients : [];
+    adminDashboardState = {
+      ...(adminDashboardState || {}),
+      clients: adminClients,
+      summary: adminMockSnapshot.summary || {},
+    };
+  }
+  adminMockSnapshot = null;
+  renderAdminSummary(adminDashboardState?.summary || {});
+  renderAdminClientsList();
+  renderAdminMockDataButton();
+  showToast(tr("Live admin data restored."), { tone: "success" });
+}
+
+async function updateAdminClientBilling(userId, method) {
+  const safeUserId = String(userId || "").trim();
+  const normalizedMethod = String(method || "").trim();
+  if (!safeUserId || !["invoice", "card"].includes(normalizedMethod)) return;
+  if (isAdminClientBillingBusy(safeUserId)) return;
+
+  const client = adminClients.find((entry) => String(entry?.user?.id || "").trim() === safeUserId);
+  if (!client) return;
+  const current = normalizeAdminClientBilling(client);
+  const next = { ...current };
+  if (normalizedMethod === "invoice") {
+    next.invoice_enabled = !current.invoice_enabled;
+  } else {
+    next.card_enabled = !current.card_enabled;
+  }
+  if (!next.invoice_enabled && !next.card_enabled) {
+    showToast(tr("At least one payment method must remain enabled."), { tone: "error" });
+    return;
+  }
+
+  if (adminMockModeEnabled) {
+    updateAdminClientBillingState(safeUserId, next);
+    renderAdminSummary(adminDashboardState?.summary || {});
+    renderAdminClientsList();
+    showToast(tr("Client billing updated."), { tone: "success" });
+    return;
+  }
+
+  setAdminClientBillingBusy(safeUserId, true);
+  try {
+    const response = await fetchApiWithAuth("/api/admin/client-billing", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: safeUserId,
+        invoiceEnabled: next.invoice_enabled,
+        cardEnabled: next.card_enabled,
+      }),
+    });
+    const returnedBilling = response?.billing || next;
+    updateAdminClientBillingState(safeUserId, returnedBilling);
+    renderAdminSummary(adminDashboardState?.summary || {});
+    renderAdminClientsList();
+    showToast(tr("Client billing updated."), { tone: "success" });
+  } catch (error) {
+    showToast(error?.message || tr("Could not update client billing settings."), { tone: "error" });
+  } finally {
+    setAdminClientBillingBusy(safeUserId, false);
+  }
 }
 
 async function loadAdminAccessStatus(options = {}) {
@@ -2862,6 +3356,10 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminClientBillingBusyIds = new Set();
+    adminMockModeEnabled = false;
+    adminMockSnapshot = null;
+    renderAdminMockDataButton();
     renderAdminClientsList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
@@ -2875,6 +3373,9 @@ async function loadAdminDashboard(options = {}) {
   renderAdminClientsList();
   try {
     const payload = await fetchApiWithAuth("/api/admin/dashboard", { timeoutMs: 20000 });
+    adminClientBillingBusyIds = new Set();
+    adminMockModeEnabled = false;
+    adminMockSnapshot = null;
     adminDashboardState = payload && typeof payload === "object" ? payload : {};
     clientInviteHistory = Array.isArray(adminDashboardState?.invites) ? adminDashboardState.invites : [];
     adminClients = Array.isArray(adminDashboardState?.clients) ? adminDashboardState.clients : [];
@@ -2882,12 +3383,17 @@ async function loadAdminDashboard(options = {}) {
     renderClientInviteHistory(clientInviteHistory);
     applyAdminSettings(adminDashboardState?.settings || {});
     adminDashboardLoaded = true;
+    renderAdminMockDataButton();
     renderAdminClientsList();
     return true;
   } catch (error) {
+    adminClientBillingBusyIds = new Set();
+    adminMockModeEnabled = false;
+    adminMockSnapshot = null;
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    renderAdminMockDataButton();
     renderAdminClientsList();
     if (!quiet) {
       showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
@@ -5205,11 +5711,8 @@ function resetAccountPreview() {
   if (openReceiptModalButton) {
     openReceiptModalButton.disabled = true;
   }
-  if (receiptSummary) {
-    receiptSummary.innerHTML = "";
-  }
-  if (receiptTableBody) {
-    receiptTableBody.innerHTML = "";
+  if (receiptDocument) {
+    receiptDocument.innerHTML = "";
   }
 }
 
@@ -5534,56 +6037,254 @@ function selectAccountLabel(index) {
   }
 }
 
-function renderReceiptDetails(record) {
-  if (!receiptSummary || !receiptTableBody || !record) return;
+function splitReceiptAddressLines(value) {
+  const text = String(value || "").trim();
+  if (!text) return ["--"];
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [text];
+}
+
+function formatReceiptDestination(data = {}) {
+  const destination = [data.recipientCity, data.recipientCountry].filter(Boolean).join(", ");
+  return destination || "--";
+}
+
+function formatReceiptParcel(data = {}) {
+  const parts = [];
+  if (data.packageWeight) {
+    parts.push(`${data.packageWeight} kg`);
+  }
+  if (data.packageDims) {
+    parts.push(data.packageDims);
+  }
+  return parts.length ? parts.join(" • ") : "--";
+}
+
+function buildReceiptViewModel(record) {
   const totals = calculateRecordTotals(record);
+  const profile = buildMockAccountProfile(currentUser);
   const serviceType = translateServiceName(
     record.payload?.selection?.type || record.service_type || "--"
   );
   const labels = accountLabels.length ? accountLabels : record.payload?.labels || [];
+  const headlineParts = formatHistoryHeadlineParts(record.created_at);
+  const issuedAt = `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " ");
+  return {
+    record,
+    totals,
+    profile,
+    serviceType,
+    labels,
+    issuedAt,
+    receiptNumber: record.id || "--",
+    quantity: totals.quantity,
+    vatLabel: tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) }),
+    billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
+  };
+}
 
-  receiptSummary.innerHTML = "";
-  const summaryRows = [
-    [tr("Service"), serviceType],
-    [tr("Date"), formatHistoryDate(record.created_at)],
-    [tr("Order"), record.id || "--"],
-    [tr("Quantity"), String(totals.quantity)],
-    [tr("Subtotal (EX. VAT)"), formatMoney(totals.totalExVat)],
-    [tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) }), formatMoney(totals.vatAmount)],
-    [tr("Total (INCL. VAT)"), formatMoney(totals.totalIncVat)],
-    [tr("Unit (EX. VAT)"), formatMoney(totals.unitExVat)],
-    [tr("Unit (INCL. VAT)"), formatMoney(totals.unitIncVat)],
+function buildReceiptDocumentHtml(record) {
+  const viewModel = buildReceiptViewModel(record);
+  const {
+    totals,
+    profile,
+    serviceType,
+    labels,
+    issuedAt,
+    receiptNumber,
+    quantity,
+    vatLabel,
+    billingAddressLines,
+  } = viewModel;
+
+  const receiptRows = labels.length
+    ? labels
+        .map((label) => {
+          const data = label?.data || {};
+          const recipientName = data.recipientName || "--";
+          const destination = formatReceiptDestination(data);
+          const recipientMeta = destination && destination !== "--" ? ` · ${destination}` : "";
+          return `
+            <tr>
+              <td>
+                <span class="receipt-cell-primary mono">${escapeHtml(label.labelId || "--")}</span>
+              </td>
+              <td>
+                <span class="receipt-cell-primary mono">${escapeHtml(label.trackingId || "--")}</span>
+              </td>
+              <td>
+                <span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span>
+              </td>
+              <td>
+                <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(totals.unitExVat))} ${escapeHtml(tr("EX. VAT"))}</span>
+                <span class="receipt-inline-meta receipt-inline-meta-block mono">${escapeHtml(formatMoney(totals.unitIncVat))} ${escapeHtml(tr("INCL. VAT"))}</span>
+              </td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `
+        <tr>
+          <td colspan="4">
+            <div class="receipt-line-primary">
+              <span class="receipt-line-title">--</span>
+              <span class="receipt-line-sub">${escapeHtml(tr("No label PDF selected yet. Choose a generation to preview."))}</span>
+            </div>
+          </td>
+        </tr>
+      `;
+
+  const profileName = profile?.companyName || "--";
+  const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
+  const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
+  const accountManager = profile?.accountManager || "--";
+  const receiptCompanyLines = [
+    "Shipide Logistics SRL",
+    "Quai des Transitaires 18",
+    "1000 Brussels, Belgium",
+    "billing@shipide.com",
+    "BE 0478.221.904",
   ];
 
-  summaryRows.forEach(([label, value]) => {
-    const row = document.createElement("div");
-    row.className = "receipt-summary-row";
-    const key = document.createElement("span");
-    key.textContent = label;
-    const val = document.createElement("strong");
-    val.className = "mono";
-    val.textContent = value;
-    row.appendChild(key);
-    row.appendChild(val);
-    receiptSummary.appendChild(row);
-  });
+  return `
+    <div class="receipt-sheet">
+      <div class="receipt-sheet-bar"></div>
+      <div class="receipt-sheet-body">
+        <div class="receipt-topline">
+          <div class="receipt-brand">
+            <div class="receipt-brand-mark" aria-hidden="true"></div>
+            <div class="receipt-brand-copy">
+              <span class="receipt-brand-name">Shipide Portal</span>
+            </div>
+          </div>
+          <div class="receipt-top-meta">
+            <span class="receipt-chip">${escapeHtml(tr("Receipt"))}</span>
+            <div class="receipt-top-meta-lines mono">
+              <span>${escapeHtml(tr("No."))} ${escapeHtml(receiptNumber)}</span>
+              <span>${escapeHtml(issuedAt)}</span>
+            </div>
+          </div>
+        </div>
 
-  receiptTableBody.innerHTML = "";
-  labels.forEach((label) => {
-    const tr = document.createElement("tr");
-    const columns = [
-      label.labelId || "--",
-      label.trackingId || "--",
-      formatMoney(totals.unitExVat),
-      formatMoney(totals.unitIncVat),
-    ];
-    columns.forEach((text) => {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.appendChild(td);
-    });
-    receiptTableBody.appendChild(tr);
-  });
+        <div class="receipt-grid">
+          <section class="receipt-panel">
+            <div class="receipt-panel-title">${escapeHtml(tr("Issued To"))}</div>
+            <div class="receipt-address">
+              <div class="receipt-address-block">
+                <span class="receipt-address-name">${escapeHtml(profileName)}</span>
+                <div class="receipt-address-lines">
+                  <span>${escapeHtml(contactLine)}</span>
+                  ${billingAddressLines
+                    .map((line) => `<span>${escapeHtml(line)}</span>`)
+                    .join("")}
+                </div>
+              </div>
+              <div class="receipt-address-meta mono">
+                <span>${escapeHtml(taxLine)}</span>
+                <span>${escapeHtml(profile?.contactPhone || "--")}</span>
+                <span>${escapeHtml(tr("Account Manager"))}: ${escapeHtml(accountManager)}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="receipt-panel receipt-panel-summary">
+            <div class="receipt-panel-title">${escapeHtml(tr("Summary"))}</div>
+            <div class="receipt-kv-grid receipt-kv-grid-compact">
+              <div class="receipt-kv">
+                <span class="receipt-kv-key">${escapeHtml(tr("Service"))}</span>
+                <span class="receipt-kv-value">${escapeHtml(serviceType)}</span>
+              </div>
+              <div class="receipt-kv">
+                <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
+                <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
+              </div>
+              <div class="receipt-kv">
+                <span class="receipt-kv-key">${escapeHtml(tr("Subtotal (EX. VAT)"))}</span>
+                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalExVat))}</span>
+              </div>
+              <div class="receipt-kv">
+                <span class="receipt-kv-key">${escapeHtml(vatLabel)}</span>
+                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.vatAmount))}</span>
+              </div>
+              <div class="receipt-kv receipt-kv-total">
+                <span class="receipt-kv-key">${escapeHtml(tr("Total (INCL. VAT)"))}</span>
+                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
+              </div>
+              <div class="receipt-kv">
+                <span class="receipt-kv-key">${escapeHtml(tr("Average Unit Rate"))}</span>
+                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.unitExVat))}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="receipt-table-card">
+          <div class="receipt-table-head">
+            <div class="receipt-table-copy">
+              <span class="receipt-table-title">${escapeHtml(tr("Generated Labels"))}</span>
+              <span class="receipt-table-sub">${escapeHtml(tr("One line per generated label."))}</span>
+            </div>
+            <span class="receipt-table-badge mono">${escapeHtml(`${quantity} ${tr("labels")}`)}</span>
+          </div>
+          <div class="receipt-table-wrap">
+            <table class="receipt-table">
+              <thead>
+                <tr>
+                  <th>${escapeHtml(tr("Label"))}</th>
+                  <th>${escapeHtml(tr("Tracking"))}</th>
+                  <th>${escapeHtml(tr("Recipient"))}</th>
+                  <th>${escapeHtml(tr("Amount"))}</th>
+                </tr>
+              </thead>
+              <tbody>${receiptRows}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="receipt-disclaimer">
+          <svg class="receipt-disclaimer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M12 3 2.8 19a1 1 0 0 0 .87 1.5h16.66A1 1 0 0 0 21.2 19L12 3Z"></path>
+            <path d="M12 9v5"></path>
+            <circle cx="12" cy="17.2" r="1"></circle>
+          </svg>
+          <div class="receipt-disclaimer-copy">
+            <span class="receipt-disclaimer-title">${escapeHtml(tr("Tax Notice"))}</span>
+            <span class="receipt-disclaimer-text">${escapeHtml(
+              tr(
+                "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
+              )
+            )}</span>
+          </div>
+        </section>
+
+      </div>
+      <div class="receipt-footer">
+        <div class="receipt-footer-copy">
+          <span class="receipt-footer-title">${escapeHtml(tr("Company Information"))}</span>
+          ${receiptCompanyLines
+            .map((line) => `<span class="receipt-footer-line">${escapeHtml(line)}</span>`)
+            .join("")}
+        </div>
+        <div class="receipt-footer-copy receipt-footer-copy-end">
+          <span class="receipt-footer-title">${escapeHtml(tr("Receipt Details"))}</span>
+          <span class="receipt-footer-line mono">${escapeHtml(tr("Receipt No."))}: ${escapeHtml(
+            receiptNumber
+          )}</span>
+          <span class="receipt-footer-line mono">${escapeHtml(tr("Issued"))}: ${escapeHtml(
+            issuedAt
+          )}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReceiptDetails(record) {
+  if (!receiptDocument || !record) return;
+  receiptDocument.innerHTML = buildReceiptDocumentHtml(record);
 }
 
 function triggerFileDownload(url, filename) {
@@ -5604,54 +6305,178 @@ function downloadActiveAccountLabelPdf() {
   triggerFileDownload(accountBatchPdfUrl, `${filenameBase}.pdf`);
 }
 
-function downloadReceiptPdfFile() {
+async function downloadReceiptPdfFile() {
   if (!accountActiveRecord) return;
-  const totals = calculateRecordTotals(accountActiveRecord);
-  const serviceType =
-    accountActiveRecord.payload?.selection?.type ||
-    accountActiveRecord.service_type ||
-    "Label generation";
-  const labels = accountLabels.length
-    ? accountLabels
-    : accountActiveRecord.payload?.labels || [];
+  renderReceiptDetails(accountActiveRecord);
 
-  const lines = [
-    tr("SHIPR RECEIPT"),
-    `${tr("Order")}: ${accountActiveRecord.id || "--"}`,
-    `${tr("Date")}: ${formatHistoryDate(accountActiveRecord.created_at)}`,
-    `${tr("Service")}: ${translateServiceName(serviceType)}`,
-    `${tr("Quantity")}: ${totals.quantity}`,
-    `${tr("Subtotal (EX. VAT)")}: ${formatMoney(totals.totalExVat)}`,
-    `${tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) })}: ${formatMoney(
-      totals.vatAmount
-    )}`,
-    `${tr("Total (INCL. VAT)")}: ${formatMoney(totals.totalIncVat)}`,
-    "",
-    tr("LABEL BREAKDOWN"),
-  ];
+  const buttonLabel = receiptDownloadPdf?.querySelector("span");
+  if (receiptDownloadPdf) {
+    receiptDownloadPdf.disabled = true;
+  }
+  if (buttonLabel) {
+    buttonLabel.textContent = tr("Preparing receipt PDF...");
+  }
 
-  labels.forEach((label, index) => {
-    lines.push(
-      `${index + 1}. ${label.labelId || "--"} | ${label.trackingId || "--"} | ${tr(
-        "EX. VAT"
-      )} ${formatMoney(totals.unitExVat)} | ${tr("INCL. VAT")} ${formatMoney(
-        totals.unitIncVat
-      )}`
-    );
-  });
+  try {
+    if (
+      receiptDocument &&
+      window.html2canvas &&
+      window.jspdf &&
+      typeof window.jspdf.jsPDF === "function"
+    ) {
+      receiptDocument.classList.add("is-exporting");
+      if (document.fonts?.ready) {
+        await document.fonts.ready.catch(() => {});
+      }
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 
-  const blob = buildPdf(lines, {
-    pageWidth: 612,
-    pageHeight: 792,
-    marginX: 40,
-    marginTop: 48,
-    marginBottom: 48,
-    fontSize: 11,
-    lineHeight: 14,
-  });
-  const url = URL.createObjectURL(blob);
-  triggerFileDownload(url, `receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+      const h2cOpts = {
+        backgroundColor: "#0b1018",
+        scale: Math.max(2, Math.min(window.devicePixelRatio || 1, 3)),
+        useCORS: true,
+        logging: false,
+      };
+
+      /* ---- capture body (everything except footer) and footer separately ---- */
+      const footerEl = receiptDocument.querySelector(".receipt-footer");
+      let footerCanvas = null;
+      if (footerEl) {
+        footerEl.style.display = "none";
+      }
+      const bodyCanvas = await window.html2canvas(receiptDocument, h2cOpts);
+      if (footerEl) {
+        footerEl.style.display = "";
+        footerCanvas = await window.html2canvas(footerEl, {
+          ...h2cOpts,
+          backgroundColor: "#00060f",
+          width: receiptDocument.offsetWidth,
+        });
+      }
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "pt",
+        format: "a4",
+        compress: true,
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 18;
+      const contentWidth = pageWidth - margin * 2;
+
+      /* ---- footer dimensions in PDF points ---- */
+      let footerPdfH = 0;
+      let footerImgData = null;
+      if (footerCanvas) {
+        footerPdfH = (footerCanvas.height * contentWidth) / footerCanvas.width;
+        footerImgData = footerCanvas.toDataURL("image/png");
+      }
+      const footerGap = footerPdfH > 0 ? 10 : 0;
+
+      /* ---- body dimensions ---- */
+      const bodyRenderedH = (bodyCanvas.height * contentWidth) / bodyCanvas.width;
+      const bodyImgData = bodyCanvas.toDataURL("image/png");
+      const usableH = pageHeight - margin * 2 - footerPdfH - footerGap;
+
+      /* ---- paginate: slice body across pages, footer on each ---- */
+      let remaining = bodyRenderedH;
+      let srcY = 0;
+      while (remaining > 0) {
+        if (srcY > 0) pdf.addPage();
+
+        /* dark page fill */
+        pdf.setFillColor(0, 6, 15);
+        pdf.rect(0, 0, pageWidth, pageHeight, "F");
+
+        /* body slice */
+        const sliceH = Math.min(remaining, usableH);
+        pdf.addImage(
+          bodyImgData,
+          "PNG",
+          margin,
+          margin - srcY,
+          contentWidth,
+          bodyRenderedH,
+          undefined,
+          "FAST"
+        );
+
+        /* clip overflow by painting background below the slice */
+        if (remaining > usableH) {
+          pdf.setFillColor(0, 6, 15);
+          pdf.rect(0, margin + usableH, pageWidth, pageHeight, "F");
+        }
+
+        /* footer on every page */
+        if (footerImgData) {
+          const footerY = pageHeight - margin - footerPdfH;
+          /* thin divider line above footer */
+          pdf.setDrawColor(46, 46, 46);
+          pdf.setLineWidth(0.5);
+          pdf.line(margin, footerY - footerGap / 2, pageWidth - margin, footerY - footerGap / 2);
+          pdf.addImage(
+            footerImgData,
+            "PNG",
+            margin,
+            footerY,
+            contentWidth,
+            footerPdfH,
+            undefined,
+            "FAST"
+          );
+        }
+
+        remaining -= usableH;
+        srcY += usableH;
+      }
+
+      pdf.save(`receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
+      showToast(tr("Receipt PDF ready."), { tone: "success" });
+      return;
+    }
+
+    const viewModel = buildReceiptViewModel(accountActiveRecord);
+    const fallbackLines = [
+      tr("Operational Receipt"),
+      `${tr("Receipt No.")}: ${viewModel.receiptNumber}`,
+      `${tr("Issued")}: ${viewModel.issuedAt}`,
+      `${tr("Service")}: ${viewModel.serviceType}`,
+      `${tr("Quantity")}: ${viewModel.quantity}`,
+      `${tr("Subtotal (EX. VAT)")}: ${formatMoney(viewModel.totals.totalExVat)}`,
+      `${viewModel.vatLabel}: ${formatMoney(viewModel.totals.vatAmount)}`,
+      `${tr("Total (INCL. VAT)")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
+      "",
+      tr(
+        "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
+      ),
+    ];
+    const blob = buildPdf(fallbackLines, {
+      pageWidth: 612,
+      pageHeight: 792,
+      marginX: 40,
+      marginTop: 48,
+      marginBottom: 48,
+      fontSize: 11,
+      lineHeight: 14,
+    });
+    const url = URL.createObjectURL(blob);
+    triggerFileDownload(url, `receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (error) {
+    showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
+  } finally {
+    if (receiptDocument) {
+      receiptDocument.classList.remove("is-exporting");
+    }
+    if (receiptDownloadPdf) {
+      receiptDownloadPdf.disabled = false;
+    }
+    if (buttonLabel) {
+      buttonLabel.textContent = tr("Download Receipt PDF");
+    }
+  }
 }
 
 function selectAccountRecord(index) {
@@ -7146,10 +7971,14 @@ function setAuthView(session, options = {}) {
     adminDashboardState = null;
     adminClients = [];
     clientInviteHistory = [];
+    adminClientBillingBusyIds = new Set();
+    adminMockModeEnabled = false;
+    adminMockSnapshot = null;
     renderClientInviteHistory([]);
     setClientInviteStatus("");
     setClientInviteResult("");
     renderAdminSummary({});
+    renderAdminMockDataButton();
     renderAdminClientsList();
   }
   transitionShellVisibility(isAuthed, { animate });
@@ -8585,6 +9414,24 @@ if (adminClientSortSelect) {
     if (!(target instanceof HTMLSelectElement)) return;
     adminClientSort = String(target.value || "recent");
     renderAdminClientsList();
+  });
+}
+
+if (adminMockDataButton) {
+  adminMockDataButton.addEventListener("click", () => {
+    toggleAdminMockData();
+  });
+}
+
+if (adminClientsList) {
+  adminClientsList.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const toggle = target.closest("[data-admin-billing-toggle]");
+    if (!(toggle instanceof HTMLElement)) return;
+    const clientId = String(toggle.dataset.adminClientId || "").trim();
+    const method = String(toggle.dataset.adminBillingToggle || "").trim();
+    await updateAdminClientBilling(clientId, method);
   });
 }
 
