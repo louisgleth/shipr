@@ -1024,6 +1024,15 @@ const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
 const adminMockDataButton = document.getElementById("adminMockDataButton");
+const adminBillingRunPreviewButton = document.getElementById("adminBillingRunPreview");
+const adminBillingRunCreateButton = document.getElementById("adminBillingRunCreate");
+const adminBillingRunSendButton = document.getElementById("adminBillingRunSend");
+const adminBillingRunStatus = document.getElementById("adminBillingRunStatus");
+const adminBillingRunResult = document.getElementById("adminBillingRunResult");
+const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
+const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
+const adminInvoiceList = document.getElementById("adminInvoiceList");
+const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
 const adminClientsList = document.getElementById("adminClientsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
@@ -1240,6 +1249,8 @@ let adminClients = [];
 let adminClientSearch = "";
 let adminClientFilter = "all";
 let adminClientSort = "recent";
+let adminBillingBusy = false;
+let adminBillingInvoices = [];
 let adminSettingsDraft = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -1268,6 +1279,7 @@ let reportsDomesticGeoJson = null;
 let reportsWorldGeoJson = null;
 let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
+let billingOverview = null;
 let customsGhostVisible = false;
 let providerStatusTimer = 0;
 let shopifyConnection = null;
@@ -3356,11 +3368,13 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminBillingInvoices = [];
     adminClientBillingBusyIds = new Set();
     adminMockModeEnabled = false;
     adminMockSnapshot = null;
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminInvoiceList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
     }
@@ -3379,6 +3393,7 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardState = payload && typeof payload === "object" ? payload : {};
     clientInviteHistory = Array.isArray(adminDashboardState?.invites) ? adminDashboardState.invites : [];
     adminClients = Array.isArray(adminDashboardState?.clients) ? adminDashboardState.clients : [];
+    syncAdminBillingFromDashboard(adminDashboardState);
     renderAdminSummary(adminDashboardState?.summary || {});
     renderClientInviteHistory(clientInviteHistory);
     applyAdminSettings(adminDashboardState?.settings || {});
@@ -3393,8 +3408,10 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminBillingInvoices = [];
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminInvoiceList();
     if (!quiet) {
       showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
     }
@@ -3423,6 +3440,251 @@ async function saveAdminSettings() {
   } finally {
     adminDashboardLoading = false;
     renderAdminSettingsPreview();
+  }
+}
+
+async function loadBillingOverview(options = {}) {
+  const { quiet = false } = options;
+  if (!currentUser) {
+    billingOverview = null;
+    updateSummary();
+    return null;
+  }
+  try {
+    const payload = await fetchApiWithAuth("/api/billing/overview", { timeoutMs: 12000 });
+    billingOverview = payload && typeof payload === "object" ? payload : null;
+    updateSummary();
+    return billingOverview;
+  } catch (error) {
+    billingOverview = null;
+    updateSummary();
+    if (!quiet) {
+      showToast(error?.message || tr("Could not load billing overview."), { tone: "error" });
+    }
+    return null;
+  }
+}
+
+function setAdminBillingBusy(isBusy) {
+  adminBillingBusy = Boolean(isBusy);
+  if (adminBillingRunPreviewButton) adminBillingRunPreviewButton.disabled = adminBillingBusy;
+  if (adminBillingRunCreateButton) adminBillingRunCreateButton.disabled = adminBillingBusy;
+  if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
+  if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
+}
+
+function setAdminBillingStatus(message = "", options = {}) {
+  if (!adminBillingRunStatus) return;
+  adminBillingRunStatus.textContent = message;
+  adminBillingRunStatus.classList.remove("is-error", "is-success");
+  if (!message) return;
+  if (options?.tone === "error") {
+    adminBillingRunStatus.classList.add("is-error");
+  } else if (options?.tone === "success") {
+    adminBillingRunStatus.classList.add("is-success");
+  }
+}
+
+function renderAdminBillingRunResult(payload = null) {
+  if (!adminBillingRunResult) return;
+  if (!payload || typeof payload !== "object") {
+    adminBillingRunResult.textContent = tr("No billing runs yet.");
+    return;
+  }
+  const run = payload?.run && typeof payload.run === "object" ? payload.run : {};
+  const reminders = Array.isArray(payload?.reminders) ? payload.reminders : [];
+  const summary = [
+    `MODE ${String(run.mode || "--").toUpperCase()}`,
+    `PERIOD ${String(run.period_start || "--")} -> ${String(run.period_end || "--")}`,
+    `ROWS ${Number(run.rows_scanned || 0)}`,
+    `CREATED ${Number(run.invoices_created || 0)}`,
+    `UPDATED ${Number(run.invoices_updated || 0)}`,
+    `SENT ${Number(run.invoices_sent || 0)}`,
+    `REMINDERS ${reminders.length}`,
+    `TOTAL ${formatMoney(Number(run?.totals?.subtotal_ex_vat || 0))} EX. VAT`,
+  ];
+  adminBillingRunResult.textContent = summary.join("   |   ");
+}
+
+function getAdminInvoiceStatusClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (["draft", "sent", "overdue", "paid", "cancelled"].includes(normalized)) return normalized;
+  return "draft";
+}
+
+function renderAdminInvoiceList() {
+  if (!adminInvoiceList || !adminInvoiceEmpty) return;
+  adminInvoiceList.innerHTML = "";
+  const rows = Array.isArray(adminBillingInvoices) ? adminBillingInvoices : [];
+  if (!rows.length) {
+    adminInvoiceEmpty.classList.remove("is-hidden");
+    return;
+  }
+  adminInvoiceEmpty.classList.add("is-hidden");
+  rows.slice(0, 120).forEach((invoice) => {
+    const status = String(invoice?.status || "draft").toLowerCase();
+    const row = document.createElement("article");
+    row.className = "admin-billing-item";
+    row.innerHTML = `
+      <div class="admin-billing-item-main">
+        <div class="admin-billing-item-title">
+          <span>${String(invoice?.reference || "--")}</span>
+          <span class="admin-billing-status-pill is-${getAdminInvoiceStatusClass(status)}">${escapeHtml(
+            String(invoice?.tracking_label || status || "draft")
+          )}</span>
+        </div>
+        <div class="admin-billing-item-sub">
+          ${escapeHtml(String(invoice?.company_name || "--"))} • ${escapeHtml(
+            String(invoice?.contact_email || "--")
+          )} • ${escapeHtml(String(invoice?.period_start || "--"))} - ${escapeHtml(
+            String(invoice?.period_end || "--")
+          )}
+        </div>
+        <div class="admin-billing-item-sub mono">
+          ${formatMoney(Number(invoice?.subtotal_ex_vat || 0))} EX. VAT • ${formatMoney(
+      Number(invoice?.total_inc_vat || 0)
+    )} INCL. VAT
+        </div>
+      </div>
+      <div class="admin-billing-item-actions">
+        <button type="button" class="btn btn-secondary btn-sm" data-admin-invoice-send="${String(
+          invoice?.id || ""
+        )}" ${adminBillingBusy || status === "paid" || status === "cancelled" ? "disabled" : ""}>
+          <span>${tr("Send")}</span>
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" data-admin-invoice-paid="${String(
+          invoice?.id || ""
+        )}" ${adminBillingBusy || status === "paid" || status === "cancelled" ? "disabled" : ""}>
+          <span>${tr("Mark Paid")}</span>
+        </button>
+      </div>
+    `;
+    adminInvoiceList.appendChild(row);
+  });
+}
+
+function syncAdminBillingFromDashboard(payload = null) {
+  const billingBlock = payload?.billing && typeof payload.billing === "object" ? payload.billing : null;
+  adminBillingInvoices = Array.isArray(billingBlock?.invoices) ? billingBlock.invoices : [];
+  renderAdminInvoiceList();
+}
+
+async function loadAdminInvoices(options = {}) {
+  const { quiet = true } = options;
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/invoices?limit=120", { timeoutMs: 20000 });
+    adminBillingInvoices = Array.isArray(payload?.invoices) ? payload.invoices : [];
+    renderAdminInvoiceList();
+    return adminBillingInvoices;
+  } catch (error) {
+    if (!quiet) {
+      showToast(error?.message || tr("Could not load invoices."), { tone: "error" });
+    }
+    return [];
+  }
+}
+
+async function runAdminBillingCycle(mode = "preview") {
+  if (adminBillingBusy) return;
+  setAdminBillingStatus("");
+  setAdminBillingBusy(true);
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/invoices/run", {
+      method: "POST",
+      timeoutMs: 60000,
+      body: JSON.stringify({
+        mode,
+        periodMode: "previous",
+        includeReminders: true,
+      }),
+    });
+    renderAdminBillingRunResult(payload);
+    setAdminBillingStatus(tr("Billing run completed."), { tone: "success" });
+    showToast(tr("Billing run completed."), { tone: "success" });
+    await loadAdminDashboard({ quiet: true });
+    await loadAdminInvoices({ quiet: true });
+    await loadBillingOverview({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Billing run failed."), { tone: "error" });
+    showToast(error?.message || tr("Billing run failed."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminBillingTestEmail() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/invoices/send-test", {
+      method: "POST",
+      body: JSON.stringify({ toEmail }),
+    });
+    setAdminBillingStatus(
+      tr("Test invoice email sent to {email}.", { email: String(payload?.to || toEmail) }),
+      { tone: "success" }
+    );
+    showToast(tr("Test invoice email sent."), { tone: "success" });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send test invoice email."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not send test invoice email."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminInvoice(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId || adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    await fetchApiWithAuth("/api/admin/invoices/send", {
+      method: "POST",
+      body: JSON.stringify({ invoiceId: safeInvoiceId }),
+    });
+    setAdminBillingStatus(tr("Invoice sent."), { tone: "success" });
+    showToast(tr("Invoice sent."), { tone: "success" });
+    await loadAdminInvoices({ quiet: true });
+    await loadAdminDashboard({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send invoice."), { tone: "error" });
+    showToast(error?.message || tr("Could not send invoice."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function markAdminInvoicePaid(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId || adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    await fetchApiWithAuth("/api/admin/invoices/mark-paid", {
+      method: "POST",
+      body: JSON.stringify({ invoiceId: safeInvoiceId }),
+    });
+    setAdminBillingStatus(tr("Invoice marked as paid."), { tone: "success" });
+    showToast(tr("Invoice marked as paid."), { tone: "success" });
+    await loadAdminInvoices({ quiet: true });
+    await loadAdminDashboard({ quiet: true });
+    await loadBillingOverview({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not mark invoice as paid."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not mark invoice as paid."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
   }
 }
 
@@ -5949,6 +6211,7 @@ async function persistGenerationHistory() {
   const nextSignature = getHistorySignature(record);
   if (latestSignature && latestSignature === nextSignature) {
     refreshReportsIfVisible();
+    loadBillingOverview({ quiet: true });
     return;
   }
 
@@ -5972,6 +6235,7 @@ async function persistGenerationHistory() {
       setAccountHistoryStatus("");
       renderAccountHistoryList();
       refreshReportsIfVisible();
+      loadBillingOverview({ quiet: true });
       return;
     }
 
@@ -5989,6 +6253,7 @@ async function persistGenerationHistory() {
   saveLocalHistory(currentUser.id, historyRecords);
   renderAccountHistoryList();
   refreshReportsIfVisible();
+  loadBillingOverview({ quiet: true });
 }
 
 function renderAccountBatchList() {
@@ -6109,61 +6374,33 @@ function buildReceiptDocumentHtml(record) {
           const recipientMeta = destination && destination !== "--" ? ` · ${destination}` : "";
           return `
             <tr>
-              <td>
-                <span class="receipt-cell-primary mono">${escapeHtml(label.labelId || "--")}</span>
-              </td>
-              <td>
-                <span class="receipt-cell-primary mono">${escapeHtml(label.trackingId || "--")}</span>
-              </td>
-              <td>
-                <span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span>
-              </td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(label.labelId || "--")}</span></td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(label.trackingId || "--")}</span></td>
+              <td><span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span></td>
               <td>
                 <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(totals.unitExVat))} ${escapeHtml(tr("EX. VAT"))}</span>
                 <span class="receipt-inline-meta receipt-inline-meta-block mono">${escapeHtml(formatMoney(totals.unitIncVat))} ${escapeHtml(tr("INCL. VAT"))}</span>
               </td>
-            </tr>
-          `;
+            </tr>`;
         })
         .join("")
-    : `
-        <tr>
-          <td colspan="4">
-            <div class="receipt-line-primary">
-              <span class="receipt-line-title">--</span>
-              <span class="receipt-line-sub">${escapeHtml(tr("No label PDF selected yet. Choose a generation to preview."))}</span>
-            </div>
-          </td>
-        </tr>
-      `;
+    : `<tr><td colspan="4"><span class="receipt-cell-primary" style="color:var(--muted)">--</span></td></tr>`;
 
   const profileName = profile?.companyName || "--";
   const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
   const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
   const accountManager = profile?.accountManager || "--";
-  const receiptCompanyLines = [
-    "Shipide Logistics SRL",
-    "Quai des Transitaires 18",
-    "1000 Brussels, Belgium",
-    "billing@shipide.com",
-    "BE 0478.221.904",
-  ];
 
   return `
     <div class="receipt-sheet">
-      <div class="receipt-sheet-bar"></div>
       <div class="receipt-sheet-body">
         <div class="receipt-topline">
           <div class="receipt-brand">
-            <div class="receipt-brand-mark" aria-hidden="true"></div>
-            <div class="receipt-brand-copy">
-              <span class="receipt-brand-name">Shipide Portal</span>
-            </div>
+            <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
           </div>
           <div class="receipt-top-meta">
             <span class="receipt-chip">${escapeHtml(tr("Receipt"))}</span>
             <div class="receipt-top-meta-lines mono">
-              <span>${escapeHtml(tr("No."))} ${escapeHtml(receiptNumber)}</span>
               <span>${escapeHtml(issuedAt)}</span>
             </div>
           </div>
@@ -6262,21 +6499,8 @@ function buildReceiptDocumentHtml(record) {
 
       </div>
       <div class="receipt-footer">
-        <div class="receipt-footer-copy">
-          <span class="receipt-footer-title">${escapeHtml(tr("Company Information"))}</span>
-          ${receiptCompanyLines
-            .map((line) => `<span class="receipt-footer-line">${escapeHtml(line)}</span>`)
-            .join("")}
-        </div>
-        <div class="receipt-footer-copy receipt-footer-copy-end">
-          <span class="receipt-footer-title">${escapeHtml(tr("Receipt Details"))}</span>
-          <span class="receipt-footer-line mono">${escapeHtml(tr("Receipt No."))}: ${escapeHtml(
-            receiptNumber
-          )}</span>
-          <span class="receipt-footer-line mono">${escapeHtml(tr("Issued"))}: ${escapeHtml(
-            issuedAt
-          )}</span>
-        </div>
+        <span class="receipt-footer-left">Shipide Logistics SRL · billing@shipide.com</span>
+        <span class="receipt-footer-right">${escapeHtml(receiptNumber)}</span>
       </div>
     </div>
   `;
@@ -6305,6 +6529,57 @@ function downloadActiveAccountLabelPdf() {
   triggerFileDownload(accountBatchPdfUrl, `${filenameBase}.pdf`);
 }
 
+/* ---- receipt PDF helpers ---- */
+
+function extractCanvasRegion(source, srcY, srcH) {
+  const c = document.createElement("canvas");
+  c.width = source.width;
+  c.height = Math.max(1, Math.round(srcH));
+  c.getContext("2d").drawImage(
+    source, 0, Math.round(srcY), source.width, Math.round(srcH),
+    0, 0, c.width, c.height
+  );
+  return c;
+}
+
+function measureReceiptRegions(receiptDoc, scale) {
+  const docRect = receiptDoc.getBoundingClientRect();
+  const rel = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { y: (r.top - docRect.top) * scale, h: r.height * scale };
+  };
+
+  /* header = everything from top through .receipt-grid */
+  const grid = receiptDoc.querySelector(".receipt-grid");
+  const gridPos = rel(grid);
+  const headerH = gridPos ? gridPos.y + gridPos.h : 0;
+
+  /* table head = .receipt-table-head + thead combined */
+  const tableCard = receiptDoc.querySelector(".receipt-table-card");
+  const thead = receiptDoc.querySelector(".receipt-table thead");
+  const tableCardPos = rel(tableCard);
+  const theadPos = rel(thead);
+  const tableHeadY = tableCardPos ? tableCardPos.y : 0;
+  const tableHeadH = theadPos ? (theadPos.y + theadPos.h) - tableHeadY : 0;
+
+  /* individual rows */
+  const rows = [];
+  const trs = receiptDoc.querySelectorAll(".receipt-table tbody tr");
+  trs.forEach((tr) => {
+    const p = rel(tr);
+    if (p) rows.push(p);
+  });
+
+  /* disclaimer */
+  const disclaimer = rel(receiptDoc.querySelector(".receipt-disclaimer"));
+
+  /* footer */
+  const footer = rel(receiptDoc.querySelector(".receipt-footer"));
+
+  return { headerH, tableHeadY, tableHeadH, rows, disclaimer, footer };
+}
+
 async function downloadReceiptPdfFile() {
   if (!accountActiveRecord) return;
   renderReceiptDetails(accountActiveRecord);
@@ -6330,108 +6605,139 @@ async function downloadReceiptPdfFile() {
       }
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 
+      const scaleFactor = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
       const h2cOpts = {
         backgroundColor: "#0b1018",
-        scale: Math.max(2, Math.min(window.devicePixelRatio || 1, 3)),
+        scale: scaleFactor,
         useCORS: true,
         logging: false,
       };
 
-      /* ---- capture body (everything except footer) and footer separately ---- */
-      const footerEl = receiptDocument.querySelector(".receipt-footer");
-      let footerCanvas = null;
-      if (footerEl) {
-        footerEl.style.display = "none";
-      }
-      const bodyCanvas = await window.html2canvas(receiptDocument, h2cOpts);
-      if (footerEl) {
-        footerEl.style.display = "";
-        footerCanvas = await window.html2canvas(footerEl, {
-          ...h2cOpts,
-          backgroundColor: "#00060f",
-          width: receiptDocument.offsetWidth,
-        });
-      }
+      /* ---- unlock table scroll for export ---- */
+      const tableWrap = receiptDocument.querySelector(".receipt-table-wrap");
+      const origMaxH = tableWrap ? tableWrap.style.maxHeight : "";
+      const origOverflow = tableWrap ? tableWrap.style.overflow : "";
+      if (tableWrap) { tableWrap.style.maxHeight = "none"; tableWrap.style.overflow = "visible"; }
 
+      /* ---- wait a frame so layout settles, then measure DOM regions ---- */
+      await new Promise((r) => window.requestAnimationFrame(r));
+      const regions = measureReceiptRegions(receiptDocument, scaleFactor);
+
+      /* ---- capture the full receipt as a single image ---- */
+      const fullCanvas = await window.html2canvas(receiptDocument, h2cOpts);
+
+      /* restore table scroll */
+      if (tableWrap) { tableWrap.style.maxHeight = origMaxH; tableWrap.style.overflow = origOverflow; }
+
+      /* ---- build PDF ---- */
       const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "pt",
-        format: "a4",
-        compress: true,
-      });
-
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 18;
-      const contentWidth = pageWidth - margin * 2;
+      const cW = pageWidth - margin * 2;
+      const usableH = pageHeight - margin * 2;
 
-      /* ---- footer dimensions in PDF points ---- */
-      let footerPdfH = 0;
-      let footerImgData = null;
-      if (footerCanvas) {
-        footerPdfH = (footerCanvas.height * contentWidth) / footerCanvas.width;
-        footerImgData = footerCanvas.toDataURL("image/png");
-      }
-      const footerGap = footerPdfH > 0 ? 10 : 0;
+      const paintBg = () => { pdf.setFillColor(0, 6, 15); pdf.rect(0, 0, pageWidth, pageHeight, "F"); };
+      const toPt = (canvasPx) => (canvasPx * cW) / fullCanvas.width;
 
-      /* ---- body dimensions ---- */
-      const bodyRenderedH = (bodyCanvas.height * contentWidth) / bodyCanvas.width;
-      const bodyImgData = bodyCanvas.toDataURL("image/png");
-      const usableH = pageHeight - margin * 2 - footerPdfH - footerGap;
+      const fullPdfH = toPt(fullCanvas.height);
 
-      /* ---- paginate: slice body across pages, footer on each ---- */
-      let remaining = bodyRenderedH;
-      let srcY = 0;
-      while (remaining > 0) {
-        if (srcY > 0) pdf.addPage();
+      if (fullPdfH <= usableH) {
+        /* ---- single page ---- */
+        paintBg();
+        pdf.addImage(fullCanvas.toDataURL("image/png"), "PNG", margin, margin, cW, fullPdfH, undefined, "FAST");
+      } else {
+        /* ---- multi-page: DOM-aware layout ---- */
+        const headerPt = toPt(regions.headerH);
+        const tableHeadPt = toPt(regions.tableHeadH);
+        const footerPt = regions.footer ? toPt(regions.footer.h) : 0;
+        const disclaimerPt = regions.disclaimer ? toPt(regions.disclaimer.h) : 0;
+        const footerGap = 8;
+        const contentBudget = usableH - footerPt - footerGap;
 
-        /* dark page fill */
-        pdf.setFillColor(0, 6, 15);
-        pdf.rect(0, 0, pageWidth, pageHeight, "F");
+        /* helper: draw a canvas region into the PDF */
+        const drawRegion = (srcY, srcH, dstY) => {
+          if (srcH < 1) return;
+          const img = extractCanvasRegion(fullCanvas, srcY, srcH);
+          pdf.addImage(img.toDataURL("image/png"), "PNG", margin, dstY, cW, toPt(srcH), undefined, "FAST");
+        };
+        const drawFooter = () => {
+          if (!regions.footer) return;
+          const fy = pageHeight - margin - footerPt;
+          drawRegion(regions.footer.y, regions.footer.h, fy);
+        };
 
-        /* body slice */
-        const sliceH = Math.min(remaining, usableH);
-        pdf.addImage(
-          bodyImgData,
-          "PNG",
-          margin,
-          margin - srcY,
-          contentWidth,
-          bodyRenderedH,
-          undefined,
-          "FAST"
-        );
+        /* ---- assign rows to pages ---- */
+        const pages = [];
+        let rowIdx = 0;
+        const rowCount = regions.rows.length;
 
-        /* clip overflow by painting background below the slice */
-        if (remaining > usableH) {
-          pdf.setFillColor(0, 6, 15);
-          pdf.rect(0, margin + usableH, pageWidth, pageHeight, "F");
+        /* page 1 budget: header + table head already consume space */
+        let budget = contentBudget - headerPt - tableHeadPt;
+        let pageRows = [];
+
+        while (rowIdx < rowCount) {
+          const rowPt = toPt(regions.rows[rowIdx].h);
+          if (rowPt <= budget) {
+            pageRows.push(rowIdx);
+            budget -= rowPt;
+            rowIdx++;
+          } else {
+            /* current page is full */
+            pages.push({ firstPage: pages.length === 0, rows: pageRows });
+            pageRows = [];
+            /* subsequent page budget: only table head */
+            budget = contentBudget - tableHeadPt;
+          }
         }
 
-        /* footer on every page */
-        if (footerImgData) {
-          const footerY = pageHeight - margin - footerPdfH;
-          /* thin divider line above footer */
-          pdf.setDrawColor(46, 46, 46);
-          pdf.setLineWidth(0.5);
-          pdf.line(margin, footerY - footerGap / 2, pageWidth - margin, footerY - footerGap / 2);
-          pdf.addImage(
-            footerImgData,
-            "PNG",
-            margin,
-            footerY,
-            contentWidth,
-            footerPdfH,
-            undefined,
-            "FAST"
-          );
+        /* check if disclaimer fits on current page */
+        const isFirstPage = pages.length === 0;
+        if (disclaimerPt + 4 <= budget) {
+          pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: true });
+        } else {
+          pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: false });
+          pages.push({ firstPage: false, rows: [], hasDisclaimer: true });
         }
 
-        remaining -= usableH;
-        srcY += usableH;
-      }
+        /* ---- render pages ---- */
+        for (let p = 0; p < pages.length; p++) {
+          if (p > 0) pdf.addPage();
+          paintBg();
+          let cy = margin;
 
+          if (pages[p].firstPage) {
+            /* draw header (logo, billing, summary) */
+            drawRegion(0, regions.headerH, cy);
+            cy += headerPt;
+            /* draw table head (title + column headers) */
+            drawRegion(regions.tableHeadY, regions.tableHeadH, cy);
+            cy += tableHeadPt;
+          } else {
+            /* continuation page: repeat table head */
+            drawRegion(regions.tableHeadY, regions.tableHeadH, cy);
+            cy += tableHeadPt;
+          }
+
+          /* draw rows */
+          for (const ri of pages[p].rows) {
+            const row = regions.rows[ri];
+            drawRegion(row.y, row.h, cy);
+            cy += toPt(row.h);
+          }
+
+          /* draw disclaimer on last page */
+          if (pages[p].hasDisclaimer && regions.disclaimer) {
+            cy += 4;
+            drawRegion(regions.disclaimer.y, regions.disclaimer.h, cy);
+            cy += disclaimerPt;
+          }
+
+          /* footer at bottom of every page */
+          drawFooter();
+        }
+      }
       pdf.save(`receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
       showToast(tr("Receipt PDF ready."), { tone: "success" });
       return;
@@ -6439,7 +6745,7 @@ async function downloadReceiptPdfFile() {
 
     const viewModel = buildReceiptViewModel(accountActiveRecord);
     const fallbackLines = [
-      tr("Operational Receipt"),
+      tr("Receipt"),
       `${tr("Receipt No.")}: ${viewModel.receiptNumber}`,
       `${tr("Issued")}: ${viewModel.issuedAt}`,
       `${tr("Service")}: ${viewModel.serviceType}`,
@@ -7956,11 +8262,15 @@ function setAuthView(session, options = {}) {
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     loadAdminAccessStatus({ quiet: true });
+    loadBillingOverview({ quiet: true });
     if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
       const localPref = getStoredLanguagePreference();
       if (SUPPORTED_LANGUAGES.has(localPref)) {
         void saveLanguagePreference(localPref);
       }
+    }
+    if (adminBillingTestEmailInput && !adminBillingTestEmailInput.value.trim()) {
+      adminBillingTestEmailInput.value = currentUser?.email || "";
     }
   } else {
     resetWarehouseState();
@@ -7970,16 +8280,20 @@ function setAuthView(session, options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminBillingInvoices = [];
     clientInviteHistory = [];
     adminClientBillingBusyIds = new Set();
     adminMockModeEnabled = false;
     adminMockSnapshot = null;
+    billingOverview = null;
     renderClientInviteHistory([]);
     setClientInviteStatus("");
     setClientInviteResult("");
     renderAdminSummary({});
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminInvoiceList();
+    updateSummary();
   }
   transitionShellVisibility(isAuthed, { animate });
   if (accountChip) {
@@ -8026,6 +8340,9 @@ function setAuthView(session, options = {}) {
     }
     if (adminClientDiscountInput) {
       adminClientDiscountInput.value = "";
+    }
+    if (adminBillingTestEmailInput) {
+      adminBillingTestEmailInput.value = "";
     }
     setMainView("builder", { push: false, animate: false });
     resetAccountPreview();
@@ -8648,6 +8965,9 @@ function getSummaryCarrierLabel() {
 }
 
 function getSummaryDiscountRate() {
+  if (billingOverview && Number.isFinite(Number(billingOverview.client_discount_pct))) {
+    return Number(billingOverview.client_discount_pct);
+  }
   const service = normalizeNameKey(state.selection.type);
   if (service === normalizeNameKey("Economy")) return 21;
   if (service === normalizeNameKey("Priority")) return 16;
@@ -8655,12 +8975,18 @@ function getSummaryDiscountRate() {
   return 15;
 }
 
-function getNextInvoiceDateLabel() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const endOfMonth = new Date(year, month + 1, 0);
-  return endOfMonth.toLocaleDateString(getUiLocale(), {
+function formatSummaryInvoiceDate(rawDate) {
+  const candidate = new Date(String(rawDate || "").trim());
+  if (Number.isNaN(candidate.getTime())) {
+    const now = new Date();
+    const fallback = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return fallback.toLocaleDateString(getUiLocale(), {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+  return candidate.toLocaleDateString(getUiLocale(), {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -8668,10 +8994,13 @@ function getNextInvoiceDateLabel() {
 }
 
 function updateSummary() {
-  const quantity = getQuantity();
-  const total = state.selection.price * quantity;
   const discountRate = getSummaryDiscountRate();
-  const projectedInvoiceAmount = Number((42 + total * 3.2).toFixed(2));
+  const nextExVat = Number(billingOverview?.next_invoice_amount_ex_vat);
+  const nextDate = String(billingOverview?.next_invoice_date || "").trim();
+  const projectedInvoiceAmount = Number.isFinite(nextExVat)
+    ? nextExVat
+    : Number((42 + state.selection.price * getQuantity() * 3.2).toFixed(2));
+  const paymentMode = String(billingOverview?.payment_mode || "").trim().toLowerCase();
 
   if (summaryService) {
     summaryService.textContent = getSummaryCarrierLabel();
@@ -8683,10 +9012,13 @@ function updateSummary() {
     summaryQty.textContent = formatMoney(projectedInvoiceAmount);
   }
   if (summaryTotal) {
-    summaryTotal.textContent = getNextInvoiceDateLabel();
+    summaryTotal.textContent = formatSummaryInvoiceDate(nextDate);
   }
   if (summaryTracking) {
-    summaryTracking.textContent = tr("Chat with us");
+    summaryTracking.textContent =
+      paymentMode === "card"
+        ? tr("Card auto-charge")
+        : tr("Chat with us");
   }
 }
 
@@ -9420,6 +9752,46 @@ if (adminClientSortSelect) {
 if (adminMockDataButton) {
   adminMockDataButton.addEventListener("click", () => {
     toggleAdminMockData();
+  });
+}
+
+if (adminBillingRunPreviewButton) {
+  adminBillingRunPreviewButton.addEventListener("click", async () => {
+    await runAdminBillingCycle("preview");
+  });
+}
+
+if (adminBillingRunCreateButton) {
+  adminBillingRunCreateButton.addEventListener("click", async () => {
+    await runAdminBillingCycle("create");
+  });
+}
+
+if (adminBillingRunSendButton) {
+  adminBillingRunSendButton.addEventListener("click", async () => {
+    await runAdminBillingCycle("send");
+  });
+}
+
+if (adminBillingSendTestButton) {
+  adminBillingSendTestButton.addEventListener("click", async () => {
+    await sendAdminBillingTestEmail();
+  });
+}
+
+if (adminInvoiceList) {
+  adminInvoiceList.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const sendButton = target.closest("[data-admin-invoice-send]");
+    if (sendButton instanceof HTMLElement) {
+      await sendAdminInvoice(sendButton.dataset.adminInvoiceSend);
+      return;
+    }
+    const paidButton = target.closest("[data-admin-invoice-paid]");
+    if (paidButton instanceof HTMLElement) {
+      await markAdminInvoicePaid(paidButton.dataset.adminInvoicePaid);
+    }
   });
 }
 
@@ -11423,6 +11795,8 @@ if (batchPreview) {
   batchPreview.classList.add("is-single");
 }
 
+renderAdminInvoiceList();
+setAdminBillingBusy(false);
 resetWarehouseState();
 initializeAuthLogo();
 initializeAppLogo();

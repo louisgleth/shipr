@@ -6,10 +6,15 @@ const REGISTRATION_INVITES_TABLE = "registration_invites";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
 const CLIENT_BILLING_PREF_TABLE = "client_billing_preferences";
 const HISTORY_TABLE = "label_generations";
+const BILLING_INVOICES_TABLE = "billing_invoices";
+const BILLING_INVOICE_ITEMS_TABLE = "billing_invoice_items";
+const BILLING_INVOICE_EVENTS_TABLE = "billing_invoice_events";
 const PASSWORD_MIN_LENGTH = 10;
 const DEFAULT_INVITE_EXPIRY_DAYS = 14;
 const MAX_INVITE_EXPIRY_DAYS = 90;
 const ADMIN_SETTINGS_SCOPE = "global";
+const DEFAULT_BILLING_TERMS_DAYS = 30;
+const DEFAULT_VAT_RATE = 0.21;
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -54,6 +59,21 @@ export default {
       if (pathname === "/api/admin/client-billing" && request.method === "POST") {
         return handleAdminClientBillingSave(request, env);
       }
+      if (pathname === "/api/admin/invoices" && request.method === "GET") {
+        return handleAdminInvoicesList(request, env, url);
+      }
+      if (pathname === "/api/admin/invoices/run" && request.method === "POST") {
+        return handleAdminInvoicesRun(request, env);
+      }
+      if (pathname === "/api/admin/invoices/send" && request.method === "POST") {
+        return handleAdminInvoiceSend(request, env);
+      }
+      if (pathname === "/api/admin/invoices/send-test" && request.method === "POST") {
+        return handleAdminInvoiceSendTest(request, env);
+      }
+      if (pathname === "/api/admin/invoices/mark-paid" && request.method === "POST") {
+        return handleAdminInvoiceMarkPaid(request, env);
+      }
       if (pathname === "/api/auth/invites" && request.method === "GET") {
         return handleListRegistrationInvites(request, env, url);
       }
@@ -97,10 +117,20 @@ export default {
       if (pathname === "/api/shopify/import-orders" && request.method === "POST") {
         return handleImportOrders(request, env);
       }
+      if (pathname === "/api/billing/overview" && request.method === "GET") {
+        return handleBillingOverview(request, env);
+      }
 
       return jsonResponse({ error: "API route not found." }, 404);
     } catch (error) {
       return jsonResponse({ error: error?.message || "Unexpected server error." }, 500);
+    }
+  },
+  async scheduled(_event, env) {
+    try {
+      await runInvoiceReminders(env, { limit: 500 });
+    } catch (_error) {
+      // Scheduled runs should not throw unhandled errors.
     }
   },
 };
@@ -436,6 +466,210 @@ function getEstimatedRetailTotal(serviceType, quantity, fallbackTotal = 0) {
   return Math.max(0, Number(fallbackTotal) || 0);
 }
 
+function toCents(value) {
+  return Math.round((Number(value) || 0) * 100);
+}
+
+function fromCents(value) {
+  return Number(((Number(value) || 0) / 100).toFixed(2));
+}
+
+function allocateCents(totalCents, count) {
+  const safeCount = Math.max(1, Number(count) || 1);
+  const safeTotal = Math.max(0, Number(totalCents) || 0);
+  const base = Math.floor(safeTotal / safeCount);
+  const remainder = safeTotal - base * safeCount;
+  const out = new Array(safeCount).fill(base);
+  for (let index = 0; index < remainder; index += 1) {
+    out[index] += 1;
+  }
+  return out;
+}
+
+function toIsoDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function startOfMonthUtc(date = new Date()) {
+  const source = date instanceof Date ? date : new Date(date);
+  return new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), 1));
+}
+
+function addUtcDays(date, days) {
+  const source = date instanceof Date ? date : new Date(date);
+  return new Date(source.getTime() + Number(days || 0) * 24 * 60 * 60 * 1000);
+}
+
+function getCurrentMonthWindow(now = new Date()) {
+  const start = startOfMonthUtc(now);
+  const endExclusive = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  const end = addUtcDays(endExclusive, -1);
+  return {
+    start,
+    end,
+    endExclusive,
+    startIsoDate: toIsoDate(start),
+    endIsoDate: toIsoDate(end),
+    startIsoDateTime: start.toISOString(),
+    endExclusiveIsoDateTime: endExclusive.toISOString(),
+  };
+}
+
+function getPreviousMonthWindow(now = new Date()) {
+  const currentMonth = startOfMonthUtc(now);
+  const start = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 1, 1));
+  const endExclusive = currentMonth;
+  const end = addUtcDays(endExclusive, -1);
+  return {
+    start,
+    end,
+    endExclusive,
+    startIsoDate: toIsoDate(start),
+    endIsoDate: toIsoDate(end),
+    startIsoDateTime: start.toISOString(),
+    endExclusiveIsoDateTime: endExclusive.toISOString(),
+  };
+}
+
+function getBillingWindow(rawStart, rawEnd, mode = "previous") {
+  const startInput = parseDateInput(rawStart);
+  const endInput = parseDateInput(rawEnd);
+  if (startInput && endInput && startInput <= endInput) {
+    const endExclusive = addUtcDays(endInput, 1);
+    return {
+      start: startInput,
+      end: endInput,
+      endExclusive,
+      startIsoDate: toIsoDate(startInput),
+      endIsoDate: toIsoDate(endInput),
+      startIsoDateTime: startInput.toISOString(),
+      endExclusiveIsoDateTime: endExclusive.toISOString(),
+    };
+  }
+  return mode === "current" ? getCurrentMonthWindow() : getPreviousMonthWindow();
+}
+
+function getInvoiceTermsDays(env) {
+  const value = Number(env.INVOICE_TERMS_DAYS);
+  if (!Number.isFinite(value)) return DEFAULT_BILLING_TERMS_DAYS;
+  return Math.max(1, Math.min(120, Math.round(value)));
+}
+
+function getReminderThresholdsDays() {
+  return [-7, -1, 0, 3, 10, 15, 30];
+}
+
+function getReminderStageForDueDate(dueAt, now = Date.now()) {
+  const dueMs = Date.parse(String(dueAt || ""));
+  if (!Number.isFinite(dueMs)) return 0;
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  if (!Number.isFinite(nowMs)) return 0;
+  const thresholds = getReminderThresholdsDays();
+  let stage = 0;
+  thresholds.forEach((offset, index) => {
+    const thresholdMs = dueMs + offset * 24 * 60 * 60 * 1000;
+    if (nowMs >= thresholdMs) {
+      stage = index + 1;
+    }
+  });
+  return stage;
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function toInvoiceReference(invoiceId) {
+  const safe = String(invoiceId || "").trim();
+  if (!safe) return "INV-UNKNOWN";
+  return `INV-${safe.slice(0, 8).toUpperCase()}`;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatInvoiceTrackingLabel(invoice) {
+  if (!invoice) return "No invoices yet";
+  const status = String(invoice.status || "").trim().toLowerCase();
+  if (status === "paid") return "Paid";
+  if (status === "overdue") return "Overdue";
+  if (status === "sent") {
+    const stage = Number(invoice.reminder_stage) || 0;
+    return stage > 0 ? `Reminder stage ${stage}` : "Sent";
+  }
+  if (status === "cancelled") return "Cancelled";
+  return "Draft ready";
+}
+
+function getInvoiceRecipientFromSnapshot(invoice, fallbackEmail = "") {
+  const recipient = String(invoice?.contact_email || "").trim().toLowerCase();
+  if (recipient) return recipient;
+  return String(fallbackEmail || "").trim().toLowerCase();
+}
+
+function assertResendConfig(env) {
+  if (!env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is required.");
+  }
+  if (!env.RESEND_FROM_EMAIL) {
+    throw new Error("RESEND_FROM_EMAIL is required.");
+  }
+}
+
+async function sendResendEmail(env, payload) {
+  assertResendConfig(env);
+  const fromName = String(env.RESEND_FROM_NAME || "Shipide Billing").trim();
+  const fromEmail = String(env.RESEND_FROM_EMAIL || "").trim();
+  const requestBody = {
+    from: `${fromName} <${fromEmail}>`,
+    to: Array.isArray(payload?.to) ? payload.to : [String(payload?.to || "").trim()],
+    subject: String(payload?.subject || "").trim(),
+    html: String(payload?.html || ""),
+    text: String(payload?.text || ""),
+  };
+  if (env.RESEND_REPLY_TO) {
+    requestBody.reply_to = String(env.RESEND_REPLY_TO || "").trim();
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  const payloadJson = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      payloadJson?.message ||
+      payloadJson?.error ||
+      `Resend request failed (${response.status}).`;
+    throw new Error(String(message).trim());
+  }
+  return payloadJson;
+}
+
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
   let invoiceEnabled =
@@ -459,7 +693,7 @@ function getClientPaymentMode(pref) {
   return "invoice";
 }
 
-function buildAdminClientMetrics(user, historyRows, settings, billingPreference) {
+function buildAdminClientMetrics(user, historyRows, settings, billingPreference, invoiceStats) {
   const rows = Array.isArray(historyRows) ? historyRows : [];
   const totalLabels = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.quantity) || 0), 0);
   const totalRevenue = rows.reduce(
@@ -502,13 +736,19 @@ function buildAdminClientMetrics(user, historyRows, settings, billingPreference)
 
   const normalizedBilling = normalizeClientBillingPreference(billingPreference);
   const paymentMode = getClientPaymentMode(normalizedBilling);
-  let avgPaymentDays = null;
-  let lastInvoiceTracking = totalRevenue > 0 ? "Billing not live" : "No billable activity";
+  const normalizedInvoiceStats =
+    invoiceStats && typeof invoiceStats === "object" ? invoiceStats : null;
+  let avgPaymentDays = normalizedInvoiceStats?.avg_payment_days ?? null;
+  let lastInvoiceTracking =
+    normalizedInvoiceStats?.last_invoice_tracking ||
+    (totalRevenue > 0 ? "Billing not live" : "No billable activity");
   if (paymentMode === "card") {
     avgPaymentDays = totalRevenue > 0 ? 0 : null;
     lastInvoiceTracking = totalRevenue > 0 ? "Card auto-charge" : "No billable activity";
   } else if (paymentMode === "hybrid") {
-    lastInvoiceTracking = totalRevenue > 0 ? "Hybrid billing" : "No billable activity";
+    lastInvoiceTracking =
+      normalizedInvoiceStats?.last_invoice_tracking ||
+      (totalRevenue > 0 ? "Hybrid billing" : "No billable activity");
   }
 
   return {
@@ -522,6 +762,7 @@ function buildAdminClientMetrics(user, historyRows, settings, billingPreference)
     last_generation_at: lastGenerationAt || null,
     avg_payment_days: avgPaymentDays,
     last_invoice_tracking: lastInvoiceTracking,
+    outstanding_balance: normalizedInvoiceStats?.outstanding_balance || 0,
     payment_mode: paymentMode,
     invoice_enabled: normalizedBilling.invoice_enabled,
     card_enabled: normalizedBilling.card_enabled,
@@ -540,12 +781,17 @@ function buildAdminClientSummary(clients = [], invites = []) {
     (sum, client) => sum + Number(client?.metrics?.total_profit_ex_vat || 0),
     0
   );
+  const totalOutstanding = clients.reduce(
+    (sum, client) => sum + Math.max(0, Number(client?.metrics?.outstanding_balance) || 0),
+    0
+  );
   return {
     total_clients: clients.length,
     active_clients: activeClients,
     open_invites: openInvites,
     total_revenue_ex_vat: Number(totalRevenue.toFixed(2)),
     total_profit_ex_vat: Number(totalProfit.toFixed(2)),
+    total_outstanding_balance: Number(totalOutstanding.toFixed(2)),
   };
 }
 
@@ -848,6 +1094,648 @@ async function listGenerationHistoryRows(env, limit = 5000) {
   return rows;
 }
 
+async function listUnbilledGenerationRows(env, { window, userId = "" } = {}) {
+  const safeWindow = window || getPreviousMonthWindow();
+  const safeUserId = String(userId || "").trim();
+  const rows = [];
+  const pageSize = 1000;
+  for (let start = 0; start < 20000; start += pageSize) {
+    const end = start + pageSize - 1;
+    const params = new URLSearchParams();
+    params.set("select", "id,user_id,created_at,service_type,quantity,total_price,payload,billed_invoice_id");
+    params.set("order", "created_at.asc");
+    params.set("created_at", `gte.${safeWindow.startIsoDateTime}`);
+    params.append("created_at", `lt.${safeWindow.endExclusiveIsoDateTime}`);
+    params.set("billed_invoice_id", "is.null");
+    if (safeUserId) {
+      params.set("user_id", `eq.${safeUserId}`);
+    }
+    const response = await supabaseServiceRequest(
+      env,
+      `/rest/v1/${HISTORY_TABLE}?${params.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          Range: `${start}-${end}`,
+          "Range-Unit": "items",
+        },
+      }
+    );
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      if (/billed_invoice_id/i.test(details) || /billing_invoices/i.test(details)) {
+        throw new Error(
+          "Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor."
+        );
+      }
+      throw new Error(`Could not load unbilled label history (${response.status}) ${details}`.trim());
+    }
+    const pageRows = await response.json().catch(() => []);
+    if (!Array.isArray(pageRows) || !pageRows.length) break;
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getClientBillingPreferenceForUser(env, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return { ...DEFAULT_CLIENT_BILLING_PREF };
+  const params = new URLSearchParams();
+  params.set("select", "user_id,invoice_enabled,card_enabled,updated_at,updated_by");
+  params.set("user_id", `eq.${safeUserId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${CLIENT_BILLING_PREF_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*client_billing_preferences/i.test(details)) {
+      return { ...DEFAULT_CLIENT_BILLING_PREF };
+    }
+    throw new Error(`Could not load client billing settings (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) return { ...DEFAULT_CLIENT_BILLING_PREF };
+  return normalizeClientBillingPreference(rows[0]);
+}
+
+async function listBillingInvoices(env, { limit = 100, userId = "", statuses = [], allowMissing = false } = {}) {
+  const safeUserId = String(userId || "").trim();
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
+  );
+  params.set("order", "updated_at.desc");
+  params.set("limit", String(safeLimit));
+  if (safeUserId) {
+    params.set("user_id", `eq.${safeUserId}`);
+  }
+  if (Array.isArray(statuses) && statuses.length) {
+    const normalized = statuses
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter(Boolean);
+    if (normalized.length) {
+      params.set("status", `in.(${normalized.join(",")})`);
+    }
+  }
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoices/i.test(details)) {
+      if (allowMissing) return [];
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load invoices (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function getBillingInvoiceByPeriod(env, userId, periodStart, periodEnd) {
+  const safeUserId = String(userId || "").trim();
+  const safeStart = String(periodStart || "").trim();
+  const safeEnd = String(periodEnd || "").trim();
+  if (!safeUserId || !safeStart || !safeEnd) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
+  );
+  params.set("user_id", `eq.${safeUserId}`);
+  params.set("period_start", `eq.${safeStart}`);
+  params.set("period_end", `eq.${safeEnd}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoices/i.test(details)) {
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load invoice period (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getBillingInvoiceById(env, invoiceId, { withItems = false } = {}) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
+  );
+  params.set("id", `eq.${safeInvoiceId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoices/i.test(details)) {
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load invoice (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const invoice = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!invoice || !withItems) return invoice;
+
+  const itemParams = new URLSearchParams();
+  itemParams.set(
+    "select",
+    "id,invoice_id,generation_id,generated_at,service_type,quantity,recipient_name,recipient_city,recipient_country,tracking_id,label_id,unit_price_ex_vat,amount_ex_vat,vat_amount,amount_inc_vat,sort_index,metadata,created_at"
+  );
+  itemParams.set("invoice_id", `eq.${safeInvoiceId}`);
+  itemParams.set("order", "sort_index.asc,id.asc");
+  itemParams.set("limit", "10000");
+  const itemsResponse = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICE_ITEMS_TABLE}?${itemParams.toString()}`,
+    { method: "GET" }
+  );
+  if (!itemsResponse.ok) {
+    const details = await itemsResponse.text().catch(() => "");
+    throw new Error(`Could not load invoice items (${itemsResponse.status}) ${details}`.trim());
+  }
+  const items = await itemsResponse.json().catch(() => []);
+  return {
+    ...invoice,
+    items: Array.isArray(items) ? items : [],
+  };
+}
+
+async function upsertBillingInvoice(env, invoicePayload) {
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?on_conflict=user_id,period_start,period_end`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify([invoicePayload]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoices/i.test(details)) {
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not save invoice (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function replaceBillingInvoiceItems(env, invoiceId, items = []) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) return;
+  const deleteParams = new URLSearchParams();
+  deleteParams.set("invoice_id", `eq.${safeInvoiceId}`);
+  const deleteResponse = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICE_ITEMS_TABLE}?${deleteParams.toString()}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=minimal",
+      },
+    }
+  );
+  if (!deleteResponse.ok) {
+    const details = await deleteResponse.text().catch(() => "");
+    throw new Error(`Could not clear invoice items (${deleteResponse.status}) ${details}`.trim());
+  }
+  if (!Array.isArray(items) || !items.length) return;
+
+  const response = await supabaseServiceRequest(env, `/rest/v1/${BILLING_INVOICE_ITEMS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(
+      items.map((item, index) => ({
+        invoice_id: safeInvoiceId,
+        generation_id: isUuid(item?.generation_id) ? item.generation_id : null,
+        generated_at: item?.generated_at || null,
+        service_type: String(item?.service_type || "").trim() || null,
+        quantity: Math.max(1, Number(item?.quantity) || 1),
+        recipient_name: String(item?.recipient_name || "").trim() || null,
+        recipient_city: String(item?.recipient_city || "").trim() || null,
+        recipient_country: String(item?.recipient_country || "").trim() || null,
+        tracking_id: String(item?.tracking_id || "").trim() || null,
+        label_id: String(item?.label_id || "").trim() || null,
+        unit_price_ex_vat: fromCents(toCents(item?.unit_price_ex_vat)),
+        amount_ex_vat: fromCents(toCents(item?.amount_ex_vat)),
+        vat_amount: fromCents(toCents(item?.vat_amount)),
+        amount_inc_vat: fromCents(toCents(item?.amount_inc_vat)),
+        sort_index: Number.isFinite(Number(item?.sort_index)) ? Number(item.sort_index) : index,
+        metadata:
+          item?.metadata && typeof item.metadata === "object" ? item.metadata : {},
+      }))
+    ),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not save invoice items (${response.status}) ${details}`.trim());
+  }
+}
+
+async function markGenerationRowsBilled(env, generationIds = [], invoiceId) {
+  const validIds = generationIds.filter((value) => isUuid(value));
+  if (!validIds.length || !isUuid(invoiceId)) return;
+  const billedAt = new Date().toISOString();
+  const chunkSize = 80;
+  for (let index = 0; index < validIds.length; index += chunkSize) {
+    const chunk = validIds.slice(index, index + chunkSize);
+    const params = new URLSearchParams();
+    params.set("id", `in.(${chunk.join(",")})`);
+    params.set("billed_invoice_id", "is.null");
+    const response = await supabaseServiceRequest(env, `/rest/v1/${HISTORY_TABLE}?${params.toString()}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        billed_invoice_id: invoiceId,
+        billed_at: billedAt,
+      }),
+    });
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      throw new Error(`Could not mark billed rows (${response.status}) ${details}`.trim());
+    }
+  }
+}
+
+async function insertBillingInvoiceEvent(env, invoiceId, event) {
+  if (!isUuid(invoiceId)) return;
+  const payload = {
+    invoice_id: invoiceId,
+    event_type: String(event?.event_type || "updated").trim().toLowerCase(),
+    event_at: event?.event_at || new Date().toISOString(),
+    actor: String(event?.actor || "system").trim(),
+    channel: String(event?.channel || "").trim() || null,
+    message: String(event?.message || "").trim() || null,
+    metadata: event?.metadata && typeof event.metadata === "object" ? event.metadata : {},
+  };
+  const response = await supabaseServiceRequest(env, `/rest/v1/${BILLING_INVOICE_EVENTS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify([payload]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoice_events/i.test(details)) {
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not save invoice event (${response.status}) ${details}`.trim());
+  }
+}
+
+function getRecipientFromLabelPayload(payload = {}) {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const recipientName = String(data?.recipientName || "").trim();
+  const recipientCity = String(data?.recipientCity || "").trim();
+  const recipientCountry = String(data?.recipientCountry || "").trim();
+  return {
+    recipient_name: recipientName || null,
+    recipient_city: recipientCity || null,
+    recipient_country: recipientCountry || null,
+  };
+}
+
+function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE) {
+  const safeVatRate = Math.max(0, Number(vatRate) || DEFAULT_VAT_RATE);
+  const items = [];
+  const sortedRows = Array.isArray(rows)
+    ? rows.slice().sort((left, right) => Date.parse(left?.created_at || 0) - Date.parse(right?.created_at || 0))
+    : [];
+
+  sortedRows.forEach((row) => {
+    const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+    const labels = Array.isArray(payload?.labels) ? payload.labels : [];
+    const totalExCents = Math.max(0, toCents(row?.total_price));
+    const quantityFromRow = Math.max(1, Number(row?.quantity) || labels.length || 1);
+
+    if (labels.length) {
+      const perLabelEx = allocateCents(totalExCents, labels.length);
+      labels.forEach((label, labelIndex) => {
+        const labelData = label?.data && typeof label.data === "object" ? label.data : {};
+        const recipient = getRecipientFromLabelPayload(labelData);
+        const amountEx = perLabelEx[labelIndex] || 0;
+        const vat = Math.round(amountEx * safeVatRate);
+        items.push({
+          generation_id: row?.id || null,
+          generated_at: row?.created_at || null,
+          service_type: row?.service_type || null,
+          quantity: 1,
+          recipient_name: recipient.recipient_name,
+          recipient_city: recipient.recipient_city,
+          recipient_country: recipient.recipient_country,
+          tracking_id: String(label?.trackingId || "").trim() || null,
+          label_id: String(label?.labelId || "").trim() || null,
+          unit_price_ex_vat: fromCents(amountEx),
+          amount_ex_vat: fromCents(amountEx),
+          vat_amount: fromCents(vat),
+          amount_inc_vat: fromCents(amountEx + vat),
+          sort_index: items.length,
+          metadata: {
+            source: "label_generation",
+            generation_quantity: quantityFromRow,
+            label_index: Number(label?.index) || labelIndex + 1,
+          },
+        });
+      });
+      return;
+    }
+
+    const unitExCents = Math.round(totalExCents / quantityFromRow);
+    const vatCents = Math.round(totalExCents * safeVatRate);
+    const recipient = getRecipientFromLabelPayload(payload?.selection || payload || {});
+    items.push({
+      generation_id: row?.id || null,
+      generated_at: row?.created_at || null,
+      service_type: row?.service_type || null,
+      quantity: quantityFromRow,
+      recipient_name: recipient.recipient_name,
+      recipient_city: recipient.recipient_city,
+      recipient_country: recipient.recipient_country,
+      tracking_id: null,
+      label_id: null,
+      unit_price_ex_vat: fromCents(unitExCents),
+      amount_ex_vat: fromCents(totalExCents),
+      vat_amount: fromCents(vatCents),
+      amount_inc_vat: fromCents(totalExCents + vatCents),
+      sort_index: items.length,
+      metadata: {
+        source: "label_generation",
+        generation_quantity: quantityFromRow,
+      },
+    });
+  });
+
+  const subtotalCents = items.reduce((sum, item) => sum + toCents(item.amount_ex_vat), 0);
+  const vatCents = items.reduce((sum, item) => sum + toCents(item.vat_amount), 0);
+  const totalCents = items.reduce((sum, item) => sum + toCents(item.amount_inc_vat), 0);
+  const labelsCount = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity) || 1), 0);
+  return {
+    items,
+    totals: {
+      subtotal_ex_vat: fromCents(subtotalCents),
+      vat_amount: fromCents(vatCents),
+      total_inc_vat: fromCents(totalCents),
+      labels_count: labelsCount,
+      line_count: items.length,
+      vat_rate: safeVatRate,
+    },
+  };
+}
+
+function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
+  const reference = toInvoiceReference(invoice?.id);
+  const isReminder = Boolean(options?.isReminder);
+  const reminderTitle = String(options?.reminderTitle || "").trim();
+  const periodLabel = `${invoice?.period_start || "--"} to ${invoice?.period_end || "--"}`;
+  const dueLabel = String(invoice?.due_at || "").trim()
+    ? new Date(invoice.due_at).toISOString().slice(0, 10)
+    : "--";
+  const topItems = Array.isArray(items) ? items.slice(0, 24) : [];
+  const hiddenCount = Math.max(0, (Array.isArray(items) ? items.length : 0) - topItems.length);
+  return `
+    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:24px;color:#f3f6ff;">
+      <div style="max-width:760px;margin:0 auto;border:1px solid rgb(46,46,46);border-radius:12px;background:#1c2026;padding:20px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid rgb(46,46,46);padding-bottom:12px;margin-bottom:16px;">
+          <div>
+            <div style="font-size:24px;line-height:1.2;">Shipide Billing</div>
+            <div style="color:#a6afc2;font-size:13px;margin-top:4px;">${escapeHtml(reference)}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="display:inline-block;border:1px solid rgba(119,71,227,0.55);border-radius:8px;padding:4px 10px;color:#bba8ee;font-size:12px;">${isReminder ? "Reminder" : "Invoice"}</div>
+            <div style="color:#a6afc2;font-size:12px;margin-top:8px;">Period: ${escapeHtml(periodLabel)}</div>
+            <div style="color:#a6afc2;font-size:12px;">Due: ${escapeHtml(dueLabel)}</div>
+          </div>
+        </div>
+        ${isReminder ? `<div style="margin-bottom:14px;padding:12px 14px;border:1px solid rgba(119,71,227,0.5);border-radius:10px;background:#151530;color:#d5d8e6;font-size:14px;">${escapeHtml(reminderTitle || "Payment reminder for this invoice.")}</div>` : ""}
+        <div style="font-size:14px;color:#dfe4f2;margin-bottom:12px;">
+          <strong style="font-weight:500;">${escapeHtml(invoice?.company_name || "Client account")}</strong><br/>
+          ${escapeHtml(invoice?.contact_email || "")}
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid rgb(46,46,46);border-radius:10px;overflow:hidden;">
+          <thead>
+            <tr style="background:#141922;color:#99a3ba;font-size:12px;text-align:left;">
+              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Service</th>
+              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Recipient</th>
+              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Amount (EX. VAT)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topItems
+              .map(
+                (item) => `
+                <tr>
+                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">${escapeHtml(item?.service_type || "Label")}</td>
+                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">${escapeHtml(String(item?.recipient_name || "--").trim() || "--")} ${item?.recipient_country ? `· ${escapeHtml(item.recipient_country)}` : ""}</td>
+                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">€${escapeHtml(fromCents(toCents(item?.amount_ex_vat)).toFixed(2))}</td>
+                </tr>
+              `
+              )
+              .join("")}
+          </tbody>
+        </table>
+        ${hiddenCount > 0 ? `<div style="margin-top:8px;color:#8f98ad;font-size:12px;">+${hiddenCount} more labels included in this invoice.</div>` : ""}
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgb(46,46,46);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+          <div>
+            <div style="font-size:12px;color:#99a3ba;">Subtotal (EX. VAT)</div>
+            <div style="font-size:18px;">€${escapeHtml(fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2))}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:#99a3ba;">VAT (${Math.round((Number(invoice?.vat_rate) || DEFAULT_VAT_RATE) * 100)}%)</div>
+            <div style="font-size:18px;">€${escapeHtml(fromCents(toCents(invoice?.vat_amount)).toFixed(2))}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:#99a3ba;">Total (INCL. VAT)</div>
+            <div style="font-size:20px;">€${escapeHtml(fromCents(toCents(invoice?.total_inc_vat)).toFixed(2))}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildInvoiceEmailText(invoice, options = {}) {
+  const reference = toInvoiceReference(invoice?.id);
+  const dueLabel = String(invoice?.due_at || "").trim()
+    ? new Date(invoice.due_at).toISOString().slice(0, 10)
+    : "--";
+  const prefix = options?.isReminder ? "Payment reminder" : "Invoice";
+  return [
+    `${prefix}: ${reference}`,
+    `Client: ${invoice?.company_name || "Client account"}`,
+    `Due date: ${dueLabel}`,
+    `Subtotal (EX. VAT): €${fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2)}`,
+    `VAT: €${fromCents(toCents(invoice?.vat_amount)).toFixed(2)}`,
+    `Total (INCL. VAT): €${fromCents(toCents(invoice?.total_inc_vat)).toFixed(2)}`,
+  ].join("\n");
+}
+
+async function updateBillingInvoiceFields(env, invoiceId, patch = {}) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) throw new Error("Invoice id is required.");
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeInvoiceId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        ...patch,
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not update invoice (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getSupabaseUserById(env, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return null;
+  const response = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/auth/v1/admin/users/${safeUserId}`,
+    {
+      method: "GET",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not load user (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || typeof payload !== "object") return null;
+  return payload?.user && typeof payload.user === "object" ? payload.user : payload;
+}
+
+function mapInvoiceProfileFromUser(user = {}) {
+  const metadata =
+    user?.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {};
+  return {
+    company_name: String(metadata.company_name || metadata.companyName || "").trim() || "Client account",
+    contact_name: String(metadata.contact_name || metadata.contactName || "").trim() || "",
+    contact_email:
+      normalizeEmail(metadata.contact_email || metadata.contactEmail || user?.email || "") || "",
+    customer_id: String(metadata.customer_id || metadata.customerId || "").trim() || "",
+    account_manager: String(metadata.account_manager || metadata.accountManager || "").trim() || "",
+  };
+}
+
+function buildInvoiceStatsByUser(invoices = []) {
+  const grouped = new Map();
+  invoices.forEach((invoice) => {
+    const userId = String(invoice?.user_id || "").trim();
+    if (!userId) return;
+    if (!grouped.has(userId)) grouped.set(userId, []);
+    grouped.get(userId).push(invoice);
+  });
+
+  const out = new Map();
+  grouped.forEach((rows, userId) => {
+    const sorted = rows
+      .slice()
+      .sort(
+        (left, right) =>
+          Date.parse(right?.updated_at || right?.sent_at || right?.created_at || 0) -
+          Date.parse(left?.updated_at || left?.sent_at || left?.created_at || 0)
+      );
+    const paidDurations = sorted
+      .filter((invoice) => invoice?.paid_at && (invoice?.issued_at || invoice?.sent_at))
+      .map((invoice) => {
+        const startMs = Date.parse(invoice?.issued_at || invoice?.sent_at || 0);
+        const endMs = Date.parse(invoice?.paid_at || 0);
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
+        return (endMs - startMs) / (1000 * 60 * 60 * 24);
+      })
+      .filter((value) => Number.isFinite(value));
+    const avgPaymentDays = paidDurations.length
+      ? Number((paidDurations.reduce((sum, value) => sum + value, 0) / paidDurations.length).toFixed(1))
+      : null;
+    const latest = sorted[0] || null;
+    const outstandingCents = sorted
+      .filter((invoice) => ["sent", "overdue"].includes(String(invoice?.status || "").toLowerCase()))
+      .reduce((sum, invoice) => sum + toCents(invoice?.total_inc_vat), 0);
+    out.set(userId, {
+      avg_payment_days: avgPaymentDays,
+      last_invoice_tracking: formatInvoiceTrackingLabel(latest),
+      last_invoice_status: String(latest?.status || "").trim().toLowerCase() || null,
+      last_invoice_at: latest?.updated_at || latest?.sent_at || latest?.created_at || null,
+      outstanding_balance: fromCents(outstandingCents),
+    });
+  });
+  return out;
+}
+
+function buildInvoiceListResponseRows(invoices = []) {
+  return (Array.isArray(invoices) ? invoices : []).map((invoice) => ({
+    id: invoice?.id || null,
+    user_id: invoice?.user_id || null,
+    reference: toInvoiceReference(invoice?.id),
+    company_name: String(invoice?.company_name || "").trim() || "Client account",
+    contact_email: normalizeEmail(invoice?.contact_email || ""),
+    period_start: invoice?.period_start || null,
+    period_end: invoice?.period_end || null,
+    due_at: invoice?.due_at || null,
+    issued_at: invoice?.issued_at || null,
+    sent_at: invoice?.sent_at || null,
+    paid_at: invoice?.paid_at || null,
+    status: String(invoice?.status || "draft").trim().toLowerCase(),
+    payment_mode: String(invoice?.payment_mode || "invoice").trim().toLowerCase(),
+    subtotal_ex_vat: fromCents(toCents(invoice?.subtotal_ex_vat)),
+    vat_amount: fromCents(toCents(invoice?.vat_amount)),
+    total_inc_vat: fromCents(toCents(invoice?.total_inc_vat)),
+    labels_count: Number(invoice?.labels_count) || 0,
+    line_count: Number(invoice?.line_count) || 0,
+    reminder_stage: Number(invoice?.reminder_stage) || 0,
+    last_reminder_sent_at: invoice?.last_reminder_sent_at || null,
+    tracking_label: formatInvoiceTrackingLabel(invoice),
+    updated_at: invoice?.updated_at || null,
+  }));
+}
+
 async function listClientBillingPreferences(env, limit = 2000) {
   const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 2000));
   const params = new URLSearchParams();
@@ -996,12 +1884,13 @@ function shouldIncludeAdminClient(user, env) {
 }
 
 async function buildAdminDashboard(request, env) {
-  const [settings, invites, users, historyRows, billingPreferences] = await Promise.all([
+  const [settings, invites, users, historyRows, billingPreferences, invoices] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
     listSupabaseUsers(env, 250),
     listGenerationHistoryRows(env, 10000),
     listClientBillingPreferences(env, 2000),
+    listBillingInvoices(env, { limit: 500, allowMissing: true }),
   ]);
 
   const historyByUserId = new Map();
@@ -1020,6 +1909,7 @@ async function buildAdminDashboard(request, env) {
     if (!userId) return;
     billingByUserId.set(userId, normalizeClientBillingPreference(row));
   });
+  const invoiceStatsByUserId = buildInvoiceStatsByUser(invoices);
 
   const clients = users
     .filter((user) => shouldIncludeAdminClient(user, env))
@@ -1036,7 +1926,8 @@ async function buildAdminDashboard(request, env) {
         user,
         historyByUserId.get(user.id) || [],
         settings,
-        billingByUserId.get(user.id) || DEFAULT_CLIENT_BILLING_PREF
+        billingByUserId.get(user.id) || DEFAULT_CLIENT_BILLING_PREF,
+        invoiceStatsByUserId.get(user.id) || null
       ),
     }))
     .sort((left, right) => {
@@ -1054,6 +1945,9 @@ async function buildAdminDashboard(request, env) {
     invites: inviteHistory,
     clients,
     summary: buildAdminClientSummary(clients, invites),
+    billing: {
+      invoices: buildInvoiceListResponseRows(invoices.slice(0, 120)),
+    },
   };
 }
 
@@ -1461,6 +2355,433 @@ function getCallbackRedirect(request, params) {
   return url.toString();
 }
 
+function normalizeInvoiceRunMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["preview", "create", "send"].includes(normalized)) return normalized;
+  return "create";
+}
+
+function normalizeInvoiceStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["draft", "sent", "overdue", "paid", "cancelled"].includes(normalized)) {
+    return normalized;
+  }
+  return "draft";
+}
+
+function normalizeInvoiceRunRequest(body = {}) {
+  const periodMode = String(body?.periodMode || body?.period || "previous").trim().toLowerCase();
+  const mode = normalizeInvoiceRunMode(body?.mode);
+  const window = getBillingWindow(
+    body?.startDate,
+    body?.endDate,
+    periodMode === "current" ? "current" : "previous"
+  );
+  return {
+    mode,
+    includeReminders: body?.includeReminders !== false,
+    userId: String(body?.userId || "").trim(),
+    periodMode,
+    window,
+  };
+}
+
+function getReminderTitleByStage(stage, dueAt) {
+  const dueLabel = String(dueAt || "").trim()
+    ? new Date(dueAt).toISOString().slice(0, 10)
+    : "the due date";
+  const mapping = {
+    1: `Invoice due in 7 days (${dueLabel})`,
+    2: `Invoice due tomorrow (${dueLabel})`,
+    3: `Invoice due today (${dueLabel})`,
+    4: `Invoice is 3 days overdue`,
+    5: `Invoice is 10 days overdue`,
+    6: `Invoice is 15 days overdue`,
+    7: `Invoice is 30 days overdue`,
+  };
+  return mapping[Number(stage)] || "Invoice payment reminder";
+}
+
+async function sendBillingInvoiceById(env, invoiceId, options = {}) {
+  const invoiceWithItems = await getBillingInvoiceById(env, invoiceId, { withItems: true });
+  if (!invoiceWithItems?.id) {
+    throw new Error("Invoice not found.");
+  }
+  const currentStatus = normalizeInvoiceStatus(invoiceWithItems.status);
+  if (currentStatus === "paid" || currentStatus === "cancelled") {
+    return {
+      skipped: true,
+      reason: `Invoice is already ${currentStatus}.`,
+      invoice: invoiceWithItems,
+    };
+  }
+
+  let toEmail = getInvoiceRecipientFromSnapshot(invoiceWithItems, "");
+  if (!toEmail) {
+    const user = await getSupabaseUserById(env, invoiceWithItems.user_id);
+    toEmail = normalizeEmail(user?.email || "");
+  }
+  if (!toEmail) {
+    throw new Error("Invoice contact email is missing.");
+  }
+
+  const isReminder = Boolean(options?.isReminder);
+  const reminderStage = Number(options?.reminderStage) || 0;
+  const reminderTitle = String(options?.reminderTitle || "").trim();
+  const reference = toInvoiceReference(invoiceWithItems.id);
+  const subjectPrefix = isReminder ? "Payment Reminder" : "Invoice";
+  const emailPayload = await sendResendEmail(env, {
+    to: toEmail,
+    subject: `${subjectPrefix} ${reference}`,
+    html: buildInvoiceEmailHtml(invoiceWithItems, invoiceWithItems.items || [], {
+      isReminder,
+      reminderTitle,
+    }),
+    text: buildInvoiceEmailText(invoiceWithItems, { isReminder }),
+  });
+
+  const nowIso = new Date().toISOString();
+  const dueMs = Date.parse(invoiceWithItems.due_at || 0);
+  const nextStatus =
+    Number.isFinite(dueMs) && dueMs < Date.now() && currentStatus !== "paid" ? "overdue" : "sent";
+  const patch = {
+    status: nextStatus,
+    email_message_id: String(emailPayload?.id || "").trim() || null,
+  };
+  if (!invoiceWithItems.issued_at) {
+    patch.issued_at = nowIso;
+  }
+  if (!invoiceWithItems.sent_at) {
+    patch.sent_at = nowIso;
+  }
+  if (isReminder) {
+    patch.reminder_stage = Math.max(Number(invoiceWithItems.reminder_stage) || 0, reminderStage);
+    patch.last_reminder_sent_at = nowIso;
+  }
+  const updated = await updateBillingInvoiceFields(env, invoiceWithItems.id, patch);
+  await insertBillingInvoiceEvent(env, invoiceWithItems.id, {
+    event_type: isReminder ? "reminder" : "sent",
+    actor: "system",
+    channel: "email",
+    message: isReminder ? reminderTitle || "Reminder sent." : "Invoice sent.",
+    metadata: {
+      resend_id: emailPayload?.id || null,
+      to: toEmail,
+      reminder_stage: isReminder ? reminderStage : null,
+    },
+  });
+  return {
+    skipped: false,
+    invoice: {
+      ...(updated || invoiceWithItems),
+      items: invoiceWithItems.items || [],
+    },
+    resend: emailPayload,
+  };
+}
+
+async function runInvoiceReminders(env, options = {}) {
+  const safeLimit = Math.max(1, Math.min(500, Number(options?.limit) || 200));
+  const candidateInvoices = await listBillingInvoices(env, {
+    limit: safeLimit,
+    statuses: ["sent", "overdue"],
+  });
+  const nowMs = Date.now();
+  const out = [];
+  for (const invoice of candidateInvoices) {
+    const dueAt = invoice?.due_at;
+    const desiredStage = getReminderStageForDueDate(dueAt, nowMs);
+    const currentStage = Math.max(0, Number(invoice?.reminder_stage) || 0);
+    if (desiredStage <= currentStage) continue;
+    const reminderTitle = getReminderTitleByStage(desiredStage, dueAt);
+    try {
+      const result = await sendBillingInvoiceById(env, invoice.id, {
+        isReminder: true,
+        reminderStage: desiredStage,
+        reminderTitle,
+      });
+      out.push({
+        invoice_id: invoice.id,
+        reminder_stage: desiredStage,
+        status: result?.invoice?.status || invoice.status,
+      });
+    } catch (error) {
+      await insertBillingInvoiceEvent(env, invoice.id, {
+        event_type: "failed",
+        actor: "system",
+        channel: "email",
+        message: `Reminder failed: ${error?.message || "Unknown error."}`,
+        metadata: {
+          reminder_stage: desiredStage,
+        },
+      }).catch(() => {});
+      out.push({
+        invoice_id: invoice.id,
+        reminder_stage: desiredStage,
+        error: error?.message || "Reminder failed.",
+      });
+    }
+  }
+  return out;
+}
+
+async function buildInvoicesFromLabelHistory(env, options = {}) {
+  const mode = normalizeInvoiceRunMode(options?.mode);
+  const billingWindow = options?.window || getPreviousMonthWindow();
+  const onlyUserId = String(options?.userId || "").trim();
+  const runTimestamp = new Date().toISOString();
+  const termsDays = getInvoiceTermsDays(env);
+  const settings = await getAdminSettings(env);
+
+  const [historyRows, users, billingPrefs] = await Promise.all([
+    listUnbilledGenerationRows(env, { window: billingWindow, userId: onlyUserId }),
+    listSupabaseUsers(env, 1000),
+    listClientBillingPreferences(env, 5000),
+  ]);
+
+  const userById = new Map();
+  users.forEach((user) => {
+    const userId = String(user?.id || "").trim();
+    if (userId) userById.set(userId, user);
+  });
+
+  const billingByUserId = new Map();
+  billingPrefs.forEach((pref) => {
+    const userId = String(pref?.user_id || "").trim();
+    if (userId) billingByUserId.set(userId, normalizeClientBillingPreference(pref));
+  });
+
+  const rowsByUser = new Map();
+  historyRows.forEach((row) => {
+    const userId = String(row?.user_id || "").trim();
+    if (!userId) return;
+    if (!rowsByUser.has(userId)) rowsByUser.set(userId, []);
+    rowsByUser.get(userId).push(row);
+  });
+
+  const result = {
+    mode,
+    period_start: billingWindow.startIsoDate,
+    period_end: billingWindow.endIsoDate,
+    users_scanned: rowsByUser.size,
+    rows_scanned: historyRows.length,
+    invoices_created: 0,
+    invoices_updated: 0,
+    invoices_sent: 0,
+    rows_marked_billed: 0,
+    skipped: [],
+    invoices: [],
+    totals: {
+      subtotal_ex_vat: 0,
+      vat_amount: 0,
+      total_inc_vat: 0,
+    },
+    settings: {
+      client_discount_pct: normalizePercent(settings?.client_discount_pct, DEFAULT_ADMIN_SETTINGS.client_discount_pct),
+      carrier_discount_pct: normalizePercent(settings?.carrier_discount_pct, DEFAULT_ADMIN_SETTINGS.carrier_discount_pct),
+    },
+  };
+
+  for (const [userId, userRows] of rowsByUser.entries()) {
+    const billingPref = billingByUserId.get(userId) || { ...DEFAULT_CLIENT_BILLING_PREF };
+    const paymentMode = getClientPaymentMode(billingPref);
+    if (!billingPref.invoice_enabled) {
+      result.skipped.push({
+        user_id: userId,
+        reason: "Invoice billing disabled for this client.",
+      });
+      continue;
+    }
+    const invoiceData = buildInvoiceItemsFromHistoryRows(userRows, DEFAULT_VAT_RATE);
+    const totals = invoiceData?.totals || {
+      subtotal_ex_vat: 0,
+      vat_amount: 0,
+      total_inc_vat: 0,
+      labels_count: 0,
+      line_count: 0,
+      vat_rate: DEFAULT_VAT_RATE,
+    };
+    if (!invoiceData?.items?.length) {
+      result.skipped.push({
+        user_id: userId,
+        reason: "No invoiceable rows found.",
+      });
+      continue;
+    }
+
+    const user = userById.get(userId) || null;
+    const profile = mapInvoiceProfileFromUser(user);
+    const existing = await getBillingInvoiceByPeriod(
+      env,
+      userId,
+      billingWindow.startIsoDate,
+      billingWindow.endIsoDate
+    );
+    if (existing && ["paid", "cancelled"].includes(normalizeInvoiceStatus(existing.status))) {
+      result.skipped.push({
+        user_id: userId,
+        invoice_id: existing.id,
+        reason: `Invoice already ${normalizeInvoiceStatus(existing.status)}.`,
+      });
+      continue;
+    }
+
+    const dueAt =
+      String(existing?.due_at || "").trim() ||
+      addUtcDays(new Date(`${billingWindow.endIsoDate}T00:00:00.000Z`), termsDays).toISOString();
+    const baseStatus = normalizeInvoiceStatus(existing?.status || "draft");
+    const nextStatus = ["sent", "overdue", "draft"].includes(baseStatus) ? baseStatus : "draft";
+    const invoicePayload = {
+      user_id: userId,
+      period_start: billingWindow.startIsoDate,
+      period_end: billingWindow.endIsoDate,
+      due_at: dueAt,
+      issued_at: existing?.issued_at || null,
+      sent_at: existing?.sent_at || null,
+      paid_at: existing?.paid_at || null,
+      status: nextStatus,
+      payment_mode: paymentMode,
+      currency: "EUR",
+      vat_rate: totals.vat_rate,
+      subtotal_ex_vat: totals.subtotal_ex_vat,
+      vat_amount: totals.vat_amount,
+      total_inc_vat: totals.total_inc_vat,
+      labels_count: totals.labels_count,
+      line_count: totals.line_count,
+      reminder_stage: Number(existing?.reminder_stage) || 0,
+      last_reminder_sent_at: existing?.last_reminder_sent_at || null,
+      email_message_id: existing?.email_message_id || null,
+      company_name: profile.company_name,
+      contact_name: profile.contact_name,
+      contact_email: profile.contact_email,
+      customer_id: profile.customer_id,
+      account_manager: profile.account_manager,
+      payment_reference: existing?.payment_reference || null,
+      payment_received_amount: existing?.payment_received_amount ?? null,
+      metadata:
+        existing?.metadata && typeof existing.metadata === "object"
+          ? existing.metadata
+          : {
+              source: "portal_label_generations",
+            },
+      updated_at: runTimestamp,
+    };
+
+    const previewInvoice = {
+      id: existing?.id || null,
+      user_id: userId,
+      company_name: profile.company_name,
+      contact_email: profile.contact_email,
+      period_start: billingWindow.startIsoDate,
+      period_end: billingWindow.endIsoDate,
+      due_at: dueAt,
+      status: nextStatus,
+      payment_mode: paymentMode,
+      subtotal_ex_vat: totals.subtotal_ex_vat,
+      vat_amount: totals.vat_amount,
+      total_inc_vat: totals.total_inc_vat,
+      labels_count: totals.labels_count,
+      line_count: totals.line_count,
+      reminder_stage: Number(existing?.reminder_stage) || 0,
+    };
+
+    if (mode === "preview") {
+      result.invoices.push({
+        ...previewInvoice,
+        reference: previewInvoice.id ? toInvoiceReference(previewInvoice.id) : "INV-PREVIEW",
+      });
+      result.totals.subtotal_ex_vat = fromCents(
+        toCents(result.totals.subtotal_ex_vat) + toCents(totals.subtotal_ex_vat)
+      );
+      result.totals.vat_amount = fromCents(
+        toCents(result.totals.vat_amount) + toCents(totals.vat_amount)
+      );
+      result.totals.total_inc_vat = fromCents(
+        toCents(result.totals.total_inc_vat) + toCents(totals.total_inc_vat)
+      );
+      continue;
+    }
+
+    const persisted = await upsertBillingInvoice(env, invoicePayload);
+    if (!persisted?.id) {
+      throw new Error("Invoice could not be persisted.");
+    }
+    await replaceBillingInvoiceItems(env, persisted.id, invoiceData.items);
+    const generationIds = userRows.map((row) => row?.id).filter(Boolean);
+    await markGenerationRowsBilled(env, generationIds, persisted.id);
+    await insertBillingInvoiceEvent(env, persisted.id, {
+      event_type: existing?.id ? "updated" : "created",
+      actor: "system",
+      channel: "portal",
+      message: existing?.id ? "Invoice updated from label history." : "Invoice created from label history.",
+      metadata: {
+        rows_count: userRows.length,
+        labels_count: totals.labels_count,
+      },
+    });
+
+    if (existing?.id) {
+      result.invoices_updated += 1;
+    } else {
+      result.invoices_created += 1;
+    }
+    result.rows_marked_billed += generationIds.filter((id) => isUuid(id)).length;
+    result.totals.subtotal_ex_vat = fromCents(
+      toCents(result.totals.subtotal_ex_vat) + toCents(totals.subtotal_ex_vat)
+    );
+    result.totals.vat_amount = fromCents(
+      toCents(result.totals.vat_amount) + toCents(totals.vat_amount)
+    );
+    result.totals.total_inc_vat = fromCents(
+      toCents(result.totals.total_inc_vat) + toCents(totals.total_inc_vat)
+    );
+
+    let finalInvoice = persisted;
+    if (mode === "send") {
+      try {
+        const sendResult = await sendBillingInvoiceById(env, persisted.id, {
+          isReminder: false,
+        });
+        if (!sendResult?.skipped) {
+          result.invoices_sent += 1;
+        }
+        finalInvoice = sendResult?.invoice || persisted;
+      } catch (error) {
+        await insertBillingInvoiceEvent(env, persisted.id, {
+          event_type: "failed",
+          actor: "system",
+          channel: "email",
+          message: `Invoice send failed: ${error?.message || "Unknown error."}`,
+          metadata: {},
+        }).catch(() => {});
+        result.skipped.push({
+          user_id: userId,
+          invoice_id: persisted.id,
+          reason: error?.message || "Invoice send failed.",
+        });
+      }
+    }
+
+    result.invoices.push({
+      ...buildInvoiceListResponseRows([finalInvoice])[0],
+    });
+  }
+
+  return result;
+}
+
+async function computeCurrentMonthUnbilledTotal(env, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return 0;
+  const monthWindow = getCurrentMonthWindow();
+  const rows = await listUnbilledGenerationRows(env, {
+    window: monthWindow,
+    userId: safeUserId,
+  });
+  const totalCents = rows.reduce((sum, row) => sum + toCents(row?.total_price), 0);
+  return fromCents(totalCents);
+}
+
 async function handleCreateRegistrationInvite(request, env) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
@@ -1617,6 +2938,273 @@ async function handleAdminClientBillingSave(request, env) {
       { error: error?.message || "Could not update client billing settings." },
       500
     );
+  }
+}
+
+async function handleAdminInvoicesList(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to access billing invoices." }, 403);
+  }
+  const limit = Math.max(1, Math.min(300, Number(url.searchParams.get("limit")) || 120));
+  const userId = String(url.searchParams.get("userId") || "").trim();
+  const statusFilter = String(url.searchParams.get("status") || "").trim().toLowerCase();
+  const statuses = statusFilter
+    ? statusFilter
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
+  try {
+    const invoices = await listBillingInvoices(env, {
+      limit,
+      userId,
+      statuses,
+    });
+    return jsonResponse({
+      invoices: buildInvoiceListResponseRows(invoices),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load invoices." }, 500);
+  }
+}
+
+async function handleAdminInvoicesRun(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to run billing." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const runRequest = normalizeInvoiceRunRequest(body || {});
+  try {
+    const result = await buildInvoicesFromLabelHistory(env, runRequest);
+    let reminders = [];
+    if (runRequest.mode !== "preview" && runRequest.includeReminders) {
+      reminders = await runInvoiceReminders(env, { limit: 300 });
+    }
+    return jsonResponse({
+      ok: true,
+      run: result,
+      reminders,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Billing run failed." }, 500);
+  }
+}
+
+async function handleAdminInvoiceSend(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send invoices." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const invoiceId = String(body?.invoiceId || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  try {
+    const result = await sendBillingInvoiceById(env, invoiceId, {
+      isReminder: false,
+    });
+    return jsonResponse({
+      ok: true,
+      skipped: Boolean(result?.skipped),
+      invoice: buildInvoiceListResponseRows([result?.invoice || {}])[0] || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not send invoice." }, 500);
+  }
+}
+
+async function handleAdminInvoiceSendTest(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send billing tests." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    return jsonResponse({ error: "A valid test email is required." }, 400);
+  }
+  try {
+    const now = new Date().toISOString();
+    const testInvoice = {
+      id: crypto.randomUUID(),
+      company_name: "Test Client",
+      contact_email: toEmail,
+      period_start: now.slice(0, 10),
+      period_end: now.slice(0, 10),
+      due_at: addUtcDays(new Date(), getInvoiceTermsDays(env)).toISOString(),
+      subtotal_ex_vat: 120,
+      vat_amount: 25.2,
+      total_inc_vat: 145.2,
+      vat_rate: DEFAULT_VAT_RATE,
+    };
+    const testItems = [
+      {
+        service_type: "Economy",
+        recipient_name: "Sample Recipient",
+        recipient_country: "Belgium",
+        amount_ex_vat: 120,
+      },
+    ];
+    const resendResponse = await sendResendEmail(env, {
+      to: toEmail,
+      subject: `Invoice Test ${toInvoiceReference(testInvoice.id)}`,
+      html: buildInvoiceEmailHtml(testInvoice, testItems, {
+        isReminder: false,
+      }),
+      text: buildInvoiceEmailText(testInvoice, {
+        isReminder: false,
+      }),
+    });
+    return jsonResponse({
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not send test invoice email." }, 500);
+  }
+}
+
+async function handleAdminInvoiceMarkPaid(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to update invoice payment." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const invoiceId = String(body?.invoiceId || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  const paymentReference = String(body?.paymentReference || "").trim();
+  const paidAtRaw = String(body?.paidAt || "").trim();
+  const paidAt = paidAtRaw ? new Date(paidAtRaw).toISOString() : new Date().toISOString();
+  try {
+    const invoice = await getBillingInvoiceById(env, invoiceId);
+    if (!invoice?.id) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    const updated = await updateBillingInvoiceFields(env, invoice.id, {
+      status: "paid",
+      paid_at: paidAt,
+      payment_reference: paymentReference || null,
+      payment_received_amount: fromCents(toCents(invoice.total_inc_vat)),
+    });
+    await insertBillingInvoiceEvent(env, invoice.id, {
+      event_type: "paid",
+      actor: normalizeEmail(user.email || "") || user.id,
+      channel: "manual",
+      message: "Marked as paid by admin.",
+      metadata: {
+        payment_reference: paymentReference || null,
+      },
+    });
+    return jsonResponse({
+      ok: true,
+      invoice: buildInvoiceListResponseRows([updated || invoice])[0] || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not mark invoice as paid." }, 500);
+  }
+}
+
+async function handleBillingOverview(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  try {
+    const billingPref = await getClientBillingPreferenceForUser(env, user.id);
+    const paymentMode = getClientPaymentMode(billingPref);
+    const settings = await getAdminSettings(env);
+    const currentMonth = getCurrentMonthWindow();
+    const invoices = await listBillingInvoices(env, {
+      userId: user.id,
+      limit: 120,
+    });
+    const activeInvoices = invoices.filter((invoice) =>
+      ["draft", "sent", "overdue"].includes(normalizeInvoiceStatus(invoice?.status))
+    );
+    const nextDraft = activeInvoices.find(
+      (invoice) => normalizeInvoiceStatus(invoice?.status) === "draft"
+    );
+    const outstandingCents = activeInvoices
+      .filter((invoice) => ["sent", "overdue"].includes(normalizeInvoiceStatus(invoice?.status)))
+      .reduce((sum, invoice) => sum + toCents(invoice?.total_inc_vat), 0);
+    const projectedExVat = await computeCurrentMonthUnbilledTotal(env, user.id);
+    const projectedVat = fromCents(Math.round(toCents(projectedExVat) * DEFAULT_VAT_RATE));
+    const projectedIncl = fromCents(toCents(projectedExVat) + toCents(projectedVat));
+
+    const nextInvoiceDate = nextDraft?.period_end
+      ? `${nextDraft.period_end}T00:00:00.000Z`
+      : `${currentMonth.endIsoDate}T00:00:00.000Z`;
+    const nextExVat = nextDraft
+      ? fromCents(toCents(nextDraft.subtotal_ex_vat))
+      : projectedExVat;
+    const nextVat = nextDraft ? fromCents(toCents(nextDraft.vat_amount)) : projectedVat;
+    const nextIncl = nextDraft ? fromCents(toCents(nextDraft.total_inc_vat)) : projectedIncl;
+
+    return jsonResponse({
+      payment_mode: paymentMode,
+      invoice_enabled: Boolean(billingPref.invoice_enabled),
+      card_enabled: Boolean(billingPref.card_enabled),
+      client_discount_pct: normalizePercent(
+        settings?.client_discount_pct,
+        DEFAULT_ADMIN_SETTINGS.client_discount_pct
+      ),
+      carrier_discount_pct: normalizePercent(
+        settings?.carrier_discount_pct,
+        DEFAULT_ADMIN_SETTINGS.carrier_discount_pct
+      ),
+      next_invoice_amount_ex_vat: billingPref.invoice_enabled ? nextExVat : 0,
+      next_invoice_vat_amount: billingPref.invoice_enabled ? nextVat : 0,
+      next_invoice_amount_incl_vat: billingPref.invoice_enabled ? nextIncl : 0,
+      next_invoice_date: billingPref.invoice_enabled ? nextInvoiceDate : null,
+      current_period_start: currentMonth.startIsoDate,
+      current_period_end: currentMonth.endIsoDate,
+      outstanding_balance_incl_vat: fromCents(outstandingCents),
+      open_invoice_count: activeInvoices.length,
+      last_invoice_tracking: formatInvoiceTrackingLabel(activeInvoices[0] || null),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load billing overview." }, 500);
   }
 }
 

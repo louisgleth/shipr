@@ -936,6 +936,48 @@
               </button>
             </div>
           </div>
+
+          <div class="admin-billing-panel admin-panel-card">
+            <div class="admin-settings-head">
+              <div>
+                <div class="preview-title">Invoicing Operations</div>
+                <p class="panel-sub admin-panel-sub">
+                  Run billing cycles, send invoice emails through Resend, and track payment status.
+                </p>
+              </div>
+            </div>
+            <div class="admin-billing-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="adminBillingRunPreview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Preview Previous Month</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="adminBillingRunCreate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                <span>Create Draft Invoices</span>
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" id="adminBillingRunSend">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                <span>Create &amp; Send</span>
+              </button>
+            </div>
+            <div class="admin-billing-status" id="adminBillingRunStatus"></div>
+            <div class="admin-billing-result mono" id="adminBillingRunResult">No billing runs yet.</div>
+            <div class="admin-billing-test">
+              <label class="field">
+                <span>Test Invoice Email</span>
+                <input type="email" id="adminBillingTestEmail" placeholder="billing@shipide.com" />
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTest">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                <span>Send Test Email</span>
+              </button>
+            </div>
+            <div class="admin-billing-invoices">
+              <div class="invite-result-label">Recent invoices</div>
+              <div class="admin-billing-empty" id="adminInvoiceEmpty">No invoices yet.</div>
+              <div class="admin-billing-list" id="adminInvoiceList"></div>
+            </div>
+          </div>
         </div>
 
         <div class="admin-clients-panel admin-panel-card">
