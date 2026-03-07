@@ -11,6 +11,8 @@ const state = {
   csvMode: false,
   csvEditable: false,
   csvRows: [],
+  csvPage: 1,
+  csvValidationAttempted: false,
   csvSource: "none",
   shipFromOriginId: "",
   shipFromLockedByProvider: false,
@@ -78,6 +80,7 @@ const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
+const CSV_TABLE_PAGE_SIZE = 10;
 const AUTH_PARTICLES_WARMUP_STEPS = 42;
 const VAT_RATE = 0.21;
 const TOTAL_STEPS = 4;
@@ -535,6 +538,13 @@ const TRANSLATIONS = {
   "Expected Field": { fr: "Champ attendu", nl: "Verwacht veld" },
   "CSV Column": { fr: "Colonne CSV", nl: "CSV-kolom" },
   "Sample": { fr: "Exemple", nl: "Voorbeeld" },
+  "Previous": { fr: "Précédent", nl: "Vorige" },
+  "Next": { fr: "Suivant", nl: "Volgende" },
+  "Rows {start}-{end} • Page {page}/{pages}": {
+    fr: "Lignes {start}-{end} • Page {page}/{pages}",
+    nl: "Rijen {start}-{end} • Pagina {page}/{pages}",
+  },
+  "No rows loaded": { fr: "Aucune ligne chargée", nl: "Geen rijen geladen" },
   "Upload a valid CSV with at least one data row.": { fr: "Importez un CSV valide avec au moins une ligne de données.", nl: "Upload een geldige CSV met minstens één gegevensrij." },
   "Apply Mapping": { fr: "Appliquer le mapping", nl: "Mapping toepassen" },
   "Receipt": { fr: "Reçu", nl: "Bon" },
@@ -1125,6 +1135,9 @@ const autoCsvButton = document.getElementById("autoCsv");
 const csvEditToggle = document.getElementById("csvEditToggle");
 const csvSection = document.getElementById("csvSection");
 const csvTableBody = document.querySelector("#csvTable tbody");
+const csvPagePrev = document.getElementById("csvPagePrev");
+const csvPageNext = document.getElementById("csvPageNext");
+const csvPageMeta = document.getElementById("csvPageMeta");
 const csvShipFromCard = document.getElementById("csvShipFromCard");
 const csvShipFromNote = document.getElementById("csvShipFromNote");
 const csvShipFromSelector = document.getElementById("csvShipFromSelector");
@@ -1844,6 +1857,7 @@ function refreshTranslatedRuntime() {
   }
   renderSenderOriginSelector();
   renderCsvShipFromSelector();
+  renderCsvTable();
   renderWarehouseList();
   renderCustomsItems();
   updateCustomsScopeMeta();
@@ -3786,6 +3800,8 @@ function applyImportedRows(rows, sourceLabel, options = {}) {
   }
   clearBatchState();
   state.csvRows = rows;
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
   setCsvBatchSource(source);
   setCsvMode(true);
   if (!state.shipFromLockedByProvider) {
@@ -7524,20 +7540,20 @@ function renderReportsLocationTable(
   if (!bodyEl) return;
   bodyEl.innerHTML = "";
   if (!Array.isArray(rows) || rows.length === 0) {
-    const tr = document.createElement("tr");
+    const rowEl = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 3;
     td.className = "reports-empty";
     td.textContent = emptyMessage;
-    tr.appendChild(td);
-    bodyEl.appendChild(tr);
+    rowEl.appendChild(td);
+    bodyEl.appendChild(rowEl);
     return;
   }
 
   rows.forEach((row) => {
     const key = String(rowKey(row) || row.name || "");
-    const tr = document.createElement("tr");
-    tr.dataset.rowKey = key;
+    const rowEl = document.createElement("tr");
+    rowEl.dataset.rowKey = key;
     const nameCell = document.createElement("td");
     if (withFlags) {
       const wrapper = document.createElement("span");
@@ -7562,14 +7578,14 @@ function renderReportsLocationTable(
     spendCell.className = "mono";
     spendCell.textContent = formatMoney(row.spend);
 
-    tr.appendChild(nameCell);
-    tr.appendChild(countCell);
-    tr.appendChild(spendCell);
+    rowEl.appendChild(nameCell);
+    rowEl.appendChild(countCell);
+    rowEl.appendChild(spendCell);
     if (typeof onHover === "function") {
-      tr.addEventListener("mouseenter", () => onHover(key));
-      tr.addEventListener("mouseleave", () => onHover(""));
+      rowEl.addEventListener("mouseenter", () => onHover(key));
+      rowEl.addEventListener("mouseleave", () => onHover(""));
     }
-    bodyEl.appendChild(tr);
+    bodyEl.appendChild(rowEl);
   });
 }
 
@@ -8801,8 +8817,11 @@ function setCsvMode(enabled) {
   } else {
     state.shipFromLockedByProvider = false;
     state.csvSource = "none";
+    state.csvPage = 1;
+    state.csvValidationAttempted = false;
   }
   renderCsvShipFromSelector();
+  renderCsvTable();
 }
 
 function setCsvEditMode(enabled) {
@@ -8853,11 +8872,55 @@ function generateCsvRows(count = 3) {
   return rows;
 }
 
+function getCsvPageCount() {
+  const totalRows = Array.isArray(state.csvRows) ? state.csvRows.length : 0;
+  return Math.max(1, Math.ceil(totalRows / CSV_TABLE_PAGE_SIZE));
+}
+
+function setCsvPage(page, { render = true } = {}) {
+  const totalPages = getCsvPageCount();
+  const nextPage = Math.max(1, Math.min(totalPages, Number(page) || 1));
+  state.csvPage = nextPage;
+  if (render) {
+    renderCsvTable();
+  }
+}
+
+function renderCsvTablePager(totalRows, startIndex, endIndex, totalPages) {
+  if (!csvPagePrev || !csvPageNext || !csvPageMeta) return;
+  const hasRows = totalRows > 0;
+  const activePage = Math.max(1, Math.min(totalPages, state.csvPage || 1));
+  csvPagePrev.disabled = !hasRows || activePage <= 1;
+  csvPageNext.disabled = !hasRows || activePage >= totalPages;
+
+  if (!hasRows) {
+    csvPageMeta.textContent = tr("No rows loaded");
+    return;
+  }
+
+  csvPageMeta.textContent = tr("Rows {start}-{end} • Page {page}/{pages}", {
+    start: startIndex + 1,
+    end: endIndex,
+    page: activePage,
+    pages: totalPages,
+  });
+}
+
 function renderCsvTable() {
   if (!csvTableBody) return;
+  const totalRows = Array.isArray(state.csvRows) ? state.csvRows.length : 0;
+  const totalPages = getCsvPageCount();
+  const safePage = Math.max(1, Math.min(totalPages, state.csvPage || 1));
+  state.csvPage = safePage;
+
+  const startIndex = Math.max(0, (safePage - 1) * CSV_TABLE_PAGE_SIZE);
+  const endIndex = Math.min(totalRows, startIndex + CSV_TABLE_PAGE_SIZE);
+  const visibleRows = state.csvRows.slice(startIndex, endIndex);
+
   csvTableBody.innerHTML = "";
-  state.csvRows.forEach((row, rowIndex) => {
-    const tr = document.createElement("tr");
+  visibleRows.forEach((row, offset) => {
+    const rowIndex = startIndex + offset;
+    const rowEl = document.createElement("tr");
     csvReviewColumns.forEach((column) => {
       const td = document.createElement("td");
       const input = document.createElement("input");
@@ -8866,6 +8929,9 @@ function renderCsvTable() {
       input.dataset.row = String(rowIndex);
       input.dataset.key = column.key;
       input.disabled = !state.csvEditable;
+      if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(column.key)) {
+        input.classList.toggle("is-invalid", String(row[column.key] ?? "").trim() === "");
+      }
       input.addEventListener("input", handleCsvInput);
 
       if (column.key === "recipientCountry") {
@@ -8880,10 +8946,12 @@ function renderCsvTable() {
       } else {
         td.appendChild(input);
       }
-      tr.appendChild(td);
+      rowEl.appendChild(td);
     });
-    csvTableBody.appendChild(tr);
+    csvTableBody.appendChild(rowEl);
   });
+
+  renderCsvTablePager(totalRows, startIndex, endIndex, totalPages);
 }
 
 function handleCsvInput(event) {
@@ -8904,29 +8972,36 @@ function handleCsvInput(event) {
       icon.innerHTML = getCountryIcon(input.value.trim());
     }
   }
+  if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(key)) {
+    input.classList.toggle("is-invalid", input.value.trim() === "");
+  }
   updateSummary();
   updatePreview();
 }
 
 function validateCsvRows() {
-  if (!csvTableBody || state.csvRows.length === 0) {
+  if (!Array.isArray(state.csvRows) || state.csvRows.length === 0) {
     return false;
   }
+  state.csvValidationAttempted = true;
   let isValid = true;
-  const inputs = csvTableBody.querySelectorAll("input");
-  inputs.forEach((input) => {
-    const key = String(input.dataset.key || "");
-    if (!CSV_REQUIRED_FIELDS.has(key)) {
-      input.classList.remove("is-invalid");
-      return;
-    }
-    const value = input.value.trim();
-    const isFieldValid = value !== "";
-    input.classList.toggle("is-invalid", !isFieldValid);
-    if (!isFieldValid) {
+  let firstInvalidRow = -1;
+
+  state.csvRows.forEach((row, rowIndex) => {
+    CSV_REQUIRED_FIELDS.forEach((key) => {
+      const value = String(row?.[key] ?? "").trim();
+      if (value) return;
       isValid = false;
-    }
+      if (firstInvalidRow < 0) {
+        firstInvalidRow = rowIndex;
+      }
+    });
   });
+
+  if (!isValid && firstInvalidRow >= 0) {
+    state.csvPage = Math.floor(firstInvalidRow / CSV_TABLE_PAGE_SIZE) + 1;
+  }
+  renderCsvTable();
   return isValid;
 }
 
@@ -10232,6 +10307,8 @@ function autoFill() {
   setCsvMode(false);
   setCsvEditMode(false);
   state.csvRows = [];
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
   if (labelError) {
     labelError.classList.remove("is-visible");
   }
@@ -10268,6 +10345,8 @@ if (autoCsvButton) {
     event.preventDefault();
     clearBatchState();
     state.csvRows = generateCsvRows(3);
+    state.csvPage = 1;
+    state.csvValidationAttempted = false;
     setCsvBatchSource("csv-auto");
     setCsvMode(true);
     syncCsvRowsWithSelectedOrigin({ rerender: false });
@@ -10286,6 +10365,20 @@ if (csvEditToggle) {
     event.preventDefault();
     if (!state.csvMode) return;
     setCsvEditMode(!state.csvEditable);
+  });
+}
+
+if (csvPagePrev) {
+  csvPagePrev.addEventListener("click", (event) => {
+    event.preventDefault();
+    setCsvPage(state.csvPage - 1);
+  });
+}
+
+if (csvPageNext) {
+  csvPageNext.addEventListener("click", (event) => {
+    event.preventDefault();
+    setCsvPage(state.csvPage + 1);
   });
 }
 
@@ -10523,6 +10616,8 @@ function clearBatchState() {
   state.activeLabelIndex = 0;
   state.csvSource = "none";
   state.shipFromLockedByProvider = false;
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
   currentPdfUrl = "";
   if (batchPanel) {
     batchPanel.classList.add("is-hidden");
@@ -10717,6 +10812,8 @@ function resetAll() {
   state.csvMode = false;
   state.csvEditable = false;
   state.csvRows = [];
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
   if (labelForm) {
     labelForm.classList.remove("is-hidden");
   }
@@ -10980,6 +11077,11 @@ if (csvMapBack) {
 }
 
 if (csvDropzone) {
+  csvDropzone.addEventListener("click", (e) => {
+    if (e.target === csvFileInput) return;
+    if (csvFileInput) csvFileInput.click();
+  });
+
   csvDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     csvDropzone.classList.add("is-dragover");
@@ -11014,31 +11116,48 @@ if (csvMapApply) {
 syncCsvFileInputState();
 
 function handleCsvFile(file) {
-  if (!/\.csv$/i.test(file.name || "")) return;
+  if (!file) return;
+  if (!/\.(csv|tsv|txt)$/i.test(file.name || "")) {
+    showToast(tr("Please upload a .csv file."), { tone: "error" });
+    return;
+  }
   const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = String(e.target.result || "");
-    const analysis = analyzeCsvText(text);
-    if (!analysis) {
-      setCsvModalStep("mapping");
-      setCsvMapError(tr("Could not parse this CSV. Please check the file format and try again."));
-      if (csvMappingBody) {
-        csvMappingBody.innerHTML = "";
-      }
-      if (csvMapMeta) {
-        csvMapMeta.textContent = tr("No rows detected");
-      }
-      return;
-    }
-
-    csvMappingDraft = {
-      fileName: file.name || "upload.csv",
-      analysis,
-      mapping: { ...analysis.autoColumnIndices },
-    };
-    renderCsvMappingTable();
-    setCsvMapError("");
+  reader.onerror = () => {
     setCsvModalStep("mapping");
+    setCsvMapError(tr("Could not read the file. Please try again."));
+    if (csvMappingBody) csvMappingBody.innerHTML = "";
+    if (csvMapMeta) csvMapMeta.textContent = tr("No rows detected");
+  };
+  reader.onload = (e) => {
+    try {
+      const text = String(e.target.result || "");
+      const analysis = analyzeCsvText(text);
+      if (!analysis) {
+        setCsvModalStep("mapping");
+        setCsvMapError(tr("Could not parse this CSV. Please check the file format and try again."));
+        if (csvMappingBody) {
+          csvMappingBody.innerHTML = "";
+        }
+        if (csvMapMeta) {
+          csvMapMeta.textContent = tr("No rows detected");
+        }
+        return;
+      }
+
+      csvMappingDraft = {
+        fileName: file.name || "upload.csv",
+        analysis,
+        mapping: { ...analysis.autoColumnIndices },
+      };
+      renderCsvMappingTable();
+      setCsvMapError("");
+      setCsvModalStep("mapping");
+    } catch (err) {
+      setCsvModalStep("mapping");
+      setCsvMapError(tr("Error processing CSV: {msg}", { msg: err.message || "Unknown error" }));
+      if (csvMappingBody) csvMappingBody.innerHTML = "";
+      if (csvMapMeta) csvMapMeta.textContent = tr("Error");
+    }
   };
   reader.readAsText(file);
 }
@@ -11435,7 +11554,7 @@ function renderCsvMappingTable() {
 
   const orderedColumns = getCsvColumnsRequiredFirst();
   orderedColumns.forEach((column) => {
-    const tr = document.createElement("tr");
+    const rowEl = document.createElement("tr");
 
     const fieldCell = document.createElement("td");
     const fieldWrap = document.createElement("div");
@@ -11484,10 +11603,10 @@ function renderCsvMappingTable() {
     sample.dataset.sampleKey = column.key;
     sampleCell.appendChild(sample);
 
-    tr.appendChild(fieldCell);
-    tr.appendChild(selectCell);
-    tr.appendChild(sampleCell);
-    csvMappingBody.appendChild(tr);
+    rowEl.appendChild(fieldCell);
+    rowEl.appendChild(selectCell);
+    rowEl.appendChild(sampleCell);
+    csvMappingBody.appendChild(rowEl);
   });
 
   orderedColumns.forEach((column) => updateCsvMappingSample(column.key));
@@ -11607,6 +11726,8 @@ function applyCsvMapping() {
 
   clearBatchState();
   state.csvRows = rows;
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
   setCsvBatchSource("csv-upload");
   setCsvMode(true);
   syncCsvRowsWithSelectedOrigin({ rerender: false });
@@ -11794,6 +11915,7 @@ window.addEventListener("popstate", (event) => {
 if (batchPreview) {
   batchPreview.classList.add("is-single");
 }
+renderCsvTable();
 
 renderAdminInvoiceList();
 setAdminBillingBusy(false);

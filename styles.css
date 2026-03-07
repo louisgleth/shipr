@@ -4567,7 +4567,7 @@ body {
   margin-top: 18px;
   padding: 16px;
   border-width: 1px;
-  max-height: 720px;
+  max-height: 1800px;
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -4588,8 +4588,66 @@ body {
 .csv-table-wrap {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--panel-bg);
+}
+
+.csv-table-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--stroke);
+  background: var(--card-bg);
+}
+
+.csv-page-meta {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.csv-page-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--panel-bg);
+  color: var(--text);
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--letter-tight);
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.csv-page-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+#csvPagePrev {
+  justify-self: start;
+}
+
+#csvPageNext {
+  justify-self: end;
+}
+
+.csv-page-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--card-active);
+}
+
+.csv-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .csv-table {
@@ -5317,7 +5375,11 @@ input.is-invalid {
   background: var(--card-bg);
   padding: 12px;
   display: grid;
+  grid-template-rows: auto 1fr;
   gap: 10px;
+  height: min(var(--preview-frame-height), 66vh);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .batch-panel.is-hidden {
@@ -5334,11 +5396,33 @@ input.is-invalid {
 }
 
 .batch-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  max-height: 420px;
-  overflow: auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #4a5364 transparent;
+}
+
+.batch-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.batch-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.batch-list::-webkit-scrollbar-thumb {
+  background: #4a5364;
+  border-radius: 999px;
+}
+
+.batch-list::-webkit-scrollbar-thumb:hover {
+  background: #616a79;
 }
 
 .batch-item {
@@ -5346,13 +5430,17 @@ input.is-invalid {
   border-radius: var(--radius);
   background: var(--card-bg);
   padding: 10px;
+  min-height: 56px;
   text-align: left;
   display: grid;
+  align-content: start;
+  justify-items: start;
   gap: 6px;
   cursor: pointer;
   color: var(--text);
   font-size: var(--fs-xs);
   font-family: inherit;
+  flex-shrink: 0;
   position: relative;
   overflow: hidden;
   transition: background 0.3s ease, transform 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
@@ -5390,11 +5478,13 @@ input.is-invalid {
 .batch-index {
   font-size: var(--fs-xs);
   font-weight: 500;
+  line-height: 1.15;
 }
 
 .batch-meta {
   color: var(--muted);
   font-size: var(--fs-2xs);
+  line-height: 1.15;
 }
 
 .pdf-preview,
@@ -5609,6 +5699,7 @@ input.is-invalid {
 
   .batch-panel {
     order: 2;
+    height: min(380px, 58vh);
   }
 
   .receipt-grid {
@@ -5617,6 +5708,17 @@ input.is-invalid {
 }
 
 @media (max-width: 720px) {
+  .csv-table-toolbar {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 6px;
+  }
+
+  .csv-page-meta {
+    grid-column: 1 / -1;
+    order: -1;
+    text-align: center;
+  }
+
   .auth-form.is-register-mode {
     grid-template-columns: 1fr;
   }
