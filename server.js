@@ -1464,14 +1464,13 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const reminderTitle = String(options?.reminderTitle || "").trim();
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
-  const heroTitle = isReminder
-    ? "Invoice Payment Reminder<br/>Action Required"
-    : "Your Monthly Shipping Invoice<br/>Is Ready";
+  const titleLine1 = isReminder ? "Invoice Payment Reminder" : "Your Monthly Shipping Invoice";
+  const titleLine2 = isReminder ? "Action Required" : "Is Ready";
   const subtitle = isReminder
     ? reminderTitle || "Please review your invoice and complete payment by the due date."
-    : "Your invoice PDF is attached for your records. You can also view it instantly using the button below.";
+    : "Your invoice PDF is attached to this email. You can also access it instantly using the button below.";
 
-  let stageLabel = "Net terms: payment due within 30 days";
+  let stageLabel = "Invoice issued · payment due within 30 days";
   let stageBg = "#222a35";
   let stageBorder = "#4b5567";
   let stageText = "#a7b1c4";
@@ -1497,28 +1496,37 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
     stageText = "#ffb8c4";
   }
   return `
-    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:24px;color:#f3f6ff;">
-      <div style="max-width:980px;margin:0 auto;min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;">
-        <div style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;padding:18px 12px;">
-          <div style="text-align:center;max-width:860px;">
-            <div style="font-size:56px;line-height:1.04;letter-spacing:-0.03em;color:#f3f6ff;">
-            ${escapeHtml(heroTitle)}
-            </div>
-            <div style="margin-top:16px;font-size:15px;line-height:1.5;color:#9aa3b2;">
-              ${escapeHtml(subtitle)}
-            </div>
-            <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:22px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
-              View Invoice
-            </a>
-          </div>
-        </div>
-        <div style="width:100%;text-align:center;padding:4px 0 2px;">
-          <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;">
-            ${escapeHtml(stageLabel)}
-          </span>
-        </div>
-      </div>
-    </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;">
+      <tr>
+        <td align="center" style="padding:24px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
+            <tr>
+              <td align="center" style="padding:44px 8px 28px;">
+                <div style="font-size:72px;line-height:0.98;letter-spacing:-0.04em;color:#f3f6ff;font-weight:300;">
+                  ${escapeHtml(titleLine1)}<br/>${escapeHtml(titleLine2)}
+                </div>
+                <div style="max-width:780px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
+                  ${escapeHtml(subtitle)}
+                </div>
+                <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
+                  View Invoice
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="height:140px;font-size:0;line-height:140px;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 8px 8px;">
+                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;">
+                  ${escapeHtml(stageLabel)}
+                </span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   `;
 }
 
