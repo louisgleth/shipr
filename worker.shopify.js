@@ -1522,28 +1522,59 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const dueLabel = String(invoice?.due_at || "").trim()
     ? new Date(invoice.due_at).toISOString().slice(0, 10)
     : "--";
-  const topItems = Array.isArray(items) ? items.slice(0, 24) : [];
+  const topItems = Array.isArray(items) ? items.slice(0, 14) : [];
   const hiddenCount = Math.max(0, (Array.isArray(items) ? items.length : 0) - topItems.length);
+  const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
+  const viewUrl = String(options?.viewUrl || "#").trim() || "#";
+  const heroTitle = isReminder
+    ? reminderTitle || "Invoice payment reminder"
+    : "Your monthly shipping invoice is ready";
+
+  let stageLabel = "Payable in 30 days";
+  let stageBg = "#222a35";
+  let stageBorder = "#4b5567";
+  let stageText = "#a7b1c4";
+  if (reminderStage === 1) {
+    stageLabel = "Reminder sent · due in 7 days";
+    stageBg = "#10281d";
+    stageBorder = "#2f8457";
+    stageText = "#8fe2b2";
+  } else if (reminderStage === 2) {
+    stageLabel = "Reminder sent · due tomorrow";
+    stageBg = "#2b2314";
+    stageBorder = "#b57d23";
+    stageText = "#ffd48c";
+  } else if (reminderStage === 3) {
+    stageLabel = "Reminder sent · due today";
+    stageBg = "#342413";
+    stageBorder = "#c9821f";
+    stageText = "#ffc889";
+  } else if (reminderStage >= 4) {
+    stageLabel = "Overdue reminder sent";
+    stageBg = "#351a1e";
+    stageBorder = "#b84b5e";
+    stageText = "#ffb8c4";
+  }
   return `
-    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:24px;color:#f3f6ff;">
-      <div style="max-width:760px;margin:0 auto;border:1px solid rgb(46,46,46);border-radius:12px;background:#1c2026;padding:20px;">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid rgb(46,46,46);padding-bottom:12px;margin-bottom:16px;">
-          <div>
-            <div style="font-size:24px;line-height:1.2;">Shipide Billing</div>
-            <div style="color:#a6afc2;font-size:13px;margin-top:4px;">${escapeHtml(reference)}</div>
+    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:26px 16px;color:#f3f6ff;">
+      <div style="max-width:760px;margin:0 auto;border:1px solid rgb(46,46,46);border-radius:6px;background:#1c2026;padding:22px;">
+        <div style="text-align:center;padding:10px 8px 18px;border-bottom:1px solid rgb(46,46,46);">
+          <div style="font-size:32px;line-height:1.12;letter-spacing:-0.02em;color:#f3f6ff;">
+            ${escapeHtml(heroTitle)}
           </div>
-          <div style="text-align:right;">
-            <div style="display:inline-block;border:1px solid rgba(119,71,227,0.55);border-radius:8px;padding:4px 10px;color:#bba8ee;font-size:12px;">${isReminder ? "Reminder" : "Invoice"}</div>
-            <div style="color:#a6afc2;font-size:12px;margin-top:8px;">Period: ${escapeHtml(periodLabel)}</div>
-            <div style="color:#a6afc2;font-size:12px;">Due: ${escapeHtml(dueLabel)}</div>
+          <div style="margin-top:8px;font-size:13px;color:#9aa3b2;">
+            ${escapeHtml(reference)} · ${escapeHtml(periodLabel)} · Due ${escapeHtml(dueLabel)}
           </div>
+          <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:18px;padding:11px 18px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:13px;line-height:1;">
+            View Invoice
+          </a>
         </div>
-        ${isReminder ? `<div style="margin-bottom:14px;padding:12px 14px;border:1px solid rgba(119,71,227,0.5);border-radius:10px;background:#151530;color:#d5d8e6;font-size:14px;">${escapeHtml(reminderTitle || "Payment reminder for this invoice.")}</div>` : ""}
-        <div style="font-size:14px;color:#dfe4f2;margin-bottom:12px;">
-          <strong style="font-weight:500;">${escapeHtml(invoice?.company_name || "Client account")}</strong><br/>
-          ${escapeHtml(invoice?.contact_email || "")}
+        <div style="margin-top:14px;padding:10px 12px;border:1px solid rgb(46,46,46);border-radius:4px;background:#00060f;font-size:13px;color:#dfe4f2;">
+          <strong style="font-weight:500;">${escapeHtml(invoice?.company_name || "Client account")}</strong>
+          <span style="color:#8f98ad;"> · </span>
+          <span style="color:#a6afc2;">${escapeHtml(invoice?.contact_email || "--")}</span>
         </div>
-        <table style="width:100%;border-collapse:collapse;border:1px solid rgb(46,46,46);border-radius:10px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;border:1px solid rgb(46,46,46);border-radius:4px;overflow:hidden;margin-top:12px;">
           <thead>
             <tr style="background:#141922;color:#99a3ba;font-size:12px;text-align:left;">
               <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Service</th>
@@ -1565,20 +1596,25 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
               .join("")}
           </tbody>
         </table>
-        ${hiddenCount > 0 ? `<div style="margin-top:8px;color:#8f98ad;font-size:12px;">+${hiddenCount} more labels included in this invoice.</div>` : ""}
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgb(46,46,46);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
-          <div>
-            <div style="font-size:12px;color:#99a3ba;">Subtotal (EX. VAT)</div>
-            <div style="font-size:18px;">€${escapeHtml(fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2))}</div>
-          </div>
-          <div>
-            <div style="font-size:12px;color:#99a3ba;">VAT (${Math.round((Number(invoice?.vat_rate) || DEFAULT_VAT_RATE) * 100)}%)</div>
-            <div style="font-size:18px;">€${escapeHtml(fromCents(toCents(invoice?.vat_amount)).toFixed(2))}</div>
-          </div>
-          <div>
-            <div style="font-size:12px;color:#99a3ba;">Total (INCL. VAT)</div>
-            <div style="font-size:20px;">€${escapeHtml(fromCents(toCents(invoice?.total_inc_vat)).toFixed(2))}</div>
-          </div>
+        ${hiddenCount > 0 ? `<div style="margin-top:8px;color:#8f98ad;font-size:12px;">+${hiddenCount} more labels are included in this invoice.</div>` : ""}
+        <table role="presentation" style="width:100%;margin-top:14px;border-collapse:collapse;">
+          <tr>
+            <td style="padding:7px 0;font-size:12px;color:#99a3ba;">Subtotal (EX. VAT)</td>
+            <td style="padding:7px 0;font-size:15px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2))}</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 0;font-size:12px;color:#99a3ba;">VAT (${Math.round((Number(invoice?.vat_rate) || DEFAULT_VAT_RATE) * 100)}%)</td>
+            <td style="padding:7px 0;font-size:15px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.vat_amount)).toFixed(2))}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0 0;border-top:1px solid rgb(46,46,46);font-size:12px;color:#99a3ba;">Total (INCL. VAT)</td>
+            <td style="padding:10px 0 0;border-top:1px solid rgb(46,46,46);font-size:20px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.total_inc_vat)).toFixed(2))}</td>
+          </tr>
+        </table>
+        <div style="text-align:center;margin-top:18px;">
+          <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;">
+            ${escapeHtml(stageLabel)}
+          </span>
         </div>
       </div>
     </div>
@@ -2436,6 +2472,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     html: buildInvoiceEmailHtml(invoiceWithItems, invoiceWithItems.items || [], {
       isReminder,
       reminderTitle,
+      reminderStage,
     }),
     text: buildInvoiceEmailText(invoiceWithItems, { isReminder }),
   });
