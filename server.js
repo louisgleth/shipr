@@ -1559,27 +1559,27 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
           max-width: 340px !important;
         }
         .shipide-email-hero-wrap {
-          padding: 34px 8px 20px !important;
+          padding: 38px 8px 20px !important;
         }
         .shipide-email-hero-spacer {
           height: 92px !important;
           line-height: 92px !important;
         }
         .shipide-email-logo {
-          width: 128px !important;
-          margin-bottom: 16px !important;
+          width: 96px !important;
+          margin-bottom: 24px !important;
         }
       }
     </style>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:2px solid #7747e3;">
       <tr>
-        <td align="center" style="padding:24px 16px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;border-top:1px solid #7747e3;">
+        <td align="center" style="padding:0 16px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
             <tr>
-              <td align="center" class="shipide-email-hero-wrap" style="padding:56px 8px 24px;">
+              <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="${escapeHtml(
                   logoUrl
-                )}" alt="Shipide" class="shipide-email-logo" width="154" style="display:block;width:154px;height:auto;margin:0 auto 18px;" />
+                )}" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
                 <div class="shipide-email-hero-title" style="font-size:62px;line-height:1;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
                   ${escapeHtml(titleLine1)}<br/>${escapeHtml(titleLine2)}
                 </div>
