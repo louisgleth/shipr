@@ -1025,6 +1025,7 @@ const adminBillingRunStatus = document.getElementById("adminBillingRunStatus");
 const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
+const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
@@ -3518,6 +3519,9 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunCreateButton) adminBillingRunCreateButton.disabled = adminBillingBusy;
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
+  if (adminBillingSendTestSequenceButton) {
+    adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
+  }
 }
 
 function setAdminBillingStatus(message = "", options = {}) {
@@ -3683,6 +3687,50 @@ async function sendAdminBillingTestEmail() {
       tone: "error",
     });
     showToast(error?.message || tr("Could not send test invoice email."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminBillingTestSequence() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/invoices/send-test-sequence", {
+      method: "POST",
+      timeoutMs: 45000,
+      body: JSON.stringify({ toEmail }),
+    });
+    const sent = Number(payload?.sent_count || 0);
+    const failed = Number(payload?.failed_count || 0);
+    const total = Number(payload?.total_count || sent + failed || 0);
+    if (failed > 0) {
+      const message = tr("Sequence sent with {failed} failures ({sent}/{total}).", {
+        failed: String(failed),
+        sent: String(sent),
+        total: String(total),
+      });
+      setAdminBillingStatus(message, { tone: "error" });
+      showToast(message, { tone: "warning" });
+      return;
+    }
+    const message = tr("Follow-up sequence sent to {email} ({count} emails).", {
+      email: String(payload?.to || toEmail),
+      count: String(total || sent),
+    });
+    setAdminBillingStatus(message, { tone: "success" });
+    showToast(tr("Follow-up sequence sent."), { tone: "success" });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send follow-up sequence."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not send follow-up sequence."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -9900,6 +9948,12 @@ if (adminBillingRunSendButton) {
 if (adminBillingSendTestButton) {
   adminBillingSendTestButton.addEventListener("click", async () => {
     await sendAdminBillingTestEmail();
+  });
+}
+
+if (adminBillingSendTestSequenceButton) {
+  adminBillingSendTestSequenceButton.addEventListener("click", async () => {
+    await sendAdminBillingTestSequence();
   });
 }
 

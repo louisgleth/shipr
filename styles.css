@@ -1277,6 +1277,12 @@ body {
   align-items: end;
 }
 
+.admin-billing-test-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .admin-billing-invoices {
   border-top: 1px solid var(--stroke);
   padding-top: 10px;
@@ -5608,6 +5614,11 @@ input.is-invalid {
 
   .admin-billing-test {
     grid-template-columns: 1fr;
+  }
+
+  .admin-billing-test-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .admin-clients-head {

@@ -549,6 +549,46 @@ function toInvoiceReference(invoiceId) {
   return `INV-${safe.slice(0, 8).toUpperCase()}`;
 }
 
+function formatInvoiceSubjectMonthYear(invoice = {}) {
+  const candidates = [invoice?.period_start, invoice?.issued_at, invoice?.created_at, invoice?.due_at];
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  for (const candidate of candidates) {
+    const raw = String(candidate || "").trim();
+    if (!raw) continue;
+    const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    let date = null;
+    if (dateOnly) {
+      date = new Date(Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 12));
+    } else {
+      const parsed = Date.parse(raw);
+      if (Number.isFinite(parsed)) date = new Date(parsed);
+    }
+    if (date && Number.isFinite(date.getTime())) {
+      return formatter.format(date);
+    }
+  }
+  return formatter.format(new Date());
+}
+
+function buildInvoiceEmailSubject(invoice = {}, options = {}) {
+  const reference = toInvoiceReference(invoice?.id);
+  const monthYear = formatInvoiceSubjectMonthYear(invoice);
+  const suffix = `${monthYear} [${reference}]`;
+  const isReminder = Boolean(options?.isReminder);
+  const reminderStage = Number(options?.reminderStage) || 0;
+  if (isReminder && reminderStage >= 4) {
+    return `URGENT ! Invoice Overdue — ${suffix}`;
+  }
+  if (isReminder) {
+    return `Payment Reminder — ${suffix}`;
+  }
+  return `Your Invoice — ${suffix}`;
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -1463,14 +1503,15 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
-  const titleLine1 = isReminder ? "Invoice Reminder" : "Your Monthly Invoice";
-  const titleLine2 = isReminder ? "Action Required" : "Is Ready";
-  const subtitleLine1 = isReminder
-    ? "Please review your invoice and complete payment"
-    : "Your invoice PDF is attached to this email.";
-  const subtitleLine2 = isReminder
-    ? "using the details in your billing section."
-    : "You can also view it instantly with the button below.";
+  const isOverdueReminder = isReminder && reminderStage >= 4;
+  const titleLine1 = isOverdueReminder
+    ? "Urgent Invoice"
+    : isReminder
+      ? "Payment Reminder"
+      : "Your Monthly Invoice";
+  const titleLine2 = isOverdueReminder ? "Is Overdue" : isReminder ? "Invoice Due Soon" : "Is Ready";
+  const subtitleLine1 = "Your invoice PDF is attached to this email.";
+  const subtitleLine2 = "You can also view it instantly with the button below.";
 
   let stageLabel = "Due in 30 days";
   let stageBg = "#222a35";
@@ -1748,11 +1789,10 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Number(options?.reminderStage) || 0;
   const reminderTitle = String(options?.reminderTitle || "").trim();
-  const reference = toInvoiceReference(invoiceWithItems.id);
-  const subjectPrefix = isReminder ? "Payment Reminder" : "Invoice";
+  const subject = buildInvoiceEmailSubject(invoiceWithItems, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail({
     to: toEmail,
-    subject: `${subjectPrefix} ${reference}`,
+    subject,
     html: buildInvoiceEmailHtml(invoiceWithItems, invoiceWithItems.items || [], {
       isReminder,
       reminderTitle,
@@ -3058,6 +3098,94 @@ async function handleAdminInvoiceSend(req, res) {
   }
 }
 
+function buildAdminBillingTestInvoice(toEmail) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  return {
+    invoice: {
+      id: crypto.randomUUID(),
+      company_name: "Test Client",
+      contact_email: toEmail,
+      period_start: nowIso.slice(0, 10),
+      period_end: nowIso.slice(0, 10),
+      due_at: addUtcDays(now, getInvoiceTermsDays()).toISOString(),
+      subtotal_ex_vat: 120,
+      vat_amount: 25.2,
+      total_inc_vat: 145.2,
+      vat_rate: DEFAULT_VAT_RATE,
+    },
+    items: [
+      {
+        service_type: "Economy",
+        recipient_name: "Sample Recipient",
+        recipient_country: "Belgium",
+        amount_ex_vat: 120,
+      },
+    ],
+  };
+}
+
+async function sendAdminBillingTestSequenceEmails(toEmail) {
+  const { invoice, items } = buildAdminBillingTestInvoice(toEmail);
+  const steps = [
+    { reminderStage: 0, isReminder: false, key: "initial" },
+    { reminderStage: 1, isReminder: true, key: "due_7_days" },
+    { reminderStage: 2, isReminder: true, key: "due_tomorrow" },
+    { reminderStage: 3, isReminder: true, key: "due_today" },
+    { reminderStage: 4, isReminder: true, key: "overdue_3_days" },
+    { reminderStage: 5, isReminder: true, key: "overdue_10_days" },
+    { reminderStage: 6, isReminder: true, key: "overdue_15_days" },
+    { reminderStage: 7, isReminder: true, key: "overdue_30_days" },
+  ];
+
+  const results = [];
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    const subject = buildInvoiceEmailSubject(invoice, {
+      isReminder: step.isReminder,
+      reminderStage: step.reminderStage,
+    });
+    try {
+      const response = await sendResendEmail({
+        to: toEmail,
+        subject,
+        html: buildInvoiceEmailHtml(invoice, items, {
+          isReminder: step.isReminder,
+          reminderStage: step.reminderStage,
+        }),
+        text: buildInvoiceEmailText(invoice, {
+          isReminder: step.isReminder,
+        }),
+      });
+      results.push({
+        step: step.key,
+        reminder_stage: step.reminderStage,
+        subject,
+        resend_id: response?.id || null,
+        ok: true,
+      });
+    } catch (error) {
+      results.push({
+        step: step.key,
+        reminder_stage: step.reminderStage,
+        subject,
+        error: error?.message || "Could not send email.",
+        ok: false,
+      });
+    }
+    if (index < steps.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  }
+  return {
+    to: toEmail,
+    total_count: steps.length,
+    sent_count: results.filter((row) => row.ok).length,
+    failed_count: results.filter((row) => !row.ok).length,
+    results,
+  };
+}
+
 async function handleAdminInvoiceSendTest(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -3081,32 +3209,13 @@ async function handleAdminInvoiceSendTest(req, res) {
     return;
   }
   try {
-    const now = new Date().toISOString();
-    const testInvoice = {
-      id: crypto.randomUUID(),
-      company_name: "Test Client",
-      contact_email: toEmail,
-      period_start: now.slice(0, 10),
-      period_end: now.slice(0, 10),
-      due_at: addUtcDays(new Date(), getInvoiceTermsDays()).toISOString(),
-      subtotal_ex_vat: 120,
-      vat_amount: 25.2,
-      total_inc_vat: 145.2,
-      vat_rate: DEFAULT_VAT_RATE,
-    };
-    const testItems = [
-      {
-        service_type: "Economy",
-        recipient_name: "Sample Recipient",
-        recipient_country: "Belgium",
-        amount_ex_vat: 120,
-      },
-    ];
+    const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(toEmail);
     const resendResponse = await sendResendEmail({
       to: toEmail,
-      subject: `Invoice Test ${toInvoiceReference(testInvoice.id)}`,
+      subject: buildInvoiceEmailSubject(testInvoice, { isReminder: false, reminderStage: 0 }),
       html: buildInvoiceEmailHtml(testInvoice, testItems, {
         isReminder: false,
+        reminderStage: 0,
       }),
       text: buildInvoiceEmailText(testInvoice, {
         isReminder: false,
@@ -3119,6 +3228,39 @@ async function handleAdminInvoiceSendTest(req, res) {
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not send test invoice email." });
+  }
+}
+
+async function handleAdminInvoiceSendTestSequence(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to send billing tests." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    sendJson(res, 400, { error: "A valid test email is required." });
+    return;
+  }
+  try {
+    const sequence = await sendAdminBillingTestSequenceEmails(toEmail);
+    sendJson(res, 200, {
+      ok: sequence.failed_count === 0,
+      ...sequence,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not send follow-up sequence." });
   }
 }
 
@@ -3702,6 +3844,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/admin/invoices/send-test" && req.method === "POST") {
     await handleAdminInvoiceSendTest(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/invoices/send-test-sequence" && req.method === "POST") {
+    await handleAdminInvoiceSendTestSequence(req, res);
     return true;
   }
   if (pathname === "/api/admin/invoices/mark-paid" && req.method === "POST") {
