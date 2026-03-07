@@ -1515,27 +1515,23 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
 }
 
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
-  const reference = toInvoiceReference(invoice?.id);
   const isReminder = Boolean(options?.isReminder);
   const reminderTitle = String(options?.reminderTitle || "").trim();
-  const periodLabel = `${invoice?.period_start || "--"} to ${invoice?.period_end || "--"}`;
-  const dueLabel = String(invoice?.due_at || "").trim()
-    ? new Date(invoice.due_at).toISOString().slice(0, 10)
-    : "--";
-  const topItems = Array.isArray(items) ? items.slice(0, 14) : [];
-  const hiddenCount = Math.max(0, (Array.isArray(items) ? items.length : 0) - topItems.length);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
   const heroTitle = isReminder
-    ? reminderTitle || "Invoice payment reminder"
-    : "Your monthly shipping invoice is ready";
+    ? "Invoice Payment Reminder<br/>Action Required"
+    : "Your Monthly Shipping Invoice<br/>Is Ready";
+  const subtitle = isReminder
+    ? reminderTitle || "Please review your invoice and complete payment by the due date."
+    : "Your invoice PDF is attached for your records. You can also view it instantly using the button below.";
 
-  let stageLabel = "Payable in 30 days";
+  let stageLabel = "Net terms: payment due within 30 days";
   let stageBg = "#222a35";
   let stageBorder = "#4b5567";
   let stageText = "#a7b1c4";
   if (reminderStage === 1) {
-    stageLabel = "Reminder sent · due in 7 days";
+    stageLabel = "Reminder sent · payment due in 7 days";
     stageBg = "#10281d";
     stageBorder = "#2f8457";
     stageText = "#8fe2b2";
@@ -1556,62 +1552,22 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
     stageText = "#ffb8c4";
   }
   return `
-    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:26px 16px;color:#f3f6ff;">
-      <div style="max-width:760px;margin:0 auto;border:1px solid rgb(46,46,46);border-radius:6px;background:#1c2026;padding:22px;">
-        <div style="text-align:center;padding:10px 8px 18px;border-bottom:1px solid rgb(46,46,46);">
-          <div style="font-size:32px;line-height:1.12;letter-spacing:-0.02em;color:#f3f6ff;">
+    <div style="font-family:Helvetica,Arial,sans-serif;background:#00060f;padding:24px;color:#f3f6ff;">
+      <div style="max-width:980px;margin:0 auto;min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;">
+        <div style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;padding:18px 12px;">
+          <div style="text-align:center;max-width:860px;">
+            <div style="font-size:56px;line-height:1.04;letter-spacing:-0.03em;color:#f3f6ff;">
             ${escapeHtml(heroTitle)}
+            </div>
+            <div style="margin-top:16px;font-size:15px;line-height:1.5;color:#9aa3b2;">
+              ${escapeHtml(subtitle)}
+            </div>
+            <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:22px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
+              View Invoice
+            </a>
           </div>
-          <div style="margin-top:8px;font-size:13px;color:#9aa3b2;">
-            ${escapeHtml(reference)} · ${escapeHtml(periodLabel)} · Due ${escapeHtml(dueLabel)}
-          </div>
-          <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:18px;padding:11px 18px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:13px;line-height:1;">
-            View Invoice
-          </a>
         </div>
-        <div style="margin-top:14px;padding:10px 12px;border:1px solid rgb(46,46,46);border-radius:4px;background:#00060f;font-size:13px;color:#dfe4f2;">
-          <strong style="font-weight:500;">${escapeHtml(invoice?.company_name || "Client account")}</strong>
-          <span style="color:#8f98ad;"> · </span>
-          <span style="color:#a6afc2;">${escapeHtml(invoice?.contact_email || "--")}</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse;border:1px solid rgb(46,46,46);border-radius:4px;overflow:hidden;margin-top:12px;">
-          <thead>
-            <tr style="background:#141922;color:#99a3ba;font-size:12px;text-align:left;">
-              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Service</th>
-              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Recipient</th>
-              <th style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-weight:400;">Amount (EX. VAT)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${topItems
-              .map(
-                (item) => `
-                <tr>
-                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">${escapeHtml(item?.service_type || "Label")}</td>
-                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">${escapeHtml(String(item?.recipient_name || "--").trim() || "--")} ${item?.recipient_country ? `· ${escapeHtml(item.recipient_country)}` : ""}</td>
-                  <td style="padding:10px 12px;border-bottom:1px solid rgb(46,46,46);font-size:13px;">€${escapeHtml(fromCents(toCents(item?.amount_ex_vat)).toFixed(2))}</td>
-                </tr>
-              `
-              )
-              .join("")}
-          </tbody>
-        </table>
-        ${hiddenCount > 0 ? `<div style="margin-top:8px;color:#8f98ad;font-size:12px;">+${hiddenCount} more labels are included in this invoice.</div>` : ""}
-        <table role="presentation" style="width:100%;margin-top:14px;border-collapse:collapse;">
-          <tr>
-            <td style="padding:7px 0;font-size:12px;color:#99a3ba;">Subtotal (EX. VAT)</td>
-            <td style="padding:7px 0;font-size:15px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2))}</td>
-          </tr>
-          <tr>
-            <td style="padding:7px 0;font-size:12px;color:#99a3ba;">VAT (${Math.round((Number(invoice?.vat_rate) || DEFAULT_VAT_RATE) * 100)}%)</td>
-            <td style="padding:7px 0;font-size:15px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.vat_amount)).toFixed(2))}</td>
-          </tr>
-          <tr>
-            <td style="padding:10px 0 0;border-top:1px solid rgb(46,46,46);font-size:12px;color:#99a3ba;">Total (INCL. VAT)</td>
-            <td style="padding:10px 0 0;border-top:1px solid rgb(46,46,46);font-size:20px;color:#f3f6ff;text-align:right;">€${escapeHtml(fromCents(toCents(invoice?.total_inc_vat)).toFixed(2))}</td>
-          </tr>
-        </table>
-        <div style="text-align:center;margin-top:18px;">
+        <div style="width:100%;text-align:center;padding:4px 0 2px;">
           <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;">
             ${escapeHtml(stageLabel)}
           </span>
