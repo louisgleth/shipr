@@ -1516,52 +1516,75 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
 
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
-  const reminderTitle = String(options?.reminderTitle || "").trim();
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
-  const titleLine1 = isReminder ? "Invoice Payment Reminder" : "Your Monthly Shipping Invoice";
+  const titleLine1 = isReminder ? "Invoice Reminder" : "Your Monthly Invoice";
   const titleLine2 = isReminder ? "Action Required" : "Is Ready";
-  const subtitle = isReminder
-    ? reminderTitle || "Please review your invoice and complete payment by the due date."
-    : "Your invoice PDF is attached to this email. You can also access it instantly using the button below.";
+  const subtitleLine1 = isReminder
+    ? "Please review your invoice and complete payment"
+    : "Your invoice PDF is attached to this email.";
+  const subtitleLine2 = isReminder
+    ? "using the details in your billing section."
+    : "You can also view it instantly with the button below.";
 
-  let stageLabel = "Invoice issued · payment due within 30 days";
+  let stageLabel = "Due in 30 days";
   let stageBg = "#222a35";
   let stageBorder = "#4b5567";
   let stageText = "#a7b1c4";
   if (reminderStage === 1) {
-    stageLabel = "Reminder sent · payment due in 7 days";
+    stageLabel = "Due in 7 days";
     stageBg = "#10281d";
     stageBorder = "#2f8457";
     stageText = "#8fe2b2";
   } else if (reminderStage === 2) {
-    stageLabel = "Reminder sent · due tomorrow";
+    stageLabel = "Due tomorrow";
     stageBg = "#2b2314";
     stageBorder = "#b57d23";
     stageText = "#ffd48c";
   } else if (reminderStage === 3) {
-    stageLabel = "Reminder sent · due today";
+    stageLabel = "Due today";
     stageBg = "#342413";
     stageBorder = "#c9821f";
     stageText = "#ffc889";
   } else if (reminderStage >= 4) {
-    stageLabel = "Overdue reminder sent";
+    stageLabel = "Overdue";
     stageBg = "#351a1e";
     stageBorder = "#b84b5e";
     stageText = "#ffb8c4";
   }
   return `
+    <style>
+      @media only screen and (max-width: 640px) {
+        .shipide-email-hero-title {
+          font-size: 42px !important;
+          line-height: 1.04 !important;
+          letter-spacing: -0.03em !important;
+        }
+        .shipide-email-hero-sub {
+          font-size: 14px !important;
+          line-height: 1.45 !important;
+          max-width: 340px !important;
+        }
+        .shipide-email-hero-wrap {
+          padding: 28px 8px 20px !important;
+        }
+        .shipide-email-hero-spacer {
+          height: 92px !important;
+          line-height: 92px !important;
+        }
+      }
+    </style>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;">
       <tr>
         <td align="center" style="padding:24px 16px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
             <tr>
-              <td align="center" style="padding:44px 8px 28px;">
-                <div style="font-size:72px;line-height:0.98;letter-spacing:-0.04em;color:#f3f6ff;font-weight:300;">
+              <td align="center" class="shipide-email-hero-wrap" style="padding:40px 8px 24px;">
+                <div class="shipide-email-hero-title" style="font-size:62px;line-height:1;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
                   ${escapeHtml(titleLine1)}<br/>${escapeHtml(titleLine2)}
                 </div>
-                <div style="max-width:780px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  ${escapeHtml(subtitle)}
+                <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
+                  ${escapeHtml(subtitleLine1)}<br/>${escapeHtml(subtitleLine2)}
                 </div>
                 <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
                   View Invoice
@@ -1569,11 +1592,11 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
               </td>
             </tr>
             <tr>
-              <td style="height:140px;font-size:0;line-height:140px;">&nbsp;</td>
+              <td class="shipide-email-hero-spacer" style="height:120px;font-size:0;line-height:120px;">&nbsp;</td>
             </tr>
             <tr>
               <td align="center" style="padding:0 8px 8px;">
-                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;">
+                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid ${stageBorder};background:${stageBg};color:${stageText};font-size:11px;letter-spacing:0.01em;white-space:nowrap;">
                   ${escapeHtml(stageLabel)}
                 </span>
               </td>

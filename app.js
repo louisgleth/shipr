@@ -891,6 +891,7 @@ const ROUTE_BASE_PATH = detectRouteBasePath(window.location.pathname);
 const SUPABASE_AUTH_STORAGE_KEY = "sb-pxcqxubehvnyaubqjcrf-auth-token-shipr";
 
 function createSupabaseAuthLock() {
+  const lockQueues = new Map();
   return async (...args) => {
     const callback = args[args.length - 1];
     if (typeof callback !== "function") {
@@ -898,43 +899,26 @@ function createSupabaseAuthLock() {
     }
 
     const lockName = typeof args[0] === "string" ? args[0] : "sb-auth-lock";
-    const requestedTimeout = Number(args[1]);
-    const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
-      ? requestedTimeout
-      : 10000;
+    const previous = lockQueues.get(lockName) || Promise.resolve();
+    let releaseLock = null;
+    const current = new Promise((resolve) => {
+      releaseLock = resolve;
+    });
+    lockQueues.set(
+      lockName,
+      previous.then(
+        () => current,
+        () => current
+      )
+    );
 
-    const canUseNavigatorLocks =
-      typeof navigator !== "undefined" &&
-      navigator.locks &&
-      typeof navigator.locks.request === "function";
-
-    if (!canUseNavigatorLocks) {
-      return callback();
-    }
-
-    let timerId = 0;
-    let controller = null;
-    if (typeof AbortController !== "undefined") {
-      controller = new AbortController();
-      timerId = window.setTimeout(() => {
-        controller.abort("timeout");
-      }, timeoutMs + 120);
-    }
-
+    await previous.catch(() => {});
     try {
-      return await navigator.locks.request(
-        lockName,
-        controller
-          ? { mode: "exclusive", signal: controller.signal }
-          : { mode: "exclusive" },
-        async () => callback()
-      );
-    } catch (_error) {
-      // Fallback: run auth critical section without Web Lock if lock acquisition fails.
-      return callback();
+      return await callback();
     } finally {
-      if (timerId) {
-        window.clearTimeout(timerId);
+      releaseLock();
+      if (lockQueues.get(lockName) === current) {
+        lockQueues.delete(lockName);
       }
     }
   };
@@ -1235,6 +1219,7 @@ const previewDims = document.getElementById("previewDims");
 let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
 let currentUser = null;
+let cachedAuthAccessToken = "";
 let activeLanguage = "en";
 let authMode = "login";
 let authInviteToken = "";
@@ -2336,52 +2321,100 @@ function normalizeShopDomain(value) {
 
 async function getAuthAccessToken() {
   if (!supabaseClient) return "";
-  const {
-    data: { session },
-  } = await supabaseClient.auth.getSession();
-  return String(session?.access_token || "");
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabaseClient.auth.getSession();
+    if (error) {
+      throw error;
+    }
+    const token = String(session?.access_token || "");
+    if (token) {
+      cachedAuthAccessToken = token;
+      return token;
+    }
+  } catch (_error) {
+    // Fallback to cached token for transient session-store hiccups.
+  }
+  return cachedAuthAccessToken;
+}
+
+async function refreshAuthAccessToken() {
+  if (!supabaseClient) return "";
+  try {
+    const { data, error } = await supabaseClient.auth.refreshSession();
+    if (error) {
+      throw error;
+    }
+    const token = String(data?.session?.access_token || "");
+    if (token) {
+      cachedAuthAccessToken = token;
+    }
+    return token;
+  } catch (_error) {
+    return "";
+  }
 }
 
 async function fetchApiWithAuth(path, options = {}) {
   const { timeoutMs = 15000, ...requestOptions } = options;
-  const token = await getAuthAccessToken();
-  if (!token) {
-    throw new Error(tr("You must be signed in to use provider import."));
-  }
-  const headers = new Headers(requestOptions.headers || {});
-  headers.set("Authorization", `Bearer ${token}`);
-  if (requestOptions.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => {
-    controller.abort("request-timeout");
-  }, Math.max(3000, Number(timeoutMs) || 15000));
+  const sendWithToken = async (token) => {
+    if (!token) {
+      throw new Error(tr("You must be signed in to use provider import."));
+    }
+    const headers = new Headers(requestOptions.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    if (requestOptions.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort("request-timeout");
+    }, Math.max(3000, Number(timeoutMs) || 15000));
+    try {
+      const response = await fetch(path, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await response.json().catch(() => ({}))
+        : await response.text().catch(() => "");
+      if (!response.ok) {
+        const message =
+          (payload && typeof payload === "object" && payload.error) ||
+          (typeof payload === "string" ? payload : "") ||
+          tr("Request failed ({status})", { status: response.status });
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(tr("Shopify request timed out. Check Worker route and secrets."));
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  let token = await getAuthAccessToken();
   try {
-    const response = await fetch(path, {
-      ...requestOptions,
-      headers,
-      signal: controller.signal,
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-      ? await response.json().catch(() => ({}))
-      : await response.text().catch(() => "");
-    if (!response.ok) {
-      const message =
-        (payload && typeof payload === "object" && payload.error) ||
-        (typeof payload === "string" ? payload : "") ||
-        tr("Request failed ({status})", { status: response.status });
-      throw new Error(message);
-    }
-    return payload;
+    return await sendWithToken(token);
   } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error(tr("Shopify request timed out. Check Worker route and secrets."));
+    if (Number(error?.status) !== 401) {
+      throw error;
     }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
+    token = await refreshAuthAccessToken();
+    if (!token) {
+      cachedAuthAccessToken = "";
+      throw new Error(tr("You must be signed in to use provider import."));
+    }
+    return sendWithToken(token);
   }
 }
 
@@ -8269,6 +8302,7 @@ function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Crea
 function setAuthView(session, options = {}) {
   const { animate = true } = options;
   currentUser = session?.user || null;
+  cachedAuthAccessToken = String(session?.access_token || "");
   setClientInviteBusy(false);
   void setLanguage(resolvePreferredLanguage(currentUser), { persist: false });
   const isAuthed = Boolean(currentUser);
@@ -8513,12 +8547,27 @@ async function initializeAuth() {
     setAuthView(null, { animate: false });
     return;
   }
-  const {
-    data: { session },
-    error,
-  } = await supabaseClient.auth.getSession();
-  if (error) {
-    setAuthMessage(error.message);
+  let session = null;
+  let sessionError = null;
+  try {
+    const firstAttempt = await supabaseClient.auth.getSession();
+    session = firstAttempt?.data?.session || null;
+    sessionError = firstAttempt?.error || null;
+  } catch (error) {
+    sessionError = error;
+  }
+  if (sessionError && !session) {
+    await new Promise((resolve) => window.setTimeout(resolve, 140));
+    try {
+      const retryAttempt = await supabaseClient.auth.getSession();
+      session = retryAttempt?.data?.session || null;
+      sessionError = retryAttempt?.error || null;
+    } catch (error) {
+      sessionError = error;
+    }
+  }
+  if (sessionError && !session) {
+    setAuthMessage(sessionError?.message || tr("Supabase unavailable"));
   }
   setAuthView(session, { animate: false });
   if (session?.user) {
