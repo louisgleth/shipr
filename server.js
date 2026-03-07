@@ -1536,9 +1536,9 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
     stageText = "#ffc889";
   } else if (reminderStage === 4) {
     stageLabel = "Due today";
-    stageBg = "#3a2612";
-    stageBorder = "#cf7d1a";
-    stageText = "#ffbf82";
+    stageBg = "#3a171d";
+    stageBorder = "#c24e62";
+    stageText = "#ffbcc8";
   } else if (reminderStage >= 5) {
     stageLabel = "Overdue";
     stageBg = "#351a1e";
@@ -1571,7 +1571,7 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
         }
       }
     </style>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:2px solid #7747e3;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
       <tr>
         <td align="center" style="padding:0 16px 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
