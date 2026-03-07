@@ -518,7 +518,7 @@ function getInvoiceTermsDays() {
 }
 
 function getReminderThresholdsDays() {
-  return [-7, -1, 0, 3, 10, 15, 30];
+  return [-15, -7, -1, 0, 3, 10, 15, 30];
 }
 
 function getReminderStageForDueDate(dueAt, now = Date.now()) {
@@ -580,7 +580,7 @@ function buildInvoiceEmailSubject(invoice = {}, options = {}) {
   const suffix = `${monthYear} [${reference}]`;
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Number(options?.reminderStage) || 0;
-  if (isReminder && reminderStage >= 4) {
+  if (isReminder && reminderStage >= 5) {
     return `URGENT ! Invoice Overdue — ${suffix}`;
   }
   if (isReminder) {
@@ -647,13 +647,14 @@ function getReminderTitleByStage(stage, dueAt) {
     ? new Date(dueAt).toISOString().slice(0, 10)
     : "the due date";
   const mapping = {
-    1: `Invoice due in 7 days (${dueLabel})`,
-    2: `Invoice due tomorrow (${dueLabel})`,
-    3: `Invoice due today (${dueLabel})`,
-    4: "Invoice is 3 days overdue",
-    5: "Invoice is 10 days overdue",
-    6: "Invoice is 15 days overdue",
-    7: "Invoice is 30 days overdue",
+    1: `Invoice due in 15 days (${dueLabel})`,
+    2: `Invoice due in 7 days (${dueLabel})`,
+    3: `Invoice due tomorrow (${dueLabel})`,
+    4: `Invoice due today (${dueLabel})`,
+    5: "Invoice is 3 days overdue",
+    6: "Invoice is 10 days overdue",
+    7: "Invoice is 15 days overdue",
+    8: "Invoice is 30 days overdue",
   };
   return mapping[Number(stage)] || "Invoice payment reminder";
 }
@@ -1503,7 +1504,8 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
-  const isOverdueReminder = isReminder && reminderStage >= 4;
+  const isOverdueReminder = isReminder && reminderStage >= 5;
+  const logoUrl = "https://portal.shipide.com/shipide_logo.png";
   const titleLine1 = isOverdueReminder
     ? "Urgent Invoice"
     : isReminder
@@ -1514,25 +1516,30 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const subtitleLine2 = "You can also view it instantly with the button below.";
 
   let stageLabel = "Due in 30 days";
-  let stageBg = "#222a35";
-  let stageBorder = "#4b5567";
-  let stageText = "#a7b1c4";
+  let stageBg = "#122c1f";
+  let stageBorder = "#2f8457";
+  let stageText = "#9de5bd";
   if (reminderStage === 1) {
-    stageLabel = "Due in 7 days";
-    stageBg = "#10281d";
-    stageBorder = "#2f8457";
-    stageText = "#8fe2b2";
-  } else if (reminderStage === 2) {
-    stageLabel = "Due tomorrow";
-    stageBg = "#2b2314";
+    stageLabel = "Due in 15 days";
+    stageBg = "#2f2515";
     stageBorder = "#b57d23";
     stageText = "#ffd48c";
+  } else if (reminderStage === 2) {
+    stageLabel = "Due in 7 days";
+    stageBg = "#322614";
+    stageBorder = "#bf8122";
+    stageText = "#ffd194";
   } else if (reminderStage === 3) {
-    stageLabel = "Due today";
+    stageLabel = "Due tomorrow";
     stageBg = "#342413";
     stageBorder = "#c9821f";
     stageText = "#ffc889";
-  } else if (reminderStage >= 4) {
+  } else if (reminderStage === 4) {
+    stageLabel = "Due today";
+    stageBg = "#3a2612";
+    stageBorder = "#cf7d1a";
+    stageText = "#ffbf82";
+  } else if (reminderStage >= 5) {
     stageLabel = "Overdue";
     stageBg = "#351a1e";
     stageBorder = "#b84b5e";
@@ -1552,20 +1559,27 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
           max-width: 340px !important;
         }
         .shipide-email-hero-wrap {
-          padding: 28px 8px 20px !important;
+          padding: 34px 8px 20px !important;
         }
         .shipide-email-hero-spacer {
           height: 92px !important;
           line-height: 92px !important;
+        }
+        .shipide-email-logo {
+          width: 128px !important;
+          margin-bottom: 16px !important;
         }
       }
     </style>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;">
       <tr>
         <td align="center" style="padding:24px 16px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;border-top:1px solid #7747e3;">
             <tr>
-              <td align="center" class="shipide-email-hero-wrap" style="padding:40px 8px 24px;">
+              <td align="center" class="shipide-email-hero-wrap" style="padding:56px 8px 24px;">
+                <img src="${escapeHtml(
+                  logoUrl
+                )}" alt="Shipide" class="shipide-email-logo" width="154" style="display:block;width:154px;height:auto;margin:0 auto 18px;" />
                 <div class="shipide-email-hero-title" style="font-size:62px;line-height:1;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
                   ${escapeHtml(titleLine1)}<br/>${escapeHtml(titleLine2)}
                 </div>
@@ -3129,13 +3143,14 @@ async function sendAdminBillingTestSequenceEmails(toEmail) {
   const { invoice, items } = buildAdminBillingTestInvoice(toEmail);
   const steps = [
     { reminderStage: 0, isReminder: false, key: "initial" },
-    { reminderStage: 1, isReminder: true, key: "due_7_days" },
-    { reminderStage: 2, isReminder: true, key: "due_tomorrow" },
-    { reminderStage: 3, isReminder: true, key: "due_today" },
-    { reminderStage: 4, isReminder: true, key: "overdue_3_days" },
-    { reminderStage: 5, isReminder: true, key: "overdue_10_days" },
-    { reminderStage: 6, isReminder: true, key: "overdue_15_days" },
-    { reminderStage: 7, isReminder: true, key: "overdue_30_days" },
+    { reminderStage: 1, isReminder: true, key: "due_15_days" },
+    { reminderStage: 2, isReminder: true, key: "due_7_days" },
+    { reminderStage: 3, isReminder: true, key: "due_tomorrow" },
+    { reminderStage: 4, isReminder: true, key: "due_today" },
+    { reminderStage: 5, isReminder: true, key: "overdue_3_days" },
+    { reminderStage: 6, isReminder: true, key: "overdue_10_days" },
+    { reminderStage: 7, isReminder: true, key: "overdue_15_days" },
+    { reminderStage: 8, isReminder: true, key: "overdue_30_days" },
   ];
 
   const results = [];
