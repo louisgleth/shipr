@@ -50,6 +50,29 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #434c5f transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3d4658;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #3d4658;
+  background-clip: padding-box;
 }
 
 html {
@@ -1173,10 +1196,20 @@ body {
   position: relative;
   min-height: 0;
   --scroll-fade-rgb: 28, 32, 38;
+  --scroll-fade-height: 24px;
+  --scroll-fade-mid: 0.5;
+  --scroll-fade-end: 0.96;
+  overflow: hidden;
 }
 
 .scroll-fade-wrap--card {
   --scroll-fade-rgb: 13, 17, 26;
+}
+
+.scroll-fade-wrap--strong {
+  --scroll-fade-height: 64px;
+  --scroll-fade-mid: 0.72;
+  --scroll-fade-end: 1;
 }
 
 .scroll-fade-wrap::after {
@@ -1185,12 +1218,13 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 24px;
+  height: var(--scroll-fade-height);
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgba(var(--scroll-fade-rgb), 0),
-    rgba(var(--scroll-fade-rgb), 0.96)
+    rgba(var(--scroll-fade-rgb), 0) 0%,
+    rgba(var(--scroll-fade-rgb), var(--scroll-fade-mid)) 62%,
+    rgba(var(--scroll-fade-rgb), var(--scroll-fade-end)) 100%
   );
 }
 
@@ -2261,9 +2295,12 @@ body {
   overflow-x: hidden;
   padding-bottom: 12px;
   scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: #434c5f transparent;
 }
 
 .account-history-list-wrap {
+  display: grid;
   min-height: 0;
 }
 
@@ -3652,7 +3689,7 @@ body {
   overflow-y: scroll;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: #4a5364 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .shopify-locations-list::-webkit-scrollbar {
@@ -3664,7 +3701,7 @@ body {
 }
 
 .shopify-locations-list::-webkit-scrollbar-thumb {
-  background: #3f4756;
+  background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -3797,14 +3834,9 @@ body {
   overflow-wrap: anywhere;
 }
 
-.iban-topup-eta-pill {
-  justify-self: start;
-  border: 1px solid rgba(143, 226, 178, 0.52);
-  border-radius: 999px;
-  background: rgba(143, 226, 178, 0.12);
-  color: #9be6be;
+.iban-topup-eta {
   font-size: var(--fs-2xs);
-  padding: 2px 9px;
+  color: var(--muted);
   line-height: 1.2;
 }
 
@@ -4111,7 +4143,7 @@ body {
   overflow-x: hidden;
   scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
-  scrollbar-color: #4a5364 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .csv-map-wrap::-webkit-scrollbar {
@@ -4123,14 +4155,14 @@ body {
 }
 
 .csv-map-wrap::-webkit-scrollbar-thumb {
-  background: #3f4756;
+  background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .csv-map-wrap::-webkit-scrollbar-thumb:hover {
-  background: #5a6476;
+  background: #3d4658;
   background-clip: padding-box;
 }
 
@@ -4279,7 +4311,7 @@ body {
   max-height: calc(88vh - 110px);
   padding-right: 4px;
   scrollbar-width: thin;
-  scrollbar-color: #434a56 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .receipt-stage::-webkit-scrollbar {
@@ -4291,14 +4323,14 @@ body {
 }
 
 .receipt-stage::-webkit-scrollbar-thumb {
-  background: #3f4756;
+  background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .receipt-stage::-webkit-scrollbar-thumb:hover {
-  background: #5a6476;
+  background: #3d4658;
   background-clip: padding-box;
 }
 
@@ -4515,7 +4547,7 @@ body {
   max-height: 380px;
   background: transparent;
   scrollbar-width: thin;
-  scrollbar-color: #434a56 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .receipt-table-wrap::-webkit-scrollbar {
@@ -4527,14 +4559,14 @@ body {
 }
 
 .receipt-table-wrap::-webkit-scrollbar-thumb {
-  background: #3f4756;
+  background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .receipt-table-wrap::-webkit-scrollbar-thumb:hover {
-  background: #5a6476;
+  background: #3d4658;
   background-clip: padding-box;
 }
 
@@ -4699,7 +4731,7 @@ body {
   display: grid;
   gap: 16px;
   scrollbar-width: thin;
-  scrollbar-color: #4a5364 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .restricted-modal-body::-webkit-scrollbar {
@@ -4711,14 +4743,14 @@ body {
 }
 
 .restricted-modal-body::-webkit-scrollbar-thumb {
-  background: #3f4756;
+  background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .restricted-modal-body::-webkit-scrollbar-thumb:hover {
-  background: #5a6476;
+  background: #3d4658;
   background-clip: padding-box;
 }
 
@@ -5958,7 +5990,9 @@ input.is-invalid {
 }
 
 .batch-list-wrap {
+  display: grid;
   min-height: 0;
+  height: 100%;
 }
 
 .batch-list {
@@ -5966,17 +6000,18 @@ input.is-invalid {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  height: 100%;
   max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 12px;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: #4a5364 transparent;
+  scrollbar-color: #434c5f transparent;
 }
 
 .batch-list::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 
 .batch-list::-webkit-scrollbar-track {
@@ -5984,12 +6019,14 @@ input.is-invalid {
 }
 
 .batch-list::-webkit-scrollbar-thumb {
-  background: #4a5364;
+  background: #3d4658;
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .batch-list::-webkit-scrollbar-thumb:hover {
-  background: #616a79;
+  background: #3d4658;
 }
 
 .batch-item {

@@ -1715,13 +1715,6 @@ function buildMonthlyReportsEmailHtml(options = {}) {
             <tr>
               <td class="shipide-email-hero-spacer" style="height:72px;font-size:0;line-height:72px;">&nbsp;</td>
             </tr>
-            <tr>
-              <td align="center" style="padding:0 8px 8px;">
-                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid #8fe2b2;background:rgba(143, 226, 178, 0.16);color:#8fe2b2;font-size:11px;letter-spacing:0.01em;white-space:nowrap;">
-                  Monthly overview
-                </span>
-              </td>
-            </tr>
           </table>
         </td>
       </tr>
