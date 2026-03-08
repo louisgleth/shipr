@@ -11,7 +11,7 @@ create table if not exists public.billing_wallets (
 create table if not exists public.billing_wallet_topups (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  amount_cents bigint not null check (amount_cents > 0),
+  amount_cents bigint not null default 0 check (amount_cents >= 0),
   currency text not null default 'EUR',
   status text not null default 'pending' check (status in ('pending', 'received', 'credited', 'cancelled', 'failed')),
   reference text not null unique,
@@ -22,6 +22,16 @@ create table if not exists public.billing_wallet_topups (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.billing_wallet_topups
+  alter column amount_cents set default 0;
+
+alter table public.billing_wallet_topups
+  drop constraint if exists billing_wallet_topups_amount_cents_check;
+
+alter table public.billing_wallet_topups
+  add constraint billing_wallet_topups_amount_cents_check
+  check (amount_cents >= 0);
 
 create table if not exists public.billing_wallet_transactions (
   id bigint generated always as identity primary key,

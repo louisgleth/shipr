@@ -375,8 +375,11 @@ const TRANSLATIONS = {
     fr: "Générer la référence de virement",
     nl: "Overschrijvingsreferentie genereren",
   },
+  "Generate New Reference": {
+    fr: "Générer une nouvelle référence",
+    nl: "Nieuwe referentie genereren",
+  },
   "Fund your account balance": { fr: "Alimentez votre solde de compte", nl: "Vul je accountsaldo aan" },
-  "Top-up amount (EUR)": { fr: "Montant de recharge (EUR)", nl: "Opwaardeerbedrag (EUR)" },
   "Generate a transfer reference, then send your bank transfer. Funds are credited once received.": {
     fr: "Générez une référence de virement puis envoyez votre transfert bancaire. Les fonds sont crédités à réception.",
     nl: "Genereer een overschrijvingsreferentie en verstuur je bankoverschrijving. Fondsen worden gecrediteerd na ontvangst.",
@@ -458,6 +461,10 @@ const TRANSLATIONS = {
   "Creating top-up request...": {
     fr: "Création de la demande de recharge...",
     nl: "Opwaardeeraanvraag wordt aangemaakt...",
+  },
+  "Preparing transfer instructions...": {
+    fr: "Préparation des informations de virement...",
+    nl: "Overschrijvingsgegevens worden voorbereid...",
   },
   "Transfer reference generated. Use it as communication.": {
     fr: "Référence de virement générée. Utilisez-la en communication.",
@@ -1321,7 +1328,6 @@ const accountIbanSummary = document.getElementById("accountIbanSummary");
 const ibanTopupModal = document.getElementById("ibanTopupModal");
 const ibanTopupClose = document.getElementById("ibanTopupClose");
 const ibanTopupCancel = document.getElementById("ibanTopupCancel");
-const ibanTopupAmount = document.getElementById("ibanTopupAmount");
 const ibanTopupRequest = document.getElementById("ibanTopupRequest");
 const ibanTopupStatus = document.getElementById("ibanTopupStatus");
 const ibanTopupResult = document.getElementById("ibanTopupResult");
@@ -1329,7 +1335,6 @@ const ibanResultBeneficiary = document.getElementById("ibanResultBeneficiary");
 const ibanResultIban = document.getElementById("ibanResultIban");
 const ibanResultBic = document.getElementById("ibanResultBic");
 const ibanResultReference = document.getElementById("ibanResultReference");
-const ibanResultAmount = document.getElementById("ibanResultAmount");
 const ibanResultEta = document.getElementById("ibanResultEta");
 const ibanResultNote = document.getElementById("ibanResultNote");
 const ibanCopyReference = document.getElementById("ibanCopyReference");
@@ -1467,6 +1472,7 @@ let historyLoadRequestToken = 0;
 let billingOverview = null;
 let checkoutPaymentMethod = "invoice";
 let ibanTopupDraft = null;
+let ibanTopupRequestInFlight = false;
 let customsGhostVisible = false;
 let providerStatusTimer = 0;
 let shopifyConnection = null;
@@ -6241,7 +6247,6 @@ function resetIbanTopupResult() {
   if (ibanResultIban) ibanResultIban.textContent = "--";
   if (ibanResultBic) ibanResultBic.textContent = "--";
   if (ibanResultReference) ibanResultReference.textContent = "--";
-  if (ibanResultAmount) ibanResultAmount.textContent = formatMoney(0);
   if (ibanResultEta) ibanResultEta.textContent = tr("1-2 business days");
   if (ibanResultNote) ibanResultNote.textContent = "--";
 }
@@ -6250,11 +6255,6 @@ function setIbanTopupModalOpen(open, options = {}) {
   if (!ibanTopupModal) return;
   ibanTopupModal.classList.toggle("is-closed", !open);
   if (open) {
-    const { amount = null } = options || {};
-    const prefill = Number(amount);
-    if (ibanTopupAmount && Number.isFinite(prefill) && prefill > 0) {
-      ibanTopupAmount.value = prefill.toFixed(2);
-    }
     const instructions = getIbanInstructionsFromOverview();
     if (ibanTopupModalNote) {
       ibanTopupModalNote.textContent =
@@ -6263,6 +6263,7 @@ function setIbanTopupModalOpen(open, options = {}) {
     }
     setIbanTopupStatus("");
     resetIbanTopupResult();
+    void createIbanTopupRequest({ silentToast: true, loadingMessage: tr("Preparing transfer instructions...") });
   }
 }
 
@@ -6283,9 +6284,6 @@ function populateIbanTopupResult(payload) {
   if (ibanResultReference) {
     ibanResultReference.textContent = String(instructions.reference || topup?.reference || "--");
   }
-  if (ibanResultAmount) {
-    ibanResultAmount.textContent = formatMoney(Number(instructions.amount_eur || topup?.amount_eur || 0));
-  }
   if (ibanResultEta) {
     ibanResultEta.textContent = tr("1-2 business days");
   }
@@ -6297,29 +6295,30 @@ function populateIbanTopupResult(payload) {
   }
 }
 
-async function createIbanTopupRequest() {
-  const amount = Number(ibanTopupAmount?.value || 0);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    setIbanTopupStatus(tr("Enter a valid top-up amount."), { tone: "error" });
-    return;
-  }
+async function createIbanTopupRequest(options = {}) {
+  if (ibanTopupRequestInFlight) return;
+  ibanTopupRequestInFlight = true;
   if (ibanTopupRequest) {
     ibanTopupRequest.disabled = true;
   }
-  setIbanTopupStatus(tr("Creating top-up request..."));
+  const loadingMessage =
+    typeof options?.loadingMessage === "string" && options.loadingMessage.trim()
+      ? options.loadingMessage
+      : tr("Creating top-up request...");
+  setIbanTopupStatus(loadingMessage);
   try {
     const payload = await fetchApiWithAuth("/api/billing/topups/request", {
       method: "POST",
-      body: JSON.stringify({
-        amount,
-      }),
+      body: JSON.stringify({}),
     });
     ibanTopupDraft = payload;
     populateIbanTopupResult(payload);
     setIbanTopupStatus(tr("Transfer reference generated. Use it as communication."), {
       tone: "success",
     });
-    showToast(tr("IBAN top-up request created."), { tone: "success" });
+    if (!options?.silentToast) {
+      showToast(tr("IBAN top-up request created."), { tone: "success" });
+    }
     await loadBillingOverview({ quiet: true });
   } catch (error) {
     setIbanTopupStatus(error?.message || tr("Could not create top-up request."), {
@@ -6327,6 +6326,7 @@ async function createIbanTopupRequest() {
     });
     showToast(error?.message || tr("Could not create top-up request."), { tone: "error" });
   } finally {
+    ibanTopupRequestInFlight = false;
     if (ibanTopupRequest) {
       ibanTopupRequest.disabled = false;
     }
@@ -11036,17 +11036,14 @@ if (openIbanTopupFromStep) {
   openIbanTopupFromStep.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const { total } = getOrderTotals();
-    const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
-    const suggestedAmount = Math.max(10, Number((total - walletBalance).toFixed(2)));
-    setIbanTopupModalOpen(true, { amount: suggestedAmount });
+    setIbanTopupModalOpen(true);
   });
 }
 
 if (openIbanTopupFromAccount) {
   openIbanTopupFromAccount.addEventListener("click", (event) => {
     event.preventDefault();
-    setIbanTopupModalOpen(true, { amount: 50 });
+    setIbanTopupModalOpen(true);
   });
 }
 

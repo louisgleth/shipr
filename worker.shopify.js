@@ -1425,15 +1425,14 @@ async function listBillingWalletTransactions(
   return Array.isArray(rows) ? rows : [];
 }
 
-async function createBillingTopupRequest(env, user, amountEur) {
+async function createBillingTopupRequest(env, user, amountEur = null) {
   const userId = String(user?.id || "").trim();
   if (!userId) {
     throw new Error("Authentication required.");
   }
-  const amountCents = toCents(amountEur);
-  if (!Number.isFinite(amountCents) || amountCents < 100) {
-    throw new Error("Top-up amount must be at least €1.00.");
-  }
+  const numericAmount = Number(amountEur);
+  const amountCents =
+    Number.isFinite(numericAmount) && numericAmount > 0 ? Math.max(0, toCents(numericAmount)) : 0;
   await getOrCreateBillingWallet(env, userId);
   const ibanConfig = getBillingIbanConfig(env);
   const reference = buildTopupReference(userId);
@@ -1472,7 +1471,7 @@ async function createBillingTopupRequest(env, user, amountEur) {
     topup: mapBillingTopupRow(created),
     instructions: {
       ...ibanConfig,
-      amount_eur: fromCents(amountCents),
+      amount_eur: amountCents > 0 ? fromCents(amountCents) : null,
       currency: DEFAULT_BILLING_CURRENCY,
       reference,
     },
@@ -3990,12 +3989,9 @@ async function handleBillingTopupRequest(request, env) {
   } catch (error) {
     return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
   }
-  const amount = Number(body?.amount || body?.amountEur);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return jsonResponse({ error: "A valid top-up amount is required." }, 400);
-  }
+  const rawAmount = body?.amount ?? body?.amountEur ?? null;
   try {
-    const result = await createBillingTopupRequest(env, user, amount);
+    const result = await createBillingTopupRequest(env, user, rawAmount);
     return jsonResponse({
       ok: true,
       ...result,

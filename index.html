@@ -1510,10 +1510,6 @@
           <p class="shopify-settings-note" id="ibanTopupModalNote">
             Generate a transfer reference, then send your bank transfer. Funds are credited once received.
           </p>
-          <label class="field iban-topup-amount-field">
-            <span>Top-up amount (EUR)</span>
-            <input type="number" id="ibanTopupAmount" min="1" step="0.01" value="50.00" />
-          </label>
           <div class="provider-status shopify-settings-status" id="ibanTopupStatus"></div>
           <div class="iban-topup-result is-hidden" id="ibanTopupResult">
             <div class="iban-topup-grid">
@@ -1532,10 +1528,6 @@
               <div class="iban-topup-cell">
                 <span>Reference</span>
                 <strong class="mono" id="ibanResultReference">--</strong>
-              </div>
-              <div class="iban-topup-cell">
-                <span>Amount</span>
-                <strong id="ibanResultAmount">€0.00</strong>
               </div>
               <div class="iban-topup-cell">
                 <span>ETA</span>
@@ -1560,7 +1552,7 @@
               <span>Close</span>
             </button>
             <button type="button" class="btn btn-primary" id="ibanTopupRequest">
-              <span>Generate Transfer Reference</span>
+              <span>Generate New Reference</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
           </div>
