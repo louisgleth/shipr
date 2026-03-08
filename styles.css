@@ -830,6 +830,17 @@ body {
   gap: 18px;
 }
 
+.account-overview-bento {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.account-overview-bento > * {
+  min-height: 100%;
+}
+
 .account-info-panel {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -1069,17 +1080,16 @@ body {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 14px;
+  padding: 12px 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .account-billing-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .account-billing-head .panel-sub {
@@ -1088,19 +1098,30 @@ body {
 
 .account-billing-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card-bg);
 }
 
 .account-billing-metric {
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background: var(--card-bg);
-  min-height: 72px;
+  min-height: 58px;
   padding: 10px;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   align-content: start;
+  border-right: 1px solid var(--stroke);
+  border-bottom: 1px solid var(--stroke);
+}
+
+.account-billing-metric:nth-child(2n) {
+  border-right: 0;
+}
+
+.account-billing-metric:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
 .account-billing-metric span {
@@ -1109,7 +1130,7 @@ body {
 }
 
 .account-billing-metric strong {
-  font-size: var(--fs-sm);
+  font-size: 13px;
   color: var(--text);
   font-weight: 400;
 }
@@ -1216,8 +1237,8 @@ body {
 
 .account-billing-footer {
   border-top: 1px solid var(--stroke);
-  padding-top: 10px;
-  font-size: var(--fs-xs);
+  padding-top: 9px;
+  font-size: var(--fs-2xs);
   color: var(--muted);
 }
 
@@ -5546,15 +5567,15 @@ input.is-invalid {
   gap: 16px;
 }
 
-.direct-payment-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
-}
-
 .payment-methods-card,
 .iban-topup-card {
   gap: 12px;
   align-content: start;
+}
+
+.payment-methods-card--single {
+  display: grid;
+  gap: 12px;
 }
 
 .payment-methods-sub,
@@ -5601,7 +5622,7 @@ input.is-invalid {
 }
 
 .payment-method-card.is-insufficient:not(.is-selected) {
-  border-color: #66482b;
+  border-color: var(--stroke);
 }
 
 .payment-method-main {
@@ -5640,6 +5661,12 @@ input.is-invalid {
   background: rgba(143, 226, 178, 0.08);
 }
 
+.payment-method-pill.is-wallet {
+  color: #cdbaff;
+  border-color: rgba(119, 71, 227, 0.55);
+  background: rgba(119, 71, 227, 0.12);
+}
+
 .payment-method-pill.is-delayed {
   color: #e2ac6b;
   border-color: #5f4328;
@@ -5662,8 +5689,46 @@ input.is-invalid {
   font-weight: 400;
 }
 
+.payment-method-meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-inline-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--letter-tight);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.22s ease;
+}
+
+.payment-inline-link:hover {
+  color: var(--text);
+}
+
+.payment-method-card.is-disabled .payment-inline-link {
+  pointer-events: none;
+}
+
 .payment-method-error {
   margin: 0;
+}
+
+.direct-payment-summary {
+  border-top: 1px solid var(--stroke);
+  margin-top: 2px;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
 }
 
 .iban-topup-pill-row {
@@ -5942,6 +6007,10 @@ input.is-invalid {
 }
 
 @media (max-width: 980px) {
+  .account-overview-bento {
+    grid-template-columns: 1fr;
+  }
+
   .account-info-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6085,6 +6154,10 @@ input.is-invalid {
 }
 
 @media (max-width: 720px) {
+  .account-overview-bento {
+    grid-template-columns: 1fr;
+  }
+
   .csv-table-toolbar {
     grid-template-columns: 1fr 1fr;
     row-gap: 6px;

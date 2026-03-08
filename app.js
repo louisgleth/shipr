@@ -411,6 +411,9 @@ const TRANSLATIONS = {
     nl: "Deze bestelling wordt toegevoegd aan je maandfactuur. Als je gegevens moeten wijzigen, neem contact op met je accountmanager.",
   },
   "Choose payment method": { fr: "Choisissez un mode de paiement", nl: "Kies betaalmethode" },
+  "Order summary": { fr: "Récapitulatif", nl: "Besteloverzicht" },
+  "Top up": { fr: "Recharger", nl: "Opwaarderen" },
+  "IBAN Transfer": { fr: "Virement IBAN", nl: "IBAN-overschrijving" },
   "Card and wallet are instant. Bank transfer top-up is credited after receipt.": {
     fr: "La carte et le solde sont instantanés. Le virement est crédité après réception.",
     nl: "Kaart en saldo zijn direct. Overschrijving wordt na ontvangst gecrediteerd.",
@@ -9701,13 +9704,16 @@ function setCheckoutPaymentMethod(method, options = {}) {
       const cardMethod = String(card.dataset.paymentMethod || "").trim().toLowerCase();
       const isActive = cardMethod === checkoutPaymentMethod;
       card.classList.toggle("is-selected", isActive);
-      if (cardMethod === "wallet") {
-        card.disabled = !walletEnabled;
-      } else if (cardMethod === "card") {
-        card.disabled = !cardEnabled;
-      } else {
-        card.disabled = false;
-      }
+      const isDisabled =
+        cardMethod === "wallet"
+          ? !walletEnabled
+          : cardMethod === "card"
+            ? !cardEnabled
+            : false;
+      card.classList.toggle("is-disabled", isDisabled);
+      card.setAttribute("aria-pressed", isActive ? "true" : "false");
+      card.setAttribute("aria-disabled", isDisabled ? "true" : "false");
+      card.setAttribute("tabindex", isDisabled ? "-1" : "0");
     });
   }
 
@@ -10999,6 +11005,20 @@ if (paymentMethodList) {
   paymentMethodList.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target.closest("[data-payment-method]") : null;
     if (!(target instanceof HTMLElement)) return;
+    if (target.classList.contains("is-disabled")) return;
+    const method = String(target.dataset.paymentMethod || "").trim().toLowerCase();
+    setCheckoutPaymentMethod(method);
+    if (paymentMethodError) {
+      paymentMethodError.classList.remove("is-visible");
+    }
+  });
+
+  paymentMethodList.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target instanceof Element ? event.target.closest("[data-payment-method]") : null;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.classList.contains("is-disabled")) return;
+    event.preventDefault();
     const method = String(target.dataset.paymentMethod || "").trim().toLowerCase();
     setCheckoutPaymentMethod(method);
     if (paymentMethodError) {
@@ -11008,8 +11028,14 @@ if (paymentMethodList) {
 }
 
 if (openIbanTopupFromStep) {
+  openIbanTopupFromStep.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.stopPropagation();
+    }
+  });
   openIbanTopupFromStep.addEventListener("click", (event) => {
     event.preventDefault();
+    event.stopPropagation();
     const { total } = getOrderTotals();
     const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
     const suggestedAmount = Math.max(10, Number((total - walletBalance).toFixed(2)));

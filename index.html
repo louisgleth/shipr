@@ -641,47 +641,37 @@
               </div>
 
               <div class="direct-payment-wrap is-hidden" id="directPaymentWrap">
-                <div class="form-grid direct-payment-grid">
-                  <div class="form-section payment-methods-card">
-                    <div class="section-title">Choose payment method</div>
-                    <p class="panel-sub payment-methods-sub">
-                      Card and wallet are instant. Bank transfer top-up is credited after receipt.
-                    </p>
-                    <div class="payment-method-list" id="paymentMethodList">
-                      <button type="button" class="payment-method-card" data-payment-method="wallet" id="paymentMethodWallet">
-                        <div class="payment-method-main">
-                          <div class="payment-method-title">Account balance</div>
-                          <div class="payment-method-desc">Pay instantly from your available balance.</div>
-                        </div>
-                        <span class="payment-method-pill is-instant">Instant</span>
-                        <div class="payment-method-meta mono">
-                          <span>Available</span>
+                <div class="form-section payment-methods-card payment-methods-card--single">
+                  <div class="section-title">Choose payment method</div>
+                  <p class="panel-sub payment-methods-sub">
+                    Card and wallet are instant. Bank transfer top-up is credited after receipt.
+                  </p>
+                  <div class="payment-method-list" id="paymentMethodList">
+                    <div class="payment-method-card" data-payment-method="wallet" id="paymentMethodWallet" role="button" tabindex="0" aria-pressed="false">
+                      <div class="payment-method-main">
+                        <div class="payment-method-title">Account balance</div>
+                        <div class="payment-method-desc">Pay instantly from your available balance.</div>
+                      </div>
+                      <span class="payment-method-pill is-wallet">IBAN Transfer</span>
+                      <div class="payment-method-meta mono">
+                        <div class="payment-method-meta-actions">
                           <strong id="walletAvailableInline">€0.00</strong>
+                          <button type="button" class="payment-inline-link" id="openIbanTopupFromStep">Top up</button>
                         </div>
-                      </button>
-                      <button type="button" class="payment-method-card" data-payment-method="card" id="paymentMethodCard">
-                        <div class="payment-method-main">
-                          <div class="payment-method-title">Credit / Debit card</div>
-                          <div class="payment-method-desc">Charge immediately and generate labels now.</div>
-                        </div>
-                        <span class="payment-method-pill is-instant">Instant</span>
-                        <div class="payment-method-meta mono">
-                          <span>Status</span>
-                          <strong id="cardMethodStatus">Available</strong>
-                        </div>
-                      </button>
+                      </div>
                     </div>
-                    <div class="payment-method-error form-error" id="paymentMethodError">Select a payment method to continue.</div>
+                    <div class="payment-method-card" data-payment-method="card" id="paymentMethodCard" role="button" tabindex="0" aria-pressed="false">
+                      <div class="payment-method-main">
+                        <div class="payment-method-title">Credit / Debit card</div>
+                        <div class="payment-method-desc">Charge immediately and generate labels now.</div>
+                      </div>
+                      <span class="payment-method-pill is-instant">Instant</span>
+                    </div>
                   </div>
+                  <div class="payment-method-error form-error" id="paymentMethodError">Select a payment method to continue.</div>
 
-                  <div class="form-section iban-topup-card">
-                    <div class="section-title">Top up by IBAN</div>
-                    <div class="iban-topup-pill-row">
-                      <span class="payment-method-pill is-delayed">1-2 days</span>
-                    </div>
-                    <p class="panel-sub iban-topup-sub">
-                      Bank transfer top-ups are asynchronous. Add funds now and use your balance once credited.
-                    </p>
+                  <div class="direct-payment-summary">
+                    <div class="section-title">Order summary</div>
                     <div class="summary-line">
                       <span>Current Balance</span>
                       <span id="walletBalanceValue">€0.00</span>
@@ -694,10 +684,6 @@
                       <span>Order Total (INCL. VAT)</span>
                       <span id="directPaymentTotal">€7.14</span>
                     </div>
-                    <button type="button" class="btn btn-secondary" id="openIbanTopupFromStep">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
-                      <span>Top up by IBAN</span>
-                    </button>
                     <div class="invoice-note" id="directPaymentHint">
                       If your balance is lower than the order total, top up by bank transfer or use card for immediate shipment.
                     </div>
@@ -805,104 +791,86 @@
           </div>
         </div>
 
-        <div class="account-info-panel">
-          <div class="account-info-head">
-            <div class="preview-title">Account Information</div>
-            <label class="language-control" for="languageSelect">
-              <span class="language-control-label">Language</span>
-              <select id="languageSelect" class="language-select">
-                <option value="en">🇬🇧 English</option>
-                <option value="fr">🇫🇷 Français</option>
-                <option value="nl">🇳🇱 Nederlands</option>
-              </select>
-            </label>
+        <div class="account-overview-bento">
+          <div class="account-info-panel">
+            <div class="account-info-head">
+              <div class="preview-title">Account Information</div>
+              <label class="language-control" for="languageSelect">
+                <span class="language-control-label">Language</span>
+                <select id="languageSelect" class="language-select">
+                  <option value="en">🇬🇧 English</option>
+                  <option value="fr">🇫🇷 Français</option>
+                  <option value="nl">🇳🇱 Nederlands</option>
+                </select>
+              </label>
+            </div>
+            <div class="account-info-grid">
+              <div class="account-info-item">
+                <div class="account-info-label">Company Name</div>
+                <div class="account-info-value" id="accountCompanyName">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Point of Contact</div>
+                <div class="account-info-value" id="accountContactName">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Contact Email</div>
+                <div class="account-info-value" id="accountContactEmail">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Phone Number</div>
+                <div class="account-info-value" id="accountContactPhone">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Billing Address</div>
+                <div class="account-info-value" id="accountBillingAddress">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Tax ID</div>
+                <div class="account-info-value mono" id="accountTaxId">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Customer ID</div>
+                <div class="account-info-value mono" id="accountCustomerId">--</div>
+              </div>
+              <div class="account-info-item">
+                <div class="account-info-label">Account Manager</div>
+                <div class="account-info-value" id="accountAccountManager">--</div>
+              </div>
+            </div>
+            <div class="account-info-note">
+              To update account information, please contact your account manager.
+            </div>
           </div>
-          <div class="account-info-grid">
-            <div class="account-info-item">
-              <div class="account-info-label">Company Name</div>
-              <div class="account-info-value" id="accountCompanyName">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Point of Contact</div>
-              <div class="account-info-value" id="accountContactName">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Contact Email</div>
-              <div class="account-info-value" id="accountContactEmail">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Phone Number</div>
-              <div class="account-info-value" id="accountContactPhone">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Billing Address</div>
-              <div class="account-info-value" id="accountBillingAddress">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Tax ID</div>
-              <div class="account-info-value mono" id="accountTaxId">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Customer ID</div>
-              <div class="account-info-value mono" id="accountCustomerId">--</div>
-            </div>
-            <div class="account-info-item">
-              <div class="account-info-label">Account Manager</div>
-              <div class="account-info-value" id="accountAccountManager">--</div>
-            </div>
-          </div>
-          <div class="account-info-note">
-            To update account information, please contact your account manager.
-          </div>
-        </div>
 
-        <div class="account-billing-panel">
-          <div class="account-billing-head">
-            <div>
+          <div class="account-billing-panel">
+            <div class="account-billing-head">
               <div class="preview-title">Billing &amp; Balance</div>
-              <p class="panel-sub">
-                Track wallet funding, invoice status, and payment readiness.
-              </p>
+              <button type="button" class="btn btn-secondary btn-sm" id="openIbanTopupFromAccount">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="6" width="19" height="12" rx="1.4"/><circle cx="17" cy="12" r="1.5"/><path d="M2.5 9h19"/></svg>
+                <span>Top up by IBAN</span>
+              </button>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="openIbanTopupFromAccount">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
-              <span>Top up by IBAN</span>
-            </button>
-          </div>
-          <div class="account-billing-metrics">
-            <article class="account-billing-metric">
-              <span>Available Balance</span>
-              <strong id="accountWalletBalance">€0.00</strong>
-            </article>
-            <article class="account-billing-metric">
-              <span>Pending Top-ups</span>
-              <strong id="accountPendingTopups">€0.00</strong>
-            </article>
-            <article class="account-billing-metric">
-              <span>Open Invoices</span>
-              <strong id="accountOpenInvoiceCount">0</strong>
-            </article>
-            <article class="account-billing-metric">
-              <span>Paid Invoices</span>
-              <strong id="accountPaidInvoiceCount">0</strong>
-            </article>
-          </div>
-          <div class="account-billing-columns">
-            <div class="account-billing-list-card">
-              <div class="account-billing-list-title">Open invoices</div>
-              <div class="account-billing-list" id="accountOpenInvoicesList">
-                <div class="account-billing-empty">No open invoices.</div>
-              </div>
+            <div class="account-billing-metrics">
+              <article class="account-billing-metric">
+                <span>Available Balance</span>
+                <strong id="accountWalletBalance">€0.00</strong>
+              </article>
+              <article class="account-billing-metric">
+                <span>Pending Top-ups</span>
+                <strong id="accountPendingTopups">€0.00</strong>
+              </article>
+              <article class="account-billing-metric">
+                <span>Open Invoices</span>
+                <strong id="accountOpenInvoiceCount">0</strong>
+              </article>
+              <article class="account-billing-metric">
+                <span>Paid Invoices</span>
+                <strong id="accountPaidInvoiceCount">0</strong>
+              </article>
             </div>
-            <div class="account-billing-list-card">
-              <div class="account-billing-list-title">Paid invoices</div>
-              <div class="account-billing-list" id="accountPaidInvoicesList">
-                <div class="account-billing-empty">No paid invoices yet.</div>
-              </div>
-            </div>
-          </div>
-          <div class="account-billing-footer">
-            <span id="accountIbanSummary">IBAN transfer details available in Top up by IBAN.</span>
+            <div class="account-billing-list is-hidden" id="accountOpenInvoicesList"></div>
+            <div class="account-billing-list is-hidden" id="accountPaidInvoicesList"></div>
           </div>
         </div>
 
