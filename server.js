@@ -34,16 +34,33 @@ const HISTORY_TABLE = "label_generations";
 const BILLING_INVOICES_TABLE = "billing_invoices";
 const BILLING_INVOICE_ITEMS_TABLE = "billing_invoice_items";
 const BILLING_INVOICE_EVENTS_TABLE = "billing_invoice_events";
+const BILLING_WALLET_TABLE = "billing_wallets";
+const BILLING_WALLET_TOPUPS_TABLE = "billing_wallet_topups";
+const BILLING_WALLET_TRANSACTIONS_TABLE = "billing_wallet_transactions";
 const PASSWORD_MIN_LENGTH = 10;
 const DEFAULT_INVITE_EXPIRY_DAYS = 14;
 const MAX_INVITE_EXPIRY_DAYS = 90;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0.21;
+const DEFAULT_BILLING_CURRENCY = "EUR";
+const DEFAULT_IBAN_BENEFICIARY = "Shipide Logistics SRL";
+const DEFAULT_IBAN = "BE68 5390 0754 7034";
+const DEFAULT_IBAN_BIC = "KREDBEBB";
+const DEFAULT_IBAN_TRANSFER_NOTE =
+  "Transfers are credited once received (typically 1-2 business days).";
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "").trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
 const RESEND_REPLY_TO = String(process.env.RESEND_REPLY_TO || "").trim();
+const BILLING_IBAN_BENEFICIARY = String(
+  process.env.BILLING_IBAN_BENEFICIARY || DEFAULT_IBAN_BENEFICIARY
+).trim();
+const BILLING_IBAN = String(process.env.BILLING_IBAN || DEFAULT_IBAN).trim();
+const BILLING_IBAN_BIC = String(process.env.BILLING_IBAN_BIC || DEFAULT_IBAN_BIC).trim();
+const BILLING_IBAN_NOTE = String(
+  process.env.BILLING_IBAN_NOTE || DEFAULT_IBAN_TRANSFER_NOTE
+).trim();
 const REPORTS_FROM_EMAIL = String(process.env.REPORTS_FROM_EMAIL || "reports@shipide.com").trim();
 const REPORTS_FROM_NAME = String(process.env.REPORTS_FROM_NAME || "Shipide Reports").trim();
 const REPORTS_PORTAL_URL = String(
@@ -54,8 +71,8 @@ const DEFAULT_ADMIN_SETTINGS = {
   client_discount_pct: 20,
 };
 const DEFAULT_CLIENT_BILLING_PREF = {
-  invoice_enabled: true,
-  card_enabled: false,
+  invoice_enabled: false,
+  card_enabled: true,
 };
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
@@ -715,11 +732,10 @@ async function sendResendEmail(payload) {
 
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
-  let invoiceEnabled =
-    raw.invoice_enabled === false ? false : raw.invoice_enabled === true ? true : true;
-  let cardEnabled = raw.card_enabled === true;
+  let invoiceEnabled = raw.invoice_enabled === true;
+  let cardEnabled = raw.card_enabled === false ? false : true;
   if (!invoiceEnabled && !cardEnabled) {
-    invoiceEnabled = true;
+    cardEnabled = true;
   }
   return {
     invoice_enabled: invoiceEnabled,
@@ -1524,9 +1540,9 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const subtitleLine2 = "You can also view it instantly with the button below.";
 
   let stageLabel = "Due in 30 days";
-  let stageBg = "#122c1f";
-  let stageBorder = "#2f8457";
-  let stageText = "#9de5bd";
+  let stageBg = "rgba(143, 226, 178, 0.16)";
+  let stageBorder = "#8fe2b2";
+  let stageText = "#8fe2b2";
   if (reminderStage === 1) {
     stageLabel = "Due in 15 days";
     stageBg = "#2f2515";
@@ -1701,7 +1717,7 @@ function buildMonthlyReportsEmailHtml(options = {}) {
             </tr>
             <tr>
               <td align="center" style="padding:0 8px 8px;">
-                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid #2f8457;background:#122c1f;color:#9de5bd;font-size:11px;letter-spacing:0.01em;white-space:nowrap;">
+                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid #8fe2b2;background:rgba(143, 226, 178, 0.16);color:#8fe2b2;font-size:11px;letter-spacing:0.01em;white-space:nowrap;">
                   Monthly overview
                 </span>
               </td>
@@ -1877,6 +1893,338 @@ async function getClientBillingPreferenceForUser(userId) {
   const rows = await response.json().catch(() => []);
   if (!Array.isArray(rows) || !rows.length) return { ...DEFAULT_CLIENT_BILLING_PREF };
   return normalizeClientBillingPreference(rows[0]);
+}
+
+function getBillingIbanConfig() {
+  return {
+    beneficiary: BILLING_IBAN_BENEFICIARY || DEFAULT_IBAN_BENEFICIARY,
+    iban: BILLING_IBAN || DEFAULT_IBAN,
+    bic: BILLING_IBAN_BIC || DEFAULT_IBAN_BIC,
+    note: BILLING_IBAN_NOTE || DEFAULT_IBAN_TRANSFER_NOTE,
+  };
+}
+
+function buildTopupReference(userId = "") {
+  const userChunk = String(userId || "")
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(0, 6)
+    .toUpperCase() || "SHIPID";
+  const timeChunk = Date.now().toString(36).toUpperCase();
+  const randChunk = crypto.randomBytes(2).toString("hex").toUpperCase();
+  return `SHIP-${userChunk}-${timeChunk}-${randChunk}`;
+}
+
+function normalizeTopupStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["pending", "received", "credited", "cancelled", "failed"].includes(normalized)) {
+    return normalized;
+  }
+  return "pending";
+}
+
+function mapBillingTopupRow(row) {
+  const status = normalizeTopupStatus(row?.status);
+  const amountCents = Math.max(0, toCents(fromCents(row?.amount_cents)));
+  return {
+    id: String(row?.id || "").trim(),
+    amount_eur: fromCents(amountCents),
+    currency: String(row?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    reference: String(row?.reference || "").trim(),
+    status,
+    requested_at: row?.requested_at || row?.created_at || null,
+    received_at: row?.received_at || null,
+    credited_at: row?.credited_at || null,
+    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+  };
+}
+
+function mapBillingWalletTransactionRow(row) {
+  const amountCents = Number(row?.amount_cents) || 0;
+  return {
+    id: row?.id ?? null,
+    source: String(row?.source || "").trim() || "manual",
+    direction: amountCents >= 0 ? "credit" : "debit",
+    amount_eur: fromCents(Math.abs(amountCents)),
+    amount_signed_eur: fromCents(amountCents),
+    balance_after_eur: fromCents(Number(row?.balance_after_cents) || 0),
+    reference: String(row?.reference || "").trim(),
+    created_at: row?.created_at || null,
+    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+  };
+}
+
+async function getOrCreateBillingWallet(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    return {
+      user_id: "",
+      balance_cents: 0,
+      currency: DEFAULT_BILLING_CURRENCY,
+      updated_at: null,
+    };
+  }
+  const params = new URLSearchParams();
+  params.set("select", "user_id,balance_cents,currency,updated_at");
+  params.set("user_id", `eq.${safeUserId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_wallets/i.test(details)) {
+      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load wallet balance (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (Array.isArray(rows) && rows.length) {
+    return rows[0];
+  }
+
+  const insertResponse = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation,resolution=merge-duplicates",
+    },
+    body: JSON.stringify([
+      {
+        user_id: safeUserId,
+        balance_cents: 0,
+        currency: DEFAULT_BILLING_CURRENCY,
+      },
+    ]),
+  });
+  if (!insertResponse.ok) {
+    const details = await insertResponse.text().catch(() => "");
+    throw new Error(`Could not create wallet (${insertResponse.status}) ${details}`.trim());
+  }
+  const insertedRows = await insertResponse.json().catch(() => []);
+  return Array.isArray(insertedRows) && insertedRows.length
+    ? insertedRows[0]
+    : {
+        user_id: safeUserId,
+        balance_cents: 0,
+        currency: DEFAULT_BILLING_CURRENCY,
+        updated_at: new Date().toISOString(),
+      };
+}
+
+async function listBillingTopups(
+  { userId = "", statuses = [], limit = 30, allowMissing = false } = {}
+) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return [];
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 30));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at"
+  );
+  params.set("user_id", `eq.${safeUserId}`);
+  params.set("order", "requested_at.desc");
+  params.set("limit", String(safeLimit));
+  if (Array.isArray(statuses) && statuses.length) {
+    const normalized = statuses
+      .map((entry) => normalizeTopupStatus(entry))
+      .filter(Boolean);
+    if (normalized.length) {
+      params.set("status", `in.(${normalized.join(",")})`);
+    }
+  }
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_wallet_topups/i.test(details)) {
+      if (allowMissing) return [];
+      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load bank top-ups (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function listBillingWalletTransactions({ userId = "", limit = 30, allowMissing = false } = {}) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return [];
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 30));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,source,amount_cents,balance_after_cents,reference,metadata,created_at"
+  );
+  params.set("user_id", `eq.${safeUserId}`);
+  params.set("order", "created_at.desc,id.desc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TRANSACTIONS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_wallet_transactions/i.test(details)) {
+      if (allowMissing) return [];
+      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load wallet transactions (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function createBillingTopupRequest(user, amountEur) {
+  const userId = String(user?.id || "").trim();
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const amountCents = toCents(amountEur);
+  if (!Number.isFinite(amountCents) || amountCents < 100) {
+    throw new Error("Top-up amount must be at least €1.00.");
+  }
+  await getOrCreateBillingWallet(userId);
+  const ibanConfig = getBillingIbanConfig();
+  const reference = buildTopupReference(userId);
+  const payload = {
+    user_id: userId,
+    amount_cents: amountCents,
+    currency: DEFAULT_BILLING_CURRENCY,
+    status: "pending",
+    reference,
+    requested_at: new Date().toISOString(),
+    metadata: {
+      requested_by: normalizeEmail(user?.email || "") || userId,
+      iban_beneficiary: ibanConfig.beneficiary,
+      iban: ibanConfig.iban,
+      bic: ibanConfig.bic,
+    },
+  };
+  const response = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([payload]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_wallet_topups/i.test(details)) {
+      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not create top-up request (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const created = Array.isArray(rows) && rows.length ? rows[0] : payload;
+  return {
+    topup: mapBillingTopupRow(created),
+    instructions: {
+      ...ibanConfig,
+      amount_eur: fromCents(amountCents),
+      currency: DEFAULT_BILLING_CURRENCY,
+      reference,
+    },
+  };
+}
+
+async function saveWalletTransaction(payload) {
+  const response = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TRANSACTIONS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([payload]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_wallet_transactions/i.test(details)) {
+      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not save wallet transaction (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : payload;
+}
+
+async function debitWalletForCheckout(user, amountEur, metadata = {}) {
+  const userId = String(user?.id || "").trim();
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const debitCents = toCents(amountEur);
+  if (!Number.isFinite(debitCents) || debitCents <= 0) {
+    throw new Error("Invalid checkout amount.");
+  }
+  const wallet = await getOrCreateBillingWallet(userId);
+  const currentBalanceCents = Number(wallet?.balance_cents) || 0;
+  if (currentBalanceCents < debitCents) {
+    const missing = fromCents(debitCents - currentBalanceCents).toFixed(2);
+    throw new Error(`Insufficient wallet balance. Add at least €${missing} by bank transfer.`);
+  }
+  const nextBalanceCents = Math.max(0, currentBalanceCents - debitCents);
+  const updateResponse = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        balance_cents: nextBalanceCents,
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!updateResponse.ok) {
+    const details = await updateResponse.text().catch(() => "");
+    throw new Error(`Could not update wallet balance (${updateResponse.status}) ${details}`.trim());
+  }
+  const updatedRows = await updateResponse.json().catch(() => []);
+  const updatedWallet =
+    Array.isArray(updatedRows) && updatedRows.length
+      ? updatedRows[0]
+      : {
+          user_id: userId,
+          balance_cents: nextBalanceCents,
+          currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
+        };
+  const reference = buildTopupReference(userId);
+  await saveWalletTransaction({
+    user_id: userId,
+    source: "label_checkout",
+    amount_cents: -debitCents,
+    balance_after_cents: nextBalanceCents,
+    reference,
+    metadata: {
+      checkout: metadata && typeof metadata === "object" ? metadata : {},
+      actor: normalizeEmail(user?.email || "") || userId,
+    },
+  });
+  return {
+    wallet: updatedWallet,
+    transaction_reference: reference,
+  };
+}
+
+function mapBillingOverviewInvoiceRow(invoice) {
+  if (!invoice || typeof invoice !== "object") return null;
+  return {
+    id: String(invoice.id || "").trim(),
+    status: normalizeInvoiceStatus(invoice.status),
+    reference: toInvoiceReference(invoice.id),
+    issued_at: invoice.issued_at || invoice.created_at || null,
+    due_at: invoice.due_at || null,
+    total_inc_vat: fromCents(toCents(invoice.total_inc_vat)),
+    total_ex_vat: fromCents(toCents(invoice.subtotal_ex_vat)),
+    tracking: formatInvoiceTrackingLabel(invoice),
+  };
 }
 
 async function sendBillingInvoiceById(invoiceId, options = {}) {
@@ -3506,8 +3854,40 @@ async function handleBillingOverview(req, res) {
       limit: 120,
       allowMissing: true,
     });
+    let wallet = {
+      user_id: user.id,
+      balance_cents: 0,
+      currency: DEFAULT_BILLING_CURRENCY,
+      updated_at: null,
+    };
+    let pendingTopups = [];
+    let walletTransactions = [];
+    try {
+      [wallet, pendingTopups, walletTransactions] = await Promise.all([
+        getOrCreateBillingWallet(user.id),
+        listBillingTopups({
+          userId: user.id,
+          statuses: ["pending", "received"],
+          limit: 80,
+          allowMissing: true,
+        }),
+        listBillingWalletTransactions({
+          userId: user.id,
+          limit: 24,
+          allowMissing: true,
+        }),
+      ]);
+    } catch (walletError) {
+      const message = String(walletError?.message || "");
+      if (!/Wallet schema missing/i.test(message)) {
+        throw walletError;
+      }
+    }
     const activeInvoices = invoices.filter((invoice) =>
       ["draft", "sent", "overdue"].includes(normalizeInvoiceStatus(invoice?.status))
+    );
+    const paidInvoices = invoices.filter(
+      (invoice) => normalizeInvoiceStatus(invoice?.status) === "paid"
     );
     const nextDraft = activeInvoices.find(
       (invoice) => normalizeInvoiceStatus(invoice?.status) === "draft"
@@ -3527,11 +3907,17 @@ async function handleBillingOverview(req, res) {
       : projectedExVat;
     const nextVat = nextDraft ? fromCents(toCents(nextDraft.vat_amount)) : projectedVat;
     const nextIncl = nextDraft ? fromCents(toCents(nextDraft.total_inc_vat)) : projectedIncl;
+    const pendingTopupCents = pendingTopups.reduce(
+      (sum, topup) => sum + Math.max(0, Number(topup?.amount_cents) || 0),
+      0
+    );
+    const walletBalanceCents = Math.max(0, Number(wallet?.balance_cents) || 0);
 
     sendJson(res, 200, {
       payment_mode: paymentMode,
       invoice_enabled: Boolean(billingPref.invoice_enabled),
       card_enabled: Boolean(billingPref.card_enabled),
+      wallet_enabled: true,
       client_discount_pct: normalizePercent(
         settings?.client_discount_pct,
         DEFAULT_ADMIN_SETTINGS.client_discount_pct
@@ -3548,10 +3934,139 @@ async function handleBillingOverview(req, res) {
       current_period_end: currentMonth.endIsoDate,
       outstanding_balance_incl_vat: fromCents(outstandingCents),
       open_invoice_count: activeInvoices.length,
+      paid_invoice_count: paidInvoices.length,
       last_invoice_tracking: formatInvoiceTrackingLabel(activeInvoices[0] || null),
+      open_invoices: activeInvoices.slice(0, 8).map(mapBillingOverviewInvoiceRow).filter(Boolean),
+      paid_invoices: paidInvoices.slice(0, 8).map(mapBillingOverviewInvoiceRow).filter(Boolean),
+      wallet_balance_eur: fromCents(walletBalanceCents),
+      wallet_pending_topups_eur: fromCents(pendingTopupCents),
+      wallet_currency: String(wallet?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+      wallet_transactions: walletTransactions.slice(0, 10).map(mapBillingWalletTransactionRow),
+      recent_topups: pendingTopups.slice(0, 8).map(mapBillingTopupRow),
+      iban_instructions: getBillingIbanConfig(),
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not load billing overview." });
+  }
+}
+
+async function handleBillingTopups(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  const limit = Math.max(1, Math.min(100, Number(requestUrl.searchParams.get("limit")) || 20));
+  try {
+    const topups = await listBillingTopups({
+      userId: user.id,
+      limit,
+      allowMissing: true,
+    });
+    sendJson(res, 200, {
+      topups: topups.map(mapBillingTopupRow),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load top-up history." });
+  }
+}
+
+async function handleBillingTopupRequest(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  const amount = Number(body?.amount || body?.amountEur);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    sendJson(res, 400, { error: "A valid top-up amount is required." });
+    return;
+  }
+  try {
+    const result = await createBillingTopupRequest(user, amount);
+    sendJson(res, 200, {
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not create top-up request." });
+  }
+}
+
+async function handleBillingCheckout(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  const method = String(body?.method || "").trim().toLowerCase();
+  const amount = Number(body?.amount || body?.amountEur || body?.amountInclVat);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    sendJson(res, 400, { error: "A valid checkout amount is required." });
+    return;
+  }
+  if (!["invoice", "card", "wallet"].includes(method)) {
+    sendJson(res, 400, { error: "Invalid payment method." });
+    return;
+  }
+  try {
+    const billingPref = await getClientBillingPreferenceForUser(user.id);
+    if (method === "invoice" && !billingPref.invoice_enabled) {
+      sendJson(res, 403, { error: "Invoice payment is not enabled for this account." });
+      return;
+    }
+    if (method === "card" && !billingPref.card_enabled) {
+      sendJson(res, 403, { error: "Card payment is not enabled for this account." });
+      return;
+    }
+    if (method === "wallet") {
+      const result = await debitWalletForCheckout(user, amount, {
+        labels_count: Number(body?.labelsCount) || 0,
+        service: String(body?.service || "").trim(),
+      });
+      sendJson(res, 200, {
+        ok: true,
+        method: "wallet",
+        charged_amount_eur: fromCents(toCents(amount)),
+        wallet_balance_eur: fromCents(Math.max(0, Number(result.wallet?.balance_cents) || 0)),
+        transaction_reference: result.transaction_reference,
+      });
+      return;
+    }
+    if (method === "card") {
+      const authId = `card_${Date.now().toString(36)}_${crypto
+        .randomBytes(3)
+        .toString("hex")}`;
+      sendJson(res, 200, {
+        ok: true,
+        method: "card",
+        charged_amount_eur: fromCents(toCents(amount)),
+        authorization_id: authId,
+      });
+      return;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      method: "invoice",
+      charged_amount_eur: fromCents(toCents(amount)),
+      note: "Queued for month-end invoice.",
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not process checkout." });
   }
 }
 
@@ -4084,6 +4599,18 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/overview" && req.method === "GET") {
     await handleBillingOverview(req, res);
+    return true;
+  }
+  if (pathname === "/api/billing/topups" && req.method === "GET") {
+    await handleBillingTopups(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/billing/topups/request" && req.method === "POST") {
+    await handleBillingTopupRequest(req, res);
+    return true;
+  }
+  if (pathname === "/api/billing/checkout" && req.method === "POST") {
+    await handleBillingCheckout(req, res);
     return true;
   }
   if (pathname.startsWith("/api/")) {

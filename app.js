@@ -277,6 +277,11 @@ const TRANSLATIONS = {
     fr: "Profil de facturation et validation",
     nl: "Factuurprofiel en bevestiging",
   },
+  "Payment": { fr: "Paiement", nl: "Betaling" },
+  "Wallet or card payment": {
+    fr: "Paiement par solde ou carte",
+    nl: "Betaling via saldo of kaart",
+  },
   "Label PDF": { fr: "PDF Étiquette", nl: "Label-PDF" },
   "Label Output": { fr: "Sortie étiquettes", nl: "Labeloutput" },
   "Labels & PDF": { fr: "Étiquettes & PDF", nl: "Labels & PDF" },
@@ -365,6 +370,23 @@ const TRANSLATIONS = {
   "Review restricted goods list": { fr: "Consulter la liste des marchandises interdites", nl: "Bekijk lijst met beperkte goederen" },
   "Declared Items": { fr: "Articles déclarés", nl: "Aangegeven items" },
   "Add Item": { fr: "Ajouter un article", nl: "Item toevoegen" },
+  "Top up by IBAN": { fr: "Recharger par IBAN", nl: "Opwaarderen via IBAN" },
+  "Generate Transfer Reference": {
+    fr: "Générer la référence de virement",
+    nl: "Overschrijvingsreferentie genereren",
+  },
+  "Fund your account balance": { fr: "Alimentez votre solde de compte", nl: "Vul je accountsaldo aan" },
+  "Top-up amount (EUR)": { fr: "Montant de recharge (EUR)", nl: "Opwaardeerbedrag (EUR)" },
+  "Generate a transfer reference, then send your bank transfer. Funds are credited once received.": {
+    fr: "Générez une référence de virement puis envoyez votre transfert bancaire. Les fonds sont crédités à réception.",
+    nl: "Genereer een overschrijvingsreferentie en verstuur je bankoverschrijving. Fondsen worden gecrediteerd na ontvangst.",
+  },
+  "Beneficiary": { fr: "Bénéficiaire", nl: "Begunstigde" },
+  "Reference": { fr: "Référence", nl: "Referentie" },
+  "ETA": { fr: "Délai", nl: "ETA" },
+  "Copy Reference": { fr: "Copier la référence", nl: "Referentie kopiëren" },
+  "Copy IBAN": { fr: "Copier l’IBAN", nl: "IBAN kopiëren" },
+  "Close": { fr: "Fermer", nl: "Sluiten" },
   "Confirm invoice information": { fr: "Confirmer les informations de facturation", nl: "Factuurinformatie bevestigen" },
   "No charge now. These details are used for your month-end invoice.": { fr: "Aucun débit maintenant. Ces informations seront utilisées pour votre facture de fin de mois.", nl: "Nu geen kosten. Deze gegevens worden gebruikt voor je maandfactuur." },
   "Invoice Recipient": { fr: "Destinataire de la facture", nl: "Factuurontvanger" },
@@ -388,6 +410,104 @@ const TRANSLATIONS = {
     fr: "Cette commande sera ajoutée à votre facture mensuelle. Si vous souhaitez modifier vos informations, contactez votre account manager.",
     nl: "Deze bestelling wordt toegevoegd aan je maandfactuur. Als je gegevens moeten wijzigen, neem contact op met je accountmanager.",
   },
+  "Choose payment method": { fr: "Choisissez un mode de paiement", nl: "Kies betaalmethode" },
+  "Card and wallet are instant. Bank transfer top-up is credited after receipt.": {
+    fr: "La carte et le solde sont instantanés. Le virement est crédité après réception.",
+    nl: "Kaart en saldo zijn direct. Overschrijving wordt na ontvangst gecrediteerd.",
+  },
+  "Select an instant payment method to generate your labels now.": {
+    fr: "Sélectionnez un mode de paiement instantané pour générer vos étiquettes maintenant.",
+    nl: "Kies een directe betaalmethode om je labels nu te genereren.",
+  },
+  "Pay & Generate": { fr: "Payer & Générer", nl: "Betalen & Genereren" },
+  "No open invoices.": { fr: "Aucune facture ouverte.", nl: "Geen open facturen." },
+  "No paid invoices yet.": { fr: "Aucune facture payée pour l’instant.", nl: "Nog geen betaalde facturen." },
+  "Current Balance": { fr: "Solde actuel", nl: "Huidig saldo" },
+  "Order Total (INCL. VAT)": { fr: "Total commande (TVA incluse)", nl: "Besteltotaal (incl. btw)" },
+  "Bank transfer top-ups are asynchronous. Add funds now and use your balance once credited.": {
+    fr: "Les recharges par virement sont asynchrones. Ajoutez des fonds maintenant et utilisez votre solde une fois crédité.",
+    nl: "Opwaarderingen via bankoverschrijving zijn asynchroon. Voeg nu saldo toe en gebruik het zodra het is gecrediteerd.",
+  },
+  "Account balance": { fr: "Solde du compte", nl: "Accountsaldo" },
+  "Pay instantly from your available balance.": {
+    fr: "Payez instantanément depuis votre solde disponible.",
+    nl: "Betaal direct vanuit je beschikbare saldo.",
+  },
+  "Credit / Debit card": { fr: "Carte de crédit / débit", nl: "Creditcard / debetkaart" },
+  "Charge immediately and generate labels now.": {
+    fr: "Débit immédiat et génération des étiquettes.",
+    nl: "Direct afrekenen en labels meteen genereren.",
+  },
+  "Status": { fr: "Statut", nl: "Status" },
+  "Available": { fr: "Disponible", nl: "Beschikbaar" },
+  "Disabled": { fr: "Désactivé", nl: "Uitgeschakeld" },
+  "IBAN": { fr: "IBAN", nl: "IBAN" },
+  "Reference required": { fr: "Référence obligatoire", nl: "Referentie verplicht" },
+  "1-2 business days": { fr: "1-2 jours ouvrés", nl: "1-2 werkdagen" },
+  "Transfers are credited once received (typically 1-2 business days).": {
+    fr: "Les virements sont crédités dès réception (généralement 1-2 jours ouvrés).",
+    nl: "Overschrijvingen worden gecrediteerd na ontvangst (meestal 1-2 werkdagen).",
+  },
+  "Enter a valid top-up amount.": {
+    fr: "Entrez un montant de recharge valide.",
+    nl: "Voer een geldig opwaardeerbedrag in.",
+  },
+  "Creating top-up request...": {
+    fr: "Création de la demande de recharge...",
+    nl: "Opwaardeeraanvraag wordt aangemaakt...",
+  },
+  "Transfer reference generated. Use it as communication.": {
+    fr: "Référence de virement générée. Utilisez-la en communication.",
+    nl: "Overschrijvingsreferentie gegenereerd. Gebruik die als mededeling.",
+  },
+  "IBAN top-up request created.": {
+    fr: "Demande de recharge IBAN créée.",
+    nl: "IBAN-opwaardeeraanvraag aangemaakt.",
+  },
+  "Could not create top-up request.": {
+    fr: "Impossible de créer la demande de recharge.",
+    nl: "Kon opwaardeeraanvraag niet maken.",
+  },
+  "Reference copied to clipboard.": {
+    fr: "Référence copiée dans le presse-papiers.",
+    nl: "Referentie naar klembord gekopieerd.",
+  },
+  "Could not copy reference.": {
+    fr: "Impossible de copier la référence.",
+    nl: "Kon referentie niet kopiëren.",
+  },
+  "IBAN copied to clipboard.": {
+    fr: "IBAN copié dans le presse-papiers.",
+    nl: "IBAN naar klembord gekopieerd.",
+  },
+  "Could not copy IBAN.": {
+    fr: "Impossible de copier l’IBAN.",
+    nl: "Kon IBAN niet kopiëren.",
+  },
+  "Select a payment method to continue.": {
+    fr: "Sélectionnez un mode de paiement pour continuer.",
+    nl: "Kies een betaalmethode om verder te gaan.",
+  },
+  "Insufficient wallet balance. Top up by IBAN or use card.": {
+    fr: "Solde insuffisant. Rechargez via IBAN ou utilisez la carte.",
+    nl: "Onvoldoende saldo. Waardeer op via IBAN of gebruik kaart.",
+  },
+  "Could not process checkout.": {
+    fr: "Impossible de traiter le paiement.",
+    nl: "Kon betaling niet verwerken.",
+  },
+  "Paid with account balance. Remaining balance: {amount}": {
+    fr: "Payé via le solde du compte. Solde restant : {amount}",
+    nl: "Betaald via accountsaldo. Resterend saldo: {amount}",
+  },
+  "Card payment approved. Generating labels.": {
+    fr: "Paiement carte approuvé. Génération des étiquettes.",
+    nl: "Kaartbetaling goedgekeurd. Labels worden gegenereerd.",
+  },
+  "You must be signed in.": {
+    fr: "Vous devez être connecté.",
+    nl: "Je moet ingelogd zijn.",
+  },
   "Confirm & Generate": { fr: "Confirmer & Générer", nl: "Bevestigen & Genereren" },
   "Your label is ready": { fr: "Votre étiquette est prête", nl: "Je label is klaar" },
   "Preview the PDF and download the label for printing.": { fr: "Prévisualisez le PDF et téléchargez l’étiquette à imprimer.", nl: "Bekijk de PDF en download het label om te printen." },
@@ -406,6 +526,21 @@ const TRANSLATIONS = {
   "Back to Builder": { fr: "Retour au builder", nl: "Terug naar builder" },
   "Sign Out": { fr: "Se déconnecter", nl: "Uitloggen" },
   "Account Information": { fr: "Informations du compte", nl: "Accountinformatie" },
+  "Billing & Balance": { fr: "Facturation & Solde", nl: "Facturatie & Saldo" },
+  "Track wallet funding, invoice status, and payment readiness.": {
+    fr: "Suivez le financement du solde, le statut des factures et la disponibilité au paiement.",
+    nl: "Volg saldo-opwaarderingen, factuurstatus en betaalgereedheid.",
+  },
+  "Available Balance": { fr: "Solde disponible", nl: "Beschikbaar saldo" },
+  "Pending Top-ups": { fr: "Recharges en attente", nl: "Open opwaarderingen" },
+  "Open Invoices": { fr: "Factures ouvertes", nl: "Open facturen" },
+  "Paid Invoices": { fr: "Factures payées", nl: "Betaalde facturen" },
+  "Open invoices": { fr: "Factures ouvertes", nl: "Open facturen" },
+  "Paid invoices": { fr: "Factures payées", nl: "Betaalde facturen" },
+  "IBAN transfer details available in Top up by IBAN.": {
+    fr: "Détails du virement IBAN disponibles dans Recharge par IBAN.",
+    nl: "IBAN-overschrijvingsgegevens beschikbaar in Opwaarderen via IBAN.",
+  },
   "Company Name": { fr: "Nom de l’entreprise", nl: "Bedrijfsnaam" },
   "Contact Email": { fr: "E-mail contact", nl: "E-mail contact" },
   "Customer ID": { fr: "ID client", nl: "Klant-ID" },
@@ -692,6 +827,10 @@ const TRANSLATIONS = {
   "No address details": { fr: "Aucune adresse", nl: "Geen adresgegevens" },
   "You must be signed in to use provider import.": { fr: "Vous devez être connecté pour utiliser l’import fournisseur.", nl: "Je moet ingelogd zijn om providerimport te gebruiken." },
   "Shopify request timed out. Check Worker route and secrets.": { fr: "La requête Shopify a expiré. Vérifiez la route Worker et les secrets.", nl: "Shopify-verzoek time-out. Controleer Worker-route en secrets." },
+  "Request timed out. Please try again.": {
+    fr: "La requête a expiré. Veuillez réessayer.",
+    nl: "Verzoek time-out. Probeer opnieuw.",
+  },
   "Could not load Shopify connection.": { fr: "Impossible de charger la connexion Shopify.", nl: "Kan Shopify-verbinding niet laden." },
   "Shopify connected: {shop}": { fr: "Shopify connecté : {shop}", nl: "Shopify verbonden: {shop}" },
   "Shopify connected.": { fr: "Shopify connecté.", nl: "Shopify verbonden." },
@@ -1095,6 +1234,8 @@ const reportCountriesMapTooltip = document.getElementById("reportCountriesMapToo
 const stepPanels = document.querySelectorAll(".step-panel");
 const stepperItems = document.querySelectorAll(".stepper-item");
 const stepper = document.getElementById("stepper");
+const step3Title = document.querySelector('.stepper-item[data-step="3"] .step-title');
+const step3Sub = document.querySelector('.stepper-item[data-step="3"] .step-sub');
 const labelCards = document.querySelectorAll(".label-card");
 const summaryService = document.getElementById("summaryService");
 const summaryPrice = document.getElementById("summaryPrice");
@@ -1102,8 +1243,17 @@ const summaryQty = document.getElementById("summaryQty");
 const summaryTotal = document.getElementById("summaryTotal");
 const summaryTracking = document.getElementById("summaryTracking");
 const summaryChatButton = document.getElementById("summaryChatButton");
+const checkoutStepTitle = document.getElementById("checkoutStepTitle");
+const checkoutStepSubtitle = document.getElementById("checkoutStepSubtitle");
+const invoiceReviewWrap = document.getElementById("invoiceReviewWrap");
+const directPaymentWrap = document.getElementById("directPaymentWrap");
+const paymentMethodList = document.getElementById("paymentMethodList");
+const paymentMethodWallet = document.getElementById("paymentMethodWallet");
+const paymentMethodCard = document.getElementById("paymentMethodCard");
+const paymentMethodError = document.getElementById("paymentMethodError");
 const paymentService = document.getElementById("paymentService");
 const paymentTotal = document.getElementById("paymentTotal");
+const directPaymentTotal = document.getElementById("directPaymentTotal");
 const invoiceQty = document.getElementById("invoiceQty");
 const invoiceSubtotal = document.getElementById("invoiceSubtotal");
 const invoiceVat = document.getElementById("invoiceVat");
@@ -1113,6 +1263,13 @@ const invoiceEmail = document.getElementById("invoiceEmail");
 const invoicePhone = document.getElementById("invoicePhone");
 const invoiceAddress = document.getElementById("invoiceAddress");
 const invoiceTaxId = document.getElementById("invoiceTaxId");
+const walletAvailableInline = document.getElementById("walletAvailableInline");
+const cardMethodStatus = document.getElementById("cardMethodStatus");
+const walletBalanceValue = document.getElementById("walletBalanceValue");
+const walletPendingValue = document.getElementById("walletPendingValue");
+const directPaymentHint = document.getElementById("directPaymentHint");
+const payButtonLabel = document.getElementById("payButtonLabel");
+const openIbanTopupFromStep = document.getElementById("openIbanTopupFromStep");
 const quantityInput = document.getElementById("labelQuantity");
 const batchPanel = document.getElementById("batchPanel");
 const batchList = document.getElementById("batchList");
@@ -1150,6 +1307,31 @@ const customsContinueButton = document.getElementById("customsContinue");
 const openRestrictedGoodsModalButton = document.getElementById("openRestrictedGoodsModal");
 const restrictedGoodsModal = document.getElementById("restrictedGoodsModal");
 const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalClose");
+const openIbanTopupFromAccount = document.getElementById("openIbanTopupFromAccount");
+const accountWalletBalance = document.getElementById("accountWalletBalance");
+const accountPendingTopups = document.getElementById("accountPendingTopups");
+const accountOpenInvoiceCount = document.getElementById("accountOpenInvoiceCount");
+const accountPaidInvoiceCount = document.getElementById("accountPaidInvoiceCount");
+const accountOpenInvoicesList = document.getElementById("accountOpenInvoicesList");
+const accountPaidInvoicesList = document.getElementById("accountPaidInvoicesList");
+const accountIbanSummary = document.getElementById("accountIbanSummary");
+const ibanTopupModal = document.getElementById("ibanTopupModal");
+const ibanTopupClose = document.getElementById("ibanTopupClose");
+const ibanTopupCancel = document.getElementById("ibanTopupCancel");
+const ibanTopupAmount = document.getElementById("ibanTopupAmount");
+const ibanTopupRequest = document.getElementById("ibanTopupRequest");
+const ibanTopupStatus = document.getElementById("ibanTopupStatus");
+const ibanTopupResult = document.getElementById("ibanTopupResult");
+const ibanResultBeneficiary = document.getElementById("ibanResultBeneficiary");
+const ibanResultIban = document.getElementById("ibanResultIban");
+const ibanResultBic = document.getElementById("ibanResultBic");
+const ibanResultReference = document.getElementById("ibanResultReference");
+const ibanResultAmount = document.getElementById("ibanResultAmount");
+const ibanResultEta = document.getElementById("ibanResultEta");
+const ibanResultNote = document.getElementById("ibanResultNote");
+const ibanCopyReference = document.getElementById("ibanCopyReference");
+const ibanCopyIban = document.getElementById("ibanCopyIban");
+const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
@@ -1280,6 +1462,8 @@ let reportsWorldGeoJson = null;
 let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
 let billingOverview = null;
+let checkoutPaymentMethod = "invoice";
+let ibanTopupDraft = null;
 let customsGhostVisible = false;
 let providerStatusTimer = 0;
 let shopifyConnection = null;
@@ -1289,6 +1473,7 @@ let shopifySavedLocationSelection = [];
 let shopifySettingsBusy = false;
 let clientInviteBusy = false;
 let clientInviteHistory = [];
+let authKeepAliveTimer = 0;
 const translationTextNodeBase = new WeakMap();
 const translationAttrBase = new WeakMap();
 
@@ -2387,11 +2572,27 @@ async function refreshAuthAccessToken() {
   }
 }
 
+function stopAuthKeepAlive() {
+  if (authKeepAliveTimer) {
+    window.clearInterval(authKeepAliveTimer);
+    authKeepAliveTimer = 0;
+  }
+}
+
+function startAuthKeepAlive() {
+  stopAuthKeepAlive();
+  if (!supabaseClient) return;
+  authKeepAliveTimer = window.setInterval(() => {
+    if (!currentUser) return;
+    void refreshAuthAccessToken();
+  }, 4 * 60 * 1000);
+}
+
 async function fetchApiWithAuth(path, options = {}) {
   const { timeoutMs = 15000, ...requestOptions } = options;
   const sendWithToken = async (token) => {
     if (!token) {
-      throw new Error(tr("You must be signed in to use provider import."));
+      throw new Error(tr("You must be signed in."));
     }
     const headers = new Headers(requestOptions.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
@@ -2424,7 +2625,7 @@ async function fetchApiWithAuth(path, options = {}) {
       return payload;
     } catch (error) {
       if (error?.name === "AbortError") {
-        throw new Error(tr("Shopify request timed out. Check Worker route and secrets."));
+        throw new Error(tr("Request timed out. Please try again."));
       }
       throw error;
     } finally {
@@ -2442,7 +2643,7 @@ async function fetchApiWithAuth(path, options = {}) {
     token = await refreshAuthAccessToken();
     if (!token) {
       cachedAuthAccessToken = "";
-      throw new Error(tr("You must be signed in to use provider import."));
+      throw new Error(tr("You must be signed in."));
     }
     return sendWithToken(token);
   }
@@ -2882,10 +3083,10 @@ function getAdminClientProfile(client) {
 
 function normalizeAdminClientBilling(client) {
   const raw = client?.billing && typeof client.billing === "object" ? client.billing : {};
-  let invoiceEnabled = raw.invoice_enabled !== false;
-  let cardEnabled = raw.card_enabled === true;
+  let invoiceEnabled = raw.invoice_enabled === true;
+  let cardEnabled = raw.card_enabled === false ? false : true;
   if (!invoiceEnabled && !cardEnabled) {
-    invoiceEnabled = true;
+    cardEnabled = true;
   }
   return {
     invoice_enabled: invoiceEnabled,
@@ -3525,16 +3726,22 @@ async function loadBillingOverview(options = {}) {
   if (!currentUser) {
     billingOverview = null;
     updateSummary();
+    renderCheckoutStepMode();
+    renderAccountBillingOverview();
     return null;
   }
   try {
     const payload = await fetchApiWithAuth("/api/billing/overview", { timeoutMs: 12000 });
     billingOverview = payload && typeof payload === "object" ? payload : null;
     updateSummary();
+    renderCheckoutStepMode();
+    renderAccountBillingOverview();
     return billingOverview;
   } catch (error) {
     billingOverview = null;
     updateSummary();
+    renderCheckoutStepMode();
+    renderAccountBillingOverview();
     if (!quiet) {
       showToast(error?.message || tr("Could not load billing overview."), { tone: "error" });
     }
@@ -5943,6 +6150,9 @@ function setMainView(view, options = {}) {
     if (nextView !== "builder") {
       setRestrictedGoodsModalOpen(false);
     }
+    if (nextView !== "builder" && nextView !== "account") {
+      setIbanTopupModalOpen(false);
+    }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
       renderReportsDashboard();
@@ -6005,6 +6215,119 @@ function setReceiptModalOpen(open) {
 function setRestrictedGoodsModalOpen(open) {
   if (!restrictedGoodsModal) return;
   restrictedGoodsModal.classList.toggle("is-closed", !open);
+}
+
+function setIbanTopupStatus(message = "", options = {}) {
+  if (!ibanTopupStatus) return;
+  ibanTopupStatus.textContent = message;
+  ibanTopupStatus.classList.remove("is-error", "is-success");
+  if (!message) return;
+  if (options?.tone === "error") {
+    ibanTopupStatus.classList.add("is-error");
+  } else if (options?.tone === "success") {
+    ibanTopupStatus.classList.add("is-success");
+  }
+}
+
+function resetIbanTopupResult() {
+  ibanTopupDraft = null;
+  if (ibanTopupResult) {
+    ibanTopupResult.classList.add("is-hidden");
+  }
+  if (ibanResultBeneficiary) ibanResultBeneficiary.textContent = "--";
+  if (ibanResultIban) ibanResultIban.textContent = "--";
+  if (ibanResultBic) ibanResultBic.textContent = "--";
+  if (ibanResultReference) ibanResultReference.textContent = "--";
+  if (ibanResultAmount) ibanResultAmount.textContent = formatMoney(0);
+  if (ibanResultEta) ibanResultEta.textContent = tr("1-2 business days");
+  if (ibanResultNote) ibanResultNote.textContent = "--";
+}
+
+function setIbanTopupModalOpen(open, options = {}) {
+  if (!ibanTopupModal) return;
+  ibanTopupModal.classList.toggle("is-closed", !open);
+  if (open) {
+    const { amount = null } = options || {};
+    const prefill = Number(amount);
+    if (ibanTopupAmount && Number.isFinite(prefill) && prefill > 0) {
+      ibanTopupAmount.value = prefill.toFixed(2);
+    }
+    const instructions = getIbanInstructionsFromOverview();
+    if (ibanTopupModalNote) {
+      ibanTopupModalNote.textContent =
+        instructions.note ||
+        tr("Generate a transfer reference, then send your bank transfer. Funds are credited once received.");
+    }
+    setIbanTopupStatus("");
+    resetIbanTopupResult();
+  }
+}
+
+function populateIbanTopupResult(payload) {
+  const instructions = payload?.instructions && typeof payload.instructions === "object"
+    ? payload.instructions
+    : getIbanInstructionsFromOverview();
+  const topup = payload?.topup && typeof payload.topup === "object" ? payload.topup : null;
+  if (ibanResultBeneficiary) {
+    ibanResultBeneficiary.textContent = String(instructions.beneficiary || "--");
+  }
+  if (ibanResultIban) {
+    ibanResultIban.textContent = String(instructions.iban || "--");
+  }
+  if (ibanResultBic) {
+    ibanResultBic.textContent = String(instructions.bic || "--");
+  }
+  if (ibanResultReference) {
+    ibanResultReference.textContent = String(instructions.reference || topup?.reference || "--");
+  }
+  if (ibanResultAmount) {
+    ibanResultAmount.textContent = formatMoney(Number(instructions.amount_eur || topup?.amount_eur || 0));
+  }
+  if (ibanResultEta) {
+    ibanResultEta.textContent = tr("1-2 business days");
+  }
+  if (ibanResultNote) {
+    ibanResultNote.textContent = String(instructions.note || "");
+  }
+  if (ibanTopupResult) {
+    ibanTopupResult.classList.remove("is-hidden");
+  }
+}
+
+async function createIbanTopupRequest() {
+  const amount = Number(ibanTopupAmount?.value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setIbanTopupStatus(tr("Enter a valid top-up amount."), { tone: "error" });
+    return;
+  }
+  if (ibanTopupRequest) {
+    ibanTopupRequest.disabled = true;
+  }
+  setIbanTopupStatus(tr("Creating top-up request..."));
+  try {
+    const payload = await fetchApiWithAuth("/api/billing/topups/request", {
+      method: "POST",
+      body: JSON.stringify({
+        amount,
+      }),
+    });
+    ibanTopupDraft = payload;
+    populateIbanTopupResult(payload);
+    setIbanTopupStatus(tr("Transfer reference generated. Use it as communication."), {
+      tone: "success",
+    });
+    showToast(tr("IBAN top-up request created."), { tone: "success" });
+    await loadBillingOverview({ quiet: true });
+  } catch (error) {
+    setIbanTopupStatus(error?.message || tr("Could not create top-up request."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not create top-up request."), { tone: "error" });
+  } finally {
+    if (ibanTopupRequest) {
+      ibanTopupRequest.disabled = false;
+    }
+  }
 }
 
 function loadLocalHistory(userId) {
@@ -8426,6 +8749,7 @@ function setAuthView(session, options = {}) {
   const route = parseRouteFromLocation();
   renderAccountProfile(currentUser);
   if (isAuthed) {
+    startAuthKeepAlive();
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     loadAdminAccessStatus({ quiet: true });
@@ -8440,6 +8764,7 @@ function setAuthView(session, options = {}) {
       adminBillingTestEmailInput.value = currentUser?.email || "";
     }
   } else {
+    stopAuthKeepAlive();
     resetWarehouseState();
     shopifyConnection = null;
     updateShopifyProviderStatus();
@@ -8461,6 +8786,8 @@ function setAuthView(session, options = {}) {
     renderAdminClientsList();
     renderAdminInvoiceList();
     updateSummary();
+    renderCheckoutStepMode();
+    renderAccountBillingOverview();
   }
   transitionShellVisibility(isAuthed, { animate });
   if (accountChip) {
@@ -8494,6 +8821,7 @@ function setAuthView(session, options = {}) {
   if (!isAuthed) {
     setReceiptModalOpen(false);
     setShopifySettingsModalOpen(false);
+    setIbanTopupModalOpen(false);
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedLocationSelection = [];
@@ -9281,10 +9609,7 @@ if (summaryChatButton) {
 }
 
 function updatePayment() {
-  const quantity = getQuantity();
-  const subtotal = Number((state.selection.price * quantity).toFixed(2));
-  const vatAmount = Number((subtotal * VAT_RATE).toFixed(2));
-  const total = Number((subtotal + vatAmount).toFixed(2));
+  const { quantity, subtotal, vatAmount, total } = getOrderTotals();
 
   if (paymentService) {
     paymentService.textContent = state.selection.type;
@@ -9301,6 +9626,230 @@ function updatePayment() {
   if (paymentTotal) {
     paymentTotal.textContent = formatMoney(total);
   }
+  if (directPaymentTotal) {
+    directPaymentTotal.textContent = formatMoney(total);
+  }
+  if (directPaymentHint) {
+    directPaymentHint.textContent = tr(
+      "If your balance is lower than the order total, top up by bank transfer or use card for immediate shipment."
+    );
+  }
+  renderCheckoutStepMode();
+}
+
+function getOrderTotals() {
+  const quantity = getQuantity();
+  const subtotal = Number((state.selection.price * quantity).toFixed(2));
+  const vatAmount = Number((subtotal * VAT_RATE).toFixed(2));
+  const total = Number((subtotal + vatAmount).toFixed(2));
+  return { quantity, subtotal, vatAmount, total };
+}
+
+function getIbanInstructionsFromOverview() {
+  const fallback = {
+    beneficiary: "Shipide Logistics SRL",
+    iban: "BE68 5390 0754 7034",
+    bic: "KREDBEBB",
+    note: tr("Transfers are credited once received (typically 1-2 business days)."),
+  };
+  const fromOverview = billingOverview?.iban_instructions;
+  if (!fromOverview || typeof fromOverview !== "object") return fallback;
+  return {
+    beneficiary: String(fromOverview.beneficiary || fallback.beneficiary).trim() || fallback.beneficiary,
+    iban: String(fromOverview.iban || fallback.iban).trim() || fallback.iban,
+    bic: String(fromOverview.bic || fallback.bic).trim() || fallback.bic,
+    note: String(fromOverview.note || fallback.note).trim() || fallback.note,
+  };
+}
+
+function getBillingFlags() {
+  let invoiceEnabled = billingOverview?.invoice_enabled === true;
+  let cardEnabled = billingOverview?.card_enabled === false ? false : true;
+  const walletEnabled = billingOverview?.wallet_enabled !== false;
+  if (!invoiceEnabled && !cardEnabled) {
+    cardEnabled = true;
+  }
+  return {
+    invoiceEnabled,
+    cardEnabled,
+    walletEnabled,
+  };
+}
+
+function setCheckoutPaymentMethod(method, options = {}) {
+  const safeMethod = String(method || "").trim().toLowerCase();
+  const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
+  let nextMethod = "invoice";
+  if (safeMethod === "wallet" && walletEnabled) {
+    nextMethod = "wallet";
+  } else if (safeMethod === "card" && cardEnabled) {
+    nextMethod = "card";
+  } else if (safeMethod === "invoice" && invoiceEnabled) {
+    nextMethod = "invoice";
+  } else if (invoiceEnabled) {
+    nextMethod = "invoice";
+  } else if (walletEnabled) {
+    nextMethod = "wallet";
+  } else if (cardEnabled) {
+    nextMethod = "card";
+  }
+  checkoutPaymentMethod = nextMethod;
+
+  if (paymentMethodList) {
+    paymentMethodList.querySelectorAll("[data-payment-method]").forEach((button) => {
+      const card = button;
+      const cardMethod = String(card.dataset.paymentMethod || "").trim().toLowerCase();
+      const isActive = cardMethod === checkoutPaymentMethod;
+      card.classList.toggle("is-selected", isActive);
+      if (cardMethod === "wallet") {
+        card.disabled = !walletEnabled;
+      } else if (cardMethod === "card") {
+        card.disabled = !cardEnabled;
+      } else {
+        card.disabled = false;
+      }
+    });
+  }
+
+  if (paymentMethodError && !options.quiet) {
+    paymentMethodError.classList.remove("is-visible");
+  }
+}
+
+function renderInvoiceList(container, rows, emptyMessage) {
+  if (!container) return;
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) {
+    container.innerHTML = `<div class="account-billing-empty">${escapeHtml(emptyMessage)}</div>`;
+    return;
+  }
+  container.innerHTML = "";
+  safeRows.slice(0, 8).forEach((row) => {
+    const item = document.createElement("article");
+    item.className = "account-billing-item";
+    const label = String(row?.reference || "--").trim();
+    const amount = formatMoney(Number(row?.total_inc_vat || 0));
+    const track = String(row?.tracking || row?.status || "--").trim();
+    const dueDate = formatHistoryDate(row?.due_at || row?.issued_at || row?.created_at || "");
+    item.innerHTML = `
+      <div class="account-billing-item-main">
+        <div class="account-billing-item-top">
+          <span>${escapeHtml(label)}</span>
+          <span class="mono">${escapeHtml(amount)}</span>
+        </div>
+        <div class="account-billing-item-meta">${escapeHtml(dueDate)}</div>
+      </div>
+      <span class="account-billing-status-pill">${escapeHtml(track)}</span>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function renderAccountBillingOverview() {
+  const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
+  const pendingTopups = Number(billingOverview?.wallet_pending_topups_eur || 0);
+  const openCount = Number(billingOverview?.open_invoice_count || 0);
+  const paidCount = Number(billingOverview?.paid_invoice_count || 0);
+  if (accountWalletBalance) {
+    accountWalletBalance.textContent = formatMoney(walletBalance);
+  }
+  if (accountPendingTopups) {
+    accountPendingTopups.textContent = formatMoney(pendingTopups);
+  }
+  if (accountOpenInvoiceCount) {
+    accountOpenInvoiceCount.textContent = String(openCount);
+  }
+  if (accountPaidInvoiceCount) {
+    accountPaidInvoiceCount.textContent = String(paidCount);
+  }
+  renderInvoiceList(
+    accountOpenInvoicesList,
+    billingOverview?.open_invoices,
+    tr("No open invoices.")
+  );
+  renderInvoiceList(
+    accountPaidInvoicesList,
+    billingOverview?.paid_invoices,
+    tr("No paid invoices yet.")
+  );
+  const iban = getIbanInstructionsFromOverview();
+  if (accountIbanSummary) {
+    accountIbanSummary.textContent = `${tr("IBAN")}: ${iban.iban} • ${tr("Reference required")}`;
+  }
+}
+
+function renderCheckoutStepMode() {
+  const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
+  const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
+  const pendingTopups = Number(billingOverview?.wallet_pending_topups_eur || 0);
+  const { total } = getOrderTotals();
+  const walletSufficient = walletBalance + 0.0001 >= total;
+
+  if (walletAvailableInline) {
+    walletAvailableInline.textContent = formatMoney(walletBalance);
+  }
+  if (walletBalanceValue) {
+    walletBalanceValue.textContent = formatMoney(walletBalance);
+  }
+  if (walletPendingValue) {
+    walletPendingValue.textContent = formatMoney(pendingTopups);
+  }
+  if (cardMethodStatus) {
+    cardMethodStatus.textContent = cardEnabled ? tr("Available") : tr("Disabled");
+  }
+  if (paymentMethodCard) {
+    paymentMethodCard.classList.toggle("is-disabled", !cardEnabled);
+  }
+  if (paymentMethodWallet) {
+    const walletInsufficient = !walletSufficient;
+    paymentMethodWallet.classList.toggle("is-disabled", !walletEnabled);
+    paymentMethodWallet.classList.toggle("is-insufficient", walletInsufficient);
+  }
+
+  if (invoiceEnabled) {
+    if (step3Title) step3Title.textContent = tr("Invoice Review");
+    if (step3Sub) step3Sub.textContent = tr("Billing profile and approval");
+    if (invoiceReviewWrap) invoiceReviewWrap.classList.remove("is-hidden");
+    if (directPaymentWrap) directPaymentWrap.classList.add("is-hidden");
+    if (paymentMethodError) paymentMethodError.classList.remove("is-visible");
+    if (checkoutStepTitle) checkoutStepTitle.textContent = tr("Confirm invoice information");
+    if (checkoutStepSubtitle) {
+      checkoutStepSubtitle.textContent = tr(
+        "No charge now. These details are used for your month-end invoice."
+      );
+    }
+    if (payButtonLabel) {
+      payButtonLabel.textContent = tr("Confirm & Generate");
+    }
+    setCheckoutPaymentMethod("invoice", { quiet: true });
+  } else {
+    if (step3Title) step3Title.textContent = tr("Payment");
+    if (step3Sub) step3Sub.textContent = tr("Wallet or card payment");
+    if (invoiceReviewWrap) invoiceReviewWrap.classList.add("is-hidden");
+    if (directPaymentWrap) directPaymentWrap.classList.remove("is-hidden");
+    if (checkoutStepTitle) checkoutStepTitle.textContent = tr("Choose payment method");
+    if (checkoutStepSubtitle) {
+      checkoutStepSubtitle.textContent = tr(
+        "Select an instant payment method to generate your labels now."
+      );
+    }
+    if (payButtonLabel) {
+      payButtonLabel.textContent = tr("Pay & Generate");
+    }
+    const currentMethod =
+      checkoutPaymentMethod === "wallet" || checkoutPaymentMethod === "card"
+        ? checkoutPaymentMethod
+        : "";
+    const nextMethod =
+      currentMethod === "wallet" && (!walletEnabled || !walletSufficient) && cardEnabled
+        ? "card"
+        : currentMethod === "card" && !cardEnabled && walletEnabled
+          ? "wallet"
+          : currentMethod || (walletEnabled && walletSufficient ? "wallet" : cardEnabled ? "card" : "wallet");
+    setCheckoutPaymentMethod(nextMethod, { quiet: true });
+  }
+
+  renderAccountBillingOverview();
 }
 
 function updatePreview() {
@@ -9695,6 +10244,7 @@ function goToStep(step, options = {}) {
   if (step === 3) {
     renderAccountProfile(currentUser);
     updatePayment();
+    void loadBillingOverview({ quiet: true });
   }
 
   if (step === 4 && regenerate) {
@@ -9850,7 +10400,10 @@ if (signOutButton) {
 if (openAccountPageButton) {
   openAccountPageButton.addEventListener("click", async () => {
     setAccountPageVisible(true);
-    await loadWarehouseSettings({ quiet: true });
+    await Promise.all([
+      loadWarehouseSettings({ quiet: true }),
+      loadBillingOverview({ quiet: true }),
+    ]);
   });
 }
 
@@ -10442,6 +10995,92 @@ if (restrictedGoodsModal) {
   });
 }
 
+if (paymentMethodList) {
+  paymentMethodList.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-payment-method]") : null;
+    if (!(target instanceof HTMLElement)) return;
+    const method = String(target.dataset.paymentMethod || "").trim().toLowerCase();
+    setCheckoutPaymentMethod(method);
+    if (paymentMethodError) {
+      paymentMethodError.classList.remove("is-visible");
+    }
+  });
+}
+
+if (openIbanTopupFromStep) {
+  openIbanTopupFromStep.addEventListener("click", (event) => {
+    event.preventDefault();
+    const { total } = getOrderTotals();
+    const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
+    const suggestedAmount = Math.max(10, Number((total - walletBalance).toFixed(2)));
+    setIbanTopupModalOpen(true, { amount: suggestedAmount });
+  });
+}
+
+if (openIbanTopupFromAccount) {
+  openIbanTopupFromAccount.addEventListener("click", (event) => {
+    event.preventDefault();
+    setIbanTopupModalOpen(true, { amount: 50 });
+  });
+}
+
+if (ibanTopupClose) {
+  ibanTopupClose.addEventListener("click", (event) => {
+    event.preventDefault();
+    setIbanTopupModalOpen(false);
+  });
+}
+
+if (ibanTopupCancel) {
+  ibanTopupCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    setIbanTopupModalOpen(false);
+  });
+}
+
+if (ibanTopupModal) {
+  ibanTopupModal.addEventListener("click", (event) => {
+    if (event.target === ibanTopupModal) {
+      setIbanTopupModalOpen(false);
+    }
+  });
+}
+
+if (ibanTopupRequest) {
+  ibanTopupRequest.addEventListener("click", (event) => {
+    event.preventDefault();
+    void createIbanTopupRequest();
+  });
+}
+
+if (ibanCopyReference) {
+  ibanCopyReference.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const value = String(ibanResultReference?.textContent || "").trim();
+    if (!value || value === "--") return;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(tr("Reference copied to clipboard."), { tone: "success" });
+    } catch (_error) {
+      showToast(tr("Could not copy reference."), { tone: "error" });
+    }
+  });
+}
+
+if (ibanCopyIban) {
+  ibanCopyIban.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const value = String(ibanResultIban?.textContent || "").trim();
+    if (!value || value === "--") return;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(tr("IBAN copied to clipboard."), { tone: "success" });
+    } catch (_error) {
+      showToast(tr("Could not copy IBAN."), { tone: "error" });
+    }
+  });
+}
+
 if (receiptDownloadPdf) {
   receiptDownloadPdf.addEventListener("click", (event) => {
     event.preventDefault();
@@ -10455,6 +11094,7 @@ document.addEventListener("keydown", (event) => {
   if (receiptModal && !receiptModal.classList.contains("is-closed")) return;
   if (restrictedGoodsModal && !restrictedGoodsModal.classList.contains("is-closed")) return;
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
+  if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isHistoryOpen = historyPageSection && !historyPageSection.classList.contains("is-hidden");
@@ -10483,6 +11123,10 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) {
+    setIbanTopupModalOpen(false);
+    return;
+  }
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) {
     closeShopifySettingsModal();
   }
@@ -10610,17 +11254,83 @@ document.querySelectorAll("[data-back]").forEach((button) => {
 if (payButton) {
   payButton.addEventListener("click", (event) => {
     event.preventDefault();
-
-    payButton.disabled = true;
-    const originalMarkup = payButton.innerHTML;
-    payButton.innerHTML = tr("Preparing Label...");
-
-    setTimeout(() => {
-      payButton.disabled = false;
-      payButton.innerHTML = originalMarkup;
-      goToStep(4);
-    }, 900);
+    void handleCheckoutAndGenerate();
   });
+}
+
+async function handleCheckoutAndGenerate() {
+  if (!payButton) return;
+  const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
+  const { total } = getOrderTotals();
+
+  if (!invoiceEnabled) {
+    let method = checkoutPaymentMethod;
+    if (method !== "card" && method !== "wallet") {
+      method = walletEnabled ? "wallet" : cardEnabled ? "card" : "";
+    }
+    if (!method) {
+      if (paymentMethodError) {
+        paymentMethodError.textContent = tr("Select a payment method to continue.");
+        paymentMethodError.classList.add("is-visible");
+      }
+      return;
+    }
+    if (method === "wallet") {
+      const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
+      if (walletBalance + 0.0001 < total) {
+        if (paymentMethodError) {
+          paymentMethodError.textContent = tr(
+            "Insufficient wallet balance. Top up by IBAN or use card."
+          );
+          paymentMethodError.classList.add("is-visible");
+        }
+        return;
+      }
+    }
+    setCheckoutPaymentMethod(method, { quiet: true });
+  }
+
+  payButton.disabled = true;
+  const originalMarkup = payButton.innerHTML;
+  payButton.innerHTML = tr("Preparing Label...");
+
+  try {
+    if (!invoiceEnabled) {
+      const payload = await fetchApiWithAuth("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          method: checkoutPaymentMethod,
+          amount: total,
+          labelsCount: getQuantity(),
+          service: state.selection.type,
+        }),
+      });
+      await loadBillingOverview({ quiet: true });
+      if (checkoutPaymentMethod === "wallet") {
+        showToast(
+          tr("Paid with account balance. Remaining balance: {amount}", {
+            amount: formatMoney(Number(payload?.wallet_balance_eur || 0)),
+          }),
+          { tone: "success" }
+        );
+      } else if (checkoutPaymentMethod === "card") {
+        showToast(tr("Card payment approved. Generating labels."), { tone: "success" });
+      }
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 480));
+    goToStep(4);
+  } catch (error) {
+    const message = error?.message || tr("Could not process checkout.");
+    if (paymentMethodError && !invoiceEnabled) {
+      paymentMethodError.textContent = message;
+      paymentMethodError.classList.add("is-visible");
+    }
+    showToast(message, { tone: "error" });
+  } finally {
+    payButton.disabled = false;
+    payButton.innerHTML = originalMarkup;
+  }
 }
 
 function pdfEscape(value) {
@@ -10994,6 +11704,7 @@ function resetAll() {
   clearBatchState();
   resetCustomsDeclaration();
   customsGhostVisible = false;
+  checkoutPaymentMethod = "invoice";
   state.quantity = 1;
   state.csvMode = false;
   state.csvEditable = false;
@@ -11027,6 +11738,9 @@ function resetAll() {
   syncInfoState();
   selectLabel(labelCards[0]);
   updatePayment();
+  if (paymentMethodError) {
+    paymentMethodError.classList.remove("is-visible");
+  }
 }
 
 startOver.addEventListener("click", () => {
@@ -12064,6 +12778,7 @@ window.addEventListener("popstate", (event) => {
   if (route.view === "account") {
     setMainView("account", { push: false });
     loadWarehouseSettings({ quiet: true });
+    loadBillingOverview({ quiet: true });
     return;
   }
 
@@ -12101,6 +12816,12 @@ window.addEventListener("popstate", (event) => {
   setMainView("builder", { push: false });
   updateRoute({ view: "builder", step: state.step }, { replace: true });
 });
+
+window.addEventListener("focus", () => {
+  if (!currentUser) return;
+  void refreshAuthAccessToken();
+});
+
 if (batchPreview) {
   batchPreview.classList.add("is-single");
 }

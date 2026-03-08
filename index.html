@@ -572,68 +572,135 @@
             <section class="step-panel" data-panel="3">
               <div class="panel-header">
                 <div>
-                  <h2>Confirm invoice information</h2>
-                  <p class="panel-sub">
+                  <h2 id="checkoutStepTitle">Confirm invoice information</h2>
+                  <p class="panel-sub" id="checkoutStepSubtitle">
                     No charge now. These details are used for your month-end invoice.
                   </p>
                 </div>
               </div>
 
-              <div class="form-grid invoice-layout">
-                <div class="form-section invoice-info-card">
-                  <div class="section-title">Invoice Recipient</div>
-                  <div class="invoice-info-grid">
-                    <div class="invoice-info-row">
-                      <span>Company</span>
-                      <strong id="invoiceCompany">--</strong>
+              <div id="invoiceReviewWrap">
+                <div class="form-grid invoice-layout">
+                  <div class="form-section invoice-info-card">
+                    <div class="section-title">Invoice Recipient</div>
+                    <div class="invoice-info-grid">
+                      <div class="invoice-info-row">
+                        <span>Company</span>
+                        <strong id="invoiceCompany">--</strong>
+                      </div>
+                      <div class="invoice-info-row">
+                        <span>Point of Contact</span>
+                        <strong id="invoiceContact">--</strong>
+                      </div>
+                      <div class="invoice-info-row">
+                        <span>Email</span>
+                        <strong id="invoiceEmail">--</strong>
+                      </div>
+                      <div class="invoice-info-row">
+                        <span>Phone</span>
+                        <strong id="invoicePhone">--</strong>
+                      </div>
+                      <div class="invoice-info-row">
+                        <span>Billing Address</span>
+                        <strong id="invoiceAddress">--</strong>
+                      </div>
+                      <div class="invoice-info-row">
+                        <span>Tax ID</span>
+                        <strong id="invoiceTaxId" class="mono">--</strong>
+                      </div>
                     </div>
-                    <div class="invoice-info-row">
-                      <span>Point of Contact</span>
-                      <strong id="invoiceContact">--</strong>
+                  </div>
+
+                  <div class="form-section payment-summary invoice-summary">
+                    <div class="section-title">Monthly Invoice Preview</div>
+                    <div class="summary-line">
+                      <span>Label service</span>
+                      <span id="paymentService">Economy</span>
                     </div>
-                    <div class="invoice-info-row">
-                      <span>Email</span>
-                      <strong id="invoiceEmail">--</strong>
+                    <div class="summary-line">
+                      <span>Quantity</span>
+                      <span id="invoiceQty">1</span>
                     </div>
-                    <div class="invoice-info-row">
-                      <span>Phone</span>
-                      <strong id="invoicePhone">--</strong>
+                    <div class="summary-line">
+                      <span>Subtotal (EX. VAT)</span>
+                      <span id="invoiceSubtotal">€5.90</span>
                     </div>
-                    <div class="invoice-info-row">
-                      <span>Billing Address</span>
-                      <strong id="invoiceAddress">--</strong>
+                    <div class="summary-line">
+                      <span>VAT (21%)</span>
+                      <span id="invoiceVat">€1.24</span>
                     </div>
-                    <div class="invoice-info-row">
-                      <span>Tax ID</span>
-                      <strong id="invoiceTaxId" class="mono">--</strong>
+                    <div class="summary-line total">
+                      <span>Total (INCL. VAT)</span>
+                      <span id="paymentTotal">€7.14</span>
+                    </div>
+                    <div class="invoice-note">
+                      This order will be added to your monthly invoice. If you want your information to be changed, please contact your account manager.
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <div class="form-section payment-summary invoice-summary">
-                  <div class="section-title">Monthly Invoice Preview</div>
-                  <div class="summary-line">
-                    <span>Label service</span>
-                    <span id="paymentService">Economy</span>
+              <div class="direct-payment-wrap is-hidden" id="directPaymentWrap">
+                <div class="form-grid direct-payment-grid">
+                  <div class="form-section payment-methods-card">
+                    <div class="section-title">Choose payment method</div>
+                    <p class="panel-sub payment-methods-sub">
+                      Card and wallet are instant. Bank transfer top-up is credited after receipt.
+                    </p>
+                    <div class="payment-method-list" id="paymentMethodList">
+                      <button type="button" class="payment-method-card" data-payment-method="wallet" id="paymentMethodWallet">
+                        <div class="payment-method-main">
+                          <div class="payment-method-title">Account balance</div>
+                          <div class="payment-method-desc">Pay instantly from your available balance.</div>
+                        </div>
+                        <span class="payment-method-pill is-instant">Instant</span>
+                        <div class="payment-method-meta mono">
+                          <span>Available</span>
+                          <strong id="walletAvailableInline">€0.00</strong>
+                        </div>
+                      </button>
+                      <button type="button" class="payment-method-card" data-payment-method="card" id="paymentMethodCard">
+                        <div class="payment-method-main">
+                          <div class="payment-method-title">Credit / Debit card</div>
+                          <div class="payment-method-desc">Charge immediately and generate labels now.</div>
+                        </div>
+                        <span class="payment-method-pill is-instant">Instant</span>
+                        <div class="payment-method-meta mono">
+                          <span>Status</span>
+                          <strong id="cardMethodStatus">Available</strong>
+                        </div>
+                      </button>
+                    </div>
+                    <div class="payment-method-error form-error" id="paymentMethodError">Select a payment method to continue.</div>
                   </div>
-                  <div class="summary-line">
-                    <span>Quantity</span>
-                    <span id="invoiceQty">1</span>
-                  </div>
-                  <div class="summary-line">
-                    <span>Subtotal (EX. VAT)</span>
-                    <span id="invoiceSubtotal">€5.90</span>
-                  </div>
-                  <div class="summary-line">
-                    <span>VAT (21%)</span>
-                    <span id="invoiceVat">€1.24</span>
-                  </div>
-                  <div class="summary-line total">
-                    <span>Total (INCL. VAT)</span>
-                    <span id="paymentTotal">€7.14</span>
-                  </div>
-                  <div class="invoice-note">
-                    This order will be added to your monthly invoice. If you want your information to be changed, please contact your account manager.
+
+                  <div class="form-section iban-topup-card">
+                    <div class="section-title">Top up by IBAN</div>
+                    <div class="iban-topup-pill-row">
+                      <span class="payment-method-pill is-delayed">1-2 days</span>
+                    </div>
+                    <p class="panel-sub iban-topup-sub">
+                      Bank transfer top-ups are asynchronous. Add funds now and use your balance once credited.
+                    </p>
+                    <div class="summary-line">
+                      <span>Current Balance</span>
+                      <span id="walletBalanceValue">€0.00</span>
+                    </div>
+                    <div class="summary-line">
+                      <span>Pending Top-ups</span>
+                      <span id="walletPendingValue">€0.00</span>
+                    </div>
+                    <div class="summary-line total">
+                      <span>Order Total (INCL. VAT)</span>
+                      <span id="directPaymentTotal">€7.14</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary" id="openIbanTopupFromStep">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
+                      <span>Top up by IBAN</span>
+                    </button>
+                    <div class="invoice-note" id="directPaymentHint">
+                      If your balance is lower than the order total, top up by bank transfer or use card for immediate shipment.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -645,7 +712,7 @@
                 </button>
                 <button type="button" class="btn btn-primary" id="payButton">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9 9 4 9 9z"/></svg>
-                  <span>Confirm &amp; Generate</span>
+                  <span id="payButtonLabel">Confirm &amp; Generate</span>
                 </button>
               </div>
             </section>
@@ -786,6 +853,56 @@
           </div>
           <div class="account-info-note">
             To update account information, please contact your account manager.
+          </div>
+        </div>
+
+        <div class="account-billing-panel">
+          <div class="account-billing-head">
+            <div>
+              <div class="preview-title">Billing &amp; Balance</div>
+              <p class="panel-sub">
+                Track wallet funding, invoice status, and payment readiness.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="openIbanTopupFromAccount">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
+              <span>Top up by IBAN</span>
+            </button>
+          </div>
+          <div class="account-billing-metrics">
+            <article class="account-billing-metric">
+              <span>Available Balance</span>
+              <strong id="accountWalletBalance">€0.00</strong>
+            </article>
+            <article class="account-billing-metric">
+              <span>Pending Top-ups</span>
+              <strong id="accountPendingTopups">€0.00</strong>
+            </article>
+            <article class="account-billing-metric">
+              <span>Open Invoices</span>
+              <strong id="accountOpenInvoiceCount">0</strong>
+            </article>
+            <article class="account-billing-metric">
+              <span>Paid Invoices</span>
+              <strong id="accountPaidInvoiceCount">0</strong>
+            </article>
+          </div>
+          <div class="account-billing-columns">
+            <div class="account-billing-list-card">
+              <div class="account-billing-list-title">Open invoices</div>
+              <div class="account-billing-list" id="accountOpenInvoicesList">
+                <div class="account-billing-empty">No open invoices.</div>
+              </div>
+            </div>
+            <div class="account-billing-list-card">
+              <div class="account-billing-list-title">Paid invoices</div>
+              <div class="account-billing-list" id="accountPaidInvoicesList">
+                <div class="account-billing-empty">No paid invoices yet.</div>
+              </div>
+            </div>
+          </div>
+          <div class="account-billing-footer">
+            <span id="accountIbanSummary">IBAN transfer details available in Top up by IBAN.</span>
           </div>
         </div>
 
@@ -1406,6 +1523,77 @@
             <button type="button" class="btn btn-primary" id="shopifySettingsSave">
               <span>Save Settings</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shopify-settings-overlay is-closed" id="ibanTopupModal">
+      <div class="shopify-settings-modal iban-topup-modal">
+        <div class="csv-modal-header">
+          <span class="csv-modal-title">Top up by IBAN</span>
+          <button type="button" class="csv-modal-close" id="ibanTopupClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="shopify-settings-body iban-topup-body">
+          <h3>Fund your account balance</h3>
+          <p class="shopify-settings-note" id="ibanTopupModalNote">
+            Generate a transfer reference, then send your bank transfer. Funds are credited once received.
+          </p>
+          <label class="field iban-topup-amount-field">
+            <span>Top-up amount (EUR)</span>
+            <input type="number" id="ibanTopupAmount" min="1" step="0.01" value="50.00" />
+          </label>
+          <div class="provider-status shopify-settings-status" id="ibanTopupStatus"></div>
+          <div class="iban-topup-result is-hidden" id="ibanTopupResult">
+            <div class="iban-topup-grid">
+              <div class="iban-topup-cell">
+                <span>Beneficiary</span>
+                <strong id="ibanResultBeneficiary">--</strong>
+              </div>
+              <div class="iban-topup-cell">
+                <span>IBAN</span>
+                <strong class="mono" id="ibanResultIban">--</strong>
+              </div>
+              <div class="iban-topup-cell">
+                <span>BIC</span>
+                <strong class="mono" id="ibanResultBic">--</strong>
+              </div>
+              <div class="iban-topup-cell">
+                <span>Reference</span>
+                <strong class="mono" id="ibanResultReference">--</strong>
+              </div>
+              <div class="iban-topup-cell">
+                <span>Amount</span>
+                <strong id="ibanResultAmount">€0.00</strong>
+              </div>
+              <div class="iban-topup-cell">
+                <span>ETA</span>
+                <strong id="ibanResultEta">1-2 business days</strong>
+              </div>
+            </div>
+            <div class="iban-topup-note" id="ibanResultNote">--</div>
+            <div class="iban-topup-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="ibanCopyReference">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                <span>Copy Reference</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="ibanCopyIban">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                <span>Copy IBAN</span>
+              </button>
+            </div>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="ibanTopupCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Close</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="ibanTopupRequest">
+              <span>Generate Transfer Reference</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
           </div>
         </div>

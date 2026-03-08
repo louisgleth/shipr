@@ -29,6 +29,9 @@
   --text: #f1f4fb;
   --muted: #9aa3b2;
   --stroke: rgb(46, 46, 46);
+  --success: #8fe2b2;
+  --success-border: rgba(143, 226, 178, 0.56);
+  --success-bg: rgba(143, 226, 178, 0.14);
   --radius: 4px;
   --radius-lg: 6px;
   --selection-underline-size: 3px;
@@ -360,8 +363,8 @@ body {
 }
 
 .auth-invite-status.is-success {
-  color: #9fc2a3;
-  border-color: #3a5a44;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .auth-form-foot {
@@ -990,7 +993,7 @@ body {
 }
 
 .invite-status.is-success {
-  color: #cfd6e4;
+  color: var(--success);
 }
 
 .invite-history {
@@ -1048,8 +1051,8 @@ body {
 }
 
 .invite-history-badge.is-open {
-  color: #9fc2a3;
-  border-color: #34503d;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .invite-history-badge.is-claimed {
@@ -1060,6 +1063,162 @@ body {
 .invite-history-badge.is-expired {
   color: #d1b06c;
   border-color: #5e4c28;
+}
+
+.account-billing-panel {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.account-billing-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.account-billing-head .panel-sub {
+  max-width: none;
+}
+
+.account-billing-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.account-billing-metric {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  min-height: 72px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.account-billing-metric span {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.account-billing-metric strong {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.account-billing-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.account-billing-list-card {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  min-height: 200px;
+}
+
+.account-billing-list-title {
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+
+.account-billing-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #434c5f transparent;
+}
+
+.account-billing-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.account-billing-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.account-billing-list::-webkit-scrollbar-thumb {
+  background: #3d4658;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.account-billing-item {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: #0c1320;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-billing-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.account-billing-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+
+.account-billing-item-top span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-billing-item-meta {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.account-billing-status-pill {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.account-billing-empty {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.account-billing-footer {
+  border-top: 1px solid var(--stroke);
+  padding-top: 10px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 .warehouse-panel {
@@ -1253,7 +1412,7 @@ body {
 }
 
 .admin-billing-status.is-success {
-  color: #cfd6e4;
+  color: var(--success);
 }
 
 .admin-billing-result {
@@ -1357,8 +1516,8 @@ body {
 }
 
 .admin-billing-status-pill.is-sent {
-  color: #acc6a7;
-  border-color: #3b533a;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .admin-billing-status-pill.is-overdue {
@@ -1367,8 +1526,8 @@ body {
 }
 
 .admin-billing-status-pill.is-paid {
-  color: #8cc0a8;
-  border-color: #2f5345;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .admin-billing-status-pill.is-cancelled {
@@ -1484,7 +1643,7 @@ body {
 }
 
 .admin-client-value.is-positive {
-  color: #b8d7bc;
+  color: var(--success);
 }
 
 .admin-client-value.is-negative {
@@ -1510,8 +1669,8 @@ body {
 }
 
 .admin-client-pill.is-active {
-  color: #b8d7bc;
-  border-color: #34503d;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .admin-client-pill.is-quiet {
@@ -1625,7 +1784,7 @@ body {
 }
 
 .warehouse-status.is-success {
-  color: #cfd6e4;
+  color: var(--success);
 }
 
 .warehouse-list {
@@ -3061,9 +3220,9 @@ body {
   height: 18px;
   padding: 0 7px;
   border-radius: 999px;
-  border: 1px solid rgba(140, 196, 148, 0.35);
-  background: rgba(98, 150, 108, 0.16);
-  color: #a8d4b0;
+  border: 1px solid var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
   font-size: var(--fs-2xs);
   letter-spacing: var(--letter-tight);
 }
@@ -3162,7 +3321,7 @@ body {
 }
 
 .provider-status.is-success {
-  color: #9fc2a3;
+  color: var(--success);
 }
 
 .provider-status.is-error {
@@ -3221,7 +3380,7 @@ body {
 }
 
 .toast.is-success::before {
-  background: #8bc294;
+  background: var(--success);
 }
 
 .toast.is-error::before {
@@ -3253,7 +3412,7 @@ body {
 }
 
 .toast-icon.is-success {
-  color: #8bc294;
+  color: var(--success);
 }
 
 .toast-icon.is-error {
@@ -3480,10 +3639,73 @@ body {
   margin-top: 8px;
 }
 
+.iban-topup-modal {
+  max-width: 620px;
+}
+
+.iban-topup-body {
+  gap: 12px;
+}
+
+.iban-topup-amount-field {
+  max-width: 240px;
+}
+
+.iban-topup-result {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.iban-topup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.iban-topup-cell {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: #0b111a;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.iban-topup-cell span {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.iban-topup-cell strong {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.iban-topup-note {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.iban-topup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 720px) {
   .shopify-settings-modal {
     max-width: calc(100vw - 24px);
     padding: 18px;
+  }
+
+  .iban-topup-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5319,6 +5541,138 @@ input.is-invalid {
   padding-top: 4px;
 }
 
+.direct-payment-wrap {
+  display: grid;
+  gap: 16px;
+}
+
+.direct-payment-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.payment-methods-card,
+.iban-topup-card {
+  gap: 12px;
+  align-content: start;
+}
+
+.payment-methods-sub,
+.iban-topup-sub {
+  margin: 0;
+}
+
+.payment-method-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payment-method-card {
+  width: 100%;
+  appearance: none;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+  letter-spacing: var(--letter-tight);
+  text-align: left;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: start;
+  cursor: pointer;
+  transition: transform 0.26s var(--ease-out-quart), background 0.3s var(--ease-out-expo), border-color 0.22s ease;
+}
+
+.payment-method-card:hover {
+  transform: translateY(-2px);
+}
+
+.payment-method-card.is-selected {
+  background: var(--card-active);
+}
+
+.payment-method-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.payment-method-card.is-insufficient:not(.is-selected) {
+  border-color: #66482b;
+}
+
+.payment-method-main {
+  min-width: 0;
+}
+
+.payment-method-title {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.payment-method-desc {
+  margin-top: 3px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.payment-method-pill {
+  align-self: start;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  min-height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-2xs);
+  white-space: nowrap;
+}
+
+.payment-method-pill.is-instant {
+  color: var(--success);
+  border-color: var(--success-border);
+  background: rgba(143, 226, 178, 0.08);
+}
+
+.payment-method-pill.is-delayed {
+  color: #e2ac6b;
+  border-color: #5f4328;
+  background: rgba(226, 172, 107, 0.09);
+}
+
+.payment-method-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.payment-method-meta strong {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.payment-method-error {
+  margin: 0;
+}
+
+.iban-topup-pill-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: -2px;
+}
+
 .summary-line {
   display: flex;
   justify-content: space-between;
@@ -5651,6 +6005,18 @@ input.is-invalid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .direct-payment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-billing-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-billing-columns {
+    grid-template-columns: 1fr;
+  }
+
   .warehouse-field.is-wide {
     grid-column: span 2;
   }
@@ -5810,6 +6176,10 @@ input.is-invalid {
     grid-template-columns: 1fr;
   }
 
+  .account-billing-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .warehouse-field.is-wide {
     grid-column: auto;
   }
@@ -5824,6 +6194,10 @@ input.is-invalid {
 
   .warehouse-toolbar-actions .btn {
     flex: 1;
+  }
+
+  .account-billing-head {
+    align-items: flex-start;
   }
 
   .account-info-item {
