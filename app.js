@@ -1026,6 +1026,7 @@ const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
+const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
@@ -1528,6 +1529,28 @@ function getInviteTokenFromLocation(location = window.location) {
   return "";
 }
 
+function getReportRangeFromLocation(location = window.location) {
+  const params = new URLSearchParams(location.search || "");
+  return String(params.get("range") || params.get("reportRange") || "")
+    .trim()
+    .toLowerCase();
+}
+
+function applyReportRangeFromToken(token = "") {
+  const normalized = String(token || "").trim().toLowerCase();
+  if (!normalized) return;
+  if (["month", "monthly", "30d", "30", "last30"].includes(normalized)) {
+    reportsRangeMode = "preset";
+    reportsRangeDays = 30;
+    setReportsCustomRangeVisible(false);
+    return;
+  }
+  if (["all", "alltime", "all-time"].includes(normalized)) {
+    reportsRangeMode = "all";
+    setReportsCustomRangeVisible(false);
+  }
+}
+
 function parseRouteFromLocation() {
   const path = getRelativeRoutePath(window.location.pathname);
   if (path === ROUTE_PATHS.login) {
@@ -1546,7 +1569,9 @@ function parseRouteFromLocation() {
     return { view: "history" };
   }
   if (path === ROUTE_PATHS.reports) {
-    return { view: "reports" };
+    const reportRangeFromQuery = getReportRangeFromLocation(window.location);
+    const reportRangeFromState = String(history.state?.reportRange || "").trim().toLowerCase();
+    return { view: "reports", reportRange: reportRangeFromQuery || reportRangeFromState };
   }
 
   const stepEntry = Object.entries(STEP_ROUTE_PATHS).find(([, routePath]) => routePath === path);
@@ -1609,6 +1634,9 @@ function routeToState(route) {
   if (route.view === "register") {
     return { view: "register", inviteToken: String(route?.inviteToken || "").trim() };
   }
+  if (route.view === "reports") {
+    return { view: "reports", reportRange: String(route?.reportRange || "").trim() };
+  }
   return { view: route.view };
 }
 
@@ -1623,7 +1651,8 @@ function updateRoute(route, options = {}) {
     history.state?.view === nextState.view &&
     Number(history.state?.step || 0) === Number(nextState.step || 0) &&
     Boolean(history.state?.customs) === Boolean(nextState.customs) &&
-    String(history.state?.inviteToken || "") === String(nextState?.inviteToken || "");
+    String(history.state?.inviteToken || "") === String(nextState?.inviteToken || "") &&
+    String(history.state?.reportRange || "") === String(nextState?.reportRange || "");
 
   if (replace) {
     if (!samePath || !sameState) {
@@ -3522,6 +3551,7 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingSendTestSequenceButton) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
+  if (adminReportsSendTestButton) adminReportsSendTestButton.disabled = adminBillingBusy;
 }
 
 function setAdminBillingStatus(message = "", options = {}) {
@@ -3731,6 +3761,40 @@ async function sendAdminBillingTestSequence() {
       tone: "error",
     });
     showToast(error?.message || tr("Could not send follow-up sequence."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminReportsTestEmail() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/reports/send-test", {
+      method: "POST",
+      timeoutMs: 30000,
+      body: JSON.stringify({ toEmail }),
+    });
+    const amount = Number(payload?.profitAmount || 0);
+    setAdminBillingStatus(
+      tr("Reports test email sent to {email} ({amount}).", {
+        email: String(payload?.to || toEmail),
+        amount: formatMoney(amount),
+      }),
+      { tone: "success" }
+    );
+    showToast(tr("Reports test email sent."), { tone: "success" });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send reports test email."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not send reports test email."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -5845,7 +5909,7 @@ function runMainViewTransition(mutate, options = {}) {
 }
 
 function setMainView(view, options = {}) {
-  const { push = true, replace = false, animate = true } = options;
+  const { push = true, replace = false, animate = true, reportRange = "" } = options;
   const nextView =
     view === "account" ||
     view === "admin" ||
@@ -5880,6 +5944,7 @@ function setMainView(view, options = {}) {
       setRestrictedGoodsModalOpen(false);
     }
     if (nextView === "reports") {
+      applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
       renderReportsDashboard();
       ensureReportsGeoDataLoaded().then(() => {
         if (currentMainView === "reports") {
@@ -5905,7 +5970,11 @@ function setMainView(view, options = {}) {
       return;
     }
     if (nextView === "reports") {
-      updateRoute({ view: "reports" }, { replace });
+      const reportRangeToken = String(reportRange || "").trim();
+      updateRoute(
+        reportRangeToken ? { view: "reports", reportRange: reportRangeToken } : { view: "reports" },
+        { replace }
+      );
       return;
     }
     updateRoute({ view: "builder", step: state.step }, { replace });
@@ -8630,7 +8699,11 @@ async function initializeAuth() {
   } else if (isAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "reports") {
-    setMainView("reports", { push: false, animate: false });
+    setMainView("reports", {
+      push: false,
+      animate: false,
+      reportRange: String(initialRoute?.reportRange || ""),
+    });
   } else {
     setMainView("builder", { push: false, animate: false });
     if (isAuthed && initialRoute.view === "builder") {
@@ -8672,7 +8745,11 @@ async function initializeAuth() {
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
-      setMainView("reports", { push: false, animate: false });
+      setMainView("reports", {
+        push: false,
+        animate: false,
+        reportRange: String(route?.reportRange || ""),
+      });
     } else {
       setMainView("builder", { push: false, animate: false });
       if (route.view === "builder") {
@@ -9954,6 +10031,12 @@ if (adminBillingSendTestButton) {
 if (adminBillingSendTestSequenceButton) {
   adminBillingSendTestSequenceButton.addEventListener("click", async () => {
     await sendAdminBillingTestSequence();
+  });
+}
+
+if (adminReportsSendTestButton) {
+  adminReportsSendTestButton.addEventListener("click", async () => {
+    await sendAdminReportsTestEmail();
   });
 }
 
@@ -11997,7 +12080,10 @@ window.addEventListener("popstate", (event) => {
   }
 
   if (route.view === "reports") {
-    setMainView("reports", { push: false });
+    setMainView("reports", {
+      push: false,
+      reportRange: String(route?.reportRange || getReportRangeFromLocation(window.location) || ""),
+    });
     loadGenerationHistory({ preferLatest: true });
     return;
   }

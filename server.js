@@ -44,6 +44,11 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "").trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
 const RESEND_REPLY_TO = String(process.env.RESEND_REPLY_TO || "").trim();
+const REPORTS_FROM_EMAIL = String(process.env.REPORTS_FROM_EMAIL || "reports@shipide.com").trim();
+const REPORTS_FROM_NAME = String(process.env.REPORTS_FROM_NAME || "Shipide Reports").trim();
+const REPORTS_PORTAL_URL = String(
+  process.env.REPORTS_PORTAL_URL || "https://portal.shipide.com/reports?range=monthly"
+).trim();
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -669,22 +674,25 @@ function assertResendConfig() {
   if (!RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is required.");
   }
-  if (!RESEND_FROM_EMAIL) {
-    throw new Error("RESEND_FROM_EMAIL is required.");
-  }
 }
 
 async function sendResendEmail(payload) {
   assertResendConfig();
+  const fromName = String(payload?.fromName || RESEND_FROM_NAME || "Shipide Billing").trim();
+  const fromEmail = String(payload?.fromEmail || RESEND_FROM_EMAIL || "").trim();
+  if (!fromEmail) {
+    throw new Error("RESEND_FROM_EMAIL (or payload.fromEmail) is required.");
+  }
   const requestBody = {
-    from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+    from: `${fromName} <${fromEmail}>`,
     to: Array.isArray(payload?.to) ? payload.to : [String(payload?.to || "").trim()],
     subject: String(payload?.subject || "").trim(),
     html: String(payload?.html || ""),
     text: String(payload?.text || ""),
   };
-  if (RESEND_REPLY_TO) {
-    requestBody.reply_to = RESEND_REPLY_TO;
+  const replyTo = String(payload?.replyTo || RESEND_REPLY_TO || "").trim();
+  if (replyTo) {
+    requestBody.reply_to = replyTo;
   }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -1562,8 +1570,8 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
           padding: 38px 8px 20px !important;
         }
         .shipide-email-hero-spacer {
-          height: 92px !important;
-          line-height: 92px !important;
+          height: 56px !important;
+          line-height: 56px !important;
         }
         .shipide-email-logo {
           width: 96px !important;
@@ -1592,7 +1600,7 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
               </td>
             </tr>
             <tr>
-              <td class="shipide-email-hero-spacer" style="height:120px;font-size:0;line-height:120px;">&nbsp;</td>
+              <td class="shipide-email-hero-spacer" style="height:72px;font-size:0;line-height:72px;">&nbsp;</td>
             </tr>
             <tr>
               <td align="center" style="padding:0 8px 8px;">
@@ -1621,6 +1629,100 @@ function buildInvoiceEmailText(invoice, options = {}) {
     `Subtotal (EX. VAT): €${fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2)}`,
     `VAT: €${fromCents(toCents(invoice?.vat_amount)).toFixed(2)}`,
     `Total (INCL. VAT): €${fromCents(toCents(invoice?.total_inc_vat)).toFixed(2)}`,
+  ].join("\n");
+}
+
+function formatEmailEuroAmount(value) {
+  const numeric = Number(value);
+  const safe = Number.isFinite(numeric) ? numeric : 0;
+  return `€${safe.toFixed(2)}`;
+}
+
+function buildMonthlyReportsEmailSubject(options = {}) {
+  const monthYear = formatInvoiceSubjectMonthYear({
+    period_start: options?.monthDate || new Date().toISOString().slice(0, 10),
+  });
+  return `Monthly Reports — ${monthYear}`;
+}
+
+function buildMonthlyReportsEmailHtml(options = {}) {
+  const profitLabel = formatEmailEuroAmount(options?.profitAmount);
+  const reportsUrl =
+    String(options?.reportsUrl || REPORTS_PORTAL_URL || "").trim() ||
+    "https://portal.shipide.com/reports?range=monthly";
+  return `
+    <style>
+      @media only screen and (max-width: 640px) {
+        .shipide-email-hero-title {
+          font-size: 40px !important;
+          line-height: 1.06 !important;
+          letter-spacing: -0.03em !important;
+        }
+        .shipide-email-hero-sub {
+          font-size: 14px !important;
+          line-height: 1.45 !important;
+          max-width: 340px !important;
+        }
+        .shipide-email-hero-wrap {
+          padding: 38px 8px 20px !important;
+        }
+        .shipide-email-hero-spacer {
+          height: 56px !important;
+          line-height: 56px !important;
+        }
+        .shipide-email-logo {
+          width: 96px !important;
+          margin-bottom: 24px !important;
+        }
+      }
+    </style>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
+      <tr>
+        <td align="center" style="padding:0 16px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
+            <tr>
+              <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
+                <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
+                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
+                  This month, you profited<br/>an extra <span style="color:#8fe2b2;">${escapeHtml(
+                    profitLabel
+                  )}</span> with us.
+                </div>
+                <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
+                  Your invoice PDF is attached to this email.<br/>You can also view it instantly with the button below.
+                </div>
+                <a href="${escapeHtml(reportsUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
+                  View Reports
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td class="shipide-email-hero-spacer" style="height:72px;font-size:0;line-height:72px;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 8px 8px;">
+                <span style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid #2f8457;background:#122c1f;color:#9de5bd;font-size:11px;letter-spacing:0.01em;white-space:nowrap;">
+                  Monthly overview
+                </span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function buildMonthlyReportsEmailText(options = {}) {
+  const profitLabel = formatEmailEuroAmount(options?.profitAmount);
+  const reportsUrl =
+    String(options?.reportsUrl || REPORTS_PORTAL_URL || "").trim() ||
+    "https://portal.shipide.com/reports?range=monthly";
+  return [
+    `This month, you profited an extra ${profitLabel} with us.`,
+    "Your invoice PDF is attached to this email.",
+    "You can also view it instantly with the button below.",
+    `View reports: ${reportsUrl}`,
   ].join("\n");
 }
 
@@ -3279,6 +3381,60 @@ async function handleAdminInvoiceSendTestSequence(req, res) {
   }
 }
 
+async function handleAdminReportsSendTest(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to send report tests." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    sendJson(res, 400, { error: "A valid test email is required." });
+    return;
+  }
+  const profitAmountRaw = Number(body?.profitAmount);
+  const profitAmount = Number.isFinite(profitAmountRaw) ? Math.max(0, profitAmountRaw) : 1248.4;
+  const reportsUrl =
+    String(body?.reportsUrl || REPORTS_PORTAL_URL || "").trim() ||
+    "https://portal.shipide.com/reports?range=monthly";
+  try {
+    const resendResponse = await sendResendEmail({
+      to: toEmail,
+      fromName: REPORTS_FROM_NAME,
+      fromEmail: REPORTS_FROM_EMAIL,
+      subject: buildMonthlyReportsEmailSubject(),
+      html: buildMonthlyReportsEmailHtml({
+        profitAmount,
+        reportsUrl,
+      }),
+      text: buildMonthlyReportsEmailText({
+        profitAmount,
+        reportsUrl,
+      }),
+    });
+    sendJson(res, 200, {
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+      profitAmount,
+      reportsUrl,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not send test reports email." });
+  }
+}
+
 async function handleAdminInvoiceMarkPaid(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -3863,6 +4019,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/admin/invoices/send-test-sequence" && req.method === "POST") {
     await handleAdminInvoiceSendTestSequence(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/reports/send-test" && req.method === "POST") {
+    await handleAdminReportsSendTest(req, res);
     return true;
   }
   if (pathname === "/api/admin/invoices/mark-paid" && req.method === "POST") {
