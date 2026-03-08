@@ -3834,9 +3834,14 @@ body {
   overflow-wrap: anywhere;
 }
 
-.iban-topup-eta {
+.iban-topup-eta-pill {
+  justify-self: start;
+  border: 1px solid rgba(143, 226, 178, 0.52);
+  border-radius: 999px;
+  background: rgba(143, 226, 178, 0.12);
+  color: #9be6be;
   font-size: var(--fs-2xs);
-  color: var(--muted);
+  padding: 2px 9px;
   line-height: 1.2;
 }
 
