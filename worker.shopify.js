@@ -1249,6 +1249,41 @@ function buildTopupReference(userId = "") {
   return `SHIP-${userChunk}-${timeChunk}-${randChunk}`;
 }
 
+function resolveWalletAccessIssue(details, tableName) {
+  const raw = String(details || "");
+  const lower = raw.toLowerCase();
+  const table = String(tableName || "").toLowerCase();
+  if (!lower || !table || !lower.includes(table)) return null;
+
+  if (lower.includes("schema cache")) {
+    return {
+      kind: "cache",
+      message: "Wallet API schema cache is stale. Run: NOTIFY pgrst, 'reload schema'; in Supabase SQL editor.",
+    };
+  }
+  if (
+    lower.includes("does not exist") ||
+    lower.includes("undefined table") ||
+    lower.includes("\"code\":\"42p01\"")
+  ) {
+    return {
+      kind: "missing",
+      message: "Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.",
+    };
+  }
+  if (
+    lower.includes("permission denied") ||
+    lower.includes("insufficient_privilege") ||
+    lower.includes("\"code\":\"42501\"")
+  ) {
+    return {
+      kind: "permission",
+      message: `Wallet access denied for ${tableName}. Grant table privileges (service_role/authenticated), then run: NOTIFY pgrst, 'reload schema';`,
+    };
+  }
+  return null;
+}
+
 function normalizeTopupStatus(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (["pending", "received", "credited", "cancelled", "failed"].includes(normalized)) {
@@ -1310,9 +1345,8 @@ async function getOrCreateBillingWallet(env, userId) {
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_wallets/i.test(details)) {
-      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
-    }
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
     throw new Error(`Could not load wallet balance (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
@@ -1340,6 +1374,8 @@ async function getOrCreateBillingWallet(env, userId) {
   );
   if (!insertResponse.ok) {
     const details = await insertResponse.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
     throw new Error(`Could not create wallet (${insertResponse.status}) ${details}`.trim());
   }
   const insertedRows = await insertResponse.json().catch(() => []);
@@ -1383,9 +1419,10 @@ async function listBillingTopups(
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_wallet_topups/i.test(details)) {
-      if (allowMissing) return [];
-      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (walletIssue) {
+      if (allowMissing && walletIssue.kind === "missing") return [];
+      throw new Error(walletIssue.message);
     }
     throw new Error(`Could not load bank top-ups (${response.status}) ${details}`.trim());
   }
@@ -1415,9 +1452,10 @@ async function listBillingWalletTransactions(
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_wallet_transactions/i.test(details)) {
-      if (allowMissing) return [];
-      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TRANSACTIONS_TABLE);
+    if (walletIssue) {
+      if (allowMissing && walletIssue.kind === "missing") return [];
+      throw new Error(walletIssue.message);
     }
     throw new Error(`Could not load wallet transactions (${response.status}) ${details}`.trim());
   }
@@ -1460,9 +1498,8 @@ async function createBillingTopupRequest(env, user, amountEur = null) {
   });
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_wallet_topups/i.test(details)) {
-      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
-    }
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
     throw new Error(`Could not create top-up request (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
@@ -1493,9 +1530,8 @@ async function saveWalletTransaction(env, payload) {
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_wallet_transactions/i.test(details)) {
-      throw new Error("Wallet schema missing. Run supabase_wallet_billing.sql in Supabase SQL editor.");
-    }
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TRANSACTIONS_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
     throw new Error(`Could not save wallet transaction (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
