@@ -729,7 +729,9 @@
                   <div class="batch-preview" id="batchPreview">
                     <div class="batch-panel is-hidden" id="batchPanel">
                       <div class="batch-title">Batch Queue</div>
-                      <div class="batch-list" id="batchList"></div>
+                      <div class="batch-list-wrap scroll-fade-wrap scroll-fade-wrap--card">
+                        <div class="batch-list" id="batchList"></div>
+                      </div>
                     </div>
                     <iframe id="pdfFrame" title="Label PDF preview"></iframe>
                   </div>
@@ -1154,7 +1156,9 @@
             <div class="account-history-status" id="accountHistoryStatus">
               Sign in to view previous generations.
             </div>
-            <div class="account-history-list" id="accountHistoryList"></div>
+            <div class="account-history-list-wrap scroll-fade-wrap">
+              <div class="account-history-list" id="accountHistoryList"></div>
+            </div>
           </div>
 
           <div class="account-preview-panel">
@@ -1183,7 +1187,9 @@
               </div>
               <div class="batch-panel is-hidden" id="accountBatchPanel">
                 <div class="batch-title">Batch Queue</div>
-                <div class="batch-list" id="accountBatchList"></div>
+                <div class="batch-list-wrap scroll-fade-wrap scroll-fade-wrap--card">
+                  <div class="batch-list" id="accountBatchList"></div>
+                </div>
               </div>
               <iframe id="accountPdfFrame" title="Account label PDF preview"></iframe>
             </div>
@@ -1508,26 +1514,23 @@
           </p>
           <div class="provider-status shopify-settings-status" id="ibanTopupStatus"></div>
           <div class="iban-topup-result is-hidden" id="ibanTopupResult">
-            <div class="iban-topup-grid">
-              <div class="iban-topup-cell">
+            <div class="iban-topup-reference-block">
+              <span class="iban-topup-kicker">Transfer Reference</span>
+              <strong class="mono iban-topup-reference" id="ibanResultReference">--</strong>
+              <div class="iban-topup-eta-pill" id="ibanResultEta">1-2 business days</div>
+            </div>
+            <div class="iban-topup-lines">
+              <div class="iban-topup-line">
                 <span>Beneficiary</span>
                 <strong id="ibanResultBeneficiary">--</strong>
               </div>
-              <div class="iban-topup-cell">
+              <div class="iban-topup-line">
                 <span>IBAN</span>
                 <strong class="mono" id="ibanResultIban">--</strong>
               </div>
-              <div class="iban-topup-cell">
+              <div class="iban-topup-line">
                 <span>BIC</span>
                 <strong class="mono" id="ibanResultBic">--</strong>
-              </div>
-              <div class="iban-topup-cell">
-                <span>Reference</span>
-                <strong class="mono" id="ibanResultReference">--</strong>
-              </div>
-              <div class="iban-topup-cell">
-                <span>ETA</span>
-                <strong id="ibanResultEta">1-2 business days</strong>
               </div>
             </div>
             <div class="iban-topup-note" id="ibanResultNote">--</div>
@@ -1566,7 +1569,7 @@
         </div>
         <div class="shopify-settings-body wallet-history-body">
           <p class="shopify-settings-note">Latest IBAN transfer references and statuses.</p>
-          <div class="account-reference-list-wrap wallet-history-list-wrap">
+          <div class="account-reference-list-wrap wallet-history-list-wrap scroll-fade-wrap">
             <div class="account-reference-list wallet-history-list" id="accountReferenceHistoryList">
               <div class="account-billing-empty">No transfer references yet.</div>
             </div>

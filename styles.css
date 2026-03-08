@@ -1169,18 +1169,17 @@ body {
   min-height: 0;
 }
 
-.account-reference-list {
-  display: grid;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: #434c5f transparent;
+.scroll-fade-wrap {
+  position: relative;
+  min-height: 0;
+  --scroll-fade-rgb: 28, 32, 38;
 }
 
-.account-reference-list-wrap::after {
+.scroll-fade-wrap--card {
+  --scroll-fade-rgb: 13, 17, 26;
+}
+
+.scroll-fade-wrap::after {
   content: "";
   position: absolute;
   left: 0;
@@ -1188,7 +1187,23 @@ body {
   bottom: 0;
   height: 24px;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(28, 32, 38, 0), rgba(28, 32, 38, 0.96));
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--scroll-fade-rgb), 0),
+    rgba(var(--scroll-fade-rgb), 0.96)
+  );
+}
+
+.account-reference-list {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+  padding-bottom: 12px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #434c5f transparent;
 }
 
 .wallet-history-modal {
@@ -2244,7 +2259,12 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding-bottom: 12px;
   scrollbar-gutter: stable both-edges;
+}
+
+.account-history-list-wrap {
+  min-height: 0;
 }
 
 .account-history-empty {
@@ -3750,36 +3770,78 @@ body {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
-  padding: 10px;
+  padding: 12px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
-.iban-topup-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.iban-topup-cell {
+.iban-topup-reference-block {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  background: #0b111a;
-  padding: 8px;
+  background: rgba(119, 71, 227, 0.08);
+  padding: 10px 12px;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
-.iban-topup-cell span {
+.iban-topup-kicker {
   font-size: var(--fs-2xs);
   color: var(--muted);
 }
 
-.iban-topup-cell strong {
-  font-size: var(--fs-xs);
+.iban-topup-reference {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.iban-topup-eta-pill {
+  justify-self: start;
+  border: 1px solid rgba(143, 226, 178, 0.52);
+  border-radius: 999px;
+  background: rgba(143, 226, 178, 0.12);
+  color: #9be6be;
+  font-size: var(--fs-2xs);
+  padding: 2px 9px;
+  line-height: 1.2;
+}
+
+.iban-topup-lines {
+  display: grid;
+  gap: 0;
+}
+
+.iban-topup-line {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border-bottom: 1px solid var(--stroke);
+  padding: 8px 0;
+}
+
+.iban-topup-line:first-child {
+  padding-top: 0;
+}
+
+.iban-topup-line:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.iban-topup-line span {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.iban-topup-line strong {
+  font-size: var(--fs-sm);
   color: var(--text);
   line-height: 1.25;
   overflow-wrap: anywhere;
+  font-weight: 300;
 }
 
 .iban-topup-note {
@@ -3799,8 +3861,9 @@ body {
     padding: 18px;
   }
 
-  .iban-topup-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .iban-topup-line {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 
@@ -5894,6 +5957,10 @@ input.is-invalid {
   line-height: 1.1;
 }
 
+.batch-list-wrap {
+  min-height: 0;
+}
+
 .batch-list {
   display: flex;
   flex-direction: column;
@@ -5902,6 +5969,7 @@ input.is-invalid {
   max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
+  padding-bottom: 12px;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #4a5364 transparent;
