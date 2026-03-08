@@ -417,6 +417,16 @@ const TRANSLATIONS = {
   "Order summary": { fr: "Récapitulatif", nl: "Besteloverzicht" },
   "Top up": { fr: "Recharger", nl: "Opwaarderen" },
   "IBAN Transfer": { fr: "Virement IBAN", nl: "IBAN-overschrijving" },
+  "Reference History": { fr: "Historique des références", nl: "Referentiegeschiedenis" },
+  "No transfer references yet.": {
+    fr: "Aucune référence de virement pour l’instant.",
+    nl: "Nog geen overschrijvingsreferenties.",
+  },
+  "Pending": { fr: "En attente", nl: "In afwachting" },
+  "Received": { fr: "Reçu", nl: "Ontvangen" },
+  "Credited": { fr: "Crédité", nl: "Gecrediteerd" },
+  "Cancelled": { fr: "Annulé", nl: "Geannuleerd" },
+  "Failed": { fr: "Échec", nl: "Mislukt" },
   "Card and wallet are instant. Bank transfer top-up is credited after receipt.": {
     fr: "La carte et le solde sont instantanés. Le virement est crédité après réception.",
     nl: "Kaart en saldo zijn direct. Overschrijving wordt na ontvangst gecrediteerd.",
@@ -1274,7 +1284,6 @@ const invoicePhone = document.getElementById("invoicePhone");
 const invoiceAddress = document.getElementById("invoiceAddress");
 const invoiceTaxId = document.getElementById("invoiceTaxId");
 const walletAvailableInline = document.getElementById("walletAvailableInline");
-const cardMethodStatus = document.getElementById("cardMethodStatus");
 const walletBalanceValue = document.getElementById("walletBalanceValue");
 const walletPendingValue = document.getElementById("walletPendingValue");
 const directPaymentHint = document.getElementById("directPaymentHint");
@@ -1318,13 +1327,10 @@ const openRestrictedGoodsModalButton = document.getElementById("openRestrictedGo
 const restrictedGoodsModal = document.getElementById("restrictedGoodsModal");
 const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalClose");
 const openIbanTopupFromAccount = document.getElementById("openIbanTopupFromAccount");
+const openWalletHistoryFromAccount = document.getElementById("openWalletHistoryFromAccount");
 const accountWalletBalance = document.getElementById("accountWalletBalance");
 const accountPendingTopups = document.getElementById("accountPendingTopups");
-const accountOpenInvoiceCount = document.getElementById("accountOpenInvoiceCount");
-const accountPaidInvoiceCount = document.getElementById("accountPaidInvoiceCount");
-const accountOpenInvoicesList = document.getElementById("accountOpenInvoicesList");
-const accountPaidInvoicesList = document.getElementById("accountPaidInvoicesList");
-const accountIbanSummary = document.getElementById("accountIbanSummary");
+const accountReferenceHistoryList = document.getElementById("accountReferenceHistoryList");
 const ibanTopupModal = document.getElementById("ibanTopupModal");
 const ibanTopupClose = document.getElementById("ibanTopupClose");
 const ibanTopupCancel = document.getElementById("ibanTopupCancel");
@@ -1340,6 +1346,9 @@ const ibanResultNote = document.getElementById("ibanResultNote");
 const ibanCopyReference = document.getElementById("ibanCopyReference");
 const ibanCopyIban = document.getElementById("ibanCopyIban");
 const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
+const walletHistoryModal = document.getElementById("walletHistoryModal");
+const walletHistoryClose = document.getElementById("walletHistoryClose");
+const walletHistoryCancel = document.getElementById("walletHistoryCancel");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
@@ -6267,6 +6276,11 @@ function setIbanTopupModalOpen(open, options = {}) {
   }
 }
 
+function setWalletHistoryModalOpen(open) {
+  if (!walletHistoryModal) return;
+  walletHistoryModal.classList.toggle("is-closed", !open);
+}
+
 function populateIbanTopupResult(payload) {
   const instructions = payload?.instructions && typeof payload.instructions === "object"
     ? payload.instructions
@@ -9722,66 +9736,53 @@ function setCheckoutPaymentMethod(method, options = {}) {
   }
 }
 
-function renderInvoiceList(container, rows, emptyMessage) {
-  if (!container) return;
-  const safeRows = Array.isArray(rows) ? rows : [];
-  if (!safeRows.length) {
-    container.innerHTML = `<div class="account-billing-empty">${escapeHtml(emptyMessage)}</div>`;
+function getTopupStatusMeta(status) {
+  const key = String(status || "").trim().toLowerCase();
+  if (key === "credited") return { label: tr("Credited"), className: "is-success" };
+  if (key === "received") return { label: tr("Received"), className: "is-info" };
+  if (key === "cancelled") return { label: tr("Cancelled"), className: "is-muted" };
+  if (key === "failed") return { label: tr("Failed"), className: "is-danger" };
+  return { label: tr("Pending"), className: "is-warning" };
+}
+
+function renderTopupReferenceHistory() {
+  if (!accountReferenceHistoryList) return;
+  const rows = Array.isArray(billingOverview?.recent_topups) ? billingOverview.recent_topups : [];
+  if (!rows.length) {
+    accountReferenceHistoryList.innerHTML = `<div class="account-billing-empty">${escapeHtml(
+      tr("No transfer references yet.")
+    )}</div>`;
     return;
   }
-  container.innerHTML = "";
-  safeRows.slice(0, 8).forEach((row) => {
+
+  accountReferenceHistoryList.innerHTML = "";
+  rows.slice(0, 30).forEach((row) => {
+    const reference = String(row?.reference || "--").trim();
+    const timestamp = formatHistoryDate(row?.requested_at || row?.created_at || "");
+    const statusMeta = getTopupStatusMeta(row?.status);
     const item = document.createElement("article");
-    item.className = "account-billing-item";
-    const label = String(row?.reference || "--").trim();
-    const amount = formatMoney(Number(row?.total_inc_vat || 0));
-    const track = String(row?.tracking || row?.status || "--").trim();
-    const dueDate = formatHistoryDate(row?.due_at || row?.issued_at || row?.created_at || "");
+    item.className = "account-reference-item";
     item.innerHTML = `
-      <div class="account-billing-item-main">
-        <div class="account-billing-item-top">
-          <span>${escapeHtml(label)}</span>
-          <span class="mono">${escapeHtml(amount)}</span>
-        </div>
-        <div class="account-billing-item-meta">${escapeHtml(dueDate)}</div>
+      <div class="account-reference-main">
+        <div class="account-reference-code mono">${escapeHtml(reference)}</div>
+        <div class="account-reference-date">${escapeHtml(timestamp)}</div>
       </div>
-      <span class="account-billing-status-pill">${escapeHtml(track)}</span>
+      <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
     `;
-    container.appendChild(item);
+    accountReferenceHistoryList.appendChild(item);
   });
 }
 
 function renderAccountBillingOverview() {
   const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
   const pendingTopups = Number(billingOverview?.wallet_pending_topups_eur || 0);
-  const openCount = Number(billingOverview?.open_invoice_count || 0);
-  const paidCount = Number(billingOverview?.paid_invoice_count || 0);
   if (accountWalletBalance) {
     accountWalletBalance.textContent = formatMoney(walletBalance);
   }
   if (accountPendingTopups) {
     accountPendingTopups.textContent = formatMoney(pendingTopups);
   }
-  if (accountOpenInvoiceCount) {
-    accountOpenInvoiceCount.textContent = String(openCount);
-  }
-  if (accountPaidInvoiceCount) {
-    accountPaidInvoiceCount.textContent = String(paidCount);
-  }
-  renderInvoiceList(
-    accountOpenInvoicesList,
-    billingOverview?.open_invoices,
-    tr("No open invoices.")
-  );
-  renderInvoiceList(
-    accountPaidInvoicesList,
-    billingOverview?.paid_invoices,
-    tr("No paid invoices yet.")
-  );
-  const iban = getIbanInstructionsFromOverview();
-  if (accountIbanSummary) {
-    accountIbanSummary.textContent = `${tr("IBAN")}: ${iban.iban} • ${tr("Reference required")}`;
-  }
+  renderTopupReferenceHistory();
 }
 
 function renderCheckoutStepMode() {
@@ -9799,9 +9800,6 @@ function renderCheckoutStepMode() {
   }
   if (walletPendingValue) {
     walletPendingValue.textContent = formatMoney(pendingTopups);
-  }
-  if (cardMethodStatus) {
-    cardMethodStatus.textContent = cardEnabled ? tr("Available") : tr("Disabled");
   }
   if (paymentMethodCard) {
     paymentMethodCard.classList.toggle("is-disabled", !cardEnabled);
@@ -11047,6 +11045,14 @@ if (openIbanTopupFromAccount) {
   });
 }
 
+if (openWalletHistoryFromAccount) {
+  openWalletHistoryFromAccount.addEventListener("click", (event) => {
+    event.preventDefault();
+    renderTopupReferenceHistory();
+    setWalletHistoryModalOpen(true);
+  });
+}
+
 if (ibanTopupClose) {
   ibanTopupClose.addEventListener("click", (event) => {
     event.preventDefault();
@@ -11065,6 +11071,28 @@ if (ibanTopupModal) {
   ibanTopupModal.addEventListener("click", (event) => {
     if (event.target === ibanTopupModal) {
       setIbanTopupModalOpen(false);
+    }
+  });
+}
+
+if (walletHistoryClose) {
+  walletHistoryClose.addEventListener("click", (event) => {
+    event.preventDefault();
+    setWalletHistoryModalOpen(false);
+  });
+}
+
+if (walletHistoryCancel) {
+  walletHistoryCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    setWalletHistoryModalOpen(false);
+  });
+}
+
+if (walletHistoryModal) {
+  walletHistoryModal.addEventListener("click", (event) => {
+    if (event.target === walletHistoryModal) {
+      setWalletHistoryModalOpen(false);
     }
   });
 }
@@ -11118,6 +11146,7 @@ document.addEventListener("keydown", (event) => {
   if (restrictedGoodsModal && !restrictedGoodsModal.classList.contains("is-closed")) return;
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) return;
+  if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isHistoryOpen = historyPageSection && !historyPageSection.classList.contains("is-hidden");
@@ -11148,6 +11177,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) {
     setIbanTopupModalOpen(false);
+    return;
+  }
+  if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) {
+    setWalletHistoryModalOpen(false);
     return;
   }
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) {

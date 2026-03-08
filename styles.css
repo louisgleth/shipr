@@ -832,7 +832,7 @@ body {
 
 .account-overview-bento {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2.05fr) minmax(320px, 0.78fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -1083,6 +1083,9 @@ body {
   padding: 12px 14px;
   display: grid;
   gap: 10px;
+  width: 100%;
+  max-width: 440px;
+  justify-self: end;
 }
 
 .account-billing-head {
@@ -1096,70 +1099,80 @@ body {
   max-width: none;
 }
 
-.account-billing-metrics {
+.account-billing-content {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--card-bg);
+  align-items: stretch;
 }
 
-.account-billing-metric {
-  min-height: 58px;
-  padding: 10px;
+.account-balance-hero {
+  min-height: 170px;
+  padding: 4px 2px 2px;
   display: grid;
-  gap: 4px;
-  align-content: start;
-  border-right: 1px solid var(--stroke);
-  border-bottom: 1px solid var(--stroke);
+  gap: 10px;
+  align-content: center;
 }
 
-.account-billing-metric:nth-child(2n) {
-  border-right: 0;
-}
-
-.account-billing-metric:nth-last-child(-n + 2) {
-  border-bottom: 0;
-}
-
-.account-billing-metric span {
+.account-balance-label {
   font-size: var(--fs-2xs);
   color: var(--muted);
 }
 
-.account-billing-metric strong {
-  font-size: 13px;
+.account-balance-value {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 300;
+  color: var(--text);
+}
+
+.account-balance-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.account-balance-sub strong {
   color: var(--text);
   font-weight: 400;
 }
 
-.account-billing-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.account-balance-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 2px;
 }
 
-.account-billing-list-card {
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background: var(--card-bg);
-  padding: 10px;
+.account-balance-actions .btn {
+  min-width: 114px;
+}
+
+.account-reference-card {
+  padding: 2px 0 2px 0;
   display: grid;
   gap: 8px;
-  min-height: 200px;
+  min-height: 170px;
 }
 
-.account-billing-list-title {
+.account-reference-title {
   font-size: var(--fs-xs);
   color: var(--text);
+  margin-left: 2px;
 }
 
-.account-billing-list {
+.account-reference-list-wrap {
+  position: relative;
+  min-height: 0;
+}
+
+.account-reference-list {
   display: grid;
-  gap: 8px;
-  max-height: 220px;
+  gap: 6px;
+  max-height: 320px;
   overflow-y: auto;
   padding-right: 2px;
   scrollbar-gutter: stable;
@@ -1167,67 +1180,128 @@ body {
   scrollbar-color: #434c5f transparent;
 }
 
-.account-billing-list::-webkit-scrollbar {
+.account-reference-list-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(28, 32, 38, 0), rgba(28, 32, 38, 0.96));
+}
+
+.wallet-history-modal {
+  width: min(740px, calc(100vw - 28px));
+}
+
+.wallet-history-body {
+  display: grid;
+  gap: 10px;
+}
+
+.wallet-history-list-wrap {
+  max-height: min(420px, 52vh);
+}
+
+.wallet-history-list {
+  max-height: min(380px, 47vh);
+}
+
+.account-reference-list::-webkit-scrollbar {
   width: 10px;
 }
 
-.account-billing-list::-webkit-scrollbar-track {
+.account-reference-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.account-billing-list::-webkit-scrollbar-thumb {
+.account-reference-list::-webkit-scrollbar-thumb {
   background: #3d4658;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.account-billing-item {
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background: #0c1320;
-  padding: 8px 10px;
+.account-reference-item {
+  border-bottom: 1px solid var(--stroke);
+  padding: 8px 4px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  transition: background 0.2s ease;
 }
 
-.account-billing-item-main {
+.account-reference-item:hover {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.account-reference-item:last-child {
+  border-bottom: 0;
+}
+
+.account-reference-main {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
-.account-billing-item-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  font-size: var(--fs-xs);
-  color: var(--text);
-}
-
-.account-billing-item-top span:first-child {
+.account-reference-code {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text);
 }
 
-.account-billing-item-meta {
+.account-reference-date {
   font-size: var(--fs-2xs);
   color: var(--muted);
 }
 
-.account-billing-status-pill {
+.account-reference-pill {
   border: 1px solid var(--stroke);
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--fs-2xs);
   color: var(--muted);
   white-space: nowrap;
+  background: rgba(58, 67, 84, 0.25);
+}
+
+.account-reference-pill.is-success {
+  color: #9be6be;
+  border-color: var(--success-border);
+  background: rgba(143, 226, 178, 0.14);
+}
+
+.account-reference-pill.is-warning {
+  color: #f1c278;
+  border-color: #6f5328;
+  background: rgba(111, 83, 40, 0.22);
+}
+
+.account-reference-pill.is-danger {
+  color: #f39a9a;
+  border-color: #7c3f3f;
+  background: rgba(124, 63, 63, 0.24);
+}
+
+.account-reference-pill.is-info {
+  color: #a9beff;
+  border-color: #43507c;
+  background: rgba(67, 80, 124, 0.22);
+}
+
+.account-reference-pill.is-muted {
+  color: var(--muted);
+  border-color: var(--stroke);
+  background: rgba(58, 67, 84, 0.25);
 }
 
 .account-billing-empty {
@@ -6074,16 +6148,18 @@ input.is-invalid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .direct-payment-grid {
+  .account-billing-content {
     grid-template-columns: 1fr;
   }
 
-  .account-billing-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .account-billing-panel {
+    max-width: none;
+    justify-self: stretch;
   }
 
-  .account-billing-columns {
-    grid-template-columns: 1fr;
+  .account-balance-hero {
+    padding-right: 0;
+    min-height: 0;
   }
 
   .warehouse-field.is-wide {
