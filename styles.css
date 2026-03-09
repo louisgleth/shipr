@@ -855,8 +855,8 @@ body {
 
 .account-overview-bento {
   display: grid;
-  grid-template-columns: minmax(0, 2.05fr) minmax(320px, 0.78fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+  gap: 18px;
   align-items: stretch;
 }
 
@@ -868,14 +868,14 @@ body {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 14px;
+  padding: 12px 14px;
   display: grid;
   gap: 12px;
 }
 
 .account-info-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -1107,8 +1107,7 @@ body {
   display: grid;
   gap: 10px;
   width: 100%;
-  max-width: 440px;
-  justify-self: end;
+  justify-self: stretch;
 }
 
 .account-billing-head {
@@ -1143,7 +1142,7 @@ body {
 }
 
 .account-balance-value {
-  font-size: 32px;
+  font-size: 38px;
   line-height: 1;
   font-weight: 300;
   color: var(--text);
@@ -1196,9 +1195,9 @@ body {
   position: relative;
   min-height: 0;
   --scroll-fade-rgb: 28, 32, 38;
-  --scroll-fade-height: 24px;
-  --scroll-fade-mid: 0.5;
-  --scroll-fade-end: 0.96;
+  --scroll-fade-height: 42px;
+  --scroll-fade-mid: 0.7;
+  --scroll-fade-end: 1;
   overflow: hidden;
 }
 
@@ -1207,8 +1206,8 @@ body {
 }
 
 .scroll-fade-wrap--strong {
-  --scroll-fade-height: 64px;
-  --scroll-fade-mid: 0.72;
+  --scroll-fade-height: 90px;
+  --scroll-fade-mid: 0.82;
   --scroll-fade-end: 1;
 }
 
@@ -1369,7 +1368,7 @@ body {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 14px;
+  padding: 12px 14px;
   display: grid;
   gap: 12px;
 }
@@ -1900,7 +1899,7 @@ body {
 
 .warehouse-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -5789,6 +5788,10 @@ input.is-invalid {
   background: var(--card-active);
 }
 
+.payment-method-card.is-card-expanded {
+  border-color: var(--stroke);
+}
+
 .payment-method-card.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -5861,6 +5864,85 @@ input.is-invalid {
   font-size: var(--fs-xs);
   color: var(--text);
   font-weight: 400;
+}
+
+.payment-card-expand {
+  grid-column: 1 / -1;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  overflow: hidden;
+  transition: max-height 0.42s var(--ease-out-expo), opacity 0.26s ease, transform 0.34s var(--ease-out-quart);
+}
+
+.payment-method-card.is-card-expanded .payment-card-expand {
+  max-height: 280px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.payment-card-brand-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 10px;
+}
+
+.payment-card-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(58, 67, 84, 0.2);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  white-space: nowrap;
+}
+
+.payment-card-brand-pill.is-visa {
+  color: #a9c6ff;
+  border-color: rgba(90, 130, 220, 0.55);
+  background: rgba(90, 130, 220, 0.14);
+}
+
+.payment-card-brand-pill.is-mastercard {
+  color: #ffc49b;
+  border-color: rgba(224, 121, 68, 0.56);
+  background: rgba(224, 121, 68, 0.16);
+}
+
+.payment-card-brand-pill.is-amex {
+  color: #a9edff;
+  border-color: rgba(66, 169, 195, 0.56);
+  background: rgba(66, 169, 195, 0.14);
+}
+
+.payment-card-brand-pill.is-generic {
+  color: var(--muted);
+  border-color: var(--stroke);
+  background: rgba(58, 67, 84, 0.2);
+}
+
+.payment-card-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-card-field {
+  gap: 5px;
+}
+
+.payment-card-field input {
+  height: 36px;
+}
+
+.payment-card-field-wide {
+  grid-column: 1 / -1;
 }
 
 .payment-method-meta-actions {
@@ -6382,6 +6464,10 @@ input.is-invalid {
   }
 
   .account-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-card-fields {
     grid-template-columns: 1fr;
   }
 

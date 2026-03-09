@@ -1270,6 +1270,12 @@ const directPaymentWrap = document.getElementById("directPaymentWrap");
 const paymentMethodList = document.getElementById("paymentMethodList");
 const paymentMethodWallet = document.getElementById("paymentMethodWallet");
 const paymentMethodCard = document.getElementById("paymentMethodCard");
+const paymentCardExpand = document.getElementById("paymentCardExpand");
+const paymentCardBrandPill = document.getElementById("paymentCardBrandPill");
+const cardNumberInput = document.getElementById("cardNumberInput");
+const cardExpiryInput = document.getElementById("cardExpiryInput");
+const cardCvcInput = document.getElementById("cardCvcInput");
+const cardHolderInput = document.getElementById("cardHolderInput");
 const paymentMethodError = document.getElementById("paymentMethodError");
 const paymentService = document.getElementById("paymentService");
 const paymentTotal = document.getElementById("paymentTotal");
@@ -9609,10 +9615,7 @@ function updateSummary() {
     summaryTotal.textContent = formatSummaryInvoiceDate(nextDate);
   }
   if (summaryTracking) {
-    summaryTracking.textContent =
-      paymentMode === "card"
-        ? tr("Card auto-charge")
-        : tr("Chat with us");
+    summaryTracking.textContent = tr("Chat with us");
   }
 }
 
@@ -9693,6 +9696,138 @@ function getBillingFlags() {
   };
 }
 
+function detectCardBrand(numberDigits) {
+  const digits = String(numberDigits || "").replace(/\D+/g, "");
+  if (!digits) return "generic";
+  if (/^4/.test(digits)) return "visa";
+  if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(digits)) return "mastercard";
+  if (/^3[47]/.test(digits)) return "amex";
+  return "generic";
+}
+
+function getCardBrandLabel(brand) {
+  if (brand === "visa") return "VISA";
+  if (brand === "mastercard") return "MASTERCARD";
+  if (brand === "amex") return "AMEX";
+  return "CARD";
+}
+
+function getCardNumberMaxLength(brand) {
+  return brand === "amex" ? 15 : 16;
+}
+
+function getCardCvcMaxLength(brand) {
+  return brand === "amex" ? 4 : 3;
+}
+
+function formatCardNumberForDisplay(digits, brand) {
+  const safe = String(digits || "").replace(/\D+/g, "");
+  if (!safe) return "";
+  if (brand === "amex") {
+    const p1 = safe.slice(0, 4);
+    const p2 = safe.slice(4, 10);
+    const p3 = safe.slice(10, 15);
+    return [p1, p2, p3].filter(Boolean).join(" ");
+  }
+  return safe.match(/.{1,4}/g)?.join(" ") || safe;
+}
+
+function formatCardExpiryForDisplay(raw) {
+  const digits = String(raw || "").replace(/\D+/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
+}
+
+function updateCardBrandVisual(brand = "generic") {
+  if (!paymentCardBrandPill) return;
+  paymentCardBrandPill.classList.remove("is-visa", "is-mastercard", "is-amex", "is-generic");
+  paymentCardBrandPill.classList.add(
+    brand === "visa" || brand === "mastercard" || brand === "amex" ? `is-${brand}` : "is-generic"
+  );
+  paymentCardBrandPill.textContent = getCardBrandLabel(brand);
+  if (cardCvcInput) {
+    const max = getCardCvcMaxLength(brand);
+    cardCvcInput.maxLength = max;
+    if (String(cardCvcInput.value || "").length > max) {
+      cardCvcInput.value = String(cardCvcInput.value || "").slice(0, max);
+    }
+  }
+}
+
+function updateCardFormVisibility() {
+  const canExpand =
+    checkoutPaymentMethod === "card" &&
+    paymentMethodCard &&
+    !paymentMethodCard.classList.contains("is-disabled");
+  if (paymentMethodCard) {
+    paymentMethodCard.classList.toggle("is-card-expanded", Boolean(canExpand));
+  }
+  if (paymentCardExpand) {
+    paymentCardExpand.setAttribute("aria-hidden", canExpand ? "false" : "true");
+  }
+}
+
+function validateCardDetails() {
+  const numberDigits = String(cardNumberInput?.value || "").replace(/\D+/g, "");
+  const brand = detectCardBrand(numberDigits);
+  const numberLen = numberDigits.length;
+  const expectedNumberLen = getCardNumberMaxLength(brand);
+  if (numberLen < expectedNumberLen) {
+    return {
+      ok: false,
+      message: tr("Enter a valid card number."),
+    };
+  }
+
+  const expiryDigits = String(cardExpiryInput?.value || "").replace(/\D+/g, "");
+  if (expiryDigits.length < 4) {
+    return {
+      ok: false,
+      message: tr("Enter a valid expiry date."),
+    };
+  }
+  const expMonth = Number(expiryDigits.slice(0, 2));
+  const expYear = Number(expiryDigits.slice(2, 4));
+  if (!Number.isFinite(expMonth) || expMonth < 1 || expMonth > 12) {
+    return {
+      ok: false,
+      message: tr("Enter a valid expiry month."),
+    };
+  }
+  const now = new Date();
+  const nowMonth = now.getMonth() + 1;
+  const nowYear = now.getFullYear() % 100;
+  if (expYear < nowYear || (expYear === nowYear && expMonth < nowMonth)) {
+    return {
+      ok: false,
+      message: tr("Card has expired."),
+    };
+  }
+
+  const cvc = String(cardCvcInput?.value || "").replace(/\D+/g, "");
+  const cvcExpected = getCardCvcMaxLength(brand);
+  if (cvc.length < cvcExpected) {
+    return {
+      ok: false,
+      message: tr("Enter a valid CVC."),
+    };
+  }
+
+  const holder = String(cardHolderInput?.value || "").trim();
+  if (holder.length < 2) {
+    return {
+      ok: false,
+      message: tr("Enter the cardholder name."),
+    };
+  }
+
+  return {
+    ok: true,
+    brand,
+    last4: numberDigits.slice(-4),
+  };
+}
+
 function setCheckoutPaymentMethod(method, options = {}) {
   const safeMethod = String(method || "").trim().toLowerCase();
   const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
@@ -9734,6 +9869,7 @@ function setCheckoutPaymentMethod(method, options = {}) {
   if (paymentMethodError && !options.quiet) {
     paymentMethodError.classList.remove("is-visible");
   }
+  updateCardFormVisibility();
 }
 
 function getTopupStatusMeta(status) {
@@ -11013,6 +11149,7 @@ if (paymentMethodList) {
 
   paymentMethodList.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
+    if (isTextEntryElement(event.target)) return;
     const target = event.target instanceof Element ? event.target.closest("[data-payment-method]") : null;
     if (!(target instanceof HTMLElement)) return;
     if (target.classList.contains("is-disabled")) return;
@@ -11024,6 +11161,35 @@ if (paymentMethodList) {
     }
   });
 }
+
+if (cardNumberInput) {
+  cardNumberInput.addEventListener("input", () => {
+    const digits = String(cardNumberInput.value || "").replace(/\D+/g, "");
+    const detectedBrand = detectCardBrand(digits);
+    const maxLen = getCardNumberMaxLength(detectedBrand);
+    const clipped = digits.slice(0, maxLen);
+    updateCardBrandVisual(detectedBrand);
+    cardNumberInput.value = formatCardNumberForDisplay(clipped, detectedBrand);
+  });
+}
+
+if (cardExpiryInput) {
+  cardExpiryInput.addEventListener("input", () => {
+    cardExpiryInput.value = formatCardExpiryForDisplay(cardExpiryInput.value);
+  });
+}
+
+if (cardCvcInput) {
+  cardCvcInput.addEventListener("input", () => {
+    const brand = detectCardBrand(String(cardNumberInput?.value || ""));
+    const max = getCardCvcMaxLength(brand);
+    cardCvcInput.value = String(cardCvcInput.value || "")
+      .replace(/\D+/g, "")
+      .slice(0, max);
+  });
+}
+
+updateCardBrandVisual("generic");
 
 if (openIbanTopupFromStep) {
   openIbanTopupFromStep.addEventListener("keydown", (event) => {
@@ -11318,6 +11484,7 @@ async function handleCheckoutAndGenerate() {
   if (!payButton) return;
   const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
   const { total } = getOrderTotals();
+  let cardMeta = null;
 
   if (!invoiceEnabled) {
     let method = checkoutPaymentMethod;
@@ -11343,6 +11510,20 @@ async function handleCheckoutAndGenerate() {
         return;
       }
     }
+    if (method === "card") {
+      const cardValidation = validateCardDetails();
+      if (!cardValidation.ok) {
+        if (paymentMethodError) {
+          paymentMethodError.textContent = cardValidation.message;
+          paymentMethodError.classList.add("is-visible");
+        }
+        return;
+      }
+      cardMeta = {
+        brand: cardValidation.brand,
+        last4: cardValidation.last4,
+      };
+    }
     setCheckoutPaymentMethod(method, { quiet: true });
   }
 
@@ -11359,6 +11540,8 @@ async function handleCheckoutAndGenerate() {
           amount: total,
           labelsCount: getQuantity(),
           service: state.selection.type,
+          cardBrand: cardMeta?.brand || null,
+          cardLast4: cardMeta?.last4 || null,
         }),
       });
       await loadBillingOverview({ quiet: true });

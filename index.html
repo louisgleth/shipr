@@ -666,6 +666,55 @@
                         <div class="payment-method-desc">Charge immediately and generate labels now.</div>
                       </div>
                       <span class="payment-method-pill is-instant">Instant</span>
+                      <div class="payment-card-expand" id="paymentCardExpand" aria-hidden="true">
+                        <div class="payment-card-brand-row">
+                          <span class="payment-card-brand-pill" id="paymentCardBrandPill">Card</span>
+                        </div>
+                        <div class="payment-card-fields">
+                          <label class="field payment-card-field payment-card-field-wide">
+                            <span>Card Number</span>
+                            <input
+                              type="text"
+                              id="cardNumberInput"
+                              class="payment-input"
+                              inputmode="numeric"
+                              autocomplete="cc-number"
+                              placeholder="1234 5678 9012 3456"
+                            />
+                          </label>
+                          <label class="field payment-card-field">
+                            <span>Expiry</span>
+                            <input
+                              type="text"
+                              id="cardExpiryInput"
+                              class="payment-input"
+                              inputmode="numeric"
+                              autocomplete="cc-exp"
+                              placeholder="MM/YY"
+                            />
+                          </label>
+                          <label class="field payment-card-field">
+                            <span>CVC</span>
+                            <input
+                              type="text"
+                              id="cardCvcInput"
+                              class="payment-input"
+                              inputmode="numeric"
+                              autocomplete="cc-csc"
+                              placeholder="123"
+                            />
+                          </label>
+                          <label class="field payment-card-field payment-card-field-wide">
+                            <span>Name on Card</span>
+                            <input
+                              type="text"
+                              id="cardHolderInput"
+                              autocomplete="cc-name"
+                              placeholder="John Doe"
+                            />
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div class="payment-method-error form-error" id="paymentMethodError">Select a payment method to continue.</div>
