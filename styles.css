@@ -365,6 +365,120 @@ body {
   grid-column: 1 / -1;
 }
 
+.auth-agreement-contract {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--primary);
+  display: grid;
+  gap: 0;
+}
+
+.auth-agreement-contract-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.auth-agreement-contract-title {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.auth-agreement-contract-version {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.auth-agreement-scroll-wrap {
+  position: relative;
+}
+
+.auth-agreement-scroll {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px 18px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-line;
+}
+
+.auth-agreement-scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 54px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 6, 15, 0) 0%, rgba(0, 6, 15, 0.95) 78%, rgba(0, 6, 15, 1) 100%);
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+
+.auth-agreement-scroll-wrap.is-complete .auth-agreement-scroll-fade {
+  opacity: 0;
+}
+
+.auth-agreement-check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auth-agreement-check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.auth-agreement-check-box {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  position: relative;
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+
+.auth-agreement-check-box::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--accent);
+  transform: scale(0.35);
+  opacity: 0;
+  transition: transform 0.28s var(--ease-out-expo), opacity 0.2s ease;
+}
+
+.auth-agreement-check input:checked + .auth-agreement-check-box::after {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.auth-agreement-check input:disabled + .auth-agreement-check-box {
+  opacity: 0.45;
+}
+
+.auth-agreement-status {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+.auth-agreement-status.is-success {
+  color: var(--success);
+}
+
 .auth-invite-status {
   display: none;
   font-size: var(--fs-2xs);

@@ -28,6 +28,8 @@ const SUPABASE_PUBLISHABLE_KEY = String(
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const SHOPIFY_TOKEN_ENCRYPTION_KEY = String(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim();
 const REGISTRATION_INVITES_TABLE = "registration_invites";
+const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
+const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
 const CLIENT_BILLING_PREF_TABLE = "client_billing_preferences";
 const HISTORY_TABLE = "label_generations";
@@ -40,6 +42,8 @@ const BILLING_WALLET_TRANSACTIONS_TABLE = "billing_wallet_transactions";
 const PASSWORD_MIN_LENGTH = 10;
 const DEFAULT_INVITE_EXPIRY_DAYS = 14;
 const MAX_INVITE_EXPIRY_DAYS = 90;
+const CLICKWRAP_ACCEPTANCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CLICKWRAP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0.21;
@@ -74,6 +78,49 @@ const DEFAULT_CLIENT_BILLING_PREF = {
   invoice_enabled: false,
   card_enabled: true,
 };
+const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "2026-03-13.1";
+const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Shipide Portal Service Agreement";
+const DEFAULT_CLICKWRAP_CONTRACT_BODY = `Electronic Acceptance Notice
+
+By clicking "I agree", you consent to use an electronic signature and electronic records for this agreement.
+
+1. Scope of Services
+Shipide provides software to prepare shipment data, request transport labels, and manage related billing and reporting operations.
+
+2. Account Security
+You must keep credentials confidential and promptly report unauthorized access. Activity under your account is treated as authorized unless proven otherwise.
+
+3. Billing and Payment
+Charges may apply per label, shipment, subscription, or wallet usage. Applicable taxes, including VAT, are charged where required by law.
+
+4. Wallet and Top Ups
+Wallet balances are pre-funded. Processing time may vary by payment rail. You are responsible for using the exact transfer reference provided.
+
+5. Acceptable Use
+You will not use the platform for illegal goods, sanctioned parties, fraudulent shipments, or any prohibited postal content.
+
+6. Data and Retention
+Operational shipment and billing records are retained for compliance, service delivery, and dispute resolution.
+
+7. Third-Party Integrations
+Provider integrations such as ecommerce platforms and carriers are subject to each provider terms and service availability.
+
+8. Service Availability
+Shipide targets high availability but does not guarantee uninterrupted service. Planned maintenance and provider downtime may occur.
+
+9. Limitation of Liability
+To the maximum extent permitted by law, liability is limited to direct damages and capped to the fees paid for the affected billing period.
+
+10. Governing Law and Forum
+Unless otherwise agreed in writing, this agreement is governed by Belgian law. Disputes may be brought before competent courts in Belgium.
+
+11. Updates to Terms
+Updated terms may be published with a new version number and effective date. Continued use after notice constitutes acceptance.
+
+12. Contact
+Questions related to this agreement can be sent to legal@shipide.com.
+
+By selecting "I agree", you confirm that you had the opportunity to review the full text and agree to be legally bound.`;
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
   Priority: 12.2,
@@ -371,6 +418,248 @@ function isValidEmailFormat(value) {
 
 function hashInviteToken(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function sha256Hex(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function hmacSha256Hex(secret, message) {
+  return crypto
+    .createHmac("sha256", String(secret || ""))
+    .update(String(message || ""))
+    .digest("hex");
+}
+
+function getClickwrapProofSecret() {
+  return (
+    String(SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim() ||
+    String(SHOPIFY_API_SECRET || "").trim() ||
+    String(SUPABASE_SERVICE_ROLE_KEY || "").trim()
+  );
+}
+
+function parseNumeric(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseIsoTimestamp(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const time = Date.parse(text);
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toISOString();
+}
+
+function extractSupabaseError(details) {
+  const raw = String(details || "").trim();
+  if (!raw) return { raw: "", code: "", message: "" };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      raw,
+      code: String(parsed?.code || "").trim(),
+      message: String(parsed?.message || parsed?.error || parsed?.details || "").trim(),
+    };
+  } catch (_error) {
+    return { raw, code: "", message: raw };
+  }
+}
+
+function isMissingClickwrapSchemaError(details) {
+  const parsed = extractSupabaseError(details);
+  const haystack = `${parsed.raw} ${parsed.code} ${parsed.message}`.toLowerCase();
+  return (
+    (haystack.includes("42p01") &&
+      (haystack.includes(CLICKWRAP_CONTRACTS_TABLE) ||
+        haystack.includes(CLICKWRAP_ACCEPTANCES_TABLE))) ||
+    (haystack.includes("does not exist") &&
+      (haystack.includes(CLICKWRAP_CONTRACTS_TABLE) ||
+        haystack.includes(CLICKWRAP_ACCEPTANCES_TABLE)))
+  );
+}
+
+function getEmbeddedClickwrapContract() {
+  return {
+    id: null,
+    version: DEFAULT_CLICKWRAP_CONTRACT_VERSION,
+    title: DEFAULT_CLICKWRAP_CONTRACT_TITLE,
+    body_text: DEFAULT_CLICKWRAP_CONTRACT_BODY,
+    hash_sha256: "",
+    effective_at: null,
+    source: "embedded",
+  };
+}
+
+async function getActiveClickwrapContract() {
+  const params = new URLSearchParams();
+  params.set("select", "id,version,title,body_text,hash_sha256,effective_at,is_active,created_at");
+  params.set("is_active", "eq.true");
+  params.set("order", "effective_at.desc.nullslast,created_at.desc");
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${CLICKWRAP_CONTRACTS_TABLE}?${params.toString()}`,
+    {
+      method: "GET",
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (isMissingClickwrapSchemaError(details)) {
+      return getEmbeddedClickwrapContract();
+    }
+    throw new Error(`Could not load click-wrap agreement (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const contract = Array.isArray(rows) && rows.length ? rows[0] : getEmbeddedClickwrapContract();
+  const bodyText = String(contract?.body_text || DEFAULT_CLICKWRAP_CONTRACT_BODY).trim();
+  const hash = String(contract?.hash_sha256 || "").trim().toLowerCase() || sha256Hex(bodyText);
+  return {
+    id: contract?.id || null,
+    version: String(contract?.version || DEFAULT_CLICKWRAP_CONTRACT_VERSION).trim(),
+    title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
+    body_text: bodyText,
+    hash_sha256: hash,
+    effective_at: contract?.effective_at || null,
+    source: contract?.source || "supabase",
+  };
+}
+
+function mapClickwrapContractToPublic(contract) {
+  return {
+    id: contract?.id || null,
+    version: String(contract?.version || DEFAULT_CLICKWRAP_CONTRACT_VERSION).trim(),
+    title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
+    bodyText: String(contract?.body_text || DEFAULT_CLICKWRAP_CONTRACT_BODY).trim(),
+    hash: String(contract?.hash_sha256 || "").trim().toLowerCase(),
+    effectiveAt: contract?.effective_at || null,
+  };
+}
+
+function normalizeClickwrapAgreement(rawAgreement) {
+  const agreement = rawAgreement && typeof rawAgreement === "object" ? rawAgreement : {};
+  return {
+    contractId: String(agreement?.contractId || "").trim() || null,
+    contractVersion: String(agreement?.contractVersion || "").trim(),
+    contractHash: String(agreement?.contractHash || "").trim().toLowerCase(),
+    scrolledToEnd: agreement?.scrolledToEnd === true,
+    scrolledToEndAt: parseIsoTimestamp(agreement?.scrolledToEndAt),
+    agreed: agreement?.agreed === true,
+    agreedAt: parseIsoTimestamp(agreement?.agreedAt),
+    maxScrollProgress: parseNumeric(agreement?.maxScrollProgress),
+    clientTimezone: String(agreement?.clientTimezone || "").trim(),
+    clientLocale: String(agreement?.clientLocale || "").trim(),
+  };
+}
+
+function validateClickwrapAgreement(agreement, contract) {
+  if (!agreement?.agreed) {
+    return "Agreement acceptance is required.";
+  }
+  if (!agreement?.scrolledToEnd) {
+    return "You must scroll through the full agreement before accepting.";
+  }
+  if (!agreement?.contractVersion || agreement.contractVersion !== String(contract?.version || "")) {
+    return "Agreement version mismatch. Refresh and try again.";
+  }
+  if (!agreement?.contractHash || agreement.contractHash !== String(contract?.hash_sha256 || "")) {
+    return "Agreement integrity check failed. Refresh and try again.";
+  }
+  if (agreement.contractId && contract?.id && agreement.contractId !== String(contract.id)) {
+    return "Agreement identifier mismatch. Refresh and try again.";
+  }
+  if (!agreement?.agreedAt || !agreement?.scrolledToEndAt) {
+    return "Agreement timestamps are missing.";
+  }
+  const agreedAtMs = Date.parse(agreement.agreedAt);
+  const scrolledAtMs = Date.parse(agreement.scrolledToEndAt);
+  if (!Number.isFinite(agreedAtMs) || !Number.isFinite(scrolledAtMs)) {
+    return "Agreement timestamps are invalid.";
+  }
+  if (scrolledAtMs - agreedAtMs > CLICKWRAP_CLOCK_SKEW_MS) {
+    return "Agreement scroll checkpoint is invalid.";
+  }
+  if (Date.now() - agreedAtMs > CLICKWRAP_ACCEPTANCE_MAX_AGE_MS) {
+    return "Agreement confirmation expired. Please review and accept again.";
+  }
+  if (agreedAtMs - Date.now() > CLICKWRAP_CLOCK_SKEW_MS) {
+    return "Agreement timestamp is in the future.";
+  }
+  if (Number.isFinite(agreement?.maxScrollProgress) && agreement.maxScrollProgress < 0.985) {
+    return "Agreement scroll requirement was not completed.";
+  }
+  return "";
+}
+
+function getRequestIpAddress(req) {
+  const headers = req?.headers || {};
+  const candidates = [
+    headers["cf-connecting-ip"],
+    headers["x-forwarded-for"],
+    headers["x-real-ip"],
+    headers["x-client-ip"],
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || "")
+      .split(",")[0]
+      .trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function buildClickwrapEvidence(req, invite, contract, agreement, createdUserId, email) {
+  const acceptedAt = agreement?.agreedAt || new Date().toISOString();
+  const payload = {
+    schema: "shipide.clickwrap.v1",
+    accepted_at: acceptedAt,
+    contract_version: String(contract?.version || ""),
+    contract_hash_sha256: String(contract?.hash_sha256 || ""),
+    contract_id: contract?.id || null,
+    invite_id: invite?.id || null,
+    accepted_email: normalizeEmail(email || ""),
+    invited_email: normalizeEmail(invite?.invited_email || ""),
+    user_id: createdUserId || null,
+    scrolled_to_end_at: agreement?.scrolledToEndAt || null,
+    max_scroll_progress: Number.isFinite(agreement?.maxScrollProgress)
+      ? Number(agreement.maxScrollProgress.toFixed(4))
+      : null,
+    client_timezone: String(agreement?.clientTimezone || "").trim(),
+    client_locale: String(agreement?.clientLocale || "").trim(),
+    ip_address: getRequestIpAddress(req),
+    user_agent: String(req?.headers?.["user-agent"] || "").trim(),
+    captured_at: new Date().toISOString(),
+  };
+  const payloadCanonical = JSON.stringify(payload);
+  const digest = sha256Hex(payloadCanonical);
+  const secret = getClickwrapProofSecret();
+  const signature = secret ? hmacSha256Hex(secret, payloadCanonical) : "";
+  return {
+    payload,
+    digest,
+    signature,
+  };
+}
+
+async function insertClickwrapAcceptance(record) {
+  const response = await supabaseServiceRequest(`/rest/v1/${CLICKWRAP_ACCEPTANCES_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([record]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (isMissingClickwrapSchemaError(details)) {
+      throw new Error("Click-wrap schema missing. Run supabase_clickwrap.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not store agreement proof (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
 function parseInviteExpiryDays(value) {
@@ -1705,10 +1994,10 @@ function buildMonthlyReportsEmailHtml(options = {}) {
                   )}</span> with us.
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  Your invoice PDF is attached to this email.<br/>You can also view it instantly with the button below.
+                  Your monthly performance report is ready.<br/>Open it instantly with the button below.
                 </div>
                 <a href="${escapeHtml(reportsUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
-                  View Reports
+                  View Report
                 </a>
               </td>
             </tr>
@@ -1729,9 +2018,9 @@ function buildMonthlyReportsEmailText(options = {}) {
     "https://portal.shipide.com/reports?range=monthly";
   return [
     `This month, you profited an extra ${profitLabel} with us.`,
-    "Your invoice PDF is attached to this email.",
-    "You can also view it instantly with the button below.",
-    `View reports: ${reportsUrl}`,
+    "Your monthly performance report is ready.",
+    "Open it instantly with the button below.",
+    `View report: ${reportsUrl}`,
   ].join("\n");
 }
 
@@ -2916,6 +3205,22 @@ async function createSupabaseUserWithMetadata(email, password, userMetadata) {
     throw new Error("Account creation response was invalid.");
   }
   return payload;
+}
+
+async function deleteSupabaseUserById(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return;
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${safeUserId}`, {
+    method: "DELETE",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Rollback failed: could not delete user (${response.status}) ${details}`.trim());
+  }
 }
 
 async function exchangeShopifyAccessToken(shop, code) {
@@ -4134,6 +4439,7 @@ async function handleRegisterInviteValidate(_req, res, requestUrl) {
     return;
   }
   try {
+    const contract = await getActiveClickwrapContract();
     const invite = await getRegistrationInviteByToken(token);
     if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
       sendJson(res, 410, { error: "This registration link is invalid or expired." });
@@ -4142,6 +4448,7 @@ async function handleRegisterInviteValidate(_req, res, requestUrl) {
     sendJson(res, 200, {
       valid: true,
       invite: mapInviteToPublic(invite),
+      contract: mapClickwrapContractToPublic(contract),
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not validate registration link." });
@@ -4161,6 +4468,7 @@ async function handleRegisterWithInvite(req, res) {
   const email = normalizeEmail(body?.email);
   const password = String(body?.password || "");
   const profile = normalizeRegistrationProfile(body?.profile);
+  const agreement = normalizeClickwrapAgreement(body?.agreement);
   const preferredLanguage = String(body?.preferredLanguage || "en").trim().toLowerCase();
 
   if (!token) {
@@ -4191,25 +4499,63 @@ async function handleRegisterWithInvite(req, res) {
     return;
   }
 
+  let createdUser = null;
   try {
+    const contract = await getActiveClickwrapContract();
+    const agreementError = validateClickwrapAgreement(agreement, contract);
+    if (agreementError) {
+      sendJson(res, 400, { error: agreementError });
+      return;
+    }
+
     const invite = await getRegistrationInviteByToken(token);
     if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
       sendJson(res, 410, { error: "This registration link is invalid or expired." });
       return;
     }
 
-    const metadata = buildRegistrationMetadata(invite, profile, email, preferredLanguage);
-    const createdUser = await createSupabaseUserWithMetadata(email, password, metadata);
+    const metadata = {
+      ...buildRegistrationMetadata(invite, profile, email, preferredLanguage),
+      registration_terms_version: contract.version,
+      registration_terms_hash: contract.hash_sha256,
+      registration_terms_accepted_at: agreement.agreedAt,
+    };
+    createdUser = await createSupabaseUserWithMetadata(email, password, metadata);
 
     await ensureAccountSettingsRow(createdUser.id);
+    const proof = buildClickwrapEvidence(req, invite, contract, agreement, createdUser.id, email);
+    const acceptance = await insertClickwrapAcceptance({
+      user_id: createdUser.id,
+      invite_id: invite.id || null,
+      accepted_email: email,
+      invited_email: normalizeEmail(invite?.invited_email || ""),
+      contract_id: contract.id || null,
+      contract_version: contract.version,
+      contract_hash_sha256: contract.hash_sha256,
+      agreement_method: "scroll_clickwrap",
+      scrolled_to_end: true,
+      scrolled_to_end_at: agreement.scrolledToEndAt,
+      agreed_at: agreement.agreedAt,
+      ip_address: proof.payload.ip_address || null,
+      user_agent: proof.payload.user_agent || null,
+      client_timezone: agreement.clientTimezone || null,
+      client_locale: agreement.clientLocale || null,
+      proof_digest_sha256: proof.digest,
+      proof_signature_hmac: proof.signature,
+      proof_payload: proof.payload,
+    });
     await markRegistrationInviteClaimed(invite.id, createdUser.id, email);
 
     sendJson(res, 200, {
       ok: true,
       email,
       userId: createdUser.id,
+      agreementReceiptId: acceptance?.id || null,
     });
   } catch (error) {
+    if (createdUser?.id) {
+      await deleteSupabaseUserById(createdUser.id).catch(() => {});
+    }
     sendJson(res, 500, { error: error.message || "Could not complete registration." });
   }
 }

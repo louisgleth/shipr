@@ -159,6 +159,47 @@ const TRANSLATIONS = {
     fr: "Identité de facturation et informations fiscales pour la facturation mensuelle.",
     nl: "Factuuridentiteit en fiscale gegevens voor maandelijkse facturatie.",
   },
+  "Service Agreement": { fr: "Accord de service", nl: "Serviceovereenkomst" },
+  "Scroll through the full agreement before accepting to finish registration.": {
+    fr: "Faites defiler l accord complet avant d accepter pour finaliser l inscription.",
+    nl: "Scroll door de volledige overeenkomst voordat je accepteert om registratie af te ronden.",
+  },
+  "Loading agreement...": {
+    fr: "Chargement de l accord...",
+    nl: "Overeenkomst laden...",
+  },
+  "Scroll to the end of the agreement to unlock acceptance.": {
+    fr: "Faites defiler jusqu en bas de l accord pour debloquer l acceptation.",
+    nl: "Scroll naar het einde van de overeenkomst om accepteren te ontgrendelen.",
+  },
+  "I have read the full agreement and I agree to the terms.": {
+    fr: "J ai lu l accord complet et j accepte les conditions.",
+    nl: "Ik heb de volledige overeenkomst gelezen en ga akkoord met de voorwaarden.",
+  },
+  "Agreement version {version}": {
+    fr: "Version de l accord {version}",
+    nl: "Overeenkomstversie {version}",
+  },
+  "Review complete. You can now confirm agreement.": {
+    fr: "Lecture complete. Vous pouvez maintenant confirmer l accord.",
+    nl: "Lezen voltooid. Je kunt nu de overeenkomst bevestigen.",
+  },
+  "Check the agreement box to continue.": {
+    fr: "Cochez la case de l accord pour continuer.",
+    nl: "Vink het overeenkomstvak aan om door te gaan.",
+  },
+  "Agreement accepted. You can create your account.": {
+    fr: "Accord accepte. Vous pouvez creer votre compte.",
+    nl: "Overeenkomst geaccepteerd. Je kunt je account aanmaken.",
+  },
+  "You must review and accept the agreement before registering.": {
+    fr: "Vous devez lire et accepter l accord avant de vous inscrire.",
+    nl: "Je moet de overeenkomst lezen en accepteren voordat je registreert.",
+  },
+  "Could not load registration agreement.": {
+    fr: "Impossible de charger l accord d inscription.",
+    nl: "Kon registratieovereenkomst niet laden.",
+  },
   "Registration link required.": {
     fr: "Lien d’inscription requis.",
     nl: "Registratielink vereist.",
@@ -205,6 +246,54 @@ const TRANSLATIONS = {
   "Invite email does not match this registration link.": {
     fr: "L’e-mail ne correspond pas à ce lien d’inscription.",
     nl: "Het e-mailadres komt niet overeen met deze registratielink.",
+  },
+  "Agreement acceptance is required.": {
+    fr: "L acceptation de l accord est requise.",
+    nl: "Acceptatie van de overeenkomst is vereist.",
+  },
+  "You must scroll through the full agreement before accepting.": {
+    fr: "Vous devez faire defiler l accord complet avant d accepter.",
+    nl: "Je moet door de volledige overeenkomst scrollen voordat je accepteert.",
+  },
+  "Agreement version mismatch. Refresh and try again.": {
+    fr: "Version de l accord invalide. Actualisez et reessayez.",
+    nl: "Overeenkomstversie komt niet overeen. Vernieuw en probeer opnieuw.",
+  },
+  "Agreement integrity check failed. Refresh and try again.": {
+    fr: "Controle d integrite de l accord echouee. Actualisez et reessayez.",
+    nl: "Integriteitscontrole van de overeenkomst mislukt. Vernieuw en probeer opnieuw.",
+  },
+  "Agreement identifier mismatch. Refresh and try again.": {
+    fr: "Identifiant de l accord invalide. Actualisez et reessayez.",
+    nl: "Overeenkomst-id komt niet overeen. Vernieuw en probeer opnieuw.",
+  },
+  "Agreement timestamps are missing.": {
+    fr: "Horodatages de l accord manquants.",
+    nl: "Tijdstempels van de overeenkomst ontbreken.",
+  },
+  "Agreement timestamps are invalid.": {
+    fr: "Horodatages de l accord invalides.",
+    nl: "Tijdstempels van de overeenkomst zijn ongeldig.",
+  },
+  "Agreement scroll checkpoint is invalid.": {
+    fr: "Point de controle de defilement invalide.",
+    nl: "Scrollcontrolepunt van overeenkomst is ongeldig.",
+  },
+  "Agreement confirmation expired. Please review and accept again.": {
+    fr: "Confirmation d accord expiree. Veuillez relire et accepter a nouveau.",
+    nl: "Overeenkomstbevestiging is verlopen. Lees en accepteer opnieuw.",
+  },
+  "Agreement timestamp is in the future.": {
+    fr: "Horodatage de l accord dans le futur.",
+    nl: "Tijdstempel van overeenkomst ligt in de toekomst.",
+  },
+  "Agreement scroll requirement was not completed.": {
+    fr: "Condition de defilement de l accord non respectee.",
+    nl: "Vereiste scroll voor overeenkomst is niet voltooid.",
+  },
+  "Click-wrap schema missing. Run supabase_clickwrap.sql in Supabase SQL editor.": {
+    fr: "Schema click-wrap manquant. Executez supabase_clickwrap.sql dans l editeur SQL Supabase.",
+    nl: "Click-wrap-schema ontbreekt. Voer supabase_clickwrap.sql uit in de Supabase SQL-editor.",
   },
   "Creating invite...": { fr: "Création de l’invitation...", nl: "Uitnodiging maken..." },
   "Sign In": { fr: "Se connecter", nl: "Inloggen" },
@@ -1114,6 +1203,12 @@ const authContactPhone = document.getElementById("authContactPhone");
 const authBillingAddress = document.getElementById("authBillingAddress");
 const authTaxId = document.getElementById("authTaxId");
 const authCustomerId = document.getElementById("authCustomerId");
+const authAgreementGroup = document.getElementById("authAgreementGroup");
+const authAgreementTitle = document.getElementById("authAgreementTitle");
+const authAgreementVersion = document.getElementById("authAgreementVersion");
+const authAgreementScroll = document.getElementById("authAgreementScroll");
+const authAgreementAccept = document.getElementById("authAgreementAccept");
+const authAgreementStatus = document.getElementById("authAgreementStatus");
 const authInviteStatus = document.getElementById("authInviteStatus");
 const authError = document.getElementById("authError");
 const authSignIn = document.getElementById("authSignIn");
@@ -1432,6 +1527,14 @@ let authMode = "login";
 let authInviteToken = "";
 let authInviteData = null;
 let authInviteValidationToken = 0;
+let authInviteIsValid = false;
+let authIsBusy = false;
+let authAgreementContract = null;
+let authAgreementHasReachedEnd = false;
+let authAgreementAccepted = false;
+let authAgreementScrolledAt = "";
+let authAgreementAgreedAt = "";
+let authAgreementMaxProgress = 0;
 let historyRecords = [];
 let historyStore = "supabase";
 let accountActiveRecord = null;
@@ -8537,10 +8640,140 @@ function setAuthInviteStatus(message = "", options = {}) {
   }
 }
 
+function updateAuthRegisterSubmitState() {
+  if (!authSignIn) return;
+  if (authMode !== "register") {
+    authSignIn.disabled = authIsBusy;
+    return;
+  }
+  const agreementReady = Boolean(
+    authAgreementContract && authAgreementHasReachedEnd && authAgreementAccepted
+  );
+  authSignIn.disabled = authIsBusy || !authInviteIsValid || !agreementReady;
+}
+
+function resetAuthAgreementState({ clearContract = false } = {}) {
+  authAgreementHasReachedEnd = false;
+  authAgreementAccepted = false;
+  authAgreementScrolledAt = "";
+  authAgreementAgreedAt = "";
+  authAgreementMaxProgress = 0;
+  if (clearContract) {
+    authAgreementContract = null;
+  }
+  if (authAgreementAccept) {
+    authAgreementAccept.checked = false;
+    authAgreementAccept.disabled = true;
+  }
+  if (authAgreementScroll) {
+    authAgreementScroll.scrollTop = 0;
+    authAgreementScroll.textContent = clearContract ? tr("Loading agreement...") : authAgreementScroll.textContent;
+    const scrollWrap = authAgreementScroll.closest(".auth-agreement-scroll-wrap");
+    if (scrollWrap) {
+      scrollWrap.classList.remove("is-complete");
+    }
+  }
+  if (authAgreementTitle && clearContract) {
+    authAgreementTitle.textContent = tr("Loading agreement...");
+  }
+  if (authAgreementVersion) {
+    authAgreementVersion.textContent = clearContract ? "--" : authAgreementVersion.textContent;
+  }
+  if (authAgreementStatus) {
+    authAgreementStatus.classList.remove("is-success");
+    authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
+  }
+}
+
+function renderAuthAgreementContract(contract) {
+  const normalized =
+    contract && typeof contract === "object" ? contract : null;
+  authAgreementContract = normalized;
+  resetAuthAgreementState({ clearContract: false });
+  if (!normalized) {
+    if (authAgreementTitle) {
+      authAgreementTitle.textContent = tr("Could not load registration agreement.");
+    }
+    if (authAgreementScroll) {
+      authAgreementScroll.textContent = "";
+    }
+    if (authAgreementVersion) {
+      authAgreementVersion.textContent = "--";
+    }
+    if (authAgreementStatus) {
+      authAgreementStatus.textContent = tr("Could not load registration agreement.");
+    }
+    updateAuthRegisterSubmitState();
+    return;
+  }
+  if (authAgreementTitle) {
+    authAgreementTitle.textContent = String(normalized.title || tr("Service Agreement")).trim();
+  }
+  if (authAgreementVersion) {
+    authAgreementVersion.textContent = tr("Agreement version {version}", {
+      version: String(normalized.version || "--"),
+    });
+  }
+  if (authAgreementScroll) {
+    authAgreementScroll.textContent = String(normalized.bodyText || "").trim();
+    authAgreementScroll.scrollTop = 0;
+  }
+  if (authAgreementStatus) {
+    authAgreementStatus.classList.remove("is-success");
+    authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
+  }
+  window.requestAnimationFrame(() => {
+    updateAuthAgreementProgress();
+  });
+  updateAuthRegisterSubmitState();
+}
+
+function updateAuthAgreementProgress() {
+  if (!authAgreementScroll) return;
+  const maxScrollTop = Math.max(1, authAgreementScroll.scrollHeight - authAgreementScroll.clientHeight);
+  const progress = Math.min(1, Math.max(0, authAgreementScroll.scrollTop / maxScrollTop));
+  authAgreementMaxProgress = Math.max(authAgreementMaxProgress, progress);
+  const reachedEnd = progress >= 0.985 || authAgreementScroll.scrollHeight <= authAgreementScroll.clientHeight + 2;
+  const scrollWrap = authAgreementScroll.closest(".auth-agreement-scroll-wrap");
+  if (reachedEnd && !authAgreementHasReachedEnd) {
+    authAgreementHasReachedEnd = true;
+    authAgreementScrolledAt = new Date().toISOString();
+    if (authAgreementAccept) {
+      authAgreementAccept.disabled = false;
+    }
+    if (authAgreementStatus) {
+      authAgreementStatus.classList.remove("is-success");
+      authAgreementStatus.textContent = tr("Check the agreement box to continue.");
+    }
+  }
+  if (scrollWrap) {
+    scrollWrap.classList.toggle("is-complete", authAgreementHasReachedEnd);
+  }
+  updateAuthRegisterSubmitState();
+}
+
+function buildRegistrationAgreementPayload() {
+  if (!authAgreementContract) return null;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  return {
+    contractId: authAgreementContract.id || null,
+    contractVersion: String(authAgreementContract.version || "").trim(),
+    contractHash: String(authAgreementContract.hash || "").trim(),
+    scrolledToEnd: authAgreementHasReachedEnd,
+    scrolledToEndAt: authAgreementScrolledAt || null,
+    agreed: authAgreementAccepted,
+    agreedAt: authAgreementAgreedAt || null,
+    maxScrollProgress: Number(authAgreementMaxProgress.toFixed(4)),
+    clientTimezone: timezone,
+    clientLocale: navigator.language || "",
+  };
+}
+
 function setAuthMode(mode, options = {}) {
   const { inviteToken = "" } = options;
   authMode = mode === "register" ? "register" : "login";
   const isRegister = authMode === "register";
+  authInviteIsValid = false;
   authInviteToken = String(inviteToken || "").trim();
 
   if (authGate) {
@@ -8607,7 +8840,11 @@ function setAuthMode(mode, options = {}) {
   if (!isRegister) {
     setAuthInviteStatus("");
     authInviteData = null;
+    resetAuthAgreementState({ clearContract: true });
+  } else {
+    resetAuthAgreementState({ clearContract: true });
   }
+  updateAuthRegisterSubmitState();
 }
 
 function applyInviteDefaults(invite = {}) {
@@ -8678,16 +8915,15 @@ async function fetchPublicApi(path, options = {}) {
 async function loadRegistrationInvite(token) {
   const requestToken = ++authInviteValidationToken;
   const inviteToken = String(token || "").trim();
-  let inviteIsValid = false;
+  authInviteIsValid = false;
   authInviteToken = inviteToken;
   authInviteData = null;
+  resetAuthAgreementState({ clearContract: true });
 
   if (!inviteToken) {
     setAuthInviteStatus("", { tone: "info" });
     setAuthMessage(tr("Registration link required."));
-    if (authSignIn) {
-      authSignIn.disabled = true;
-    }
+    updateAuthRegisterSubmitState();
     return;
   }
 
@@ -8701,8 +8937,13 @@ async function loadRegistrationInvite(token) {
     );
     if (requestToken !== authInviteValidationToken) return;
     authInviteData = payload?.invite || null;
+    renderAuthAgreementContract(payload?.contract || null);
+    const hasContract = Boolean(payload?.contract?.version && payload?.contract?.hash);
+    if (!hasContract) {
+      throw new Error(tr("Could not load registration agreement."));
+    }
     applyInviteDefaults(authInviteData || {});
-    inviteIsValid = true;
+    authInviteIsValid = true;
     setAuthInviteStatus(tr("Invitation verified. Complete your details to activate access."), {
       tone: "success",
     });
@@ -8710,6 +8951,8 @@ async function loadRegistrationInvite(token) {
   } catch (error) {
     if (requestToken !== authInviteValidationToken) return;
     authInviteData = null;
+    authInviteIsValid = false;
+    renderAuthAgreementContract(null);
     setAuthInviteStatus(tr("This registration link is invalid or expired."), {
       tone: "error",
     });
@@ -8717,14 +8960,13 @@ async function loadRegistrationInvite(token) {
   } finally {
     if (requestToken === authInviteValidationToken) {
       setAuthBusy(false, tr("Register Account"), "");
-      if (authSignIn) {
-        authSignIn.disabled = !inviteIsValid;
-      }
+      updateAuthRegisterSubmitState();
     }
   }
 }
 
 function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Create Account")) {
+  authIsBusy = Boolean(isBusy);
   if (authEmail) authEmail.disabled = isBusy;
   if (authPassword) authPassword.disabled = isBusy;
   [
@@ -8739,11 +8981,13 @@ function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Crea
   ].forEach((input) => {
     if (input) input.disabled = isBusy;
   });
+  if (authAgreementAccept) {
+    authAgreementAccept.disabled = isBusy || !authAgreementHasReachedEnd;
+  }
   if (authForgotPassword) {
     authForgotPassword.disabled = isBusy;
   }
   if (authSignIn) {
-    authSignIn.disabled = isBusy;
     const label = authSignIn.querySelector("span");
     if (label) {
       label.textContent = signInLabel;
@@ -8760,6 +9004,7 @@ function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Crea
       authSignUp.textContent = signUpLabel;
     }
   }
+  updateAuthRegisterSubmitState();
 }
 
 function setAuthView(session, options = {}) {
@@ -8945,6 +9190,19 @@ async function registerWithInvite() {
     setAuthMessage(tr("All registration fields are required except Customer ID."));
     return;
   }
+  if (!authInviteIsValid || !authAgreementContract) {
+    setAuthMessage(tr("Could not load registration agreement."));
+    return;
+  }
+  if (!authAgreementHasReachedEnd || !authAgreementAccepted || !authAgreementAgreedAt) {
+    setAuthMessage(tr("You must review and accept the agreement before registering."));
+    return;
+  }
+  const agreement = buildRegistrationAgreementPayload();
+  if (!agreement) {
+    setAuthMessage(tr("Could not load registration agreement."));
+    return;
+  }
 
   setAuthMessage("");
   setAuthBusy(true, tr("Creating account..."), "");
@@ -8956,6 +9214,7 @@ async function registerWithInvite() {
         email,
         password,
         profile,
+        agreement,
         preferredLanguage: activeLanguage,
       }),
     });
@@ -10515,6 +10774,34 @@ if (authForm) {
       return;
     }
     await signInWithPassword();
+  });
+}
+
+if (authAgreementScroll) {
+  authAgreementScroll.addEventListener("scroll", () => {
+    updateAuthAgreementProgress();
+  });
+}
+
+if (authAgreementAccept) {
+  authAgreementAccept.addEventListener("change", () => {
+    authAgreementAccepted = authAgreementAccept.checked;
+    if (authAgreementAccepted) {
+      authAgreementAgreedAt = new Date().toISOString();
+      if (authAgreementStatus) {
+        authAgreementStatus.classList.add("is-success");
+        authAgreementStatus.textContent = tr("Agreement accepted. You can create your account.");
+      }
+    } else {
+      authAgreementAgreedAt = "";
+      if (authAgreementStatus) {
+        authAgreementStatus.classList.remove("is-success");
+        authAgreementStatus.textContent = authAgreementHasReachedEnd
+          ? tr("Check the agreement box to continue.")
+          : tr("Scroll to the end of the agreement to unlock acceptance.");
+      }
+    }
+    updateAuthRegisterSubmitState();
   });
 }
 

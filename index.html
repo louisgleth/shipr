@@ -77,6 +77,28 @@
                 </label>
               </div>
             </div>
+            <div class="auth-register-group auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
+              <div class="auth-register-group-head">
+                <div class="auth-register-group-title">Service Agreement</div>
+                <div class="auth-register-group-sub">Scroll through the full agreement before accepting to finish registration.</div>
+              </div>
+              <div class="auth-agreement-contract">
+                <div class="auth-agreement-contract-head">
+                  <div class="auth-agreement-contract-title" id="authAgreementTitle">Loading agreement...</div>
+                  <div class="auth-agreement-contract-version mono" id="authAgreementVersion">--</div>
+                </div>
+                <div class="auth-agreement-scroll-wrap">
+                  <div class="auth-agreement-scroll mono" id="authAgreementScroll"></div>
+                  <div class="auth-agreement-scroll-fade" aria-hidden="true"></div>
+                </div>
+              </div>
+              <label class="auth-agreement-check">
+                <input type="checkbox" id="authAgreementAccept" />
+                <span class="auth-agreement-check-box" aria-hidden="true"></span>
+                <span>I have read the full agreement and I agree to the terms.</span>
+              </label>
+              <div class="auth-agreement-status" id="authAgreementStatus">Scroll to the end of the agreement to unlock acceptance.</div>
+            </div>
             <div class="auth-invite-status is-hidden auth-full-row" id="authInviteStatus"></div>
             <div class="form-error auth-full-row" id="authError"></div>
             <div class="auth-actions auth-full-row">
