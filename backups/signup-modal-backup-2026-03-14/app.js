@@ -1217,9 +1217,8 @@ const authPasswordConfirm = document.getElementById("authPasswordConfirm");
 const authRegisterOnlyFields = document.querySelectorAll(".auth-register-field");
 const authRegisterProgress = document.getElementById("authRegisterProgress");
 const authRegisterProgressItems = authRegisterProgress
-  ? Array.from(authRegisterProgress.querySelectorAll(".auth-stepper-dot"))
+  ? Array.from(authRegisterProgress.querySelectorAll(".auth-register-progress-item"))
   : [];
-const authStepperFill = document.getElementById("authStepperFill");
 const authRegisterStepInfo = document.getElementById("authRegisterStepInfo");
 const authCompanyName = document.getElementById("authCompanyName");
 const authContactName = document.getElementById("authContactName");
@@ -8730,7 +8729,7 @@ function getRegistrationStepOneValidationError() {
     return tr("Password must be at least {min} characters.", { min: 10 });
   }
   if (!validateRegistrationProfile(profile)) {
-    return tr("All registration fields are required.");
+    return tr("All registration fields are required except Customer ID.");
   }
   return "";
 }
@@ -8752,9 +8751,6 @@ function setAuthRegisterStep(step = 1, options = {}) {
       item.classList.toggle("is-active", itemStep === nextStep);
       item.classList.toggle("is-complete", itemStep < nextStep);
     });
-  }
-  if (authStepperFill) {
-    authStepperFill.style.width = nextStep === 2 ? "100%" : "0%";
   }
   if (resetMessage) {
     setAuthMessage("");

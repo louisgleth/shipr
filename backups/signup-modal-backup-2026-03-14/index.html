@@ -29,60 +29,62 @@
               <span>Password</span>
               <input type="password" id="authPassword" required autocomplete="current-password" />
             </label>
-            <!-- Step indicator -->
-            <div class="auth-stepper auth-register-field auth-full-row is-hidden" id="authRegisterProgress">
-              <div class="auth-stepper-track">
-                <div class="auth-stepper-fill" id="authStepperFill"></div>
+            <div class="auth-register-progress auth-register-field auth-full-row is-hidden" id="authRegisterProgress">
+              <div class="auth-register-progress-item is-active" data-step="1">
+                <span class="auth-register-progress-index">1</span>
+                <span class="auth-register-progress-label">Account Setup</span>
               </div>
-              <div class="auth-stepper-labels">
-                <button type="button" class="auth-stepper-dot is-active" data-step="1" id="authStepDot1">
-                  <span class="auth-stepper-dot-ring"><span class="auth-stepper-dot-inner"></span></span>
-                  <span class="auth-stepper-dot-label">Account</span>
-                </button>
-                <button type="button" class="auth-stepper-dot" data-step="2" id="authStepDot2">
-                  <span class="auth-stepper-dot-ring"><span class="auth-stepper-dot-inner"></span></span>
-                  <span class="auth-stepper-dot-label">Agreement</span>
-                </button>
+              <div class="auth-register-progress-divider" aria-hidden="true"></div>
+              <div class="auth-register-progress-item" data-step="2">
+                <span class="auth-register-progress-index">2</span>
+                <span class="auth-register-progress-label">Service Agreement</span>
               </div>
             </div>
-
-            <!-- Step 1: Account -->
             <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authRegisterStepInfo">
+              <div class="auth-register-step-head">
+                <div class="auth-register-step-title">Account Setup</div>
+                <div class="auth-register-step-sub">Enter account and billing details to continue.</div>
+              </div>
               <div class="auth-register-grid">
                 <label class="field">
                   <span>Confirm Password</span>
-                  <input type="password" id="authPasswordConfirm" autocomplete="new-password" placeholder="Re-enter password" />
+                  <input type="password" id="authPasswordConfirm" autocomplete="new-password" />
                 </label>
                 <label class="field">
                   <span>Company Name</span>
-                  <input type="text" id="authCompanyName" autocomplete="organization" placeholder="Acme Inc." />
+                  <input type="text" id="authCompanyName" autocomplete="organization" />
                 </label>
                 <label class="field">
                   <span>Point of Contact</span>
-                  <input type="text" id="authContactName" autocomplete="name" placeholder="Jane Smith" />
+                  <input type="text" id="authContactName" autocomplete="name" />
                 </label>
                 <label class="field">
                   <span>Contact Email</span>
-                  <input type="email" id="authContactEmail" autocomplete="email" placeholder="jane@acme.com" />
+                  <input type="email" id="authContactEmail" autocomplete="email" />
                 </label>
                 <label class="field">
                   <span>Phone Number</span>
-                  <input type="text" id="authContactPhone" autocomplete="tel" placeholder="+1 (555) 000-0000" />
+                  <input type="text" id="authContactPhone" autocomplete="tel" />
                 </label>
                 <label class="field is-wide">
                   <span>Billing Address</span>
-                  <input type="text" id="authBillingAddress" autocomplete="street-address" placeholder="123 Main St, City, Country" />
+                  <input type="text" id="authBillingAddress" autocomplete="street-address" />
                 </label>
                 <label class="field">
                   <span>Tax ID</span>
-                  <input type="text" id="authTaxId" autocomplete="off" placeholder="XX-XXXXXXX" />
+                  <input type="text" id="authTaxId" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Customer ID</span>
+                  <input type="text" id="authCustomerId" autocomplete="off" />
                 </label>
               </div>
-              <input type="hidden" id="authCustomerId" value="" />
             </div>
-
-            <!-- Step 2: Agreement -->
             <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
+              <div class="auth-register-step-head">
+                <div class="auth-register-step-title">Service Agreement</div>
+                <div class="auth-register-step-sub">Scroll through the full agreement before accepting to finish registration.</div>
+              </div>
               <div class="auth-agreement-contract">
                 <div class="auth-agreement-contract-head">
                   <div class="auth-agreement-contract-title" id="authAgreementTitle">Loading agreement...</div>
@@ -97,24 +99,21 @@
               </div>
               <label class="auth-agreement-check">
                 <input type="checkbox" id="authAgreementAccept" />
-                <span class="auth-agreement-check-box" aria-hidden="true">
-                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 6 5 8.5 9.5 3.5"/></svg>
-                </span>
-                <span>I have read and agree to the service terms.</span>
+                <span class="auth-agreement-check-box" aria-hidden="true"></span>
+                <span>I have read the full agreement and I agree to the terms.</span>
               </label>
-              <div class="auth-agreement-status" id="authAgreementStatus">Scroll to the end to unlock acceptance.</div>
+              <div class="auth-agreement-status" id="authAgreementStatus">Scroll to the end of the agreement to unlock acceptance.</div>
             </div>
-
             <div class="auth-invite-status is-hidden auth-full-row" id="authInviteStatus"></div>
             <div class="form-error auth-full-row" id="authError"></div>
             <div class="auth-actions auth-full-row">
-              <button type="button" class="btn btn-ghost btn-sm is-hidden" id="authRegisterBack">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
+              <button type="button" class="btn btn-secondary btn-sm is-hidden" id="authRegisterBack">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
                 <span>Back</span>
               </button>
               <button type="submit" class="btn btn-primary" id="authSignIn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 <span>Sign In</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16"><polyline points="9 6 15 12 9 18"/></svg>
               </button>
             </div>
             <div class="auth-form-foot auth-full-row">
