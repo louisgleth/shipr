@@ -8739,6 +8739,9 @@ function setAuthRegisterStep(step = 1, options = {}) {
   const nextStep = Number(step) === 2 ? 2 : 1;
   authRegisterStep = nextStep;
 
+  if (authForm) {
+    authForm.dataset.registerStep = String(nextStep);
+  }
   if (authRegisterStepInfo) {
     authRegisterStepInfo.classList.toggle("is-hidden", authMode !== "register" || nextStep !== 1);
   }
@@ -9021,7 +9024,7 @@ function setAuthMode(mode, options = {}) {
   }
   if (authSubtitle) {
     authSubtitle.textContent = isRegister
-      ? tr("A quick 2-step setup to activate your account.")
+      ? tr("Use your invite link to create your secure account and billing profile.")
       : tr("Use your email and password.");
   }
   if (authRegisterProgress) {
