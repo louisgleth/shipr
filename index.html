@@ -85,21 +85,12 @@
               <div class="auth-agreement-contract">
                 <div class="auth-agreement-contract-head">
                   <div class="auth-agreement-contract-title" id="authAgreementTitle">Loading agreement...</div>
-                  <div class="auth-agreement-contract-meta">
-                    <div class="auth-agreement-contract-version mono" id="authAgreementVersion">--</div>
-                    <a
-                      class="auth-agreement-pdf-link is-hidden"
-                      id="authAgreementPdfLink"
-                      href="#"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View Agreement PDF
-                    </a>
-                  </div>
+                  <div class="auth-agreement-contract-version mono" id="authAgreementVersion">--</div>
                 </div>
                 <div class="auth-agreement-scroll-wrap">
-                  <div class="auth-agreement-scroll mono" id="authAgreementScroll"></div>
+                  <div class="auth-agreement-scroll" id="authAgreementScroll">
+                    <div class="auth-agreement-pages" id="authAgreementPages"></div>
+                  </div>
                   <div class="auth-agreement-scroll-fade" aria-hidden="true"></div>
                 </div>
               </div>
@@ -1814,6 +1805,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="countries.js"></script>
     <script src="app.js"></script>
   </body>

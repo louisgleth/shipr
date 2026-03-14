@@ -400,23 +400,6 @@ body {
   white-space: nowrap;
 }
 
-.auth-agreement-pdf-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.auth-agreement-pdf-link:hover {
-  color: var(--text);
-}
-
-.auth-agreement-pdf-link.is-hidden {
-  display: none;
-}
-
 .auth-agreement-scroll-wrap {
   position: relative;
 }
@@ -425,10 +408,44 @@ body {
   max-height: 220px;
   overflow: auto;
   padding: 10px 12px 18px;
-  font-size: 11px;
+}
+
+.auth-agreement-pages {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.auth-agreement-page {
+  border: 1px solid rgba(20, 24, 32, 0.65);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.auth-agreement-page canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.auth-agreement-placeholder {
+  font-size: var(--fs-2xs);
   line-height: 1.5;
   color: var(--muted);
-  white-space: pre-line;
+  padding: 2px 0;
+}
+
+.auth-agreement-placeholder.is-error {
+  color: #d9a5a5;
+}
+
+.auth-agreement-text-fallback {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
 }
 
 .auth-agreement-scroll-fade {

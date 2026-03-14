@@ -86,6 +86,8 @@ const VAT_RATE = 0.21;
 const TOTAL_STEPS = 4;
 const CUSTOMS_MAX_ITEMS = 12;
 const REPORT_RANGE_PRESETS = [7, 30, 90, 365];
+const AUTH_AGREEMENT_PDF_WORKER_URL =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const ROUTE_PATHS = {
   login: "/login",
   register: "/register",
@@ -1210,8 +1212,8 @@ const authCustomerId = document.getElementById("authCustomerId");
 const authAgreementGroup = document.getElementById("authAgreementGroup");
 const authAgreementTitle = document.getElementById("authAgreementTitle");
 const authAgreementVersion = document.getElementById("authAgreementVersion");
-const authAgreementPdfLink = document.getElementById("authAgreementPdfLink");
 const authAgreementScroll = document.getElementById("authAgreementScroll");
+const authAgreementPages = document.getElementById("authAgreementPages");
 const authAgreementAccept = document.getElementById("authAgreementAccept");
 const authAgreementStatus = document.getElementById("authAgreementStatus");
 const authInviteStatus = document.getElementById("authInviteStatus");
@@ -1540,6 +1542,8 @@ let authAgreementAccepted = false;
 let authAgreementScrolledAt = "";
 let authAgreementAgreedAt = "";
 let authAgreementMaxProgress = 0;
+let authAgreementPdfRenderToken = 0;
+let authAgreementRendering = false;
 let historyRecords = [];
 let historyStore = "supabase";
 let accountActiveRecord = null;
@@ -8657,7 +8661,109 @@ function updateAuthRegisterSubmitState() {
   authSignIn.disabled = authIsBusy || !authInviteIsValid || !agreementReady;
 }
 
+function setAuthAgreementPlaceholder(message, { isError = false } = {}) {
+  if (!authAgreementPages) return;
+  const placeholder = document.createElement("div");
+  placeholder.className = `auth-agreement-placeholder${isError ? " is-error" : ""}`;
+  placeholder.textContent = String(message || "").trim();
+  authAgreementPages.replaceChildren(placeholder);
+}
+
+function renderAuthAgreementTextFallback(text) {
+  if (!authAgreementPages) return;
+  const content = String(text || "").trim();
+  if (!content) {
+    authAgreementPages.replaceChildren();
+    return;
+  }
+  const fallback = document.createElement("pre");
+  fallback.className = "auth-agreement-text-fallback mono";
+  fallback.textContent = content;
+  authAgreementPages.replaceChildren(fallback);
+}
+
+function resolveAuthAgreementPdfUrl(contract) {
+  const value = String(contract?.pdfUrl || "").trim();
+  if (!value) return "";
+  try {
+    return new URL(value, window.location.origin).toString();
+  } catch (_) {
+    return value;
+  }
+}
+
+async function renderAuthAgreementPdf(contract, renderToken) {
+  if (!authAgreementPages || !authAgreementScroll) return;
+  const pdfUrl = resolveAuthAgreementPdfUrl(contract);
+  const fallbackText = String(contract?.bodyText || "").trim();
+  const pdfjsLib = window.pdfjsLib;
+
+  if (
+    !pdfUrl ||
+    !pdfjsLib ||
+    typeof pdfjsLib.getDocument !== "function"
+  ) {
+    renderAuthAgreementTextFallback(fallbackText);
+    return;
+  }
+
+  if (pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = AUTH_AGREEMENT_PDF_WORKER_URL;
+  }
+
+  setAuthAgreementPlaceholder(tr("Loading agreement..."));
+
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      url: pdfUrl,
+      withCredentials: false,
+    });
+    const pdfDocument = await loadingTask.promise;
+    if (renderToken !== authAgreementPdfRenderToken) return;
+
+    const fragment = document.createDocumentFragment();
+    const availableWidth = Math.max(280, authAgreementScroll.clientWidth - 26);
+
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+      if (renderToken !== authAgreementPdfRenderToken) return;
+      const page = await pdfDocument.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.max(0.8, Math.min(2.1, availableWidth / baseViewport.width));
+      const viewport = page.getViewport({ scale });
+      const outputScale = Math.min(2, window.devicePixelRatio || 1);
+
+      const pageElement = document.createElement("div");
+      pageElement.className = "auth-agreement-page";
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
+      pageElement.appendChild(canvas);
+      fragment.appendChild(pageElement);
+
+      const canvasContext = canvas.getContext("2d", { alpha: false });
+      if (!canvasContext) continue;
+      canvasContext.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+      await page.render({ canvasContext, viewport }).promise;
+    }
+
+    if (renderToken !== authAgreementPdfRenderToken) return;
+    authAgreementPages.replaceChildren(fragment);
+  } catch (error) {
+    console.error("Failed to render agreement PDF", error);
+    if (renderToken !== authAgreementPdfRenderToken) return;
+    if (fallbackText) {
+      renderAuthAgreementTextFallback(fallbackText);
+    } else {
+      setAuthAgreementPlaceholder(tr("Could not load registration agreement."), { isError: true });
+    }
+  }
+}
+
 function resetAuthAgreementState({ clearContract = false } = {}) {
+  authAgreementPdfRenderToken += 1;
+  authAgreementRendering = false;
   authAgreementHasReachedEnd = false;
   authAgreementAccepted = false;
   authAgreementScrolledAt = "";
@@ -8672,10 +8778,16 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
   }
   if (authAgreementScroll) {
     authAgreementScroll.scrollTop = 0;
-    authAgreementScroll.textContent = clearContract ? tr("Loading agreement...") : authAgreementScroll.textContent;
     const scrollWrap = authAgreementScroll.closest(".auth-agreement-scroll-wrap");
     if (scrollWrap) {
       scrollWrap.classList.remove("is-complete");
+    }
+  }
+  if (authAgreementPages) {
+    if (clearContract) {
+      setAuthAgreementPlaceholder(tr("Loading agreement..."));
+    } else {
+      authAgreementPages.replaceChildren();
     }
   }
   if (authAgreementTitle && clearContract) {
@@ -8683,10 +8795,6 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
   }
   if (authAgreementVersion) {
     authAgreementVersion.textContent = clearContract ? "--" : authAgreementVersion.textContent;
-  }
-  if (authAgreementPdfLink) {
-    authAgreementPdfLink.classList.add("is-hidden");
-    authAgreementPdfLink.removeAttribute("href");
   }
   if (authAgreementStatus) {
     authAgreementStatus.classList.remove("is-success");
@@ -8703,15 +8811,9 @@ function renderAuthAgreementContract(contract) {
     if (authAgreementTitle) {
       authAgreementTitle.textContent = tr("Could not load registration agreement.");
     }
-    if (authAgreementScroll) {
-      authAgreementScroll.textContent = "";
-    }
+    setAuthAgreementPlaceholder(tr("Could not load registration agreement."), { isError: true });
     if (authAgreementVersion) {
       authAgreementVersion.textContent = "--";
-    }
-    if (authAgreementPdfLink) {
-      authAgreementPdfLink.classList.add("is-hidden");
-      authAgreementPdfLink.removeAttribute("href");
     }
     if (authAgreementStatus) {
       authAgreementStatus.textContent = tr("Could not load registration agreement.");
@@ -8727,32 +8829,29 @@ function renderAuthAgreementContract(contract) {
       version: String(normalized.version || "--"),
     });
   }
-  if (authAgreementPdfLink) {
-    const pdfUrl = String(normalized.pdfUrl || "").trim();
-    if (pdfUrl) {
-      authAgreementPdfLink.href = pdfUrl;
-      authAgreementPdfLink.classList.remove("is-hidden");
-    } else {
-      authAgreementPdfLink.classList.add("is-hidden");
-      authAgreementPdfLink.removeAttribute("href");
-    }
-  }
-  if (authAgreementScroll) {
-    authAgreementScroll.textContent = String(normalized.bodyText || "").trim();
-    authAgreementScroll.scrollTop = 0;
-  }
+  setAuthAgreementPlaceholder(tr("Loading agreement..."));
   if (authAgreementStatus) {
     authAgreementStatus.classList.remove("is-success");
     authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
   }
-  window.requestAnimationFrame(() => {
-    updateAuthAgreementProgress();
+  const renderToken = ++authAgreementPdfRenderToken;
+  authAgreementRendering = true;
+  void renderAuthAgreementPdf(normalized, renderToken).finally(() => {
+    if (renderToken !== authAgreementPdfRenderToken) return;
+    authAgreementRendering = false;
+    if (authAgreementScroll) {
+      authAgreementScroll.scrollTop = 0;
+    }
+    window.requestAnimationFrame(() => {
+      updateAuthAgreementProgress();
+    });
   });
   updateAuthRegisterSubmitState();
 }
 
 function updateAuthAgreementProgress() {
   if (!authAgreementScroll) return;
+  if (authAgreementRendering) return;
   const maxScrollTop = Math.max(1, authAgreementScroll.scrollHeight - authAgreementScroll.clientHeight);
   const progress = Math.min(1, Math.max(0, authAgreementScroll.scrollTop / maxScrollTop));
   authAgreementMaxProgress = Math.max(authAgreementMaxProgress, progress);
