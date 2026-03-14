@@ -136,6 +136,10 @@ const TRANSLATIONS = {
     fr: "Utilisez votre lien d’invitation pour créer votre compte sécurisé et votre profil de facturation.",
     nl: "Gebruik je uitnodigingslink om je beveiligde account en facturatieprofiel aan te maken.",
   },
+  "A quick 2-step setup to activate your account.": {
+    fr: "Une activation rapide en 2 etapes pour votre compte.",
+    nl: "Een snelle 2-stappen setup om je account te activeren.",
+  },
   "Use your email and password. New users can create an account below.": {
     fr: "Utilisez votre e-mail et votre mot de passe. Les nouveaux utilisateurs peuvent créer un compte ci-dessous.",
     nl: "Gebruik je e-mailadres en wachtwoord. Nieuwe gebruikers kunnen hieronder een account aanmaken.",
@@ -170,9 +174,18 @@ const TRANSLATIONS = {
     fr: "Chargement de l accord...",
     nl: "Overeenkomst laden...",
   },
+  "Account Setup": { fr: "Configuration du compte", nl: "Accountinstelling" },
+  "Enter account and billing details to continue.": {
+    fr: "Entrez les informations du compte et de facturation pour continuer.",
+    nl: "Voer account- en facturatiegegevens in om door te gaan.",
+  },
   "View Agreement PDF": {
     fr: "Voir le PDF de l accord",
     nl: "Bekijk overeenkomst-PDF",
+  },
+  "Confirm your password to continue.": {
+    fr: "Confirmez votre mot de passe pour continuer.",
+    nl: "Bevestig je wachtwoord om verder te gaan.",
   },
   "Scroll to the end of the agreement to unlock acceptance.": {
     fr: "Faites defiler jusqu en bas de l accord pour debloquer l acceptation.",
@@ -1202,6 +1215,11 @@ const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const authPasswordConfirm = document.getElementById("authPasswordConfirm");
 const authRegisterOnlyFields = document.querySelectorAll(".auth-register-field");
+const authRegisterProgress = document.getElementById("authRegisterProgress");
+const authRegisterProgressItems = authRegisterProgress
+  ? Array.from(authRegisterProgress.querySelectorAll(".auth-register-progress-item"))
+  : [];
+const authRegisterStepInfo = document.getElementById("authRegisterStepInfo");
 const authCompanyName = document.getElementById("authCompanyName");
 const authContactName = document.getElementById("authContactName");
 const authContactEmail = document.getElementById("authContactEmail");
@@ -1220,6 +1238,7 @@ const authInviteStatus = document.getElementById("authInviteStatus");
 const authError = document.getElementById("authError");
 const authSignIn = document.getElementById("authSignIn");
 const authSignUp = document.getElementById("authSignUp");
+const authRegisterBack = document.getElementById("authRegisterBack");
 const authForgotPassword = document.getElementById("authForgotPassword");
 const authLogoLottie = document.getElementById("authLogoLottie");
 const authBrand = document.getElementById("authBrand");
@@ -1544,6 +1563,7 @@ let authAgreementAgreedAt = "";
 let authAgreementMaxProgress = 0;
 let authAgreementPdfRenderToken = 0;
 let authAgreementRendering = false;
+let authRegisterStep = 1;
 let historyRecords = [];
 let historyStore = "supabase";
 let accountActiveRecord = null;
@@ -8650,15 +8670,97 @@ function setAuthInviteStatus(message = "", options = {}) {
 }
 
 function updateAuthRegisterSubmitState() {
-  if (!authSignIn) return;
+  const primaryLabel = authMode === "register"
+    ? (authRegisterStep === 1 ? tr("Continue") : tr("Register Account"))
+    : tr("Sign In");
+
+  if (authSignIn) {
+    const label = authSignIn.querySelector("span");
+    if (label) {
+      label.textContent = primaryLabel;
+    } else {
+      authSignIn.textContent = primaryLabel;
+    }
+  }
+
   if (authMode !== "register") {
-    authSignIn.disabled = authIsBusy;
+    if (authSignIn) {
+      authSignIn.disabled = authIsBusy;
+    }
+    if (authRegisterBack) {
+      authRegisterBack.classList.add("is-hidden");
+      authRegisterBack.disabled = true;
+    }
     return;
   }
+
+  const stepOneValid = getRegistrationStepOneValidationError() === "";
   const agreementReady = Boolean(
     authAgreementContract && authAgreementHasReachedEnd && authAgreementAccepted
   );
-  authSignIn.disabled = authIsBusy || !authInviteIsValid || !agreementReady;
+  const canSubmit = authRegisterStep === 1 ? stepOneValid : agreementReady;
+
+  if (authSignIn) {
+    authSignIn.disabled = authIsBusy || !authInviteIsValid || !canSubmit;
+  }
+  if (authRegisterBack) {
+    const showBack = authRegisterStep === 2;
+    authRegisterBack.classList.toggle("is-hidden", !showBack);
+    authRegisterBack.disabled = authIsBusy || !showBack;
+  }
+}
+
+function getRegistrationStepOneValidationError() {
+  const email = String(authEmail?.value || "").trim().toLowerCase();
+  const password = String(authPassword?.value || "");
+  const confirmPassword = String(authPasswordConfirm?.value || "");
+  const profile = collectRegistrationProfile();
+
+  if (!email || !password) {
+    return tr("Email and password are required.");
+  }
+  if (!confirmPassword) {
+    return tr("Confirm your password to continue.");
+  }
+  if (password !== confirmPassword) {
+    return tr("Passwords do not match.");
+  }
+  if (password.length < 10) {
+    return tr("Password must be at least {min} characters.", { min: 10 });
+  }
+  if (!validateRegistrationProfile(profile)) {
+    return tr("All registration fields are required except Customer ID.");
+  }
+  return "";
+}
+
+function setAuthRegisterStep(step = 1, options = {}) {
+  const { resetMessage = false } = options;
+  const nextStep = Number(step) === 2 ? 2 : 1;
+  authRegisterStep = nextStep;
+
+  if (authRegisterStepInfo) {
+    authRegisterStepInfo.classList.toggle("is-hidden", authMode !== "register" || nextStep !== 1);
+  }
+  if (authAgreementGroup) {
+    authAgreementGroup.classList.toggle("is-hidden", authMode !== "register" || nextStep !== 2);
+  }
+  if (authRegisterProgressItems.length) {
+    authRegisterProgressItems.forEach((item) => {
+      const itemStep = Number(item.dataset.step || "1");
+      item.classList.toggle("is-active", itemStep === nextStep);
+      item.classList.toggle("is-complete", itemStep < nextStep);
+    });
+  }
+  if (resetMessage) {
+    setAuthMessage("");
+  }
+  if (authMode === "register" && nextStep === 2) {
+    window.requestAnimationFrame(() => {
+      updateAuthAgreementProgress();
+    });
+  }
+  updateAuthRegisterSubmitState();
 }
 
 function setAuthAgreementPlaceholder(message, { isError = false } = {}) {
@@ -8919,18 +9021,11 @@ function setAuthMode(mode, options = {}) {
   }
   if (authSubtitle) {
     authSubtitle.textContent = isRegister
-      ? tr("Use your invite link to create your secure account and billing profile.")
+      ? tr("A quick 2-step setup to activate your account.")
       : tr("Use your email and password.");
   }
-  if (authSignIn) {
-    authSignIn.disabled = isRegister;
-    const label = authSignIn.querySelector("span");
-    const nextLabel = isRegister ? tr("Register Account") : tr("Sign In");
-    if (label) {
-      label.textContent = nextLabel;
-    } else {
-      authSignIn.textContent = nextLabel;
-    }
+  if (authRegisterProgress) {
+    authRegisterProgress.classList.toggle("is-hidden", !isRegister);
   }
   if (authPassword) {
     authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
@@ -8963,8 +9058,10 @@ function setAuthMode(mode, options = {}) {
     setAuthInviteStatus("");
     authInviteData = null;
     resetAuthAgreementState({ clearContract: true });
+    setAuthRegisterStep(1);
   } else {
     resetAuthAgreementState({ clearContract: true });
+    setAuthRegisterStep(1);
   }
   updateAuthRegisterSubmitState();
 }
@@ -9294,22 +9391,11 @@ async function registerWithInvite() {
   }
   const email = String(authEmail?.value || "").trim().toLowerCase();
   const password = String(authPassword?.value || "");
-  const confirmPassword = String(authPasswordConfirm?.value || "");
   const profile = collectRegistrationProfile();
-  if (!email || !password) {
-    setAuthMessage(tr("Email and password are required."));
-    return;
-  }
-  if (password !== confirmPassword) {
-    setAuthMessage(tr("Passwords do not match."));
-    return;
-  }
-  if (password.length < 10) {
-    setAuthMessage(tr("Password must be at least {min} characters.", { min: 10 }));
-    return;
-  }
-  if (!validateRegistrationProfile(profile)) {
-    setAuthMessage(tr("All registration fields are required except Customer ID."));
+  const stepOneValidationError = getRegistrationStepOneValidationError();
+  if (stepOneValidationError) {
+    setAuthRegisterStep(1);
+    setAuthMessage(stepOneValidationError);
     return;
   }
   if (!authInviteIsValid || !authAgreementContract) {
@@ -10892,10 +10978,48 @@ if (authForm) {
   authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (authMode === "register") {
+      if (authRegisterStep === 1) {
+        const validationError = getRegistrationStepOneValidationError();
+        if (validationError) {
+          setAuthMessage(validationError);
+          return;
+        }
+        setAuthMessage("");
+        setAuthRegisterStep(2);
+        return;
+      }
       await registerWithInvite();
       return;
     }
     await signInWithPassword();
+  });
+}
+
+[
+  authEmail,
+  authPassword,
+  authPasswordConfirm,
+  authCompanyName,
+  authContactName,
+  authContactEmail,
+  authContactPhone,
+  authBillingAddress,
+  authTaxId,
+  authCustomerId,
+].forEach((input) => {
+  if (!input) return;
+  input.addEventListener("input", () => {
+    if (authMode === "register") {
+      setAuthMessage("");
+    }
+    updateAuthRegisterSubmitState();
+  });
+});
+
+if (authRegisterBack) {
+  authRegisterBack.addEventListener("click", () => {
+    if (authMode !== "register") return;
+    setAuthRegisterStep(1, { resetMessage: true });
   });
 }
 
