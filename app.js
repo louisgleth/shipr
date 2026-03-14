@@ -168,6 +168,10 @@ const TRANSLATIONS = {
     fr: "Chargement de l accord...",
     nl: "Overeenkomst laden...",
   },
+  "View Agreement PDF": {
+    fr: "Voir le PDF de l accord",
+    nl: "Bekijk overeenkomst-PDF",
+  },
   "Scroll to the end of the agreement to unlock acceptance.": {
     fr: "Faites defiler jusqu en bas de l accord pour debloquer l acceptation.",
     nl: "Scroll naar het einde van de overeenkomst om accepteren te ontgrendelen.",
@@ -1206,6 +1210,7 @@ const authCustomerId = document.getElementById("authCustomerId");
 const authAgreementGroup = document.getElementById("authAgreementGroup");
 const authAgreementTitle = document.getElementById("authAgreementTitle");
 const authAgreementVersion = document.getElementById("authAgreementVersion");
+const authAgreementPdfLink = document.getElementById("authAgreementPdfLink");
 const authAgreementScroll = document.getElementById("authAgreementScroll");
 const authAgreementAccept = document.getElementById("authAgreementAccept");
 const authAgreementStatus = document.getElementById("authAgreementStatus");
@@ -8679,6 +8684,10 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
   if (authAgreementVersion) {
     authAgreementVersion.textContent = clearContract ? "--" : authAgreementVersion.textContent;
   }
+  if (authAgreementPdfLink) {
+    authAgreementPdfLink.classList.add("is-hidden");
+    authAgreementPdfLink.removeAttribute("href");
+  }
   if (authAgreementStatus) {
     authAgreementStatus.classList.remove("is-success");
     authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
@@ -8700,6 +8709,10 @@ function renderAuthAgreementContract(contract) {
     if (authAgreementVersion) {
       authAgreementVersion.textContent = "--";
     }
+    if (authAgreementPdfLink) {
+      authAgreementPdfLink.classList.add("is-hidden");
+      authAgreementPdfLink.removeAttribute("href");
+    }
     if (authAgreementStatus) {
       authAgreementStatus.textContent = tr("Could not load registration agreement.");
     }
@@ -8713,6 +8726,16 @@ function renderAuthAgreementContract(contract) {
     authAgreementVersion.textContent = tr("Agreement version {version}", {
       version: String(normalized.version || "--"),
     });
+  }
+  if (authAgreementPdfLink) {
+    const pdfUrl = String(normalized.pdfUrl || "").trim();
+    if (pdfUrl) {
+      authAgreementPdfLink.href = pdfUrl;
+      authAgreementPdfLink.classList.remove("is-hidden");
+    } else {
+      authAgreementPdfLink.classList.add("is-hidden");
+      authAgreementPdfLink.removeAttribute("href");
+    }
   }
   if (authAgreementScroll) {
     authAgreementScroll.textContent = String(normalized.bodyText || "").trim();

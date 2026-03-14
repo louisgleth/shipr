@@ -19,6 +19,7 @@ const DEFAULT_INVITE_EXPIRY_DAYS = 14;
 const MAX_INVITE_EXPIRY_DAYS = 90;
 const CLICKWRAP_ACCEPTANCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CLICKWRAP_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const DEFAULT_CLICKWRAP_CONTRACT_PDF_URL = "/assets/contracts/commAgreement-v1.pdf";
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0.21;
@@ -513,6 +514,7 @@ function getEmbeddedClickwrapContract() {
     title: DEFAULT_CLICKWRAP_CONTRACT_TITLE,
     body_text: DEFAULT_CLICKWRAP_CONTRACT_BODY,
     hash_sha256: "",
+    pdf_url: DEFAULT_CLICKWRAP_CONTRACT_PDF_URL,
     effective_at: null,
     source: "embedded",
   };
@@ -534,7 +536,11 @@ async function getActiveClickwrapContract(env) {
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     if (isMissingClickwrapSchemaError(details)) {
-      return getEmbeddedClickwrapContract();
+      const embedded = getEmbeddedClickwrapContract();
+      return {
+        ...embedded,
+        hash_sha256: await sha256Hex(embedded.body_text),
+      };
     }
     throw new Error(`Could not load click-wrap agreement (${response.status}) ${details}`.trim());
   }
@@ -548,6 +554,7 @@ async function getActiveClickwrapContract(env) {
     title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
     body_text: bodyText,
     hash_sha256: hash,
+    pdf_url: String(contract?.pdf_url || DEFAULT_CLICKWRAP_CONTRACT_PDF_URL).trim(),
     effective_at: contract?.effective_at || null,
     source: contract?.source || "supabase",
   };
@@ -560,6 +567,7 @@ function mapClickwrapContractToPublic(contract) {
     title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
     bodyText: String(contract?.body_text || DEFAULT_CLICKWRAP_CONTRACT_BODY).trim(),
     hash: String(contract?.hash_sha256 || "").trim().toLowerCase(),
+    pdfUrl: String(contract?.pdf_url || DEFAULT_CLICKWRAP_CONTRACT_PDF_URL).trim(),
     effectiveAt: contract?.effective_at || null,
   };
 }

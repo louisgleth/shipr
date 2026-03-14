@@ -382,6 +382,12 @@ body {
   border-bottom: 1px solid var(--stroke);
 }
 
+.auth-agreement-contract-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
 .auth-agreement-contract-title {
   font-size: var(--fs-xs);
   color: var(--text);
@@ -392,6 +398,23 @@ body {
   font-size: var(--fs-2xs);
   color: var(--muted);
   white-space: nowrap;
+}
+
+.auth-agreement-pdf-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.auth-agreement-pdf-link:hover {
+  color: var(--text);
+}
+
+.auth-agreement-pdf-link.is-hidden {
+  display: none;
 }
 
 .auth-agreement-scroll-wrap {
