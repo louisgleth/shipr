@@ -1,3 +1,6 @@
+import { PDFDocument } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+
 const MAX_BODY_BYTES = 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_SHOPIFY_SCOPES = "read_orders,read_locations";
@@ -20,6 +23,10 @@ const MAX_INVITE_EXPIRY_DAYS = 90;
 const CLICKWRAP_ACCEPTANCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CLICKWRAP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_CLICKWRAP_CONTRACT_PDF_URL = "/assets/contracts/commAgreement-v1.pdf";
+const CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL = "/assets/contracts/commAgreement-v1-template.pdf";
+const CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL = "/assets/fonts/PTMono-Regular.ttf";
+const CLICKWRAP_STORAGE_BUCKET = "clickwrap-contracts";
+const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0.21;
@@ -87,6 +94,8 @@ const RETAIL_BASE_RATE = {
 };
 
 const textEncoder = new TextEncoder();
+let clickwrapTemplateBytesPromise = null;
+let clickwrapFontBytesPromise = null;
 
 export default {
   async fetch(request, env) {
@@ -145,6 +154,12 @@ export default {
       }
       if (pathname === "/api/auth/register-invite" && request.method === "GET") {
         return handleRegisterInviteValidate(request, env, url);
+      }
+      if (pathname === "/api/auth/register-contract-preview" && request.method === "POST") {
+        return handleRegisterContractPreview(request, env);
+      }
+      if (pathname === "/api/auth/register-contract-preview-file" && request.method === "GET") {
+        return handleRegisterContractPreviewFile(request, env, url);
       }
       if (pathname === "/api/auth/register" && request.method === "POST") {
         return handleRegisterWithInvite(request, env);
@@ -384,6 +399,36 @@ async function parseStateToken(env, token) {
   return payload;
 }
 
+async function makeSignedPayloadToken(env, payload, ttlMs = OAUTH_STATE_TTL_MS) {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const tokenPayload = {
+    ...payload,
+    nonce: toBase64Url(bytes),
+    exp: Date.now() + Math.max(60 * 1000, Number(ttlMs) || OAUTH_STATE_TTL_MS),
+  };
+  const encoded = toBase64Url(textEncoder.encode(JSON.stringify(tokenPayload)));
+  const signature = await hmacSha256Hex(getStateSecret(env), encoded);
+  return `${encoded}.${signature}`;
+}
+
+async function parseSignedPayloadToken(env, token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  const [encoded, signature] = parts;
+  if (!encoded || !signature) return null;
+  const expected = await hmacSha256Hex(getStateSecret(env), encoded);
+  if (!timingSafeEqual(signature, expected)) return null;
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encoded)));
+    if (!payload || typeof payload !== "object") return null;
+    if (!payload.exp || Date.now() > Number(payload.exp)) return null;
+    return payload;
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function getAesKey(secret) {
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(secret));
   return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
@@ -520,9 +565,80 @@ function getEmbeddedClickwrapContract() {
   };
 }
 
+function normalizeClickwrapContractSnapshot(contract) {
+  return {
+    id: contract?.id || null,
+    version: String(contract?.version || DEFAULT_CLICKWRAP_CONTRACT_VERSION).trim(),
+    title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
+    body_text: String(contract?.body_text || contract?.bodyText || DEFAULT_CLICKWRAP_CONTRACT_BODY).trim(),
+    hash_sha256: String(contract?.hash_sha256 || contract?.hash || "").trim().toLowerCase(),
+    pdf_url: String(
+      contract?.pdf_url || contract?.pdfUrl || DEFAULT_CLICKWRAP_CONTRACT_PDF_URL
+    ).trim(),
+    effective_at: contract?.effective_at || contract?.effectiveAt || null,
+    source: contract?.source || "snapshot",
+  };
+}
+
+function createClickwrapPreviewRecordId() {
+  const randomBytes = new Uint8Array(2);
+  crypto.getRandomValues(randomBytes);
+  const randomHex = Array.from(randomBytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+  return `CW-${Date.now().toString(36).toUpperCase()}-${randomHex}`;
+}
+
+function normalizeClickwrapPreviewRecordId(value) {
+  const normalized = String(value || "").trim();
+  return /^[a-z0-9_-]{8,80}$/i.test(normalized) ? normalized : "";
+}
+
+function compactClickwrapPreviewAddress(value) {
+  const segments = String(value || "")
+    .trim()
+    .split(",")
+    .map((segment) => String(segment || "").trim())
+    .filter(Boolean);
+  if (!segments.length) return "";
+  let compact = segments.slice(0, 2).join(", ") || segments[0];
+  compact = compact
+    .replace(/\bAvenue\b/gi, "Ave.")
+    .replace(/\bBoulevard\b/gi, "Blvd.")
+    .replace(/\bStreet\b/gi, "St.")
+    .replace(/\bRoad\b/gi, "Rd.")
+    .replace(/\bSquare\b/gi, "Sq.");
+  if (compact.length > 32 && segments[0]) {
+    compact = segments[0];
+  }
+  return compact;
+}
+
+function buildClickwrapPreviewProfileSnapshot(email, profile) {
+  const normalizedProfile = normalizeRegistrationProfile(profile);
+  return {
+    email: normalizeEmail(email),
+    companyName: normalizedProfile.companyName,
+    contactName: normalizedProfile.contactName,
+    contactEmail: normalizedProfile.contactEmail,
+    contactPhone: normalizedProfile.contactPhone,
+    billingAddress: normalizedProfile.billingAddress,
+    taxId: normalizedProfile.taxId,
+    customerId: normalizedProfile.customerId,
+  };
+}
+
+function clickwrapPreviewSnapshotsMatch(left, right) {
+  return JSON.stringify(left || {}) === JSON.stringify(right || {});
+}
+
 async function getActiveClickwrapContract(env) {
   const params = new URLSearchParams();
-  params.set("select", "id,version,title,body_text,hash_sha256,effective_at,is_active,created_at");
+  params.set(
+    "select",
+    "id,version,title,body_text,hash_sha256,pdf_url,effective_at,is_active,created_at"
+  );
   params.set("is_active", "eq.true");
   params.set("order", "effective_at.desc.nullslast,created_at.desc");
   params.set("limit", "1");
@@ -537,10 +653,10 @@ async function getActiveClickwrapContract(env) {
     const details = await response.text().catch(() => "");
     if (isMissingClickwrapSchemaError(details)) {
       const embedded = getEmbeddedClickwrapContract();
-      return {
+      return normalizeClickwrapContractSnapshot({
         ...embedded,
         hash_sha256: await sha256Hex(embedded.body_text),
-      };
+      });
     }
     throw new Error(`Could not load click-wrap agreement (${response.status}) ${details}`.trim());
   }
@@ -548,16 +664,12 @@ async function getActiveClickwrapContract(env) {
   const contract = Array.isArray(rows) && rows.length ? rows[0] : getEmbeddedClickwrapContract();
   const bodyText = String(contract?.body_text || DEFAULT_CLICKWRAP_CONTRACT_BODY).trim();
   const hash = String(contract?.hash_sha256 || "").trim().toLowerCase() || (await sha256Hex(bodyText));
-  return {
-    id: contract?.id || null,
-    version: String(contract?.version || DEFAULT_CLICKWRAP_CONTRACT_VERSION).trim(),
-    title: String(contract?.title || DEFAULT_CLICKWRAP_CONTRACT_TITLE).trim(),
+  return normalizeClickwrapContractSnapshot({
+    ...contract,
     body_text: bodyText,
     hash_sha256: hash,
-    pdf_url: String(contract?.pdf_url || DEFAULT_CLICKWRAP_CONTRACT_PDF_URL).trim(),
-    effective_at: contract?.effective_at || null,
     source: contract?.source || "supabase",
-  };
+  });
 }
 
 function mapClickwrapContractToPublic(contract) {
@@ -579,6 +691,9 @@ function normalizeClickwrapAgreement(rawAgreement) {
     contractId: String(agreement?.contractId || "").trim() || null,
     contractVersion: String(agreement?.contractVersion || "").trim(),
     contractHash: String(agreement?.contractHash || "").trim().toLowerCase(),
+    recordId:
+      normalizeClickwrapPreviewRecordId(agreement?.recordId || agreement?.previewRecordId) || null,
+    previewToken: String(agreement?.previewToken || "").trim() || null,
     scrolledToEnd: agreement?.scrolledToEnd === true,
     scrolledToEndAt: parseIsoTimestamp(agreement?.scrolledToEndAt),
     agreed: agreement?.agreed === true,
@@ -589,7 +704,8 @@ function normalizeClickwrapAgreement(rawAgreement) {
   };
 }
 
-function validateClickwrapAgreement(agreement, contract) {
+function validateClickwrapAgreement(agreement, contract, options = {}) {
+  const { previewPayload = null, email = "", profile = null } = options;
   if (!agreement?.agreed) {
     return "Agreement acceptance is required.";
   }
@@ -625,6 +741,30 @@ function validateClickwrapAgreement(agreement, contract) {
   if (Number.isFinite(agreement?.maxScrollProgress) && agreement.maxScrollProgress < 0.985) {
     return "Agreement scroll requirement was not completed.";
   }
+  if (agreement?.recordId) {
+    if (!previewPayload) {
+      return "Agreement preview expired. Review the agreement again.";
+    }
+    if (String(previewPayload.recordId || "") !== String(agreement.recordId || "")) {
+      return "Agreement preview record mismatch. Review the agreement again.";
+    }
+    if (
+      String(previewPayload?.contractSnapshot?.version || "").trim()
+      !== String(contract?.version || "").trim()
+    ) {
+      return "Agreement preview version mismatch. Review the agreement again.";
+    }
+    if (
+      String(previewPayload?.contractSnapshot?.hash_sha256 || "").trim().toLowerCase()
+      !== String(contract?.hash_sha256 || "").trim().toLowerCase()
+    ) {
+      return "Agreement preview integrity check failed. Review the agreement again.";
+    }
+    const incomingSnapshot = buildClickwrapPreviewProfileSnapshot(email, profile);
+    if (!clickwrapPreviewSnapshotsMatch(previewPayload.profileSnapshot, incomingSnapshot)) {
+      return "Agreement preview no longer matches your registration details. Review again.";
+    }
+  }
   return "";
 }
 
@@ -645,7 +785,17 @@ function getRequestIpAddress(headers) {
   return "";
 }
 
-async function buildClickwrapEvidence(env, request, invite, contract, agreement, createdUserId, email) {
+async function buildClickwrapEvidence(
+  env,
+  request,
+  invite,
+  contract,
+  agreement,
+  createdUserId,
+  email,
+  options = {}
+) {
+  const { acceptedContract = null } = options;
   const acceptedAt = agreement?.agreedAt || new Date().toISOString();
   const payload = {
     schema: "shipide.clickwrap.v1",
@@ -666,7 +816,20 @@ async function buildClickwrapEvidence(env, request, invite, contract, agreement,
     ip_address: getRequestIpAddress(request?.headers),
     user_agent: String(request?.headers?.get("user-agent") || "").trim(),
     captured_at: new Date().toISOString(),
+    preview_record_id: agreement?.recordId || null,
   };
+  if (acceptedContract) {
+    payload.accepted_contract_pdf = {
+      record_id: acceptedContract.recordId,
+      filename: acceptedContract.filename,
+      sha256: acceptedContract.sha256,
+      size_bytes: acceptedContract.sizeBytes,
+      storage_bucket: acceptedContract.bucket,
+      storage_object_path: acceptedContract.objectPath,
+      storage_full_path: acceptedContract.fullPath,
+      stored_at: acceptedContract.storedAt,
+    };
+  }
   const payloadCanonical = JSON.stringify(payload);
   const digest = await sha256Hex(payloadCanonical);
   const signature = await hmacSha256Hex(getStateSecret(env), payloadCanonical);
@@ -995,12 +1158,37 @@ async function sendResendEmail(env, payload) {
   if (replyTo) {
     requestBody.reply_to = replyTo;
   }
+  if (Array.isArray(payload?.attachments) && payload.attachments.length) {
+    requestBody.attachments = payload.attachments
+      .map((attachment) => {
+        const filename = String(attachment?.filename || "").trim();
+        if (!filename) return null;
+        const content = attachment?.content;
+        if (!(content instanceof Uint8Array) && !(content instanceof ArrayBuffer)) {
+          return null;
+        }
+        return {
+          filename,
+          content:
+            content instanceof Uint8Array
+              ? bytesToBase64(content)
+              : bytesToBase64(new Uint8Array(content)),
+          content_type: String(attachment?.contentType || "application/octet-stream").trim(),
+        };
+      })
+      .filter(Boolean);
+  }
+  const headers = {
+    Authorization: `Bearer ${env.RESEND_API_KEY}`,
+    "Content-Type": "application/json",
+  };
+  const idempotencyKey = String(payload?.idempotencyKey || "").trim();
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify(requestBody),
   });
   const payloadJson = await response.json().catch(() => ({}));
@@ -1012,6 +1200,210 @@ async function sendResendEmail(env, payload) {
     throw new Error(String(message).trim());
   }
   return payloadJson;
+}
+
+async function ensureClickwrapStorageBucket(env) {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for Supabase Storage uploads.");
+  }
+  const bucketUrl = `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/bucket/${encodeURIComponent(
+    CLICKWRAP_STORAGE_BUCKET
+  )}`;
+  const headers = {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  };
+  const response = await fetch(bucketUrl, { method: "GET", headers });
+  if (response.ok) {
+    return;
+  }
+  const details = await response.text().catch(() => "");
+  const missingBucket =
+    response.status === 404
+    || /not found|does not exist|not exists/i.test(details);
+  if (!missingBucket) {
+    throw new Error(`Could not access clickwrap storage bucket (${response.status}) ${details}`.trim());
+  }
+  const createResponse = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/bucket`,
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: CLICKWRAP_STORAGE_BUCKET,
+        name: CLICKWRAP_STORAGE_BUCKET,
+        public: false,
+        allowed_mime_types: ["application/pdf"],
+        file_size_limit: "10MB",
+      }),
+    }
+  );
+  if (!createResponse.ok) {
+    const createDetails = await createResponse.text().catch(() => "");
+    if (!/already exists/i.test(createDetails)) {
+      throw new Error(
+        `Could not create clickwrap storage bucket (${createResponse.status}) ${createDetails}`.trim()
+      );
+    }
+  }
+}
+
+async function persistAcceptedClickwrapContract(env, { contract, recordId, pdfBytes, acceptedAt }) {
+  const filename = buildClickwrapPreviewDownloadName(contract, recordId);
+  const storagePath = buildClickwrapStoragePath(contract, recordId, filename);
+  await ensureClickwrapStorageBucket(env);
+  const uploadUrl = `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${CLICKWRAP_STORAGE_BUCKET}/${storagePath}`;
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+      "cache-control": "3600",
+    },
+    body: pdfBytes,
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not store accepted agreement PDF (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => ({}));
+  return {
+    recordId: String(recordId || "").trim(),
+    filename,
+    bucket: CLICKWRAP_STORAGE_BUCKET,
+    objectPath: payload?.Key || payload?.path || storagePath,
+    fullPath: storagePath,
+    sha256: await sha256HexBytes(pdfBytes),
+    sizeBytes: pdfBytes.byteLength,
+    acceptedAt: parseIsoTimestamp(acceptedAt),
+    storedAt: new Date().toISOString(),
+  };
+}
+
+function buildAcceptedAgreementEmailSubject() {
+  return "Welcome to Shipide!";
+}
+
+function buildAcceptedAgreementEmailHtml({ contract, artifact, recipientName }) {
+  const greetingName = String(recipientName || "").trim() || "there";
+  const version = String(contract?.version || "").trim() || "--";
+  const recordId = String(artifact?.recordId || "").trim() || "--";
+  const acceptedAt = formatClickwrapAcceptanceTimestamp(artifact?.acceptedAt) || "--";
+  return `
+    <style>
+      @media only screen and (max-width: 640px) {
+        .shipide-email-hero-title {
+          font-size: 40px !important;
+          line-height: 1.06 !important;
+          letter-spacing: -0.03em !important;
+        }
+        .shipide-email-hero-sub {
+          font-size: 14px !important;
+          line-height: 1.45 !important;
+          max-width: 340px !important;
+        }
+        .shipide-email-hero-wrap {
+          padding: 38px 8px 20px !important;
+        }
+        .shipide-email-logo {
+          width: 96px !important;
+          margin-bottom: 24px !important;
+        }
+      }
+    </style>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
+      <tr>
+        <td align="center" style="padding:0 16px 40px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
+            <tr>
+              <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
+                <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
+                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
+                  Welcome to<br/>Shipide!
+                </div>
+                <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
+                  Your account is now active.<br/>The PDF copy of your accepted service agreement is attached to this email.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:18px 8px 0;">
+                <div style="max-width:700px;margin:0 auto;font-size:15px;line-height:1.75;color:#d7dced;text-align:center;">
+                  Hi ${escapeHtml(greetingName)}, welcome aboard. We attached the PDF copy of your accepted Shipide service agreement so you have it immediately for your records.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:22px 8px 0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;border:1px solid #232939;border-radius:18px;background:#0d1119;">
+                  <tr>
+                    <td style="padding:20px 22px;">
+                      <div style="font-size:13px;line-height:1.85;color:#c6ccdc;">
+                        <div><strong>Agreement version:</strong> ${escapeHtml(version)}</div>
+                        <div><strong>Record ID:</strong> ${escapeHtml(recordId)}</div>
+                        <div><strong>Accepted at:</strong> ${escapeHtml(acceptedAt)}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+}
+
+function buildAcceptedAgreementEmailText({ contract, artifact, recipientName }) {
+  const greetingName = String(recipientName || "").trim() || "there";
+  const version = String(contract?.version || "").trim() || "--";
+  const recordId = String(artifact?.recordId || "").trim() || "--";
+  const acceptedAt = formatClickwrapAcceptanceTimestamp(artifact?.acceptedAt) || "--";
+  return [
+    `Hi ${greetingName},`,
+    "",
+    "Welcome to Shipide!",
+    "",
+    "Your account is now active. The PDF copy of your accepted Shipide service agreement is attached to this email.",
+    "",
+    `Agreement version: ${version}`,
+    `Record ID: ${recordId}`,
+    `Accepted at: ${acceptedAt}`,
+    "",
+    "Keep this PDF for your records.",
+  ].join("\n");
+}
+
+async function sendAcceptedAgreementEmail(env, { email, contract, artifact, pdfBytes, recipientName }) {
+  return sendResendEmail(env, {
+    to: normalizeEmail(email),
+    fromName: String(env.WELCOME_FROM_NAME || "Shipide").trim(),
+    fromEmail: String(env.WELCOME_FROM_EMAIL || "welcome@shipide.com").trim(),
+    subject: buildAcceptedAgreementEmailSubject(contract),
+    idempotencyKey: `agreement-${String(artifact?.recordId || "").trim()}`,
+    html: buildAcceptedAgreementEmailHtml({
+      contract,
+      artifact,
+      recipientName,
+    }),
+    text: buildAcceptedAgreementEmailText({
+      contract,
+      artifact,
+      recipientName,
+    }),
+    attachments: [
+      {
+        filename: artifact.filename,
+        content: pdfBytes,
+        contentType: "application/pdf",
+      },
+    ],
+  });
 }
 
 function normalizeClientBillingPreference(value) {
@@ -1146,6 +1538,37 @@ async function sha256Hex(value) {
     .join("");
 }
 
+async function sha256HexBytes(value) {
+  const source =
+    value instanceof Uint8Array
+      ? value
+      : value instanceof ArrayBuffer
+        ? new Uint8Array(value)
+        : new Uint8Array(value || []);
+  const digest = await crypto.subtle.digest("SHA-256", source);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function bytesToBase64(bytes) {
+  const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < source.length; index += chunkSize) {
+    const chunk = source.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function formatClickwrapAcceptanceTimestamp(value) {
+  const iso = parseIsoTimestamp(value);
+  if (!iso) return "";
+  return iso.replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
 function normalizeRegistrationProfile(rawProfile) {
   const profile = rawProfile && typeof rawProfile === "object" ? rawProfile : {};
   return {
@@ -1156,6 +1579,192 @@ function normalizeRegistrationProfile(rawProfile) {
     billingAddress: String(profile.billingAddress || "").trim(),
     taxId: String(profile.taxId || "").trim(),
     customerId: String(profile.customerId || "").trim(),
+  };
+}
+
+function getClickwrapPreviewFieldRectWidth(textField) {
+  try {
+    const widgets = textField?.acroField?.getWidgets?.() || [];
+    const rect = widgets[0]?.getRectangle?.();
+    const width = Number(rect?.width || 0);
+    return Number.isFinite(width) ? width : 0;
+  } catch (_error) {
+    return 0;
+  }
+}
+
+function getClickwrapPreviewFieldBaseFontSize(fieldName) {
+  return fieldName === "merchant_legal_name_cover" ? 20 : 10;
+}
+
+function getClickwrapPreviewFieldMinFontSize(fieldName) {
+  if (fieldName === "merchant_legal_name_cover") return 10;
+  if (fieldName === "merchant_address" || fieldName === "merchant_email") return 8.5;
+  return 8;
+}
+
+function resolveClickwrapPreviewFieldFontSize(textField, font, fieldName, value) {
+  const text = String(value || "").trim();
+  const baseFontSize = getClickwrapPreviewFieldBaseFontSize(fieldName);
+  if (!text || !font) {
+    return baseFontSize;
+  }
+
+  const fieldWidth = getClickwrapPreviewFieldRectWidth(textField);
+  if (!fieldWidth) {
+    return baseFontSize;
+  }
+
+  const minFontSize = getClickwrapPreviewFieldMinFontSize(fieldName);
+  const horizontalPadding = fieldName === "merchant_legal_name_cover" ? 10 : 6;
+  const usableWidth = Math.max(12, fieldWidth - horizontalPadding);
+  let fontSize = baseFontSize;
+
+  while (fontSize > minFontSize && font.widthOfTextAtSize(text, fontSize) > usableWidth) {
+    fontSize -= 0.25;
+  }
+
+  return Number(fontSize.toFixed(2));
+}
+
+function buildClickwrapPreviewFieldValues({ contract, email, profile, ipAddress, recordId, acceptedAt }) {
+  const normalizedProfile = normalizeRegistrationProfile(profile);
+  const acceptedEmail = normalizeEmail(email || normalizedProfile.contactEmail || "");
+  return {
+    merchant_legal_name: normalizedProfile.companyName,
+    merchant_tax_id: normalizedProfile.taxId,
+    merchant_address: compactClickwrapPreviewAddress(normalizedProfile.billingAddress),
+    merchant_contact_name: normalizedProfile.contactName,
+    merchant_email: acceptedEmail,
+    merchant_ip_address: String(ipAddress || "").trim(),
+    merchant_customer_id: normalizedProfile.customerId,
+    record_id: String(recordId || "").trim(),
+    acceptance_timestamp_utc: formatClickwrapAcceptanceTimestamp(acceptedAt),
+    agreement_version: String(contract?.version || "").trim(),
+    merchant_legal_name_cover: normalizedProfile.companyName,
+  };
+}
+
+function buildClickwrapPreviewDownloadName(contract, recordId) {
+  const version = String(contract?.version || "agreement")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const safeRecordId = String(recordId || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "");
+  return `shipide-agreement-${version || "agreement"}-${safeRecordId || "preview"}.pdf`;
+}
+
+function buildClickwrapStoragePath(contract, recordId, filename) {
+  const versionSegment = String(contract?.version || "agreement")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const recordSegment = String(recordId || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "");
+  return `accepted/${versionSegment || "agreement"}/${recordSegment || "record"}/${filename}`;
+}
+
+async function fetchStaticAssetBytes(request, pathname) {
+  const assetUrl = new URL(pathname, request.url).toString();
+  const response = await fetch(assetUrl, {
+    method: "GET",
+    cf: {
+      cacheEverything: true,
+      cacheTtl: 3600,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Could not load agreement asset (${response.status}) ${pathname}`.trim());
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function loadClickwrapPreviewAssets(request) {
+  if (!clickwrapTemplateBytesPromise) {
+    clickwrapTemplateBytesPromise = fetchStaticAssetBytes(request, CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL)
+      .catch((error) => {
+        clickwrapTemplateBytesPromise = null;
+        throw error;
+      });
+  }
+  if (!clickwrapFontBytesPromise) {
+    clickwrapFontBytesPromise = fetchStaticAssetBytes(request, CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL)
+      .catch((error) => {
+        clickwrapFontBytesPromise = null;
+        throw error;
+      });
+  }
+  const [templateBytes, fontBytes] = await Promise.all([
+    clickwrapTemplateBytesPromise,
+    clickwrapFontBytesPromise,
+  ]);
+  return { templateBytes, fontBytes };
+}
+
+async function buildClickwrapPreviewPdf(request, { contract, email, profile, ipAddress, recordId, acceptedAt }) {
+  const { templateBytes, fontBytes } = await loadClickwrapPreviewAssets(request);
+  const pdfDocument = await PDFDocument.load(templateBytes);
+  pdfDocument.registerFontkit(fontkit);
+  const ptMonoFont = await pdfDocument.embedFont(fontBytes);
+  const form = pdfDocument.getForm();
+  const fieldValues = buildClickwrapPreviewFieldValues({
+    contract,
+    email,
+    profile,
+    ipAddress,
+    recordId,
+    acceptedAt,
+  });
+
+  for (const [fieldName, fieldValue] of Object.entries(fieldValues)) {
+    try {
+      const textField = form.getTextField(fieldName);
+      textField.setFontSize(
+        resolveClickwrapPreviewFieldFontSize(textField, ptMonoFont, fieldName, fieldValue)
+      );
+      textField.setText(String(fieldValue || ""));
+    } catch (_error) {
+      // Template iterations can omit fields without breaking generation.
+    }
+  }
+
+  form.updateFieldAppearances(ptMonoFont);
+  form.flatten();
+  return new Uint8Array(await pdfDocument.save());
+}
+
+async function buildClickwrapPreviewPublicContract(env, previewPayload) {
+  const contract = normalizeClickwrapContractSnapshot(previewPayload?.contractSnapshot || {});
+  const previewToken = await makeSignedPayloadToken(
+    env,
+    {
+      type: "clickwrap-preview",
+      recordId: previewPayload?.recordId || null,
+      contractSnapshot: contract,
+      profileSnapshot: previewPayload?.profileSnapshot || null,
+      email: normalizeEmail(previewPayload?.email || ""),
+      ipAddress: String(previewPayload?.ipAddress || "").trim(),
+      pdfSha256: String(previewPayload?.pdfSha256 || "").trim().toLowerCase(),
+      downloadName: String(previewPayload?.downloadName || "").trim(),
+    },
+    CLICKWRAP_PREVIEW_TTL_MS
+  );
+  return {
+    ...mapClickwrapContractToPublic(contract),
+    pdfUrl: `/api/auth/register-contract-preview-file?preview=${encodeURIComponent(previewToken)}`,
+    downloadName: String(previewPayload?.downloadName || "").trim(),
+    recordId: String(previewPayload?.recordId || "").trim(),
+    previewPdfHash: String(previewPayload?.pdfSha256 || "").trim().toLowerCase(),
+    previewToken,
   };
 }
 
@@ -4438,6 +5047,105 @@ async function handleRegisterInviteValidate(_request, env, url) {
   }
 }
 
+async function handleRegisterContractPreview(request, env) {
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+
+  const token = normalizeInviteToken(body?.token);
+  const email = normalizeEmail(body?.email);
+  const profile = normalizeRegistrationProfile(body?.profile);
+  const requiredProfileValues = [
+    profile.companyName,
+    profile.contactName,
+    profile.contactEmail,
+    profile.contactPhone,
+    profile.billingAddress,
+    profile.taxId,
+  ];
+
+  if (!token) {
+    return jsonResponse({ error: "Registration link required." }, 400);
+  }
+  if (!email || !isValidEmailFormat(email)) {
+    return jsonResponse({ error: "A valid email address is required." }, 400);
+  }
+  if (requiredProfileValues.some((value) => !String(value || "").trim())) {
+    return jsonResponse(
+      { error: "All registration fields are required except Customer ID." },
+      400
+    );
+  }
+
+  try {
+    const contract = await getActiveClickwrapContract(env);
+    const invite = await getRegistrationInviteByToken(env, token);
+    if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
+      return jsonResponse({ error: "This registration link is invalid or expired." }, 410);
+    }
+
+    const recordId = createClickwrapPreviewRecordId();
+    const previewPayload = {
+      recordId,
+      contractSnapshot: normalizeClickwrapContractSnapshot(contract),
+      profileSnapshot: buildClickwrapPreviewProfileSnapshot(email, profile),
+      email,
+      ipAddress: getRequestIpAddress(request.headers),
+      downloadName: buildClickwrapPreviewDownloadName(contract, recordId),
+    };
+    const pdfBytes = await buildClickwrapPreviewPdf(request, {
+      contract,
+      email,
+      profile,
+      ipAddress: previewPayload.ipAddress,
+      recordId,
+      acceptedAt: null,
+    });
+    previewPayload.pdfSha256 = await sha256HexBytes(pdfBytes);
+
+    return jsonResponse({
+      ok: true,
+      contract: await buildClickwrapPreviewPublicContract(env, previewPayload),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not prepare agreement preview." }, 500);
+  }
+}
+
+async function handleRegisterContractPreviewFile(request, env, url) {
+  const previewToken = String(url.searchParams.get("preview") || "").trim();
+  if (!previewToken) {
+    return jsonResponse({ error: "Agreement preview token required." }, 400);
+  }
+  const previewPayload = await parseSignedPayloadToken(env, previewToken);
+  if (!previewPayload || previewPayload.type !== "clickwrap-preview") {
+    return jsonResponse({ error: "Agreement preview not found or expired." }, 404);
+  }
+
+  const contract = normalizeClickwrapContractSnapshot(previewPayload.contractSnapshot || {});
+  const profile = normalizeRegistrationProfile(previewPayload.profileSnapshot || {});
+  const pdfBytes = await buildClickwrapPreviewPdf(request, {
+    contract,
+    email: previewPayload.email || "",
+    profile,
+    ipAddress: previewPayload.ipAddress || "",
+    recordId: previewPayload.recordId || "",
+    acceptedAt: null,
+  });
+  return new Response(pdfBytes, {
+    status: 200,
+    headers: noStoreHeaders({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${String(
+        previewPayload.downloadName || buildClickwrapPreviewDownloadName(contract, previewPayload.recordId)
+      ).replace(/"/g, "")}"`,
+    }),
+  });
+}
+
 async function handleRegisterWithInvite(request, env) {
   let body = {};
   try {
@@ -4483,8 +5191,23 @@ async function handleRegisterWithInvite(request, env) {
 
   let createdUser = null;
   try {
-    const contract = await getActiveClickwrapContract(env);
-    const agreementError = validateClickwrapAgreement(agreement, contract);
+    const previewPayload = agreement?.previewToken
+      ? await parseSignedPayloadToken(env, agreement.previewToken)
+      : null;
+    const activeContract = await getActiveClickwrapContract(env);
+    const contract =
+      previewPayload?.type === "clickwrap-preview" && previewPayload?.contractSnapshot
+        ? normalizeClickwrapContractSnapshot(previewPayload.contractSnapshot)
+        : activeContract;
+    const finalAgreement = {
+      ...agreement,
+      recordId: agreement?.recordId || createClickwrapPreviewRecordId(),
+    };
+    const agreementError = validateClickwrapAgreement(finalAgreement, contract, {
+      previewPayload,
+      email,
+      profile,
+    });
     if (agreementError) {
       return jsonResponse({ error: agreementError }, 400);
     }
@@ -4498,19 +5221,44 @@ async function handleRegisterWithInvite(request, env) {
       ...buildRegistrationMetadata(invite, profile, email, preferredLanguage),
       registration_terms_version: contract.version,
       registration_terms_hash: contract.hash_sha256,
-      registration_terms_accepted_at: agreement.agreedAt,
+      registration_terms_accepted_at: finalAgreement.agreedAt,
     };
     createdUser = await createSupabaseUserWithMetadata(env, email, password, metadata);
     await ensureAccountSettingsRow(env, createdUser.id);
+
+    const acceptedContractProfile = {
+      ...profile,
+      customerId:
+        profile.customerId
+        || String(invite?.customer_id || "").trim()
+        || String(createdUser?.id || "").trim(),
+    };
+    const acceptedContractPdfBytes = await buildClickwrapPreviewPdf(request, {
+      contract,
+      email,
+      profile: acceptedContractProfile,
+      ipAddress: getRequestIpAddress(request.headers),
+      recordId: finalAgreement.recordId,
+      acceptedAt: finalAgreement.agreedAt,
+    });
+    const acceptedContractArtifact = await persistAcceptedClickwrapContract(env, {
+      contract,
+      recordId: finalAgreement.recordId,
+      pdfBytes: acceptedContractPdfBytes,
+      acceptedAt: finalAgreement.agreedAt,
+    });
 
     const proof = await buildClickwrapEvidence(
       env,
       request,
       invite,
       contract,
-      agreement,
+      finalAgreement,
       createdUser.id,
-      email
+      email,
+      {
+        acceptedContract: acceptedContractArtifact,
+      }
     );
     const acceptance = await insertClickwrapAcceptance(env, {
       user_id: createdUser.id,
@@ -4522,12 +5270,12 @@ async function handleRegisterWithInvite(request, env) {
       contract_hash_sha256: contract.hash_sha256,
       agreement_method: "scroll_clickwrap",
       scrolled_to_end: true,
-      scrolled_to_end_at: agreement.scrolledToEndAt,
-      agreed_at: agreement.agreedAt,
+      scrolled_to_end_at: finalAgreement.scrolledToEndAt,
+      agreed_at: finalAgreement.agreedAt,
       ip_address: proof.payload.ip_address || null,
       user_agent: proof.payload.user_agent || null,
-      client_timezone: agreement.clientTimezone || null,
-      client_locale: agreement.clientLocale || null,
+      client_timezone: finalAgreement.clientTimezone || null,
+      client_locale: finalAgreement.clientLocale || null,
       proof_digest_sha256: proof.digest,
       proof_signature_hmac: proof.signature,
       proof_payload: proof.payload,
@@ -4535,11 +5283,38 @@ async function handleRegisterWithInvite(request, env) {
 
     await markRegistrationInviteClaimed(env, invite.id, createdUser.id, email);
 
+    let agreementEmail = {
+      attempted: false,
+      sent: false,
+      resendId: null,
+      error: "",
+    };
+    if (env.RESEND_API_KEY) {
+      agreementEmail.attempted = true;
+      try {
+        const resendResponse = await sendAcceptedAgreementEmail(env, {
+          email,
+          contract,
+          artifact: acceptedContractArtifact,
+          pdfBytes: acceptedContractPdfBytes,
+          recipientName: profile.contactName || invite?.contact_name || "",
+        });
+        agreementEmail.sent = true;
+        agreementEmail.resendId = String(resendResponse?.id || "").trim() || null;
+      } catch (emailError) {
+        agreementEmail.error = String(
+          emailError?.message || "Could not send agreement email."
+        );
+      }
+    }
+
     return jsonResponse({
       ok: true,
       email,
       userId: createdUser.id,
       agreementReceiptId: acceptance?.id || null,
+      agreementRecordId: acceptedContractArtifact.recordId,
+      agreementEmail,
     });
   } catch (error) {
     if (createdUser?.id) {

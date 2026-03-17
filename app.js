@@ -9407,6 +9407,7 @@ function buildRegistrationAgreementPayload() {
     contractVersion: String(authAgreementContract.version || "").trim(),
     contractHash: String(authAgreementContract.hash || "").trim(),
     recordId: String(authAgreementContract.recordId || "").trim() || null,
+    previewToken: String(authAgreementContract.previewToken || "").trim() || null,
     scrolledToEnd: authAgreementHasReachedEnd,
     scrolledToEndAt: authAgreementScrolledAt || null,
     agreed: authAgreementAccepted,
