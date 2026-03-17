@@ -79,6 +79,9 @@ const WAREHOUSE_SENDER_FIELDS = new Set([
 const SHELL_TRANSITION_IN_MS = 340;
 const MAIN_VIEW_TRANSITION_OUT_MS = 130;
 const MAIN_VIEW_TRANSITION_IN_MS = 320;
+const AUTH_REGISTER_STEP_OUT_MS = 220;
+const AUTH_REGISTER_STEP_RESIZE_MS = 520;
+const AUTH_REGISTER_STEP_IN_MS = 260;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
 const CSV_TABLE_PAGE_SIZE = 10;
 const AUTH_PARTICLES_WARMUP_STEPS = 42;
@@ -91,6 +94,7 @@ const AUTH_AGREEMENT_PDF_WORKER_URL =
 const ROUTE_PATHS = {
   login: "/login",
   register: "/register",
+  signupPreview: "/signup-preview",
   account: "/account",
   admin: "/admin",
   history: "/history",
@@ -106,12 +110,39 @@ const ROUTE_SUFFIXES = [
   "/index.html",
   ROUTE_PATHS.login,
   ROUTE_PATHS.register,
+  ROUTE_PATHS.signupPreview,
   ROUTE_PATHS.account,
   ROUTE_PATHS.admin,
   ROUTE_PATHS.history,
   ROUTE_PATHS.reports,
   ...Object.values(STEP_ROUTE_PATHS),
 ];
+const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
+const AUTH_SIGNUP_PREVIEW_DATA = {
+  inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
+  credentials: {
+    email: "claire@ateliermeridian.com",
+    password: "PreviewPass123!",
+  },
+  invite: {
+    companyName: "Atelier Meridian",
+    contactName: "Claire Dupont",
+    contactEmail: "operations@ateliermeridian.com",
+    contactPhone: "+32 2 555 01 29",
+    billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+    taxId: "BE0123456789",
+    customerId: "SHIP-24018",
+  },
+  contract: {
+    id: "local-signup-preview-contract",
+    title: "Shipide Service Agreement",
+    version: "preview-v1",
+    hash: "local-signup-preview-contract-v1",
+    pdfUrl: "assets/contracts/commAgreement-v1.pdf",
+    bodyText:
+      "Preview mode only.\n\nThis route is intended for local UI review of the signup flow. The agreement PDF above is loaded from the local project so you can validate the layout, scroll behavior, and acceptance state without creating a live account.",
+  },
+};
 const LANGUAGE_STORAGE_KEY = "shipr-language";
 const SUPPORTED_LANGUAGES = new Set(["en", "fr", "nl"]);
 const LANGUAGE_LOCALE = {
@@ -147,6 +178,7 @@ const TRANSLATIONS = {
   "Email": { fr: "E-mail", nl: "E-mail" },
   "Password": { fr: "Mot de passe", nl: "Wachtwoord" },
   "Confirm Password": { fr: "Confirmer le mot de passe", nl: "Bevestig wachtwoord" },
+  "Credentials": { fr: "Identifiants", nl: "Inloggegevens" },
   "Access & Contact": { fr: "Accès & Contact", nl: "Toegang & Contact" },
   "Credentials and primary account contact.": {
     fr: "Identifiants et contact principal du compte.",
@@ -173,6 +205,10 @@ const TRANSLATIONS = {
   "Loading agreement...": {
     fr: "Chargement de l accord...",
     nl: "Overeenkomst laden...",
+  },
+  "Preparing agreement...": {
+    fr: "Preparation de l accord...",
+    nl: "Overeenkomst voorbereiden...",
   },
   "Account Setup": { fr: "Configuration du compte", nl: "Accountinstelling" },
   "Enter account and billing details to continue.": {
@@ -203,10 +239,6 @@ const TRANSLATIONS = {
     fr: "Lecture complete. Vous pouvez maintenant confirmer l accord.",
     nl: "Lezen voltooid. Je kunt nu de overeenkomst bevestigen.",
   },
-  "Check the agreement box to continue.": {
-    fr: "Cochez la case de l accord pour continuer.",
-    nl: "Vink het overeenkomstvak aan om door te gaan.",
-  },
   "Agreement accepted. You can create your account.": {
     fr: "Accord accepte. Vous pouvez creer votre compte.",
     nl: "Overeenkomst geaccepteerd. Je kunt je account aanmaken.",
@@ -219,6 +251,10 @@ const TRANSLATIONS = {
     fr: "Impossible de charger l accord d inscription.",
     nl: "Kon registratieovereenkomst niet laden.",
   },
+  "Could not prepare agreement preview.": {
+    fr: "Impossible de preparer l apercu de l accord.",
+    nl: "Kon overeenkomstvoorbeeld niet voorbereiden.",
+  },
   "Registration link required.": {
     fr: "Lien d’inscription requis.",
     nl: "Registratielink vereist.",
@@ -230,6 +266,14 @@ const TRANSLATIONS = {
   "Invitation verified. Complete your details to activate access.": {
     fr: "Invitation vérifiée. Complétez vos informations pour activer l’accès.",
     nl: "Uitnodiging bevestigd. Vul je gegevens in om toegang te activeren.",
+  },
+  "Local signup preview mode. Sample data is loaded and no live account will be created.": {
+    fr: "Mode aperçu local de l’inscription. Des données d’exemple sont chargées et aucun compte live ne sera créé.",
+    nl: "Lokale previewmodus voor registratie. Voorbeelddata is geladen en er wordt geen live account aangemaakt.",
+  },
+  "Preview mode only. Registration is disabled on this local route.": {
+    fr: "Mode aperçu uniquement. L’inscription est désactivée sur cette route locale.",
+    nl: "Alleen previewmodus. Registratie is uitgeschakeld op deze lokale route.",
   },
   "Validating invitation...": { fr: "Validation de l’invitation...", nl: "Uitnodiging valideren..." },
   "Register Account": { fr: "Créer le compte", nl: "Account registreren" },
@@ -253,6 +297,10 @@ const TRANSLATIONS = {
   "All registration fields are required except Customer ID.": {
     fr: "Tous les champs d’inscription sont requis sauf l’ID client.",
     nl: "Alle registratievelden zijn verplicht behalve Klant-ID.",
+  },
+  "All registration fields are required.": {
+    fr: "Tous les champs d’inscription sont requis.",
+    nl: "Alle registratievelden zijn verplicht.",
   },
   "Password must be at least {min} characters.": {
     fr: "Le mot de passe doit comporter au moins {min} caractères.",
@@ -1208,7 +1256,10 @@ const supabaseClient =
 
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
+const authCard = authGate?.querySelector(".auth-card") || null;
+const authCardFrame = document.getElementById("authCardFrame");
 const authForm = document.getElementById("authForm");
+const authStepOneShell = authForm?.querySelector(".auth-step-one-shell") || null;
 const authTitle = document.getElementById("authTitle");
 const authSubtitle = document.getElementById("authSubtitle");
 const authEmail = document.getElementById("authEmail");
@@ -1217,22 +1268,28 @@ const authPasswordConfirm = document.getElementById("authPasswordConfirm");
 const authRegisterOnlyFields = document.querySelectorAll(".auth-register-field");
 const authRegisterProgress = document.getElementById("authRegisterProgress");
 const authRegisterProgressItems = authRegisterProgress
-  ? Array.from(authRegisterProgress.querySelectorAll(".auth-stepper-dot"))
+  ? Array.from(authRegisterProgress.querySelectorAll(".auth-register-progress-item"))
   : [];
-const authStepperFill = document.getElementById("authStepperFill");
 const authRegisterStepInfo = document.getElementById("authRegisterStepInfo");
 const authCompanyName = document.getElementById("authCompanyName");
 const authContactName = document.getElementById("authContactName");
 const authContactEmail = document.getElementById("authContactEmail");
 const authContactPhone = document.getElementById("authContactPhone");
+const authBillingStreet = document.getElementById("authBillingStreet");
+const authBillingCity = document.getElementById("authBillingCity");
+const authBillingPostalCode = document.getElementById("authBillingPostalCode");
+const authBillingCountry = document.getElementById("authBillingCountry");
+const authBillingCountryFlag = document.getElementById("authBillingCountryFlag");
 const authBillingAddress = document.getElementById("authBillingAddress");
 const authTaxId = document.getElementById("authTaxId");
 const authCustomerId = document.getElementById("authCustomerId");
 const authAgreementGroup = document.getElementById("authAgreementGroup");
-const authAgreementTitle = document.getElementById("authAgreementTitle");
 const authAgreementVersion = document.getElementById("authAgreementVersion");
+const authAgreementDownload = document.getElementById("authAgreementDownload");
 const authAgreementScroll = document.getElementById("authAgreementScroll");
 const authAgreementPages = document.getElementById("authAgreementPages");
+const authAgreementLens = document.getElementById("authAgreementLens");
+const authAgreementLensInner = document.getElementById("authAgreementLensInner");
 const authAgreementAccept = document.getElementById("authAgreementAccept");
 const authAgreementStatus = document.getElementById("authAgreementStatus");
 const authInviteStatus = document.getElementById("authInviteStatus");
@@ -1565,6 +1622,8 @@ let authAgreementMaxProgress = 0;
 let authAgreementPdfRenderToken = 0;
 let authAgreementRendering = false;
 let authRegisterStep = 1;
+let authRegisterStepTransitionToken = 0;
+let authAgreementMagnifierPage = null;
 let historyRecords = [];
 let historyStore = "supabase";
 let accountActiveRecord = null;
@@ -1633,6 +1692,9 @@ let clientInviteHistory = [];
 let authKeepAliveTimer = 0;
 const translationTextNodeBase = new WeakMap();
 const translationAttrBase = new WeakMap();
+const AUTH_AGREEMENT_LENS_WIDTH = 214;
+const AUTH_AGREEMENT_LENS_HEIGHT = 132;
+const AUTH_AGREEMENT_LENS_ZOOM = 2.35;
 
 const DOMESTIC_COUNTRY_ALIASES = new Set([
   "domestic",
@@ -1871,6 +1933,20 @@ function getInviteTokenFromLocation(location = window.location) {
   return "";
 }
 
+function isSignupPreviewRoute(location = window.location) {
+  const params = new URLSearchParams(location.search || "");
+  const previewFlag = String(params.get("signupPreview") || "").trim().toLowerCase();
+  if (["1", "true", "yes"].includes(previewFlag)) {
+    return true;
+  }
+  return getRelativeRoutePath(location.pathname || "/") === ROUTE_PATHS.signupPreview;
+}
+
+function getSignupPreviewStepFromLocation(location = window.location) {
+  const params = new URLSearchParams(location.search || "");
+  return Number(params.get("previewStep") || params.get("step") || "") === 2 ? 2 : 1;
+}
+
 function getReportRangeFromLocation(location = window.location) {
   const params = new URLSearchParams(location.search || "");
   return String(params.get("range") || params.get("reportRange") || "")
@@ -1895,6 +1971,14 @@ function applyReportRangeFromToken(token = "") {
 
 function parseRouteFromLocation() {
   const path = getRelativeRoutePath(window.location.pathname);
+  if (isSignupPreviewRoute(window.location)) {
+    return {
+      view: "register",
+      inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
+      previewRegistration: true,
+      previewStep: getSignupPreviewStepFromLocation(window.location),
+    };
+  }
   if (path === ROUTE_PATHS.login) {
     return { view: "login" };
   }
@@ -1951,6 +2035,11 @@ function routeToPath(route) {
     return buildRoutePath(ROUTE_PATHS.login);
   }
   if (route.view === "register") {
+    if (route.previewRegistration) {
+      const previewStep = Number(route?.previewStep) === 2 ? 2 : 1;
+      const previewPath = buildRoutePath(ROUTE_PATHS.signupPreview);
+      return previewStep === 2 ? `${previewPath}?step=2` : previewPath;
+    }
     return buildRoutePath(ROUTE_PATHS.register);
   }
   if (route.view === "account") {
@@ -1974,7 +2063,12 @@ function routeToState(route) {
     return { view: "builder", step, customs: Boolean(route?.customs && step === 1) };
   }
   if (route.view === "register") {
-    return { view: "register", inviteToken: String(route?.inviteToken || "").trim() };
+    return {
+      view: "register",
+      inviteToken: String(route?.inviteToken || "").trim(),
+      previewRegistration: Boolean(route?.previewRegistration),
+      previewStep: Number(route?.previewStep) === 2 ? 2 : 1,
+    };
   }
   if (route.view === "reports") {
     return { view: "reports", reportRange: String(route?.reportRange || "").trim() };
@@ -1994,6 +2088,8 @@ function updateRoute(route, options = {}) {
     Number(history.state?.step || 0) === Number(nextState.step || 0) &&
     Boolean(history.state?.customs) === Boolean(nextState.customs) &&
     String(history.state?.inviteToken || "") === String(nextState?.inviteToken || "") &&
+    Boolean(history.state?.previewRegistration) === Boolean(nextState?.previewRegistration) &&
+    Number(history.state?.previewStep || 1) === Number(nextState?.previewStep || 1) &&
     String(history.state?.reportRange || "") === String(nextState?.reportRange || "");
 
   if (replace) {
@@ -8735,36 +8831,192 @@ function getRegistrationStepOneValidationError() {
   return "";
 }
 
-function setAuthRegisterStep(step = 1, options = {}) {
-  const { resetMessage = false } = options;
-  const nextStep = Number(step) === 2 ? 2 : 1;
-  authRegisterStep = nextStep;
+function updateAuthRegisterProgressState(step = authRegisterStep) {
+  if (!authRegisterProgressItems.length) return;
+  authRegisterProgressItems.forEach((item) => {
+    const itemStep = Number(item.dataset.step || "1");
+    item.classList.toggle("is-active", itemStep === step);
+    item.classList.toggle("is-complete", itemStep < step);
+  });
+}
 
-  if (authRegisterStepInfo) {
-    authRegisterStepInfo.classList.toggle("is-hidden", authMode !== "register" || nextStep !== 1);
+function applyAuthRegisterStepView(step = authRegisterStep) {
+  const nextStep = Number(step) === 2 ? 2 : 1;
+  if (authForm) {
+    authForm.dataset.registerStep = String(nextStep);
+  }
+  if (authCard) {
+    authCard.classList.toggle("is-register-step-two", authMode === "register" && nextStep === 2);
+  }
+  if (authStepOneShell) {
+    authStepOneShell.classList.toggle("is-hidden", authMode === "register" && nextStep === 2);
+    authStepOneShell.classList.remove("auth-step-transition-exit", "auth-step-transition-enter-start");
   }
   if (authAgreementGroup) {
     authAgreementGroup.classList.toggle("is-hidden", authMode !== "register" || nextStep !== 2);
+    authAgreementGroup.classList.remove("auth-step-transition-exit", "auth-step-transition-enter-start");
   }
-  if (authRegisterProgressItems.length) {
-    authRegisterProgressItems.forEach((item) => {
-      const itemStep = Number(item.dataset.step || "1");
-      item.classList.toggle("is-active", itemStep === nextStep);
-      item.classList.toggle("is-complete", itemStep < nextStep);
-    });
+  updateAuthRegisterProgressState(nextStep);
+}
+
+function measureAuthRegisterSectionHeight(section) {
+  if (!section || !authForm) return 0;
+
+  const wasHidden = section.classList.contains("is-hidden");
+  const previousStyles = {
+    position: section.style.position,
+    inset: section.style.inset,
+    width: section.style.width,
+    visibility: section.style.visibility,
+    pointerEvents: section.style.pointerEvents,
+    zIndex: section.style.zIndex,
+  };
+
+  section.classList.remove("is-hidden", "auth-step-transition-exit", "auth-step-transition-enter-start");
+  section.style.position = "absolute";
+  section.style.inset = "0 auto auto 0";
+  section.style.width = `${Math.floor(authForm.getBoundingClientRect().width)}px`;
+  section.style.visibility = "hidden";
+  section.style.pointerEvents = "none";
+  section.style.zIndex = "-1";
+
+  const height = section.getBoundingClientRect().height;
+
+  section.style.position = previousStyles.position;
+  section.style.inset = previousStyles.inset;
+  section.style.width = previousStyles.width;
+  section.style.visibility = previousStyles.visibility;
+  section.style.pointerEvents = previousStyles.pointerEvents;
+  section.style.zIndex = previousStyles.zIndex;
+
+  if (wasHidden) {
+    section.classList.add("is-hidden");
   }
-  if (authStepperFill) {
-    authStepperFill.style.width = nextStep === 2 ? "100%" : "0%";
+
+  return height;
+}
+
+function resetAuthRegisterStepTransitionState() {
+  authRegisterStepTransitionToken += 1;
+  if (authCard) {
+    authCard.classList.remove("is-register-step-transitioning");
+    authCard.style.width = "";
+    authCard.style.height = "";
   }
+  if (authCardFrame) {
+    authCardFrame.classList.remove(
+      "is-step-transition-exit",
+      "is-step-transition-hidden",
+      "is-step-transition-enter-start"
+    );
+  }
+  if (authForm) {
+    authForm.classList.remove("is-register-step-transitioning");
+  }
+  if (authStepOneShell) {
+    authStepOneShell.classList.remove("auth-step-transition-exit", "auth-step-transition-enter-start");
+  }
+  if (authAgreementGroup) {
+    authAgreementGroup.classList.remove("auth-step-transition-exit", "auth-step-transition-enter-start");
+  }
+}
+
+function setAuthRegisterStep(step = 1, options = {}) {
+  const { resetMessage = false, animate = false } = options;
+  const nextStep = Number(step) === 2 ? 2 : 1;
+  const previousStep = authRegisterStep === 2 ? 2 : 1;
+  const shouldAnimate =
+    animate &&
+    authMode === "register" &&
+    previousStep !== nextStep &&
+    authCard &&
+    authCardFrame &&
+    authForm &&
+    authStepOneShell &&
+    authAgreementGroup &&
+    !prefersReducedMotion();
+
+  authRegisterStep = nextStep;
+  updateAuthRegisterProgressState(nextStep);
+
   if (resetMessage) {
     setAuthMessage("");
   }
-  if (authMode === "register" && nextStep === 2) {
-    window.requestAnimationFrame(() => {
-      updateAuthAgreementProgress();
-    });
+
+  if (!shouldAnimate) {
+    resetAuthRegisterStepTransitionState();
+    applyAuthRegisterStepView(nextStep);
+    if (authMode === "register" && nextStep === 2) {
+      window.requestAnimationFrame(() => {
+        updateAuthAgreementProgress();
+      });
+    }
+    updateAuthRegisterSubmitState();
+    return;
   }
-  updateAuthRegisterSubmitState();
+
+  const transitionToken = ++authRegisterStepTransitionToken;
+  const currentSection = previousStep === 2 ? authAgreementGroup : authStepOneShell;
+  const incomingSection = nextStep === 2 ? authAgreementGroup : authStepOneShell;
+
+  if (!currentSection || !incomingSection) {
+    applyAuthRegisterStepView(nextStep);
+    updateAuthRegisterSubmitState();
+    return;
+  }
+
+  const cardRect = authCard.getBoundingClientRect();
+  const currentSectionHeight = Math.max(1, currentSection.getBoundingClientRect().height);
+  const incomingSectionHeight = Math.max(1, measureAuthRegisterSectionHeight(incomingSection));
+  const chromeHeight = Math.max(0, cardRect.height - currentSectionHeight);
+  const targetHeight = Math.max(1, chromeHeight + incomingSectionHeight);
+  const containerWidth = authCard.parentElement?.getBoundingClientRect().width || cardRect.width;
+  const targetWidth = authMode === "register" && nextStep === 2
+    ? Math.min(468, containerWidth)
+    : containerWidth;
+
+  authCard.style.width = `${Math.round(cardRect.width)}px`;
+  authCard.style.height = `${Math.round(cardRect.height)}px`;
+  authCard.classList.add("is-register-step-transitioning");
+  authCardFrame.classList.remove("is-step-transition-hidden", "is-step-transition-enter-start");
+  authCardFrame.classList.add("is-step-transition-exit");
+  authForm.classList.add("is-register-step-transitioning");
+
+  window.setTimeout(() => {
+    if (transitionToken !== authRegisterStepTransitionToken) return;
+
+    authCardFrame.classList.remove("is-step-transition-exit");
+    authCardFrame.classList.add("is-step-transition-hidden");
+    if (authForm) {
+      authForm.dataset.registerStep = String(nextStep);
+    }
+    applyAuthRegisterStepView(nextStep);
+    if (authCard) {
+      authCard.style.width = `${Math.round(targetWidth)}px`;
+      authCard.style.height = `${Math.round(targetHeight)}px`;
+    }
+  }, AUTH_REGISTER_STEP_OUT_MS);
+
+  window.setTimeout(() => {
+    if (transitionToken !== authRegisterStepTransitionToken) return;
+
+    authCardFrame.classList.remove("is-step-transition-hidden");
+    authCardFrame.classList.add("is-step-transition-enter-start");
+    window.requestAnimationFrame(() => {
+      if (transitionToken !== authRegisterStepTransitionToken) return;
+      authCardFrame.classList.remove("is-step-transition-enter-start");
+      if (authMode === "register" && nextStep === 2) {
+        updateAuthAgreementProgress();
+      }
+    });
+  }, AUTH_REGISTER_STEP_OUT_MS + AUTH_REGISTER_STEP_RESIZE_MS);
+
+  window.setTimeout(() => {
+    if (transitionToken !== authRegisterStepTransitionToken) return;
+    resetAuthRegisterStepTransitionState();
+    applyAuthRegisterStepView(nextStep);
+    updateAuthRegisterSubmitState();
+  }, AUTH_REGISTER_STEP_OUT_MS + AUTH_REGISTER_STEP_RESIZE_MS + AUTH_REGISTER_STEP_IN_MS);
 }
 
 function setAuthAgreementPlaceholder(message, { isError = false } = {}) {
@@ -8798,6 +9050,142 @@ function resolveAuthAgreementPdfUrl(contract) {
   }
 }
 
+function updateAuthAgreementDownload(contract) {
+  if (!authAgreementDownload) return;
+  const pdfUrl = resolveAuthAgreementPdfUrl(contract);
+  if (!pdfUrl) {
+    authAgreementDownload.href = "#";
+    authAgreementDownload.setAttribute("aria-disabled", "true");
+    authAgreementDownload.classList.add("is-disabled");
+    authAgreementDownload.removeAttribute("download");
+    return;
+  }
+
+  let filename =
+    String(contract?.downloadName || "").trim()
+    || `shipide-agreement-${String(contract?.version || "document").trim() || "document"}.pdf`;
+  try {
+    const pdfLocation = new URL(pdfUrl, window.location.origin);
+    const lastSegment = String(pdfLocation.pathname.split("/").pop() || "").trim();
+    if (lastSegment && !String(contract?.downloadName || "").trim()) {
+      filename = lastSegment;
+    }
+  } catch (_) {
+    // Keep the generated filename if the URL cannot be parsed cleanly.
+  }
+
+  authAgreementDownload.href = pdfUrl;
+  authAgreementDownload.setAttribute("download", filename);
+  authAgreementDownload.removeAttribute("aria-disabled");
+  authAgreementDownload.classList.remove("is-disabled");
+}
+
+function hideAuthAgreementMagnifier() {
+  if (authAgreementLens) {
+    authAgreementLens.classList.remove("is-active");
+  }
+  const scrollWrap = authAgreementScroll?.closest(".auth-agreement-scroll-wrap");
+  if (scrollWrap) {
+    scrollWrap.classList.remove("is-magnifier-active");
+  }
+  authAgreementMagnifierPage = null;
+  if (authAgreementLensInner) {
+    authAgreementLensInner.replaceChildren();
+  }
+}
+
+function createAuthAgreementMagnifierGraphic(pageElement) {
+  const sourceGraphic = pageElement?.querySelector("svg, canvas");
+  if (!sourceGraphic || !authAgreementLensInner) return false;
+  const sourceRect = sourceGraphic.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(sourceRect.width));
+  const height = Math.max(1, Math.floor(sourceRect.height));
+  let clone = null;
+
+  if (sourceGraphic instanceof SVGElement) {
+    clone = sourceGraphic.cloneNode(true);
+  } else if (sourceGraphic instanceof HTMLCanvasElement) {
+    clone = document.createElement("canvas");
+    clone.width = sourceGraphic.width;
+    clone.height = sourceGraphic.height;
+    const cloneContext = clone.getContext("2d", { alpha: false });
+    if (cloneContext) {
+      cloneContext.drawImage(sourceGraphic, 0, 0);
+    }
+  }
+
+  if (!clone) return false;
+  clone.classList.add("auth-agreement-lens-graphic");
+  clone.style.width = `${width}px`;
+  clone.style.height = `${height}px`;
+  authAgreementLensInner.replaceChildren(clone);
+  authAgreementMagnifierPage = pageElement;
+  return true;
+}
+
+function updateAuthAgreementMagnifier(event) {
+  if (
+    !authAgreementLens ||
+    !authAgreementLensInner ||
+    !authAgreementScroll ||
+    !(event instanceof PointerEvent)
+  ) {
+    return;
+  }
+  if (event.pointerType && event.pointerType !== "mouse") {
+    hideAuthAgreementMagnifier();
+    return;
+  }
+
+  const pageElement = event.target instanceof Element
+    ? event.target.closest(".auth-agreement-page")
+    : null;
+  const scrollWrap = authAgreementScroll.closest(".auth-agreement-scroll-wrap");
+  if (!pageElement || !scrollWrap) {
+    hideAuthAgreementMagnifier();
+    return;
+  }
+
+  if (
+    authAgreementMagnifierPage !== pageElement ||
+    !authAgreementLensInner.firstElementChild
+  ) {
+    const created = createAuthAgreementMagnifierGraphic(pageElement);
+    if (!created) {
+      hideAuthAgreementMagnifier();
+      return;
+    }
+  }
+
+  const lensGraphic = authAgreementLensInner.firstElementChild;
+  if (!(lensGraphic instanceof HTMLElement || lensGraphic instanceof SVGElement)) {
+    hideAuthAgreementMagnifier();
+    return;
+  }
+
+  const sourceGraphic = pageElement.querySelector("svg, canvas");
+  const sourceRect = sourceGraphic?.getBoundingClientRect()
+    || pageElement.getBoundingClientRect();
+  const wrapRect = scrollWrap.getBoundingClientRect();
+  const offsetX = Math.max(0, Math.min(sourceRect.width, event.clientX - sourceRect.left));
+  const offsetY = Math.max(0, Math.min(sourceRect.height, event.clientY - sourceRect.top));
+  const lensHalfWidth = AUTH_AGREEMENT_LENS_WIDTH / 2;
+  const lensHalfHeight = AUTH_AGREEMENT_LENS_HEIGHT / 2;
+  const wrapPadding = 8;
+  const maxLeft = Math.max(wrapPadding, wrapRect.width - AUTH_AGREEMENT_LENS_WIDTH - wrapPadding);
+  const maxTop = Math.max(wrapPadding, wrapRect.height - AUTH_AGREEMENT_LENS_HEIGHT - wrapPadding);
+
+  let lensLeft = event.clientX - wrapRect.left - lensHalfWidth;
+  let lensTop = event.clientY - wrapRect.top - lensHalfHeight;
+  lensLeft = Math.max(wrapPadding, Math.min(maxLeft, lensLeft));
+  lensTop = Math.max(wrapPadding, Math.min(maxTop, lensTop));
+
+  authAgreementLens.style.transform = `translate(${Math.round(lensLeft)}px, ${Math.round(lensTop)}px)`;
+  lensGraphic.style.transform = `translate(${Math.round(lensHalfWidth - offsetX * AUTH_AGREEMENT_LENS_ZOOM)}px, ${Math.round(lensHalfHeight - offsetY * AUTH_AGREEMENT_LENS_ZOOM)}px) scale(${AUTH_AGREEMENT_LENS_ZOOM})`;
+  authAgreementLens.classList.add("is-active");
+  scrollWrap.classList.add("is-magnifier-active");
+}
+
 async function renderAuthAgreementPdf(contract, renderToken) {
   if (!authAgreementPages || !authAgreementScroll) return;
   const pdfUrl = resolveAuthAgreementPdfUrl(contract);
@@ -8828,30 +9216,64 @@ async function renderAuthAgreementPdf(contract, renderToken) {
     if (renderToken !== authAgreementPdfRenderToken) return;
 
     const fragment = document.createDocumentFragment();
-    const availableWidth = Math.max(280, authAgreementScroll.clientWidth - 26);
+    const availableWidth = Math.max(220, Math.min(284, authAgreementScroll.clientWidth - 18));
+    const isGeneratedPreview = Boolean(
+      contract?.recordId ||
+      contract?.previewPdfHash ||
+      /\/api\/auth\/register-contract-preview-file\b/i.test(pdfUrl)
+    );
+    const canRenderSvg = !isGeneratedPreview && typeof pdfjsLib.SVGGraphics === "function";
+    const outputScale = isGeneratedPreview
+      ? Math.min(6, Math.max(3, (window.devicePixelRatio || 1) * 3))
+      : Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
 
-    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-      if (renderToken !== authAgreementPdfRenderToken) return;
-      const page = await pdfDocument.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.max(0.8, Math.min(2.1, availableWidth / baseViewport.width));
-      const viewport = page.getViewport({ scale });
-      const outputScale = Math.min(2, window.devicePixelRatio || 1);
-
-      const pageElement = document.createElement("div");
-      pageElement.className = "auth-agreement-page";
+    const renderPageToCanvas = async (page, viewport, pageElement) => {
       const canvas = document.createElement("canvas");
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
       pageElement.appendChild(canvas);
-      fragment.appendChild(pageElement);
 
       const canvasContext = canvas.getContext("2d", { alpha: false });
-      if (!canvasContext) continue;
+      if (!canvasContext) return false;
       canvasContext.setTransform(outputScale, 0, 0, outputScale, 0, 0);
       await page.render({ canvasContext, viewport }).promise;
+      return true;
+    };
+
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+      if (renderToken !== authAgreementPdfRenderToken) return;
+      const page = await pdfDocument.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.max(0.65, Math.min(1.4, availableWidth / baseViewport.width));
+      const viewport = page.getViewport({ scale });
+
+      const pageElement = document.createElement("div");
+      pageElement.className = "auth-agreement-page";
+      pageElement.style.width = `${Math.floor(viewport.width)}px`;
+
+      if (canRenderSvg) {
+        try {
+          const operatorList = await page.getOperatorList();
+          if (renderToken !== authAgreementPdfRenderToken) return;
+          const svgGraphics = new pdfjsLib.SVGGraphics(page.commonObjs, page.objs);
+          const svg = await svgGraphics.getSVG(operatorList, viewport);
+          if (renderToken !== authAgreementPdfRenderToken) return;
+          svg.style.display = "block";
+          svg.style.width = "100%";
+          svg.style.height = "auto";
+          pageElement.appendChild(svg);
+          fragment.appendChild(pageElement);
+          continue;
+        } catch (error) {
+          console.warn("Falling back to canvas agreement rendering for page", pageNumber, error);
+        }
+      }
+
+      const rendered = await renderPageToCanvas(page, viewport, pageElement);
+      if (!rendered) continue;
+      fragment.appendChild(pageElement);
     }
 
     if (renderToken !== authAgreementPdfRenderToken) return;
@@ -8875,6 +9297,7 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
   authAgreementScrolledAt = "";
   authAgreementAgreedAt = "";
   authAgreementMaxProgress = 0;
+  hideAuthAgreementMagnifier();
   if (clearContract) {
     authAgreementContract = null;
   }
@@ -8896,15 +9319,15 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
       authAgreementPages.replaceChildren();
     }
   }
-  if (authAgreementTitle && clearContract) {
-    authAgreementTitle.textContent = tr("Loading agreement...");
-  }
   if (authAgreementVersion) {
-    authAgreementVersion.textContent = clearContract ? "--" : authAgreementVersion.textContent;
+    authAgreementVersion.textContent = clearContract
+      ? tr("Agreement version {version}", { version: "--" })
+      : authAgreementVersion.textContent;
   }
+  updateAuthAgreementDownload(clearContract ? null : authAgreementContract);
   if (authAgreementStatus) {
     authAgreementStatus.classList.remove("is-success");
-    authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
+    authAgreementStatus.textContent = "";
   }
 }
 
@@ -8914,31 +9337,27 @@ function renderAuthAgreementContract(contract) {
   authAgreementContract = normalized;
   resetAuthAgreementState({ clearContract: false });
   if (!normalized) {
-    if (authAgreementTitle) {
-      authAgreementTitle.textContent = tr("Could not load registration agreement.");
-    }
     setAuthAgreementPlaceholder(tr("Could not load registration agreement."), { isError: true });
     if (authAgreementVersion) {
-      authAgreementVersion.textContent = "--";
+      authAgreementVersion.textContent = tr("Agreement version {version}", { version: "--" });
     }
+    updateAuthAgreementDownload(null);
     if (authAgreementStatus) {
       authAgreementStatus.textContent = tr("Could not load registration agreement.");
     }
     updateAuthRegisterSubmitState();
     return;
   }
-  if (authAgreementTitle) {
-    authAgreementTitle.textContent = String(normalized.title || tr("Service Agreement")).trim();
-  }
   if (authAgreementVersion) {
     authAgreementVersion.textContent = tr("Agreement version {version}", {
       version: String(normalized.version || "--"),
     });
   }
+  updateAuthAgreementDownload(normalized);
   setAuthAgreementPlaceholder(tr("Loading agreement..."));
   if (authAgreementStatus) {
     authAgreementStatus.classList.remove("is-success");
-    authAgreementStatus.textContent = tr("Scroll to the end of the agreement to unlock acceptance.");
+    authAgreementStatus.textContent = "";
   }
   const renderToken = ++authAgreementPdfRenderToken;
   authAgreementRendering = true;
@@ -8971,7 +9390,7 @@ function updateAuthAgreementProgress() {
     }
     if (authAgreementStatus) {
       authAgreementStatus.classList.remove("is-success");
-      authAgreementStatus.textContent = tr("Check the agreement box to continue.");
+      authAgreementStatus.textContent = "";
     }
   }
   if (scrollWrap) {
@@ -8987,6 +9406,7 @@ function buildRegistrationAgreementPayload() {
     contractId: authAgreementContract.id || null,
     contractVersion: String(authAgreementContract.version || "").trim(),
     contractHash: String(authAgreementContract.hash || "").trim(),
+    recordId: String(authAgreementContract.recordId || "").trim() || null,
     scrolledToEnd: authAgreementHasReachedEnd,
     scrolledToEndAt: authAgreementScrolledAt || null,
     agreed: authAgreementAccepted,
@@ -9025,7 +9445,7 @@ function setAuthMode(mode, options = {}) {
   }
   if (authSubtitle) {
     authSubtitle.textContent = isRegister
-      ? tr("A quick 2-step setup to activate your account.")
+      ? tr("Use your invite link to create your secure account and billing profile.")
       : tr("Use your email and password.");
   }
   if (authRegisterProgress) {
@@ -9048,7 +9468,10 @@ function setAuthMode(mode, options = {}) {
     authContactName,
     authContactEmail,
     authContactPhone,
-    authBillingAddress,
+    authBillingStreet,
+    authBillingCity,
+    authBillingPostalCode,
+    authBillingCountry,
     authTaxId,
   ];
   requiredFields.forEach((input) => {
@@ -9070,6 +9493,78 @@ function setAuthMode(mode, options = {}) {
   updateAuthRegisterSubmitState();
 }
 
+function parseBillingAddressParts(value = "") {
+  const normalized = String(value || "").trim();
+  const result = {
+    street: "",
+    city: "",
+    postalCode: "",
+    country: "",
+  };
+  if (!normalized) return result;
+
+  const segments = normalized
+    .split(",")
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+
+  if (!segments.length) return result;
+  result.street = segments[0] || "";
+  result.country = segments.length > 2 ? segments[segments.length - 1] : "";
+  const citySegment = segments.length > 1
+    ? segments.length > 2
+      ? segments[segments.length - 2]
+      : segments[1]
+    : "";
+
+  const cityMatch = citySegment.match(/^([0-9][A-Za-z0-9-]*)\s+(.+)$/);
+  if (cityMatch) {
+    result.postalCode = String(cityMatch[1] || "").trim();
+    result.city = String(cityMatch[2] || "").trim();
+  } else if (!result.country && citySegment) {
+    result.city = citySegment;
+  } else if (citySegment) {
+    result.city = citySegment;
+  }
+  return result;
+}
+
+function buildBillingAddressValue() {
+  const street = String(authBillingStreet?.value || "").trim();
+  const city = String(authBillingCity?.value || "").trim();
+  const postalCode = String(authBillingPostalCode?.value || "").trim();
+  const country = String(authBillingCountry?.value || "").trim();
+  const locality = [postalCode, city].filter(Boolean).join(" ");
+  const address = [street, locality, country].filter(Boolean).join(", ");
+  if (authBillingAddress) {
+    authBillingAddress.value = address;
+  }
+  return address;
+}
+
+function updateAuthBillingCountryFlag(value = authBillingCountry?.value || "") {
+  if (!authBillingCountryFlag) return;
+  authBillingCountryFlag.innerHTML = getCountryIcon(String(value || "").trim());
+}
+
+function applyBillingAddressDefaults(invite = {}) {
+  const parsed = parseBillingAddressParts(
+    invite.billingAddress || invite.billing_address || ""
+  );
+  const street = String(invite.billingStreet || invite.billing_street || parsed.street || "").trim();
+  const city = String(invite.billingCity || invite.billing_city || parsed.city || "").trim();
+  const postalCode = String(
+    invite.billingPostalCode || invite.billing_postal_code || parsed.postalCode || ""
+  ).trim();
+  const country = String(invite.billingCountry || invite.billing_country || parsed.country || "").trim();
+  if (authBillingStreet) authBillingStreet.value = street;
+  if (authBillingCity) authBillingCity.value = city;
+  if (authBillingPostalCode) authBillingPostalCode.value = postalCode;
+  if (authBillingCountry) authBillingCountry.value = country;
+  updateAuthBillingCountryFlag(country);
+  buildBillingAddressValue();
+}
+
 function applyInviteDefaults(invite = {}) {
   if (authEmail) {
     authEmail.readOnly = false;
@@ -9080,18 +9575,32 @@ function applyInviteDefaults(invite = {}) {
     authContactEmail.value = invite.contactEmail || authContactEmail.value || "";
   }
   if (authContactPhone && invite.contactPhone) authContactPhone.value = invite.contactPhone;
-  if (authBillingAddress && invite.billingAddress) authBillingAddress.value = invite.billingAddress;
+  applyBillingAddressDefaults(invite);
   if (authTaxId && invite.taxId) authTaxId.value = invite.taxId;
   if (authCustomerId && invite.customerId) authCustomerId.value = invite.customerId;
 }
 
+function applySignupPreviewDefaults() {
+  applyInviteDefaults(AUTH_SIGNUP_PREVIEW_DATA.invite);
+  if (authEmail) {
+    authEmail.value = AUTH_SIGNUP_PREVIEW_DATA.credentials.email;
+  }
+  if (authPassword) {
+    authPassword.value = AUTH_SIGNUP_PREVIEW_DATA.credentials.password;
+  }
+  if (authPasswordConfirm) {
+    authPasswordConfirm.value = AUTH_SIGNUP_PREVIEW_DATA.credentials.password;
+  }
+}
+
 function collectRegistrationProfile() {
+  const billingAddress = buildBillingAddressValue();
   return {
     companyName: String(authCompanyName?.value || "").trim(),
     contactName: String(authContactName?.value || "").trim(),
     contactEmail: String(authContactEmail?.value || "").trim().toLowerCase(),
     contactPhone: String(authContactPhone?.value || "").trim(),
-    billingAddress: String(authBillingAddress?.value || "").trim(),
+    billingAddress,
     taxId: String(authTaxId?.value || "").trim(),
     customerId: String(authCustomerId?.value || "").trim(),
   };
@@ -9135,13 +9644,89 @@ async function fetchPublicApi(path, options = {}) {
   }
 }
 
-async function loadRegistrationInvite(token) {
+async function prepareRegistrationAgreementPreview(options = {}) {
+  const { animate = true } = options;
+  const inviteToken = String(authInviteToken || getInviteTokenFromLocation(window.location)).trim();
+  const email = String(authEmail?.value || "").trim().toLowerCase();
+  const profile = collectRegistrationProfile();
+  const validationError = getRegistrationStepOneValidationError();
+
+  if (validationError) {
+    setAuthMessage(validationError);
+    return false;
+  }
+  if (!inviteToken) {
+    setAuthMessage(tr("Registration link required."));
+    return false;
+  }
+  if (!authInviteIsValid) {
+    setAuthMessage(tr("This registration link is invalid or expired."));
+    return false;
+  }
+
+  setAuthMessage("");
+  setAuthBusy(true, tr("Preparing agreement..."), "");
+  try {
+    const payload = await fetchPublicApi("/api/auth/register-contract-preview", {
+      method: "POST",
+      body: JSON.stringify({
+        token: inviteToken,
+        email,
+        profile,
+      }),
+    });
+    const contract = payload?.contract || null;
+    const isReady = Boolean(contract?.pdfUrl && contract?.version && contract?.hash);
+    if (!isReady) {
+      throw new Error(tr("Could not prepare agreement preview."));
+    }
+    renderAuthAgreementContract(contract);
+    setAuthRegisterStep(2, { animate });
+    return true;
+  } catch (error) {
+    setAuthMessage(error?.message || tr("Could not prepare agreement preview."));
+    return false;
+  } finally {
+    setAuthBusy(false, tr("Continue"), "");
+    updateAuthRegisterSubmitState();
+  }
+}
+
+async function loadRegistrationInvite(token, options = {}) {
+  const { preview = false, previewStep = 1 } = options;
   const requestToken = ++authInviteValidationToken;
-  const inviteToken = String(token || "").trim();
+  const inviteToken = preview ? AUTH_SIGNUP_PREVIEW_TOKEN : String(token || "").trim();
   authInviteIsValid = false;
   authInviteToken = inviteToken;
   authInviteData = null;
   resetAuthAgreementState({ clearContract: true });
+
+  if (preview) {
+    authInviteData = { ...AUTH_SIGNUP_PREVIEW_DATA.invite };
+    authInviteToken = AUTH_SIGNUP_PREVIEW_DATA.inviteToken;
+    applySignupPreviewDefaults();
+    authInviteIsValid = true;
+    setAuthInviteStatus(
+      tr("Local signup preview mode. Sample data is loaded and no live account will be created."),
+      { tone: "success" }
+    );
+    setAuthMessage("");
+    if (requestToken === authInviteValidationToken) {
+      if (Number(previewStep) === 2) {
+        const prepared = await prepareRegistrationAgreementPreview({ animate: false });
+        if (!prepared) {
+          renderAuthAgreementContract({ ...AUTH_SIGNUP_PREVIEW_DATA.contract });
+          setAuthRegisterStep(1, { resetMessage: true });
+        }
+      } else {
+        renderAuthAgreementContract({ ...AUTH_SIGNUP_PREVIEW_DATA.contract });
+        setAuthRegisterStep(1, { resetMessage: true });
+      }
+      setAuthBusy(false, tr("Register Account"), "");
+      updateAuthRegisterSubmitState();
+    }
+    return;
+  }
 
   if (!inviteToken) {
     setAuthInviteStatus("", { tone: "info" });
@@ -9198,6 +9783,10 @@ function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Crea
     authContactName,
     authContactEmail,
     authContactPhone,
+    authBillingStreet,
+    authBillingCity,
+    authBillingPostalCode,
+    authBillingCountry,
     authBillingAddress,
     authTaxId,
     authCustomerId,
@@ -9334,7 +9923,10 @@ function setAuthView(session, options = {}) {
     resetAccountPreview();
     if (route.view === "register") {
       setAuthMode("register", { inviteToken: route.inviteToken });
-      void loadRegistrationInvite(route.inviteToken);
+      void loadRegistrationInvite(route.inviteToken, {
+        preview: Boolean(route.previewRegistration),
+        previewStep: route.previewStep,
+      });
     } else {
       setAuthMode("login");
       updateRoute({ view: "login" }, { replace: true });
@@ -9384,6 +9976,13 @@ function validateRegistrationProfile(profile) {
 }
 
 async function registerWithInvite() {
+  const route = parseRouteFromLocation();
+  if (route?.previewRegistration) {
+    setAuthMessage(tr("Preview mode only. Registration is disabled on this local route."), {
+      isError: false,
+    });
+    return;
+  }
   if (!supabaseClient) {
     setAuthMessage(tr("Supabase auth is not configured."));
     return;
@@ -10983,13 +11582,7 @@ if (authForm) {
     event.preventDefault();
     if (authMode === "register") {
       if (authRegisterStep === 1) {
-        const validationError = getRegistrationStepOneValidationError();
-        if (validationError) {
-          setAuthMessage(validationError);
-          return;
-        }
-        setAuthMessage("");
-        setAuthRegisterStep(2);
+        await prepareRegistrationAgreementPreview({ animate: true });
         return;
       }
       await registerWithInvite();
@@ -11007,12 +11600,19 @@ if (authForm) {
   authContactName,
   authContactEmail,
   authContactPhone,
+  authBillingStreet,
+  authBillingCity,
+  authBillingPostalCode,
+  authBillingCountry,
   authBillingAddress,
   authTaxId,
   authCustomerId,
 ].forEach((input) => {
   if (!input) return;
   input.addEventListener("input", () => {
+    if (input === authBillingCountry) {
+      updateAuthBillingCountryFlag(input.value);
+    }
     if (authMode === "register") {
       setAuthMessage("");
     }
@@ -11023,13 +11623,23 @@ if (authForm) {
 if (authRegisterBack) {
   authRegisterBack.addEventListener("click", () => {
     if (authMode !== "register") return;
-    setAuthRegisterStep(1, { resetMessage: true });
+    setAuthRegisterStep(1, { resetMessage: true, animate: true });
   });
 }
 
 if (authAgreementScroll) {
   authAgreementScroll.addEventListener("scroll", () => {
+    hideAuthAgreementMagnifier();
     updateAuthAgreementProgress();
+  });
+}
+
+if (authAgreementPages) {
+  authAgreementPages.addEventListener("pointermove", (event) => {
+    updateAuthAgreementMagnifier(event);
+  });
+  authAgreementPages.addEventListener("pointerleave", () => {
+    hideAuthAgreementMagnifier();
   });
 }
 
@@ -11046,9 +11656,7 @@ if (authAgreementAccept) {
       authAgreementAgreedAt = "";
       if (authAgreementStatus) {
         authAgreementStatus.classList.remove("is-success");
-        authAgreementStatus.textContent = authAgreementHasReachedEnd
-          ? tr("Check the agreement box to continue.")
-          : tr("Scroll to the end of the agreement to unlock acceptance.");
+        authAgreementStatus.textContent = "";
       }
     }
     updateAuthRegisterSubmitState();
@@ -13543,7 +14151,10 @@ window.addEventListener("popstate", (event) => {
     setMainView("builder", { push: false });
     if (route.view === "register") {
       setAuthMode("register", { inviteToken: route.inviteToken });
-      void loadRegistrationInvite(route.inviteToken);
+      void loadRegistrationInvite(route.inviteToken, {
+        preview: Boolean(route.previewRegistration),
+        previewStep: route.previewStep,
+      });
     } else {
       setAuthMode("login");
       updateRoute({ view: "login" }, { replace: true });

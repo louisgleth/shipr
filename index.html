@@ -11,116 +11,145 @@
     <div class="auth-gate" id="authGate">
       <div class="auth-stack">
         <div class="auth-card">
-          <div class="auth-portal-head">
-            <div class="auth-logo-lottie" id="authLogoLottie" aria-hidden="true"></div>
-            <span class="auth-portal-divider" aria-hidden="true"></span>
-            <span class="auth-portal-label">Portal</span>
-          </div>
-          <div class="auth-copy">
-            <h2 id="authTitle">Sign in to continue</h2>
-            <p id="authSubtitle">Use your email and password.</p>
-          </div>
-          <form id="authForm" class="auth-form" autocomplete="on">
-            <label class="field">
-              <span>Email</span>
-              <input type="email" id="authEmail" required autocomplete="email" />
-            </label>
-            <label class="field">
-              <span>Password</span>
-              <input type="password" id="authPassword" required autocomplete="current-password" />
-            </label>
-            <!-- Step indicator -->
-            <div class="auth-stepper auth-register-field auth-full-row is-hidden" id="authRegisterProgress">
-              <div class="auth-stepper-track">
-                <div class="auth-stepper-fill" id="authStepperFill"></div>
-              </div>
-              <div class="auth-stepper-labels">
-                <button type="button" class="auth-stepper-dot is-active" data-step="1" id="authStepDot1">
-                  <span class="auth-stepper-dot-ring"><span class="auth-stepper-dot-inner"></span></span>
-                  <span class="auth-stepper-dot-label">Account</span>
-                </button>
-                <button type="button" class="auth-stepper-dot" data-step="2" id="authStepDot2">
-                  <span class="auth-stepper-dot-ring"><span class="auth-stepper-dot-inner"></span></span>
-                  <span class="auth-stepper-dot-label">Agreement</span>
-                </button>
-              </div>
+          <div class="auth-card-frame" id="authCardFrame">
+            <div class="auth-portal-head">
+              <div class="auth-logo-lottie" id="authLogoLottie" aria-hidden="true"></div>
+              <span class="auth-portal-divider" aria-hidden="true"></span>
+              <span class="auth-portal-label">Portal</span>
             </div>
-
-            <!-- Step 1: Account -->
-            <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authRegisterStepInfo">
-              <div class="auth-register-grid">
-                <label class="field">
-                  <span>Confirm Password</span>
-                  <input type="password" id="authPasswordConfirm" autocomplete="new-password" placeholder="Re-enter password" />
-                </label>
-                <label class="field">
-                  <span>Company Name</span>
-                  <input type="text" id="authCompanyName" autocomplete="organization" placeholder="Acme Inc." />
-                </label>
-                <label class="field">
-                  <span>Point of Contact</span>
-                  <input type="text" id="authContactName" autocomplete="name" placeholder="Jane Smith" />
-                </label>
-                <label class="field">
-                  <span>Contact Email</span>
-                  <input type="email" id="authContactEmail" autocomplete="email" placeholder="jane@acme.com" />
-                </label>
-                <label class="field">
-                  <span>Phone Number</span>
-                  <input type="text" id="authContactPhone" autocomplete="tel" placeholder="+1 (555) 000-0000" />
-                </label>
-                <label class="field is-wide">
-                  <span>Billing Address</span>
-                  <input type="text" id="authBillingAddress" autocomplete="street-address" placeholder="123 Main St, City, Country" />
-                </label>
-                <label class="field">
-                  <span>Tax ID</span>
-                  <input type="text" id="authTaxId" autocomplete="off" placeholder="XX-XXXXXXX" />
-                </label>
-              </div>
-              <input type="hidden" id="authCustomerId" value="" />
+            <div class="auth-copy">
+              <h2 id="authTitle">Sign in to continue</h2>
+              <p id="authSubtitle">Use your email and password.</p>
             </div>
-
-            <!-- Step 2: Agreement -->
-            <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
-              <div class="auth-agreement-contract">
-                <div class="auth-agreement-contract-head">
-                  <div class="auth-agreement-contract-title" id="authAgreementTitle">Loading agreement...</div>
-                  <div class="auth-agreement-contract-version mono" id="authAgreementVersion">--</div>
+            <form id="authForm" class="auth-form" autocomplete="on">
+              <div class="auth-step-one-shell auth-full-row">
+                <div class="auth-register-section-head auth-register-field is-hidden">
+                  <div class="auth-register-section-label">Credentials</div>
                 </div>
-                <div class="auth-agreement-scroll-wrap">
-                  <div class="auth-agreement-scroll" id="authAgreementScroll">
-                    <div class="auth-agreement-pages" id="authAgreementPages"></div>
+                <div class="auth-register-grid auth-register-grid--credentials">
+                  <label class="field auth-register-grid-span-2">
+                    <span>Email</span>
+                    <input type="email" id="authEmail" required autocomplete="email" />
+                  </label>
+                  <label class="field">
+                    <span>Password</span>
+                    <input type="password" id="authPassword" required autocomplete="current-password" />
+                  </label>
+                  <label class="field auth-register-field is-hidden">
+                    <span>Confirm Password</span>
+                    <input type="password" id="authPasswordConfirm" autocomplete="new-password" />
+                  </label>
+                </div>
+                <div class="auth-register-divider auth-register-field auth-full-row is-hidden" aria-hidden="true"></div>
+                <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authRegisterStepInfo">
+                  <div class="auth-register-section-head">
+                    <div class="auth-register-section-label">Account Information</div>
                   </div>
-                  <div class="auth-agreement-scroll-fade" aria-hidden="true"></div>
+                  <div class="auth-register-grid">
+                    <label class="field auth-register-grid-span-2">
+                      <span>Company Name</span>
+                      <input type="text" id="authCompanyName" autocomplete="organization" />
+                    </label>
+                    <label class="field">
+                      <span>Point of Contact</span>
+                      <input type="text" id="authContactName" autocomplete="name" />
+                    </label>
+                    <label class="field">
+                      <span>Contact Email</span>
+                      <input type="email" id="authContactEmail" autocomplete="email" />
+                    </label>
+                    <label class="field">
+                      <span>Phone Number</span>
+                      <input type="text" id="authContactPhone" autocomplete="tel" />
+                    </label>
+                    <label class="field">
+                      <span>Tax ID</span>
+                      <input type="text" id="authTaxId" autocomplete="off" />
+                    </label>
+                  </div>
+                </div>
+                <div class="auth-register-divider auth-register-field auth-full-row is-hidden" aria-hidden="true"></div>
+                <div class="auth-register-field auth-full-row is-hidden" id="authBillingGroup">
+                  <div class="auth-register-section-head">
+                    <div class="auth-register-section-label">Billing Address</div>
+                  </div>
+                  <div class="auth-address-grid">
+                    <label class="field auth-register-grid-span-3">
+                      <span>Street</span>
+                      <input type="text" id="authBillingStreet" autocomplete="address-line1" />
+                    </label>
+                    <label class="field">
+                      <span>City</span>
+                      <input type="text" id="authBillingCity" autocomplete="address-level2" />
+                    </label>
+                    <label class="field">
+                      <span>Postal Code</span>
+                      <input type="text" id="authBillingPostalCode" autocomplete="postal-code" />
+                    </label>
+                    <label class="field">
+                      <span>Country</span>
+                      <div class="country-input-wrap auth-country-input-wrap">
+                        <span class="country-flag" id="authBillingCountryFlag"></span>
+                        <input type="text" id="authBillingCountry" autocomplete="country-name" />
+                      </div>
+                    </label>
+                  </div>
+                  <input type="hidden" id="authBillingAddress" />
                 </div>
               </div>
-              <label class="auth-agreement-check">
-                <input type="checkbox" id="authAgreementAccept" />
-                <span class="auth-agreement-check-box" aria-hidden="true">
-                  <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 6 5 8.5 9.5 3.5"/></svg>
-                </span>
-                <span>I have read and agree to the service terms.</span>
-              </label>
-              <div class="auth-agreement-status" id="authAgreementStatus">Scroll to the end to unlock acceptance.</div>
-            </div>
-
-            <div class="auth-invite-status is-hidden auth-full-row" id="authInviteStatus"></div>
-            <div class="form-error auth-full-row" id="authError"></div>
-            <div class="auth-actions auth-full-row">
-              <button type="button" class="btn btn-ghost btn-sm is-hidden" id="authRegisterBack">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
-                <span>Back</span>
-              </button>
-              <button type="submit" class="btn btn-primary" id="authSignIn">
-                <span>Sign In</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16"><polyline points="9 6 15 12 9 18"/></svg>
-              </button>
-            </div>
-            <div class="auth-form-foot auth-full-row">
-              <button type="button" class="auth-forgot" id="authForgotPassword">Forgot Password?</button>
-            </div>
-          </form>
+              <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
+                <div class="auth-agreement-contract">
+                  <div class="auth-agreement-contract-head">
+                    <div class="auth-agreement-contract-version mono" id="authAgreementVersion">Agreement version --</div>
+                    <a
+                      class="auth-agreement-download"
+                      id="authAgreementDownload"
+                      href="#"
+                      download
+                      aria-label="Download agreement PDF"
+                      title="Download agreement PDF"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M12 4v10" />
+                        <polyline points="7 11 12 16 17 11" />
+                        <path d="M5 19h14" />
+                      </svg>
+                    </a>
+                  </div>
+                  <div class="auth-agreement-scroll-wrap">
+                    <div class="auth-agreement-scroll" id="authAgreementScroll">
+                      <div class="auth-agreement-pages" id="authAgreementPages"></div>
+                    </div>
+                    <div class="auth-agreement-lens" id="authAgreementLens" aria-hidden="true">
+                      <div class="auth-agreement-lens-inner" id="authAgreementLensInner"></div>
+                    </div>
+                    <div class="auth-agreement-scroll-fade" aria-hidden="true"></div>
+                  </div>
+                </div>
+                <label class="auth-agreement-check">
+                  <input type="checkbox" id="authAgreementAccept" />
+                  <span class="auth-agreement-check-box" aria-hidden="true"></span>
+                  <span>I have read the full agreement and I agree to the terms.</span>
+                </label>
+                <div class="auth-agreement-status" id="authAgreementStatus"></div>
+              </div>
+              <div class="auth-invite-status is-hidden auth-full-row" id="authInviteStatus"></div>
+              <div class="form-error auth-full-row" id="authError"></div>
+              <div class="auth-actions auth-full-row">
+                <button type="button" class="btn btn-secondary btn-sm is-hidden" id="authRegisterBack">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="submit" class="btn btn-primary" id="authSignIn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  <span>Sign In</span>
+                </button>
+              </div>
+              <div class="auth-form-foot auth-full-row">
+                <button type="button" class="auth-forgot" id="authForgotPassword">Forgot Password?</button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
