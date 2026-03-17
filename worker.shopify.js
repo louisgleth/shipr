@@ -741,7 +741,7 @@ function validateClickwrapAgreement(agreement, contract, options = {}) {
   if (Number.isFinite(agreement?.maxScrollProgress) && agreement.maxScrollProgress < 0.985) {
     return "Agreement scroll requirement was not completed.";
   }
-  if (agreement?.recordId) {
+  if (agreement?.recordId && agreement?.previewToken) {
     if (!previewPayload) {
       return "Agreement preview expired. Review the agreement again.";
     }
