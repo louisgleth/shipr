@@ -1317,8 +1317,8 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
           padding: 38px 8px 20px !important;
         }
         .shipide-email-hero-spacer {
-          height: 56px !important;
-          line-height: 56px !important;
+          height: 86px !important;
+          line-height: 86px !important;
         }
         .shipide-email-logo {
           width: 96px !important;
@@ -1326,10 +1326,10 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
         }
       }
     </style>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;background-image:radial-gradient(185% 98% at 50% 128%, rgba(186, 138, 255, 0.98) 0%, rgba(119, 71, 227, 0.88) 18%, rgba(78, 42, 165, 0.52) 34%, rgba(35, 18, 92, 0.24) 48%, rgba(0, 6, 15, 0) 67%),radial-gradient(68% 46% at 12% 100%, rgba(119, 71, 227, 0.22) 0%, rgba(0, 6, 15, 0) 78%),radial-gradient(68% 46% at 88% 100%, rgba(119, 71, 227, 0.22) 0%, rgba(0, 6, 15, 0) 78%),linear-gradient(180deg, rgba(0, 6, 15, 0) 0%, rgba(0, 6, 15, 0) 56%, rgba(20, 11, 54, 0.12) 74%, rgba(119, 71, 227, 0.12) 90%, rgba(186, 138, 255, 0.1) 100%);background-repeat:no-repeat;background-size:100% 100%;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
       <tr>
         <td align="center" style="padding:0 16px 24px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;background-image:radial-gradient(120% 92% at 50% 112%, rgba(177, 127, 255, 0.88) 0%, rgba(119, 71, 227, 0.72) 18%, rgba(78, 42, 165, 0.44) 34%, rgba(31, 16, 79, 0.22) 50%, rgba(0, 6, 15, 0) 72%), linear-gradient(180deg, rgba(0, 6, 15, 0) 0%, rgba(0, 6, 15, 0) 46%, rgba(32, 17, 84, 0.18) 66%, rgba(119, 71, 227, 0.16) 84%, rgba(177, 127, 255, 0.12) 100%);background-repeat:no-repeat;background-size:100% 100%;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:transparent;">
             <tr>
               <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
@@ -1345,7 +1345,7 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
               </td>
             </tr>
             <tr>
-              <td class="shipide-email-hero-spacer" style="height:72px;font-size:0;line-height:72px;">&nbsp;</td>
+              <td class="shipide-email-hero-spacer" style="height:122px;font-size:0;line-height:122px;">&nbsp;</td>
             </tr>
           </table>
         </td>
