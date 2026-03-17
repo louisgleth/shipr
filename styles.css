@@ -401,8 +401,16 @@ body {
   grid-template-columns: 1fr;
 }
 
+.auth-register-grid--credentials .auth-credentials-password {
+  grid-column: 1 / -1;
+}
+
 .auth-form.is-register-mode .auth-register-grid--credentials {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-form.is-register-mode .auth-register-grid--credentials .auth-credentials-password {
+  grid-column: auto;
 }
 
 .auth-register-progress {

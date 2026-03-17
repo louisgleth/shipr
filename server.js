@@ -918,7 +918,7 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
       <tr>
         <td align="center" style="padding:0 16px 24px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;background-image:radial-gradient(120% 92% at 50% 112%, rgba(177, 127, 255, 0.88) 0%, rgba(119, 71, 227, 0.72) 18%, rgba(78, 42, 165, 0.44) 34%, rgba(31, 16, 79, 0.22) 50%, rgba(0, 6, 15, 0) 72%), linear-gradient(180deg, rgba(0, 6, 15, 0) 0%, rgba(0, 6, 15, 0) 46%, rgba(32, 17, 84, 0.18) 66%, rgba(119, 71, 227, 0.16) 84%, rgba(177, 127, 255, 0.12) 100%);background-repeat:no-repeat;background-size:100% 100%;">
             <tr>
               <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
@@ -926,7 +926,7 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
                   Welcome to <span style="color:#ffffff;">Shipide!</span>
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  Your account is now active. The PDF copy of your accepted service agreement is attached to this email.
+                  Your account is now active. The PDF copy of your accepted<br/>service agreement is attached to this email.
                 </div>
                 <a href="${escapeHtml(welcomeUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
                   Head to Shipide
