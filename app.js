@@ -135,7 +135,7 @@ const AUTH_SIGNUP_PREVIEW_DATA = {
   },
   contract: {
     id: "local-signup-preview-contract",
-    title: "Shipide Service Agreement",
+    title: "Commercial Agreement",
     version: "v2.0",
     hash: "local-signup-preview-contract-v2.0",
     pdfUrl: "assets/contracts/commAgreement-v1.pdf",

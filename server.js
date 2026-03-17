@@ -106,7 +106,7 @@ const DEFAULT_CLIENT_BILLING_PREF = {
   card_enabled: true,
 };
 const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "v2.0";
-const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Shipide Portal Service Agreement";
+const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Commercial Agreement";
 const DEFAULT_CLICKWRAP_CONTRACT_BODY = `Electronic Acceptance Notice
 
 By clicking "I agree", you consent to use an electronic signature and electronic records for this agreement.
