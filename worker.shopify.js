@@ -45,7 +45,7 @@ const DEFAULT_CLIENT_BILLING_PREF = {
   invoice_enabled: false,
   card_enabled: true,
 };
-const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "2026-03-13.1";
+const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "v2.0";
 const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Shipide Portal Service Agreement";
 const DEFAULT_CLICKWRAP_CONTRACT_BODY = `Electronic Acceptance Notice
 
@@ -1150,7 +1150,7 @@ function assertResendConfig(env) {
 async function sendResendEmail(env, payload) {
   assertResendConfig(env);
   const fromName = String(payload?.fromName || env.RESEND_FROM_NAME || "Shipide Billing").trim();
-  const fromEmail = String(payload?.fromEmail || env.RESEND_FROM_EMAIL || "").trim();
+  const fromEmail = String(payload?.fromEmail || env.RESEND_FROM_EMAIL || "billing@shipide.com").trim();
   if (!fromEmail) {
     throw new Error("RESEND_FROM_EMAIL (or payload.fromEmail) is required.");
   }

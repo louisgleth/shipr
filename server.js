@@ -76,7 +76,7 @@ const DEFAULT_IBAN_BIC = "KREDBEBB";
 const DEFAULT_IBAN_TRANSFER_NOTE =
   "Transfers are credited once received (typically 1-2 business days).";
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
-const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "").trim();
+const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "billing@shipide.com").trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
 const RESEND_REPLY_TO = String(process.env.RESEND_REPLY_TO || "").trim();
 const BILLING_IBAN_BENEFICIARY = String(
@@ -105,7 +105,7 @@ const DEFAULT_CLIENT_BILLING_PREF = {
   invoice_enabled: false,
   card_enabled: true,
 };
-const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "2026-03-13.1";
+const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "v2.0";
 const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Shipide Portal Service Agreement";
 const DEFAULT_CLICKWRAP_CONTRACT_BODY = `Electronic Acceptance Notice
 
@@ -175,11 +175,11 @@ const LOCAL_SIGNUP_PREVIEW_INVITE = {
 };
 const LOCAL_SIGNUP_PREVIEW_CONTRACT = {
   id: "local-signup-preview-contract",
-  version: "preview-v1",
+  version: "v2.0",
   title: "Shipide Service Agreement",
   body_text:
     "Preview mode only. This local route generates a personalized agreement preview from the project template without creating a live account.",
-  hash_sha256: sha256Hex("local-signup-preview-contract-v1"),
+  hash_sha256: sha256Hex("local-signup-preview-contract-v2.0"),
   pdf_url: CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL,
   effective_at: null,
   source: "local-preview",

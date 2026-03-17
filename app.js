@@ -136,8 +136,8 @@ const AUTH_SIGNUP_PREVIEW_DATA = {
   contract: {
     id: "local-signup-preview-contract",
     title: "Shipide Service Agreement",
-    version: "preview-v1",
-    hash: "local-signup-preview-contract-v1",
+    version: "v2.0",
+    hash: "local-signup-preview-contract-v2.0",
     pdfUrl: "assets/contracts/commAgreement-v1.pdf",
     bodyText:
       "Preview mode only.\n\nThis route is intended for local UI review of the signup flow. The agreement PDF above is loaded from the local project so you can validate the layout, scroll behavior, and acceptance state without creating a live account.",

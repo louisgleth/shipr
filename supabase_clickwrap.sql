@@ -78,7 +78,7 @@ insert into public.clickwrap_contract_versions (
   is_active,
   notes
 ) values (
-  '2026-03-13.1',
+  'v2.0',
   'Shipide Portal Service Agreement',
   $contract$
 Electronic Acceptance Notice
@@ -179,4 +179,4 @@ set
   notes = excluded.notes;
 
 update public.clickwrap_contract_versions
-set is_active = (version = '2026-03-13.1');
+set is_active = (version = 'v2.0');
