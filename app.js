@@ -8825,25 +8825,65 @@ function refreshReportsIfVisible() {
   }
 }
 
-function setAuthMessage(message, { isError = true } = {}) {
-  if (!authError) return;
-  authError.textContent = message || "";
-  authError.classList.toggle("is-visible", Boolean(message));
-  authError.classList.toggle("is-info", Boolean(message) && !isError);
+let lastAuthToast = {
+  message: "",
+  tone: "",
+  at: 0,
+};
+
+function showAuthToast(message, tone = "info") {
+  const text = String(message || "").trim();
+  const normalizedTone = String(tone || "info").trim() || "info";
+  if (!text) return;
+  const now = Date.now();
+  if (
+    lastAuthToast.message === text
+    && lastAuthToast.tone === normalizedTone
+    && now - lastAuthToast.at < 900
+  ) {
+    return;
+  }
+  lastAuthToast = {
+    message: text,
+    tone: normalizedTone,
+    at: now,
+  };
+  showToast(text, { tone: normalizedTone });
+}
+
+function setAuthMessage(message, options = {}) {
+  const { isError = true, tone = isError ? "error" : "info", toast = true } = options;
+  const text = String(message || "").trim();
+  if (authError) {
+    authError.textContent = "";
+    authError.classList.remove("is-visible", "is-info");
+  }
+  if (toast && text) {
+    showAuthToast(text, tone);
+  }
 }
 
 function setAuthInviteStatus(message = "", options = {}) {
-  if (!authInviteStatus) return;
-  const { tone = "info" } = options;
+  const { tone = "info", toast = true } = options;
   const text = String(message || "").trim();
-  authInviteStatus.textContent = text;
-  authInviteStatus.classList.toggle("is-visible", Boolean(text));
-  authInviteStatus.classList.remove("is-error", "is-success");
-  if (!text) return;
-  if (tone === "error") {
-    authInviteStatus.classList.add("is-error");
-  } else if (tone === "success") {
-    authInviteStatus.classList.add("is-success");
+  if (authInviteStatus) {
+    authInviteStatus.textContent = "";
+    authInviteStatus.classList.remove("is-visible", "is-error", "is-success");
+  }
+  if (toast && text) {
+    showAuthToast(text, tone);
+  }
+}
+
+function setAuthAgreementStatus(message = "", options = {}) {
+  const { tone = "info", toast = true } = options;
+  const text = String(message || "").trim();
+  if (authAgreementStatus) {
+    authAgreementStatus.textContent = "";
+    authAgreementStatus.classList.remove("is-success");
+  }
+  if (toast && text) {
+    showAuthToast(text, tone);
   }
 }
 
@@ -9406,10 +9446,7 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
       : authAgreementVersion.textContent;
   }
   updateAuthAgreementDownload(clearContract ? null : authAgreementContract);
-  if (authAgreementStatus) {
-    authAgreementStatus.classList.remove("is-success");
-    authAgreementStatus.textContent = "";
-  }
+  setAuthAgreementStatus("");
 }
 
 function renderAuthAgreementContract(contract) {
@@ -9423,9 +9460,7 @@ function renderAuthAgreementContract(contract) {
       authAgreementVersion.textContent = tr("Agreement version {version}", { version: "--" });
     }
     updateAuthAgreementDownload(null);
-    if (authAgreementStatus) {
-      authAgreementStatus.textContent = tr("Could not load registration agreement.");
-    }
+    setAuthAgreementStatus(tr("Could not load registration agreement."), { tone: "error" });
     updateAuthRegisterSubmitState();
     return;
   }
@@ -9436,10 +9471,7 @@ function renderAuthAgreementContract(contract) {
   }
   updateAuthAgreementDownload(normalized);
   setAuthAgreementPlaceholder(tr("Loading agreement..."));
-  if (authAgreementStatus) {
-    authAgreementStatus.classList.remove("is-success");
-    authAgreementStatus.textContent = "";
-  }
+  setAuthAgreementStatus("");
   const renderToken = ++authAgreementPdfRenderToken;
   authAgreementRendering = true;
   void renderAuthAgreementPdf(normalized, renderToken).finally(() => {
@@ -9469,10 +9501,7 @@ function updateAuthAgreementProgress() {
     if (authAgreementAccept) {
       authAgreementAccept.disabled = false;
     }
-    if (authAgreementStatus) {
-      authAgreementStatus.classList.remove("is-success");
-      authAgreementStatus.textContent = "";
-    }
+    setAuthAgreementStatus("");
   }
   if (scrollWrap) {
     scrollWrap.classList.toggle("is-complete", authAgreementHasReachedEnd);
@@ -9846,7 +9875,7 @@ async function loadRegistrationInvite(token, options = {}) {
     setAuthInviteStatus(tr("This registration link is invalid or expired."), {
       tone: "error",
     });
-    setAuthMessage(error?.message || tr("This registration link is invalid or expired."));
+    setAuthMessage("");
   } finally {
     if (requestToken === authInviteValidationToken) {
       setAuthBusy(false, tr("Register Account"), "");
@@ -10062,6 +10091,7 @@ async function registerWithInvite() {
   if (route?.previewRegistration) {
     setAuthMessage(tr("Preview mode only. Registration is disabled on this local route."), {
       isError: false,
+      tone: "info",
     });
     return;
   }
@@ -10113,6 +10143,7 @@ async function registerWithInvite() {
     });
     setAuthMessage(tr("Account created. Signing you in..."), {
       isError: false,
+      tone: "success",
     });
     const { error } = await supabaseClient.auth.signInWithPassword({
       email,
@@ -10158,6 +10189,7 @@ async function resetPassword() {
   }
   setAuthMessage(tr("If that email exists, a reset link has been sent. Check your inbox."), {
     isError: false,
+    tone: "success",
   });
 }
 
@@ -11730,16 +11762,12 @@ if (authAgreementAccept) {
     authAgreementAccepted = authAgreementAccept.checked;
     if (authAgreementAccepted) {
       authAgreementAgreedAt = new Date().toISOString();
-      if (authAgreementStatus) {
-        authAgreementStatus.classList.add("is-success");
-        authAgreementStatus.textContent = tr("Agreement accepted. You can create your account.");
-      }
+      setAuthAgreementStatus(tr("Agreement accepted. You can create your account."), {
+        tone: "success",
+      });
     } else {
       authAgreementAgreedAt = "";
-      if (authAgreementStatus) {
-        authAgreementStatus.classList.remove("is-success");
-        authAgreementStatus.textContent = "";
-      }
+      setAuthAgreementStatus("");
     }
     updateAuthRegisterSubmitState();
   });

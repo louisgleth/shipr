@@ -923,10 +923,10 @@ function buildAcceptedAgreementEmailHtml(options = {}) {
               <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
                 <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
-                  Welcome to<br/><span style="color:#ffffff;">Shipide!</span>
+                  Welcome to <span style="color:#ffffff;">Shipide!</span>
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  Your account is now active. The PDF copy<br/>of your accepted service agreement is<br/>attached to this email.
+                  Your account is now active. The PDF copy of your accepted service agreement is attached to this email.
                 </div>
                 <a href="${escapeHtml(welcomeUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
                   Head to Shipide
