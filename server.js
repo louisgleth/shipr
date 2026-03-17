@@ -91,6 +91,9 @@ const REPORTS_FROM_EMAIL = String(process.env.REPORTS_FROM_EMAIL || "reports@shi
 const REPORTS_FROM_NAME = String(process.env.REPORTS_FROM_NAME || "Shipide Reports").trim();
 const WELCOME_FROM_EMAIL = String(process.env.WELCOME_FROM_EMAIL || "welcome@shipide.com").trim();
 const WELCOME_FROM_NAME = String(process.env.WELCOME_FROM_NAME || "Shipide").trim();
+const WELCOME_PORTAL_URL = String(
+  process.env.WELCOME_PORTAL_URL || "https://portal.shipide.com/login"
+).trim();
 const REPORTS_PORTAL_URL = String(
   process.env.REPORTS_PORTAL_URL || "https://portal.shipide.com/reports?range=monthly"
 ).trim();
@@ -882,7 +885,10 @@ function buildAcceptedAgreementEmailSubject(contract) {
   return "Welcome to Shipide!";
 }
 
-function buildAcceptedAgreementEmailHtml() {
+function buildAcceptedAgreementEmailHtml(options = {}) {
+  const welcomeUrl =
+    String(options?.welcomeUrl || WELCOME_PORTAL_URL || "").trim()
+    || "https://portal.shipide.com/login";
   return `
     <style>
       @media only screen and (max-width: 640px) {
@@ -899,6 +905,10 @@ function buildAcceptedAgreementEmailHtml() {
         .shipide-email-hero-wrap {
           padding: 38px 8px 20px !important;
         }
+        .shipide-email-hero-spacer {
+          height: 56px !important;
+          line-height: 56px !important;
+        }
         .shipide-email-logo {
           width: 96px !important;
           margin-bottom: 24px !important;
@@ -907,25 +917,24 @@ function buildAcceptedAgreementEmailHtml() {
     </style>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#00060f;font-family:Helvetica,Arial,sans-serif;color:#f3f6ff;border-top:4px solid #7747e3;">
       <tr>
-        <td align="center" style="padding:0 16px 40px;">
+        <td align="center" style="padding:0 16px 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:980px;background:#00060f;">
             <tr>
               <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
-                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#ffffff;font-weight:400;">
-                  Welcome to<br/>Shipide!
+                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
+                  Welcome to<br/><span style="color:#ffffff;">Shipide!</span>
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  Your account is now active.<br/>The PDF copy of your accepted service agreement is attached to this email.
+                  Your account is now active. The PDF copy<br/>of your accepted service agreement is<br/>attached to this email.
                 </div>
+                <a href="${escapeHtml(welcomeUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
+                  Head to Shipide
+                </a>
               </td>
             </tr>
             <tr>
-              <td align="center" style="padding:18px 8px 0;">
-                <div style="max-width:700px;margin:0 auto;font-size:14px;line-height:1.7;color:#9aa3b2;text-align:center;">
-                  Keep the attached agreement PDF for your records. If you ever need another copy, just reply to this email.
-                </div>
-              </td>
+              <td class="shipide-email-hero-spacer" style="height:72px;font-size:0;line-height:72px;">&nbsp;</td>
             </tr>
           </table>
         </td>
@@ -933,13 +942,16 @@ function buildAcceptedAgreementEmailHtml() {
     </table>`;
 }
 
-function buildAcceptedAgreementEmailText() {
+function buildAcceptedAgreementEmailText(options = {}) {
+  const welcomeUrl =
+    String(options?.welcomeUrl || WELCOME_PORTAL_URL || "").trim()
+    || "https://portal.shipide.com/login";
   return [
     "Welcome to Shipide!",
     "",
     "Your account is now active. The PDF copy of your accepted Shipide service agreement is attached to this email.",
     "",
-    "Keep this PDF for your records.",
+    `Head to Shipide: ${welcomeUrl}`,
   ].join("\n");
 }
 
