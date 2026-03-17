@@ -143,6 +143,12 @@ export default {
       if (pathname === "/api/admin/reports/send-test" && request.method === "POST") {
         return handleAdminReportsSendTest(request, env);
       }
+      if (pathname === "/api/admin/agreements/preview-test" && request.method === "POST") {
+        return handleAdminAgreementPreviewTest(request, env);
+      }
+      if (pathname === "/api/admin/agreements/send-test" && request.method === "POST") {
+        return handleAdminAgreementSendTest(request, env);
+      }
       if (pathname === "/api/admin/invoices/mark-paid" && request.method === "POST") {
         return handleAdminInvoiceMarkPaid(request, env);
       }
@@ -1289,11 +1295,7 @@ function buildAcceptedAgreementEmailSubject() {
   return "Welcome to Shipide!";
 }
 
-function buildAcceptedAgreementEmailHtml({ contract, artifact, recipientName }) {
-  const greetingName = String(recipientName || "").trim() || "there";
-  const version = String(contract?.version || "").trim() || "--";
-  const recordId = String(artifact?.recordId || "").trim() || "--";
-  const acceptedAt = formatClickwrapAcceptanceTimestamp(artifact?.acceptedAt) || "--";
+function buildAcceptedAgreementEmailHtml() {
   return `
     <style>
       @media only screen and (max-width: 640px) {
@@ -1323,7 +1325,7 @@ function buildAcceptedAgreementEmailHtml({ contract, artifact, recipientName }) 
             <tr>
               <td align="center" class="shipide-email-hero-wrap" style="padding:70px 8px 24px;">
                 <img src="https://portal.shipide.com/shipide_logo.png" alt="Shipide" class="shipide-email-logo" width="124" style="display:block;width:124px;height:auto;margin:0 auto 30px;" />
-                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#f3f6ff;font-weight:300;">
+                <div class="shipide-email-hero-title" style="font-size:58px;line-height:1.03;letter-spacing:-0.035em;color:#ffffff;font-weight:400;">
                   Welcome to<br/>Shipide!
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
@@ -1333,24 +1335,9 @@ function buildAcceptedAgreementEmailHtml({ contract, artifact, recipientName }) 
             </tr>
             <tr>
               <td align="center" style="padding:18px 8px 0;">
-                <div style="max-width:700px;margin:0 auto;font-size:15px;line-height:1.75;color:#d7dced;text-align:center;">
-                  Hi ${escapeHtml(greetingName)}, welcome aboard. We attached the PDF copy of your accepted Shipide service agreement so you have it immediately for your records.
+                <div style="max-width:700px;margin:0 auto;font-size:14px;line-height:1.7;color:#9aa3b2;text-align:center;">
+                  Keep the attached agreement PDF for your records. If you ever need another copy, just reply to this email.
                 </div>
-              </td>
-            </tr>
-            <tr>
-              <td align="center" style="padding:22px 8px 0;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;border:1px solid #232939;border-radius:18px;background:#0d1119;">
-                  <tr>
-                    <td style="padding:20px 22px;">
-                      <div style="font-size:13px;line-height:1.85;color:#c6ccdc;">
-                        <div><strong>Agreement version:</strong> ${escapeHtml(version)}</div>
-                        <div><strong>Record ID:</strong> ${escapeHtml(recordId)}</div>
-                        <div><strong>Accepted at:</strong> ${escapeHtml(acceptedAt)}</div>
-                      </div>
-                    </td>
-                  </tr>
-                </table>
               </td>
             </tr>
           </table>
@@ -1359,21 +1346,11 @@ function buildAcceptedAgreementEmailHtml({ contract, artifact, recipientName }) 
     </table>`;
 }
 
-function buildAcceptedAgreementEmailText({ contract, artifact, recipientName }) {
-  const greetingName = String(recipientName || "").trim() || "there";
-  const version = String(contract?.version || "").trim() || "--";
-  const recordId = String(artifact?.recordId || "").trim() || "--";
-  const acceptedAt = formatClickwrapAcceptanceTimestamp(artifact?.acceptedAt) || "--";
+function buildAcceptedAgreementEmailText() {
   return [
-    `Hi ${greetingName},`,
-    "",
     "Welcome to Shipide!",
     "",
     "Your account is now active. The PDF copy of your accepted Shipide service agreement is attached to this email.",
-    "",
-    `Agreement version: ${version}`,
-    `Record ID: ${recordId}`,
-    `Accepted at: ${acceptedAt}`,
     "",
     "Keep this PDF for your records.",
   ].join("\n");
@@ -1404,6 +1381,68 @@ async function sendAcceptedAgreementEmail(env, { email, contract, artifact, pdfB
       },
     ],
   });
+}
+
+function buildAcceptedAgreementPreviewDocument(subject, emailHtml) {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(subject)}</title>
+    <style>
+      body {
+        margin: 0;
+        background: #050913;
+      }
+    </style>
+  </head>
+  <body>
+    ${emailHtml}
+  </body>
+</html>`;
+}
+
+function buildAcceptedAgreementTestProfile(toEmail) {
+  return {
+    companyName: "Atelier Meridian",
+    contactName: "Claire Dupont",
+    contactEmail: normalizeEmail(toEmail),
+    contactPhone: "+32 2 555 01 29",
+    billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+    taxId: "BE0123456789",
+    customerId: "SHIPIDE-TEST",
+  };
+}
+
+async function buildAcceptedAgreementTestPayload(env, request, toEmail, options = {}) {
+  const includePdf = options?.includePdf === true;
+  const contract = await getActiveClickwrapContract(env);
+  const acceptedAt = new Date().toISOString();
+  const recordId = createClickwrapPreviewRecordId();
+  const profile = buildAcceptedAgreementTestProfile(toEmail);
+  const artifact = {
+    recordId,
+    filename: buildClickwrapPreviewDownloadName(contract, recordId),
+    acceptedAt,
+  };
+  let pdfBytes = null;
+  if (includePdf) {
+    pdfBytes = await buildClickwrapPreviewPdf(request, {
+      contract,
+      email: toEmail,
+      profile,
+      ipAddress: getRequestIpAddress(request.headers),
+      recordId,
+      acceptedAt,
+    });
+  }
+  return {
+    contract,
+    artifact,
+    pdfBytes,
+    recipientName: profile.contactName,
+  };
 }
 
 function normalizeClientBillingPreference(value) {
@@ -4731,6 +4770,86 @@ async function handleAdminReportsSendTest(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not send test reports email." }, 500);
+  }
+}
+
+async function handleAdminAgreementPreviewTest(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to preview agreement emails." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    return jsonResponse({ error: "A valid test email is required." }, 400);
+  }
+  try {
+    const payload = await buildAcceptedAgreementTestPayload(env, request, toEmail, {
+      includePdf: false,
+    });
+    const subject = buildAcceptedAgreementEmailSubject(payload.contract);
+    return jsonResponse({
+      ok: true,
+      to: toEmail,
+      subject,
+      html: buildAcceptedAgreementPreviewDocument(
+        subject,
+        buildAcceptedAgreementEmailHtml({
+          contract: payload.contract,
+          artifact: payload.artifact,
+          recipientName: payload.recipientName,
+        })
+      ),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not build agreement email preview." }, 500);
+  }
+}
+
+async function handleAdminAgreementSendTest(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send agreement tests." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    return jsonResponse({ error: "A valid test email is required." }, 400);
+  }
+  try {
+    const payload = await buildAcceptedAgreementTestPayload(env, request, toEmail, {
+      includePdf: true,
+    });
+    const resendResponse = await sendAcceptedAgreementEmail(env, {
+      email: toEmail,
+      contract: payload.contract,
+      artifact: payload.artifact,
+      pdfBytes: payload.pdfBytes,
+      recipientName: payload.recipientName,
+    });
+    return jsonResponse({
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not send test agreement email." }, 500);
   }
 }
 

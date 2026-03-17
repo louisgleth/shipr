@@ -1365,6 +1365,8 @@ const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmai
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
+const adminAgreementPreviewButton = document.getElementById("adminAgreementPreview");
+const adminAgreementSendTestButton = document.getElementById("adminAgreementSendTest");
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
@@ -4012,6 +4014,8 @@ function setAdminBillingBusy(isBusy) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
   if (adminReportsSendTestButton) adminReportsSendTestButton.disabled = adminBillingBusy;
+  if (adminAgreementPreviewButton) adminAgreementPreviewButton.disabled = adminBillingBusy;
+  if (adminAgreementSendTestButton) adminAgreementSendTestButton.disabled = adminBillingBusy;
 }
 
 function setAdminBillingStatus(message = "", options = {}) {
@@ -4255,6 +4259,83 @@ async function sendAdminReportsTestEmail() {
       tone: "error",
     });
     showToast(error?.message || tr("Could not send reports test email."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function previewAdminAgreementEmail() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  const previewWindow = window.open("", "_blank");
+  if (!previewWindow) {
+    setAdminBillingStatus(tr("Allow pop-ups to preview the agreement email."), {
+      tone: "error",
+    });
+    return;
+  }
+  previewWindow.document.write("<!doctype html><title>Loading...</title><body style=\"margin:0;background:#050913\"></body>");
+  previewWindow.document.close();
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/agreements/preview-test", {
+      method: "POST",
+      body: JSON.stringify({ toEmail }),
+    });
+    previewWindow.document.open();
+    previewWindow.document.write(String(payload?.html || ""));
+    previewWindow.document.close();
+    setAdminBillingStatus(
+      tr("Agreement email preview opened for {email}.", {
+        email: String(payload?.to || toEmail),
+      }),
+      { tone: "success" }
+    );
+  } catch (error) {
+    previewWindow.close();
+    setAdminBillingStatus(error?.message || tr("Could not preview agreement email."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not preview agreement email."), { tone: "error" });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminAgreementTestEmail() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/agreements/send-test", {
+      method: "POST",
+      timeoutMs: 45000,
+      body: JSON.stringify({ toEmail }),
+    });
+    setAdminBillingStatus(
+      tr("Agreement test email sent to {email}.", {
+        email: String(payload?.to || toEmail),
+      }),
+      { tone: "success" }
+    );
+    showToast(tr("Agreement test email sent."), { tone: "success" });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send test agreement email."), {
+      tone: "error",
+    });
+    showToast(error?.message || tr("Could not send test agreement email."), {
+      tone: "error",
+    });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -11876,6 +11957,18 @@ if (adminBillingSendTestSequenceButton) {
 if (adminReportsSendTestButton) {
   adminReportsSendTestButton.addEventListener("click", async () => {
     await sendAdminReportsTestEmail();
+  });
+}
+
+if (adminAgreementPreviewButton) {
+  adminAgreementPreviewButton.addEventListener("click", async () => {
+    await previewAdminAgreementEmail();
+  });
+}
+
+if (adminAgreementSendTestButton) {
+  adminAgreementSendTestButton.addEventListener("click", async () => {
+    await sendAdminAgreementTestEmail();
   });
 }
 
