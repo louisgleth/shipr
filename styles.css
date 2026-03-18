@@ -4786,6 +4786,15 @@ body {
    RECEIPT
    ═══════════════════════════════════════════════ */
 
+.receipt-export-host {
+  position: fixed;
+  top: 0;
+  left: -200vw;
+  width: 860px;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .receipt-document {
   width: min(860px, 100%);
   aspect-ratio: 210 / 297;

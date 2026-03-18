@@ -1769,24 +1769,8 @@
       </div>
     </div>
 
-    <div class="receipt-modal-overlay is-closed" id="receiptModal">
-      <div class="receipt-modal">
-        <div class="csv-modal-header">
-          <span class="csv-modal-title">Receipt</span>
-          <button type="button" class="csv-modal-close" id="receiptModalClose">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div class="receipt-stage" id="receiptStage">
-          <div class="receipt-document" id="receiptDocument"></div>
-        </div>
-        <div class="panel-actions receipt-actions">
-          <button type="button" class="btn btn-secondary btn-accent" id="receiptDownloadPdf">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
-            <span>Download Receipt PDF</span>
-          </button>
-        </div>
-      </div>
+    <div class="receipt-export-host" aria-hidden="true">
+      <div class="receipt-document" id="receiptDocument"></div>
     </div>
 
     <div class="restricted-modal-overlay is-closed" id="restrictedGoodsModal">

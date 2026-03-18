@@ -7466,17 +7466,74 @@ function measureReceiptRegions(receiptDoc, scale) {
   return { headerH, tableHeadY, tableHeadH, rows, disclaimer, footer };
 }
 
-async function downloadReceiptPdfFile() {
+function getReceiptPdfFilename() {
+  return `receipt-${accountActiveRecord?.id || tr("label-order")}.pdf`;
+}
+
+function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
+  if (!triggerButton) return () => {};
+  const label = triggerButton.querySelector("span");
+  const originalLabel = label ? label.textContent : "";
+  triggerButton.disabled = Boolean(isBusy);
+  if (label) {
+    label.textContent = isBusy ? tr("Preparing receipt PDF...") : (idleLabel || originalLabel);
+  }
+  return () => {
+    triggerButton.disabled = false;
+    if (label) {
+      label.textContent = idleLabel || originalLabel;
+    }
+  };
+}
+
+function writeReceiptPdfLoadingWindow(previewWindow) {
+  if (!previewWindow) return;
+  try {
+    previewWindow.document.write(
+      `<!doctype html><title>${escapeHtml(tr("Preparing receipt PDF..."))}</title><body style="margin:0;background:#050913;color:#f1f4fb;font:14px 'IBM Plex Sans',sans-serif;display:grid;place-items:center;min-height:100vh;">${escapeHtml(tr("Preparing receipt PDF..."))}</body>`
+    );
+    previewWindow.document.close();
+  } catch (_error) {
+    // Ignore preview bootstrap errors and fall back later.
+  }
+}
+
+function openReceiptPdfTarget(blob, filename, previewWindow = null) {
+  const url = URL.createObjectURL(blob);
+  let opened = false;
+
+  if (previewWindow && !previewWindow.closed) {
+    try {
+      previewWindow.location.replace(url);
+      previewWindow.opener = null;
+      opened = true;
+    } catch (_error) {
+      opened = false;
+    }
+  }
+
+  if (!opened) {
+    try {
+      const fallbackWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (fallbackWindow) {
+        fallbackWindow.opener = null;
+        opened = true;
+      }
+    } catch (_error) {
+      opened = false;
+    }
+  }
+
+  if (!opened) {
+    triggerFileDownload(url, filename);
+  }
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function buildReceiptPdfExport() {
   if (!accountActiveRecord) return;
   renderReceiptDetails(accountActiveRecord);
-
-  const buttonLabel = receiptDownloadPdf?.querySelector("span");
-  if (receiptDownloadPdf) {
-    receiptDownloadPdf.disabled = true;
-  }
-  if (buttonLabel) {
-    buttonLabel.textContent = tr("Preparing receipt PDF...");
-  }
 
   try {
     if (
@@ -7536,6 +7593,7 @@ async function downloadReceiptPdfFile() {
       } else {
         /* ---- multi-page: DOM-aware layout ---- */
         const headerPt = toPt(regions.headerH);
+        const tableGapPt = toPt(Math.max(0, regions.tableHeadY - regions.headerH));
         const tableHeadPt = toPt(regions.tableHeadH);
         const footerPt = regions.footer ? toPt(regions.footer.h) : 0;
         const disclaimerPt = regions.disclaimer ? toPt(regions.disclaimer.h) : 0;
@@ -7560,7 +7618,7 @@ async function downloadReceiptPdfFile() {
         const rowCount = regions.rows.length;
 
         /* page 1 budget: header + table head already consume space */
-        let budget = contentBudget - headerPt - tableHeadPt;
+        let budget = contentBudget - headerPt - tableGapPt - tableHeadPt;
         let pageRows = [];
 
         while (rowIdx < rowCount) {
@@ -7596,7 +7654,7 @@ async function downloadReceiptPdfFile() {
           if (pages[p].firstPage) {
             /* draw header (logo, billing, summary) */
             drawRegion(0, regions.headerH, cy);
-            cy += headerPt;
+            cy += headerPt + tableGapPt;
             /* draw table head (title + column headers) */
             drawRegion(regions.tableHeadY, regions.tableHeadH, cy);
             cy += tableHeadPt;
@@ -7624,9 +7682,10 @@ async function downloadReceiptPdfFile() {
           drawFooter();
         }
       }
-      pdf.save(`receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
-      showToast(tr("Receipt PDF ready."), { tone: "success" });
-      return;
+      return {
+        blob: pdf.output("blob"),
+        filename: getReceiptPdfFilename(),
+      };
     }
 
     const viewModel = buildReceiptViewModel(accountActiveRecord);
@@ -7653,21 +7712,71 @@ async function downloadReceiptPdfFile() {
       fontSize: 11,
       lineHeight: 14,
     });
-    const url = URL.createObjectURL(blob);
-    triggerFileDownload(url, `receipt-${accountActiveRecord.id || tr("label-order")}.pdf`);
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    return {
+      blob,
+      filename: getReceiptPdfFilename(),
+    };
   } catch (error) {
-    showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
+    throw error;
   } finally {
     if (receiptDocument) {
       receiptDocument.classList.remove("is-exporting");
     }
-    if (receiptDownloadPdf) {
-      receiptDownloadPdf.disabled = false;
+  }
+}
+
+async function downloadReceiptPdfFile() {
+  if (!accountActiveRecord) return;
+  const restoreButton = setReceiptActionBusy(
+    receiptDownloadPdf,
+    true,
+    tr("Download Receipt PDF")
+  );
+  try {
+    const exportData = await buildReceiptPdfExport();
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate receipt PDF."));
     }
-    if (buttonLabel) {
-      buttonLabel.textContent = tr("Download Receipt PDF");
+    const url = URL.createObjectURL(exportData.blob);
+    triggerFileDownload(url, exportData.filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showToast(tr("Receipt PDF ready."), { tone: "success" });
+  } catch (error) {
+    showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
+  } finally {
+    restoreButton();
+  }
+}
+
+async function openReceiptPdfFile() {
+  if (!accountActiveRecord) return;
+  const restoreButton = setReceiptActionBusy(openReceiptModalButton, true, tr("View Receipt"));
+  let previewWindow = null;
+  try {
+    previewWindow = window.open("", "_blank", "noopener,noreferrer");
+  } catch (_error) {
+    previewWindow = null;
+  }
+  writeReceiptPdfLoadingWindow(previewWindow);
+
+  try {
+    const exportData = await buildReceiptPdfExport();
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate receipt PDF."));
     }
+    openReceiptPdfTarget(exportData.blob, exportData.filename, previewWindow);
+    showToast(tr("Receipt PDF ready."), { tone: "success" });
+  } catch (error) {
+    if (previewWindow && !previewWindow.closed) {
+      try {
+        previewWindow.close();
+      } catch (_closeError) {
+        // Ignore close errors.
+      }
+    }
+    showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
+  } finally {
+    restoreButton();
   }
 }
 
@@ -12422,10 +12531,9 @@ if (accountDownloadPdf) {
 }
 
 if (openReceiptModalButton) {
-  openReceiptModalButton.addEventListener("click", () => {
-    if (!accountActiveRecord) return;
-    renderReceiptDetails(accountActiveRecord);
-    setReceiptModalOpen(true);
+  openReceiptModalButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    void openReceiptPdfFile();
   });
 }
 
