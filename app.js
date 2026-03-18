@@ -2390,7 +2390,10 @@ function showToast(message, options = {}) {
   if (!toastStack) return;
   const text = String(message || "").trim();
   if (!text) return;
-  const { title = "", tone = "info", duration = 3400 } = options;
+  const rawTone = String(options?.tone || "info").trim().toLowerCase();
+  const tone = rawTone === "success" ? "success" : rawTone === "error" || rawTone === "warning" ? "error" : "";
+  if (!tone) return;
+  const { title = "", duration = 3400 } = options;
   const toast = document.createElement("div");
   toast.className = `toast is-${tone}`;
 
@@ -7237,22 +7240,17 @@ function buildReceiptViewModel(record) {
   };
 }
 
-function buildReceiptDocumentHtml(record) {
-  const viewModel = buildReceiptViewModel(record);
+function buildReceiptRowsHtml(viewModel, rowIndices = null) {
   const {
     totals,
-    profile,
-    serviceType,
     labels,
-    issuedAt,
-    receiptNumber,
-    quantity,
-    vatLabel,
-    billingAddressLines,
   } = viewModel;
+  const scopedLabels = Array.isArray(rowIndices)
+    ? rowIndices.map((index) => labels[index]).filter(Boolean)
+    : labels;
 
-  const receiptRows = labels.length
-    ? labels
+  return scopedLabels.length
+    ? scopedLabels
         .map((label) => {
           const data = label?.data || {};
           const recipientName = data.recipientName || "--";
@@ -7271,125 +7269,190 @@ function buildReceiptDocumentHtml(record) {
         })
         .join("")
     : `<tr><td colspan="4"><span class="receipt-cell-primary" style="color:var(--muted)">--</span></td></tr>`;
+}
 
+function buildReceiptHeaderHtml(viewModel) {
+  const {
+    profile,
+    serviceType,
+    issuedAt,
+    quantity,
+    vatLabel,
+    billingAddressLines,
+    totals,
+  } = viewModel;
   const profileName = profile?.companyName || "--";
   const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
   const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
   const accountManager = profile?.accountManager || "--";
 
   return `
-    <div class="receipt-sheet">
-      <div class="receipt-sheet-body">
-        <div class="receipt-topline">
-          <div class="receipt-brand">
-            <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
-          </div>
-          <div class="receipt-top-meta">
-            <span class="receipt-chip">${escapeHtml(tr("Receipt"))}</span>
-            <div class="receipt-top-meta-lines mono">
-              <span>${escapeHtml(issuedAt)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="receipt-grid">
-          <section class="receipt-panel">
-            <div class="receipt-panel-title">${escapeHtml(tr("Issued To"))}</div>
-            <div class="receipt-address">
-              <div class="receipt-address-block">
-                <span class="receipt-address-name">${escapeHtml(profileName)}</span>
-                <div class="receipt-address-lines">
-                  <span>${escapeHtml(contactLine)}</span>
-                  ${billingAddressLines
-                    .map((line) => `<span>${escapeHtml(line)}</span>`)
-                    .join("")}
-                </div>
-              </div>
-              <div class="receipt-address-meta mono">
-                <span>${escapeHtml(taxLine)}</span>
-                <span>${escapeHtml(profile?.contactPhone || "--")}</span>
-                <span>${escapeHtml(tr("Account Manager"))}: ${escapeHtml(accountManager)}</span>
-              </div>
-            </div>
-          </section>
-
-          <section class="receipt-panel receipt-panel-summary">
-            <div class="receipt-panel-title">${escapeHtml(tr("Summary"))}</div>
-            <div class="receipt-kv-grid receipt-kv-grid-compact">
-              <div class="receipt-kv">
-                <span class="receipt-kv-key">${escapeHtml(tr("Service"))}</span>
-                <span class="receipt-kv-value">${escapeHtml(serviceType)}</span>
-              </div>
-              <div class="receipt-kv">
-                <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
-                <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
-              </div>
-              <div class="receipt-kv">
-                <span class="receipt-kv-key">${escapeHtml(tr("Subtotal (EX. VAT)"))}</span>
-                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalExVat))}</span>
-              </div>
-              <div class="receipt-kv">
-                <span class="receipt-kv-key">${escapeHtml(vatLabel)}</span>
-                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.vatAmount))}</span>
-              </div>
-              <div class="receipt-kv receipt-kv-total">
-                <span class="receipt-kv-key">${escapeHtml(tr("Total (INCL. VAT)"))}</span>
-                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
-              </div>
-              <div class="receipt-kv">
-                <span class="receipt-kv-key">${escapeHtml(tr("Average Unit Rate"))}</span>
-                <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.unitExVat))}</span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <section class="receipt-table-card">
-          <div class="receipt-table-head">
-            <div class="receipt-table-copy">
-              <span class="receipt-table-title">${escapeHtml(tr("Generated Labels"))}</span>
-              <span class="receipt-table-sub">${escapeHtml(tr("One line per generated label."))}</span>
-            </div>
-            <span class="receipt-table-badge mono">${escapeHtml(`${quantity} ${tr("labels")}`)}</span>
-          </div>
-          <div class="receipt-table-wrap">
-            <table class="receipt-table">
-              <thead>
-                <tr>
-                  <th>${escapeHtml(tr("Label"))}</th>
-                  <th>${escapeHtml(tr("Tracking"))}</th>
-                  <th>${escapeHtml(tr("Recipient"))}</th>
-                  <th>${escapeHtml(tr("Amount"))}</th>
-                </tr>
-              </thead>
-              <tbody>${receiptRows}</tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="receipt-disclaimer">
-          <svg class="receipt-disclaimer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path d="M12 3 2.8 19a1 1 0 0 0 .87 1.5h16.66A1 1 0 0 0 21.2 19L12 3Z"></path>
-            <path d="M12 9v5"></path>
-            <circle cx="12" cy="17.2" r="1"></circle>
-          </svg>
-          <div class="receipt-disclaimer-copy">
-            <span class="receipt-disclaimer-title">${escapeHtml(tr("Tax Notice"))}</span>
-            <span class="receipt-disclaimer-text">${escapeHtml(
-              tr(
-                "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
-              )
-            )}</span>
-          </div>
-        </section>
-
+    <div class="receipt-topline">
+      <div class="receipt-brand">
+        <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
       </div>
-      <div class="receipt-footer">
-        <span class="receipt-footer-left">Shipide Logistics SRL · billing@shipide.com</span>
-        <span class="receipt-footer-right">${escapeHtml(receiptNumber)}</span>
+      <div class="receipt-top-meta">
+        <span class="receipt-chip">${escapeHtml(tr("Receipt"))}</span>
+        <div class="receipt-top-meta-lines mono">
+          <span>${escapeHtml(issuedAt)}</span>
+        </div>
       </div>
     </div>
+
+    <div class="receipt-grid">
+      <section class="receipt-panel">
+        <div class="receipt-panel-title">${escapeHtml(tr("Issued To"))}</div>
+        <div class="receipt-address">
+          <div class="receipt-address-block">
+            <span class="receipt-address-name">${escapeHtml(profileName)}</span>
+            <div class="receipt-address-lines">
+              <span>${escapeHtml(contactLine)}</span>
+              ${billingAddressLines
+                .map((line) => `<span>${escapeHtml(line)}</span>`)
+                .join("")}
+            </div>
+          </div>
+          <div class="receipt-address-meta mono">
+            <span>${escapeHtml(taxLine)}</span>
+            <span>${escapeHtml(profile?.contactPhone || "--")}</span>
+            <span>${escapeHtml(tr("Account Manager"))}: ${escapeHtml(accountManager)}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="receipt-panel receipt-panel-summary">
+        <div class="receipt-panel-title">${escapeHtml(tr("Summary"))}</div>
+        <div class="receipt-kv-grid receipt-kv-grid-compact">
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Service"))}</span>
+            <span class="receipt-kv-value">${escapeHtml(serviceType)}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Subtotal (EX. VAT)"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalExVat))}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(vatLabel)}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.vatAmount))}</span>
+          </div>
+          <div class="receipt-kv receipt-kv-total">
+            <span class="receipt-kv-key">${escapeHtml(tr("Total (INCL. VAT)"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Average Unit Rate"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.unitExVat))}</span>
+          </div>
+        </div>
+      </section>
+    </div>
   `;
+}
+
+function buildReceiptTableCardHtml(viewModel, options = {}) {
+  const {
+    rowIndices = null,
+    showSectionHead = true,
+    showColumnHead = true,
+  } = options;
+  const receiptRows = buildReceiptRowsHtml(viewModel, rowIndices);
+  const quantityValue = Array.isArray(rowIndices) ? rowIndices.length : viewModel.quantity;
+
+  return `
+    <section class="receipt-table-card${showSectionHead ? "" : " is-continuation"}">
+      ${showSectionHead ? `
+        <div class="receipt-table-head">
+          <div class="receipt-table-copy">
+            <span class="receipt-table-title">${escapeHtml(tr("Generated Labels"))}</span>
+            <span class="receipt-table-sub">${escapeHtml(tr("One line per generated label."))}</span>
+          </div>
+          <span class="receipt-table-badge mono">${escapeHtml(`${quantityValue} ${tr("labels")}`)}</span>
+        </div>
+      ` : ""}
+      <div class="receipt-table-wrap">
+        <table class="receipt-table">
+          ${showColumnHead ? `
+            <thead>
+              <tr>
+                <th>${escapeHtml(tr("Label"))}</th>
+                <th>${escapeHtml(tr("Tracking"))}</th>
+                <th>${escapeHtml(tr("Recipient"))}</th>
+                <th>${escapeHtml(tr("Amount"))}</th>
+              </tr>
+            </thead>
+          ` : ""}
+          <tbody>${receiptRows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function buildReceiptDisclaimerHtml() {
+  return `
+    <section class="receipt-disclaimer">
+      <svg class="receipt-disclaimer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <path d="M12 3 2.8 19a1 1 0 0 0 .87 1.5h16.66A1 1 0 0 0 21.2 19L12 3Z"></path>
+        <path d="M12 9v5"></path>
+        <circle cx="12" cy="17.2" r="1"></circle>
+      </svg>
+      <div class="receipt-disclaimer-copy">
+        <span class="receipt-disclaimer-title">${escapeHtml(tr("Tax Notice"))}</span>
+        <span class="receipt-disclaimer-text">${escapeHtml(
+          tr(
+            "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
+          )
+        )}</span>
+      </div>
+    </section>
+  `;
+}
+
+function buildReceiptFooterHtml(receiptNumber) {
+  return `
+    <div class="receipt-footer">
+      <span class="receipt-footer-left">Shipide Logistics SRL · billing@shipide.com</span>
+      <span class="receipt-footer-right">${escapeHtml(receiptNumber)}</span>
+    </div>
+  `;
+}
+
+function buildReceiptPageHtml(viewModel, options = {}) {
+  const {
+    rowIndices = null,
+    showHeader = true,
+    showTableCard = true,
+    showSectionHead = true,
+    showColumnHead = true,
+    showDisclaimer = true,
+  } = options;
+
+  return `
+    <div class="receipt-sheet">
+      <div class="receipt-sheet-body">
+        ${showHeader ? buildReceiptHeaderHtml(viewModel) : ""}
+        ${showTableCard ? buildReceiptTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
+        ${showDisclaimer ? buildReceiptDisclaimerHtml() : ""}
+      </div>
+      ${buildReceiptFooterHtml(viewModel.receiptNumber)}
+    </div>
+  `;
+}
+
+function buildReceiptDocumentHtml(record) {
+  const viewModel = buildReceiptViewModel(record);
+  return buildReceiptPageHtml(viewModel, {
+    rowIndices: viewModel.labels.map((_, index) => index),
+    showHeader: true,
+    showTableCard: true,
+    showSectionHead: true,
+    showColumnHead: true,
+    showDisclaimer: true,
+  });
 }
 
 function renderReceiptDetails(record) {
@@ -7417,17 +7480,6 @@ function downloadActiveAccountLabelPdf() {
 
 /* ---- receipt PDF helpers ---- */
 
-function extractCanvasRegion(source, srcY, srcH) {
-  const c = document.createElement("canvas");
-  c.width = source.width;
-  c.height = Math.max(1, Math.round(srcH));
-  c.getContext("2d").drawImage(
-    source, 0, Math.round(srcY), source.width, Math.round(srcH),
-    0, 0, c.width, c.height
-  );
-  return c;
-}
-
 function measureReceiptRegions(receiptDoc, scale) {
   const docRect = receiptDoc.getBoundingClientRect();
   const rel = (el) => {
@@ -7441,13 +7493,17 @@ function measureReceiptRegions(receiptDoc, scale) {
   const gridPos = rel(grid);
   const headerH = gridPos ? gridPos.y + gridPos.h : 0;
 
-  /* table head = .receipt-table-head + thead combined */
+  /* table layout */
   const tableCard = receiptDoc.querySelector(".receipt-table-card");
+  const tableSectionHead = receiptDoc.querySelector(".receipt-table-head");
   const thead = receiptDoc.querySelector(".receipt-table thead");
   const tableCardPos = rel(tableCard);
+  const tableSectionHeadPos = rel(tableSectionHead);
   const theadPos = rel(thead);
-  const tableHeadY = tableCardPos ? tableCardPos.y : 0;
-  const tableHeadH = theadPos ? (theadPos.y + theadPos.h) - tableHeadY : 0;
+  const tableCardY = tableCardPos ? tableCardPos.y : 0;
+  const tableGapY = Math.max(0, tableCardY - headerH);
+  const tableSectionHeadH = tableSectionHeadPos ? tableSectionHeadPos.h : 0;
+  const theadH = theadPos ? theadPos.h : 0;
 
   /* individual rows */
   const rows = [];
@@ -7463,7 +7519,7 @@ function measureReceiptRegions(receiptDoc, scale) {
   /* footer */
   const footer = rel(receiptDoc.querySelector(".receipt-footer"));
 
-  return { headerH, tableHeadY, tableHeadH, rows, disclaimer, footer };
+  return { headerH, tableGapY, tableSectionHeadH, theadH, rows, disclaimer, footer };
 }
 
 function getReceiptPdfFilename() {
@@ -7565,8 +7621,6 @@ async function buildReceiptPdfExport() {
       /* ---- wait a frame so layout settles, then measure DOM regions ---- */
       await new Promise((r) => window.requestAnimationFrame(r));
       const regions = measureReceiptRegions(receiptDocument, scaleFactor);
-
-      /* ---- capture the full receipt as a single image ---- */
       const fullCanvas = await window.html2canvas(receiptDocument, h2cOpts);
 
       /* restore table scroll */
@@ -7593,32 +7647,21 @@ async function buildReceiptPdfExport() {
       } else {
         /* ---- multi-page: DOM-aware layout ---- */
         const headerPt = toPt(regions.headerH);
-        const tableGapPt = toPt(Math.max(0, regions.tableHeadY - regions.headerH));
-        const tableHeadPt = toPt(regions.tableHeadH);
+        const tableGapPt = toPt(regions.tableGapY);
+        const tableSectionHeadPt = toPt(regions.tableSectionHeadH);
+        const theadPt = toPt(regions.theadH);
         const footerPt = regions.footer ? toPt(regions.footer.h) : 0;
         const disclaimerPt = regions.disclaimer ? toPt(regions.disclaimer.h) : 0;
         const footerGap = 8;
         const contentBudget = usableH - footerPt - footerGap;
-
-        /* helper: draw a canvas region into the PDF */
-        const drawRegion = (srcY, srcH, dstY) => {
-          if (srcH < 1) return;
-          const img = extractCanvasRegion(fullCanvas, srcY, srcH);
-          pdf.addImage(img.toDataURL("image/png"), "PNG", margin, dstY, cW, toPt(srcH), undefined, "FAST");
-        };
-        const drawFooter = () => {
-          if (!regions.footer) return;
-          const fy = pageHeight - margin - footerPt;
-          drawRegion(regions.footer.y, regions.footer.h, fy);
-        };
 
         /* ---- assign rows to pages ---- */
         const pages = [];
         let rowIdx = 0;
         const rowCount = regions.rows.length;
 
-        /* page 1 budget: header + table head already consume space */
-        let budget = contentBudget - headerPt - tableGapPt - tableHeadPt;
+        /* page 1 budget: header + card gap + section header + table columns */
+        let budget = contentBudget - headerPt - tableGapPt - tableSectionHeadPt - theadPt;
         let pageRows = [];
 
         while (rowIdx < rowCount) {
@@ -7631,8 +7674,8 @@ async function buildReceiptPdfExport() {
             /* current page is full */
             pages.push({ firstPage: pages.length === 0, rows: pageRows });
             pageRows = [];
-            /* subsequent page budget: only table head */
-            budget = contentBudget - tableHeadPt;
+            /* subsequent page budget: table column head only */
+            budget = contentBudget - theadPt;
           }
         }
 
@@ -7645,41 +7688,36 @@ async function buildReceiptPdfExport() {
           pages.push({ firstPage: false, rows: [], hasDisclaimer: true });
         }
 
+        const viewModel = buildReceiptViewModel(accountActiveRecord);
+        const renderExportPage = async (pageConfig) => {
+          receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
+            rowIndices: pageConfig.rows,
+            showHeader: pageConfig.firstPage,
+            showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+            showSectionHead: pageConfig.firstPage,
+            showColumnHead: true,
+            showDisclaimer: Boolean(pageConfig.hasDisclaimer),
+          });
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+          return window.html2canvas(receiptDocument, h2cOpts);
+        };
+
         /* ---- render pages ---- */
         for (let p = 0; p < pages.length; p++) {
+          const pageCanvas = await renderExportPage(pages[p]);
           if (p > 0) pdf.addPage();
           paintBg();
-          let cy = margin;
-
-          if (pages[p].firstPage) {
-            /* draw header (logo, billing, summary) */
-            drawRegion(0, regions.headerH, cy);
-            cy += headerPt + tableGapPt;
-            /* draw table head (title + column headers) */
-            drawRegion(regions.tableHeadY, regions.tableHeadH, cy);
-            cy += tableHeadPt;
-          } else {
-            /* continuation page: repeat table head */
-            drawRegion(regions.tableHeadY, regions.tableHeadH, cy);
-            cy += tableHeadPt;
-          }
-
-          /* draw rows */
-          for (const ri of pages[p].rows) {
-            const row = regions.rows[ri];
-            drawRegion(row.y, row.h, cy);
-            cy += toPt(row.h);
-          }
-
-          /* draw disclaimer on last page */
-          if (pages[p].hasDisclaimer && regions.disclaimer) {
-            cy += 4;
-            drawRegion(regions.disclaimer.y, regions.disclaimer.h, cy);
-            cy += disclaimerPt;
-          }
-
-          /* footer at bottom of every page */
-          drawFooter();
+          const pagePdfH = (pageCanvas.height * cW) / pageCanvas.width;
+          pdf.addImage(
+            pageCanvas.toDataURL("image/png"),
+            "PNG",
+            margin,
+            margin,
+            cW,
+            pagePdfH,
+            undefined,
+            "FAST"
+          );
         }
       }
       return {
