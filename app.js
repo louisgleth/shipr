@@ -85,7 +85,7 @@ const AUTH_REGISTER_STEP_IN_MS = 260;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
 const CSV_TABLE_PAGE_SIZE = 10;
 const AUTH_PARTICLES_WARMUP_STEPS = 42;
-const VAT_RATE = 0.21;
+const VAT_RATE = 0;
 const TOTAL_STEPS = 4;
 const CUSTOMS_MAX_ITEMS = 12;
 const REPORT_RANGE_PRESETS = [7, 30, 90, 365];
@@ -292,7 +292,7 @@ const TRANSLATIONS = {
   "Contact Email": { fr: "E-mail contact", nl: "E-mail contact" },
   "Phone": { fr: "Téléphone", nl: "Telefoon" },
   "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "N° TVA", nl: "Btw-nummer" },
+  "Tax ID": { fr: "Identifiant fiscal", nl: "Fiscaal nummer" },
   "Customer ID": { fr: "ID client", nl: "Klant-ID" },
   "All registration fields are required except Customer ID.": {
     fr: "Tous les champs d’inscription sont requis sauf l’ID client.",
@@ -554,17 +554,19 @@ const TRANSLATIONS = {
   "Phone": { fr: "Téléphone", nl: "Telefoon" },
   "Phone Number": { fr: "Numéro de téléphone", nl: "Telefoonnummer" },
   "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "N° TVA", nl: "Btw-nummer" },
+  "Tax ID": { fr: "Identifiant fiscal", nl: "Fiscaal nummer" },
   "Account Manager": { fr: "Account manager", nl: "Accountmanager" },
   "Monthly Invoice Preview": { fr: "Aperçu de facture mensuelle", nl: "Voorbeeld maandfactuur" },
   "Label service": { fr: "Service d’étiquette", nl: "Labelservice" },
-  "Subtotal (ex VAT)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "Subtotal (ex. vat)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "Subtotal (EX. VAT)": { fr: "Sous-total (hors TVA)", nl: "Subtotaal (excl. btw)" },
-  "VAT (21%)": { fr: "TVA (21%)", nl: "Btw (21%)" },
-  "Total (incl VAT)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
-  "Total (incl. vat)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
-  "Total (INCL. VAT)": { fr: "Total (TVA incluse)", nl: "Totaal (incl. btw)" },
+  "Subtotal": { fr: "Sous-total", nl: "Subtotaal" },
+  "Subtotal (ex VAT)": { fr: "Sous-total", nl: "Subtotaal" },
+  "Subtotal (ex. vat)": { fr: "Sous-total", nl: "Subtotaal" },
+  "Subtotal (EX. VAT)": { fr: "Sous-total", nl: "Subtotaal" },
+  "VAT (21%)": { fr: "Taxe", nl: "Belasting" },
+  "Total": { fr: "Total", nl: "Totaal" },
+  "Total (incl VAT)": { fr: "Total", nl: "Totaal" },
+  "Total (incl. vat)": { fr: "Total", nl: "Totaal" },
+  "Total (INCL. VAT)": { fr: "Total", nl: "Totaal" },
   "This order will be added to your monthly invoice. If you want your information to be changed, please contact your account manager.": {
     fr: "Cette commande sera ajoutée à votre facture mensuelle. Si vous souhaitez modifier vos informations, contactez votre account manager.",
     nl: "Deze bestelling wordt toegevoegd aan je maandfactuur. Als je gegevens moeten wijzigen, neem contact op met je accountmanager.",
@@ -595,7 +597,8 @@ const TRANSLATIONS = {
   "No open invoices.": { fr: "Aucune facture ouverte.", nl: "Geen open facturen." },
   "No paid invoices yet.": { fr: "Aucune facture payée pour l’instant.", nl: "Nog geen betaalde facturen." },
   "Current Balance": { fr: "Solde actuel", nl: "Huidig saldo" },
-  "Order Total (INCL. VAT)": { fr: "Total commande (TVA incluse)", nl: "Besteltotaal (incl. btw)" },
+  "Order Total": { fr: "Total commande", nl: "Besteltotaal" },
+  "Order Total (INCL. VAT)": { fr: "Total commande", nl: "Besteltotaal" },
   "Bank transfer top-ups are asynchronous. Add funds now and use your balance once credited.": {
     fr: "Les recharges par virement sont asynchrones. Ajoutez des fonds maintenant et utilisez votre solde une fois crédité.",
     nl: "Opwaarderingen via bankoverschrijving zijn asynchroon. Voeg nu saldo toe en gebruik het zodra het is gecrediteerd.",
@@ -784,23 +787,26 @@ const TRANSLATIONS = {
   "Monthly billing cycle": { fr: "Cycle de facturation mensuel", nl: "Maandelijkse facturatiecyclus" },
   "Settled at month end": { fr: "Soldé en fin de mois", nl: "Verrekend op einde maand" },
   "Total Shipping Costs": { fr: "Coûts totaux d’expédition", nl: "Totale verzendkosten" },
-  "EX VAT": { fr: "HORS TVA", nl: "EXCL. BTW" },
-  "ex. vat": { fr: "hors TVA", nl: "excl. btw" },
-  "incl. vat": { fr: "TVA incl.", nl: "incl. btw" },
-  "EX. VAT": { fr: "HORS TVA", nl: "EXCL. BTW" },
-  "INCL. VAT": { fr: "TVA INCL.", nl: "INCL. BTW" },
+  "EX VAT": { fr: "Total", nl: "Totaal" },
+  "ex. vat": { fr: "total", nl: "totaal" },
+  "incl. vat": { fr: "total", nl: "totaal" },
+  "EX. VAT": { fr: "Total", nl: "Totaal" },
+  "INCL. VAT": { fr: "Total", nl: "Totaal" },
+  "Label history": { fr: "Historique des étiquettes", nl: "Labelhistoriek" },
+  "Selected range": { fr: "Période sélectionnée", nl: "Geselecteerde periode" },
   "Service charges in selected range": { fr: "Frais de service sur la période", nl: "Servicekosten in geselecteerde periode" },
   "Carrier Adjustments": { fr: "Ajustements transporteur", nl: "Carrier-correcties" },
   "Post-label carrier corrections": { fr: "Corrections transporteur post-étiquette", nl: "Carrier-correcties na label" },
   "Total Payments": { fr: "Paiements totaux", nl: "Totale betalingen" },
-  "Daily spend trend (ex VAT)": { fr: "Tendance des dépenses quotidiennes (hors TVA)", nl: "Dagelijkse uitgaventrend (excl. btw)" },
+  "Daily spend trend": { fr: "Tendance des dépenses quotidiennes", nl: "Dagelijkse uitgaventrend" },
+  "Daily spend trend (ex VAT)": { fr: "Tendance des dépenses quotidiennes", nl: "Dagelijkse uitgaventrend" },
   "Daily spend trend (ex. vat)": {
-    fr: "Tendance des dépenses quotidiennes (hors TVA)",
-    nl: "Dagelijkse uitgaventrend (excl. btw)",
+    fr: "Tendance des dépenses quotidiennes",
+    nl: "Dagelijkse uitgaventrend",
   },
   "Daily spend trend (EX. VAT)": {
-    fr: "Tendance des dépenses quotidiennes (hors TVA)",
-    nl: "Dagelijkse uitgaventrend (excl. btw)",
+    fr: "Tendance des dépenses quotidiennes",
+    nl: "Dagelijkse uitgaventrend",
   },
   "Average Cost": { fr: "Coût moyen", nl: "Gemiddelde kost" },
   "Average label price by day": { fr: "Prix moyen d’étiquette par jour", nl: "Gemiddelde labelprijs per dag" },
@@ -902,10 +908,10 @@ const TRANSLATIONS = {
     nl: "Vragen over facturatie moeten via je maandelijkse factuurproces worden afgehandeld.",
   },
   "Company Information": { fr: "Informations société", nl: "Bedrijfsinformatie" },
-  "Tax Notice": { fr: "Mention fiscale", nl: "Fiscale melding" },
-  "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery.": {
-    fr: "Ce reçu est fourni à titre de référence opérationnelle uniquement. Il n’est pas valable à des fins fiscales ou comptables. Votre facture est le seul document fiscal valable pour la comptabilité et la récupération de TVA.",
-    nl: "Dit ontvangstbewijs wordt alleen ter operationele referentie verstrekt. Het is niet geldig voor fiscale of boekhoudkundige doeleinden. Je factuur is het enige geldige fiscale document voor boekhouding en btw-recuperatie.",
+  "Billing Notice": { fr: "Mention de facturation", nl: "Factureringsmelding" },
+  "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping.": {
+    fr: "Ce reçu est fourni à titre de référence opérationnelle uniquement. Il n’est pas valable à des fins fiscales ou comptables. Votre facture est le seul document de facturation valable pour la comptabilité.",
+    nl: "Dit ontvangstbewijs wordt alleen ter operationele referentie verstrekt. Het is niet geldig voor fiscale of boekhoudkundige doeleinden. Je factuur is het enige geldige facturatiedocument voor je boekhouding.",
   },
   "Preparing receipt PDF...": {
     fr: "Préparation du PDF du reçu...",
@@ -1090,8 +1096,8 @@ const TRANSLATIONS = {
   "No generations yet.": { fr: "Aucune génération pour l’instant.", nl: "Nog geen generaties." },
   "Label generation": { fr: "Génération d’étiquette", nl: "Labelgeneratie" },
   "{count} labels • ex. vat {ex} • incl. vat {incl}": {
-    fr: "{count} étiquettes • hors TVA {ex} • TVA incl. {incl}",
-    nl: "{count} labels • excl. btw {ex} • incl. btw {incl}",
+    fr: "{count} étiquettes • Total {incl}",
+    nl: "{count} labels • Totaal {incl}",
   },
   "Loading previous generations...": { fr: "Chargement des générations précédentes...", nl: "Vorige generaties laden..." },
   "No preview-ready generations yet.": { fr: "Aucune génération prête pour prévisualisation.", nl: "Nog geen generaties klaar voor preview." },
@@ -1103,42 +1109,52 @@ const TRANSLATIONS = {
   "Could not load history right now. Please refresh in a moment.": { fr: "Impossible de charger l’historique pour le moment. Veuillez actualiser.", nl: "Kan historiek nu niet laden. Vernieuw zo meteen." },
   "Date": { fr: "Date", nl: "Datum" },
   "Order": { fr: "Commande", nl: "Bestelling" },
-  "EX": { fr: "HT", nl: "EX" },
-  "INCL": { fr: "TTC", nl: "INCL" },
-  "VAT ({vat}%)": { fr: "TVA ({vat}%)", nl: "Btw ({vat}%)" },
-  "Unit (ex VAT)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (incl VAT)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
-  "Unit (ex. vat)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (incl. vat)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
-  "Unit (EX. VAT)": { fr: "Unité (hors TVA)", nl: "Eenheid (excl. btw)" },
-  "Unit (INCL. VAT)": { fr: "Unité (TVA incluse)", nl: "Eenheid (incl. btw)" },
+  "EX": { fr: "Sous-total", nl: "Subtotaal" },
+  "INCL": { fr: "Total", nl: "Totaal" },
+  "VAT ({vat}%)": { fr: "Taxe ({vat}%)", nl: "Belasting ({vat}%)" },
+  "Unit Price": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (ex VAT)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (incl VAT)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (ex. vat)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (incl. vat)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (EX. VAT)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
+  "Unit (INCL. VAT)": { fr: "Prix unitaire", nl: "Eenheidsprijs" },
   "SHIPR RECEIPT": { fr: "REÇU SHIPR", nl: "SHIPR BON" },
   "LABEL BREAKDOWN": { fr: "DÉTAIL DES ÉTIQUETTES", nl: "LABELOVERZICHT" },
   "label-batch": { fr: "lot-etiquettes", nl: "label-batch" },
   "label-order": { fr: "commande-etiquette", nl: "label-order" },
   "{service} • {count} labels • ex. vat {ex} • vat {vat} • incl. vat {incl}": {
-    fr: "{service} • {count} étiquettes • hors TVA {ex} • TVA {vat} • TVA incl. {incl}",
-    nl: "{service} • {count} labels • excl. btw {ex} • btw {vat} • incl. btw {incl}",
+    fr: "{service} • {count} étiquettes • Total {incl}",
+    nl: "{service} • {count} labels • Totaal {incl}",
   },
   "{service} • {count} labels • EX. VAT {ex} • VAT {vat} • INCL. VAT {incl}": {
-    fr: "{service} • {count} étiquettes • HORS TVA {ex} • TVA {vat} • TVA INCL. {incl}",
-    nl: "{service} • {count} labels • EXCL. BTW {ex} • BTW {vat} • INCL. BTW {incl}",
+    fr: "{service} • {count} étiquettes • Total {incl}",
+    nl: "{service} • {count} labels • Totaal {incl}",
   },
   "{count} labels • EX. VAT {ex} • INCL. VAT {incl}": {
-    fr: "{count} étiquettes • HORS TVA {ex} • TVA INCL. {incl}",
-    nl: "{count} labels • EXCL. BTW {ex} • INCL. BTW {incl}",
+    fr: "{count} étiquettes • Total {incl}",
+    nl: "{count} labels • Totaal {incl}",
+  },
+  "{service} • {count} labels • Total {amount}": {
+    fr: "{service} • {count} étiquettes • Total {amount}",
+    nl: "{service} • {count} labels • Totaal {amount}",
+  },
+  "{count} labels • Total {amount}": {
+    fr: "{count} étiquettes • Total {amount}",
+    nl: "{count} labels • Totaal {amount}",
   },
   "{count} labels analyzed": { fr: "{count} étiquettes analysées", nl: "{count} labels geanalyseerd" },
   "{count} labels": { fr: "{count} étiquettes", nl: "{count} labels" },
   "{amount} pending": { fr: "{amount} en attente", nl: "{amount} in behandeling" },
   "ex. vat • incl. vat {amount}": {
-    fr: "hors TVA • TVA incl. {amount}",
-    nl: "excl. btw • incl. btw {amount}",
+    fr: "Total {amount}",
+    nl: "Totaal {amount}",
   },
   "EX. VAT • INCL. VAT {amount}": {
-    fr: "HORS TVA • TVA INCL. {amount}",
-    nl: "EXCL. BTW • INCL. BTW {amount}",
+    fr: "Total {amount}",
+    nl: "Totaal {amount}",
   },
+  "Total {amount}": { fr: "Total {amount}", nl: "Totaal {amount}" },
   "7 days": { fr: "7 jours", nl: "7 dagen" },
   "30 days": { fr: "30 jours", nl: "30 dagen" },
   "90 days": { fr: "90 jours", nl: "90 dagen" },
@@ -4129,7 +4145,7 @@ function renderAdminBillingRunResult(payload = null) {
     `UPDATED ${Number(run.invoices_updated || 0)}`,
     `SENT ${Number(run.invoices_sent || 0)}`,
     `REMINDERS ${reminders.length}`,
-    `TOTAL ${formatMoney(Number(run?.totals?.subtotal_ex_vat || 0))} EX. VAT`,
+    `TOTAL ${formatMoney(Number(run?.totals?.total_inc_vat || run?.totals?.subtotal_ex_vat || 0))}`,
   ];
   adminBillingRunResult.textContent = summary.join("   |   ");
 }
@@ -4169,9 +4185,9 @@ function renderAdminInvoiceList() {
           )}
         </div>
         <div class="admin-billing-item-sub mono">
-          ${formatMoney(Number(invoice?.subtotal_ex_vat || 0))} EX. VAT • ${formatMoney(
-      Number(invoice?.total_inc_vat || 0)
-    )} INCL. VAT
+          ${escapeHtml(tr("Total"))} ${formatMoney(
+      Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0)
+    )}
         </div>
       </div>
       <div class="admin-billing-item-actions">
@@ -6914,10 +6930,9 @@ function renderAccountHistoryList() {
 
     const meta = document.createElement("div");
     meta.className = "account-record-meta mono";
-    meta.textContent = tr("{count} labels • EX. VAT {ex} • INCL. VAT {incl}", {
+    meta.textContent = tr("{count} labels • Total {amount}", {
       count: totals.quantity,
-      ex: formatMoney(totals.totalExVat),
-      incl: formatMoney(totals.totalIncVat),
+      amount: formatMoney(totals.totalIncVat),
     });
 
     item.appendChild(head);
@@ -7235,7 +7250,6 @@ function buildReceiptViewModel(record) {
     issuedAt,
     receiptNumber: record.id || "--",
     quantity: totals.quantity,
-    vatLabel: tr("VAT ({vat}%)", { vat: Math.round(VAT_RATE * 100) }),
     billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
   };
 }
@@ -7262,8 +7276,7 @@ function buildReceiptRowsHtml(viewModel, rowIndices = null) {
               <td><span class="receipt-cell-primary mono">${escapeHtml(label.trackingId || "--")}</span></td>
               <td><span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span></td>
               <td>
-                <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(totals.unitExVat))} ${escapeHtml(tr("EX. VAT"))}</span>
-                <span class="receipt-inline-meta receipt-inline-meta-block mono">${escapeHtml(formatMoney(totals.unitIncVat))} ${escapeHtml(tr("INCL. VAT"))}</span>
+                <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(totals.unitIncVat))}</span>
               </td>
             </tr>`;
         })
@@ -7277,7 +7290,6 @@ function buildReceiptHeaderHtml(viewModel) {
     serviceType,
     issuedAt,
     quantity,
-    vatLabel,
     billingAddressLines,
     totals,
   } = viewModel;
@@ -7332,15 +7344,11 @@ function buildReceiptHeaderHtml(viewModel) {
             <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
           </div>
           <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Subtotal (EX. VAT)"))}</span>
+            <span class="receipt-kv-key">${escapeHtml(tr("Subtotal"))}</span>
             <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalExVat))}</span>
           </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(vatLabel)}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.vatAmount))}</span>
-          </div>
           <div class="receipt-kv receipt-kv-total">
-            <span class="receipt-kv-key">${escapeHtml(tr("Total (INCL. VAT)"))}</span>
+            <span class="receipt-kv-key">${escapeHtml(tr("Total"))}</span>
             <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
           </div>
           <div class="receipt-kv">
@@ -7401,10 +7409,10 @@ function buildReceiptDisclaimerHtml() {
         <circle cx="12" cy="17.2" r="1"></circle>
       </svg>
       <div class="receipt-disclaimer-copy">
-        <span class="receipt-disclaimer-title">${escapeHtml(tr("Tax Notice"))}</span>
+        <span class="receipt-disclaimer-title">${escapeHtml(tr("Billing Notice"))}</span>
         <span class="receipt-disclaimer-text">${escapeHtml(
           tr(
-            "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
+            "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping."
           )
         )}</span>
       </div>
@@ -7415,7 +7423,7 @@ function buildReceiptDisclaimerHtml() {
 function buildReceiptFooterHtml(receiptNumber) {
   return `
     <div class="receipt-footer">
-      <span class="receipt-footer-left">Shipide Logistics SRL · billing@shipide.com</span>
+      <span class="receipt-footer-left">Shipide · billing@shipide.com</span>
       <span class="receipt-footer-right">${escapeHtml(receiptNumber)}</span>
     </div>
   `;
@@ -7542,42 +7550,18 @@ function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
   };
 }
 
-function writeReceiptPdfLoadingWindow(previewWindow) {
-  if (!previewWindow) return;
-  try {
-    previewWindow.document.write(
-      `<!doctype html><title>${escapeHtml(tr("Preparing receipt PDF..."))}</title><body style="margin:0;background:#050913;color:#f1f4fb;font:14px 'IBM Plex Sans',sans-serif;display:grid;place-items:center;min-height:100vh;">${escapeHtml(tr("Preparing receipt PDF..."))}</body>`
-    );
-    previewWindow.document.close();
-  } catch (_error) {
-    // Ignore preview bootstrap errors and fall back later.
-  }
-}
-
-function openReceiptPdfTarget(blob, filename, previewWindow = null) {
+function openReceiptPdfTarget(blob, filename) {
   const url = URL.createObjectURL(blob);
   let opened = false;
 
-  if (previewWindow && !previewWindow.closed) {
-    try {
-      previewWindow.location.replace(url);
-      previewWindow.opener = null;
+  try {
+    const receiptWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (receiptWindow) {
+      receiptWindow.opener = null;
       opened = true;
-    } catch (_error) {
-      opened = false;
     }
-  }
-
-  if (!opened) {
-    try {
-      const fallbackWindow = window.open(url, "_blank", "noopener,noreferrer");
-      if (fallbackWindow) {
-        fallbackWindow.opener = null;
-        opened = true;
-      }
-    } catch (_error) {
-      opened = false;
-    }
+  } catch (_error) {
+    opened = false;
   }
 
   if (!opened) {
@@ -7733,12 +7717,11 @@ async function buildReceiptPdfExport() {
       `${tr("Issued")}: ${viewModel.issuedAt}`,
       `${tr("Service")}: ${viewModel.serviceType}`,
       `${tr("Quantity")}: ${viewModel.quantity}`,
-      `${tr("Subtotal (EX. VAT)")}: ${formatMoney(viewModel.totals.totalExVat)}`,
-      `${viewModel.vatLabel}: ${formatMoney(viewModel.totals.vatAmount)}`,
-      `${tr("Total (INCL. VAT)")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
+      `${tr("Subtotal")}: ${formatMoney(viewModel.totals.totalExVat)}`,
+      `${tr("Total")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
       "",
       tr(
-        "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid tax document for bookkeeping and VAT recovery."
+        "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping."
       ),
     ];
     const blob = buildPdf(fallbackLines, {
@@ -7789,29 +7772,15 @@ async function downloadReceiptPdfFile() {
 async function openReceiptPdfFile() {
   if (!accountActiveRecord) return;
   const restoreButton = setReceiptActionBusy(openReceiptModalButton, true, tr("View Receipt"));
-  let previewWindow = null;
-  try {
-    previewWindow = window.open("", "_blank", "noopener,noreferrer");
-  } catch (_error) {
-    previewWindow = null;
-  }
-  writeReceiptPdfLoadingWindow(previewWindow);
 
   try {
     const exportData = await buildReceiptPdfExport();
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate receipt PDF."));
     }
-    openReceiptPdfTarget(exportData.blob, exportData.filename, previewWindow);
+    openReceiptPdfTarget(exportData.blob, exportData.filename);
     showToast(tr("Receipt PDF ready."), { tone: "success" });
   } catch (error) {
-    if (previewWindow && !previewWindow.closed) {
-      try {
-        previewWindow.close();
-      } catch (_closeError) {
-        // Ignore close errors.
-      }
-    }
     showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
   } finally {
     restoreButton();
@@ -7853,16 +7822,11 @@ function selectAccountRecord(index) {
 
   const totals = calculateRecordTotals(record);
   if (accountPreviewMeta) {
-    accountPreviewMeta.textContent = tr(
-      "{service} • {count} labels • EX. VAT {ex} • VAT {vat} • INCL. VAT {incl}",
-      {
+    accountPreviewMeta.textContent = tr("{service} • {count} labels • Total {amount}", {
       service: serviceType,
       count: totals.quantity,
-      ex: formatMoney(totals.totalExVat),
-      vat: formatMoney(totals.vatAmount),
-      incl: formatMoney(totals.totalIncVat),
-      }
-    );
+      amount: formatMoney(totals.totalIncVat),
+    });
   }
 
   if (accountDownloadPdf) {
@@ -8923,9 +8887,7 @@ function renderReportsDashboard() {
     reportTotalShippingCostsValue.textContent = formatMoney(model.totalShippingCosts);
   }
   if (reportTotalShippingCostsMeta) {
-    reportTotalShippingCostsMeta.textContent = tr("EX. VAT • INCL. VAT {amount}", {
-      amount: formatMoney(model.totalShippingCosts * (1 + VAT_RATE)),
-    });
+    reportTotalShippingCostsMeta.textContent = tr("Selected range");
   }
   if (reportCarrierAdjustmentsValue) {
     reportCarrierAdjustmentsValue.textContent = formatSignedMoney(model.carrierAdjustments);
@@ -11066,7 +11028,7 @@ function getOrderTotals() {
 
 function getIbanInstructionsFromOverview() {
   const fallback = {
-    beneficiary: "Shipide Logistics SRL",
+    beneficiary: "Shipide",
     iban: "BE68 5390 0754 7034",
     bic: "KREDBEBB",
     note: tr("Transfers are credited once received (typically 1-2 business days)."),

@@ -68,9 +68,9 @@ const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const CLICKWRAP_PREVIEW_MAX_ENTRIES = 128;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
-const DEFAULT_VAT_RATE = 0.21;
+const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
-const DEFAULT_IBAN_BENEFICIARY = "Shipide Logistics SRL";
+const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
 const DEFAULT_IBAN_TRANSFER_NOTE =
@@ -118,7 +118,7 @@ Shipide provides software to prepare shipment data, request transport labels, an
 You must keep credentials confidential and promptly report unauthorized access. Activity under your account is treated as authorized unless proven otherwise.
 
 3. Billing and Payment
-Charges may apply per label, shipment, subscription, or wallet usage. Applicable taxes, including VAT, are charged where required by law.
+Charges may apply per label, shipment, subscription, or wallet usage.
 
 4. Wallet and Top Ups
 Wallet balances are pre-funded. Processing time may vary by payment rail. You are responsible for using the exact transfer reference provided.
@@ -2581,9 +2581,8 @@ function buildInvoiceEmailText(invoice, options = {}) {
     `${prefix}: ${reference}`,
     `Client: ${invoice?.company_name || "Client account"}`,
     `Due date: ${dueLabel}`,
-    `Subtotal (EX. VAT): €${fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2)}`,
-    `VAT: €${fromCents(toCents(invoice?.vat_amount)).toFixed(2)}`,
-    `Total (INCL. VAT): €${fromCents(toCents(invoice?.total_inc_vat)).toFixed(2)}`,
+    `Subtotal: €${fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2)}`,
+    `Total: €${fromCents(toCents(invoice?.total_inc_vat)).toFixed(2)}`,
   ].join("\n");
 }
 
@@ -4557,8 +4556,8 @@ function buildAdminBillingTestInvoice(toEmail) {
       period_end: nowIso.slice(0, 10),
       due_at: addUtcDays(now, getInvoiceTermsDays()).toISOString(),
       subtotal_ex_vat: 120,
-      vat_amount: 25.2,
-      total_inc_vat: 145.2,
+      vat_amount: 0,
+      total_inc_vat: 120,
       vat_rate: DEFAULT_VAT_RATE,
     },
     items: [
