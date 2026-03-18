@@ -2,7 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { PDFDocument } = require("pdf-lib");
+const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -75,6 +75,9 @@ const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
 const DEFAULT_IBAN_TRANSFER_NOTE =
   "Transfers are credited once received (typically 1-2 business days).";
+const DEFAULT_INVOICE_PDF_IBAN = String(
+  process.env.INVOICE_PDF_IBAN || "BE71 0000 1111 2222"
+).trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "billing@shipide.com").trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
@@ -2463,11 +2466,653 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
   };
 }
 
+function formatInvoicePdfDate(value) {
+  const iso = parseIsoTimestamp(value);
+  return iso ? iso.slice(0, 10) : "--";
+}
+
+function formatInvoicePdfMoney(value) {
+  return `EUR ${fromCents(toCents(value)).toFixed(2)}`;
+}
+
+function invoiceRequiresManualSettlement(invoice = {}) {
+  return String(invoice?.payment_mode || "invoice").trim().toLowerCase() === "invoice";
+}
+
+function formatInvoicePaymentModeLabel(invoice = {}) {
+  const mode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
+  if (mode === "invoice") return "Monthly billing";
+  if (mode === "wallet") return "Wallet debit";
+  if (mode === "card") return "Card on file";
+  if (mode === "hybrid") return "Automatic collection";
+  return "Automatic collection";
+}
+
+function buildInvoicePdfFilename(invoice = {}) {
+  const reference = toInvoiceReference(invoice?.id)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-");
+  return `invoice-${reference || "shipide"}.pdf`;
+}
+
+function splitInvoiceAddressLines(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const directLines = raw
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (directLines.length > 1) return directLines;
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 2) return parts;
+  const first = parts.slice(0, 2).join(", ");
+  const second = parts.slice(2).join(", ");
+  return [first, second].filter(Boolean);
+}
+
+function fitPdfText(text, font, size, maxWidth) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (font.widthOfTextAtSize(raw, size) <= maxWidth) return raw;
+  let output = raw;
+  while (output.length > 1) {
+    output = output.slice(0, -1).trimEnd();
+    const candidate = `${output}...`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      return candidate;
+    }
+  }
+  return "...";
+}
+
+function wrapPdfText(text, font, size, maxWidth, maxLines = 4) {
+  const source = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!source) return [];
+  const words = source.split(" ");
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+      return;
+    }
+    lines.push(current);
+    current = word;
+  });
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+  const clipped = lines.slice(0, maxLines);
+  clipped[maxLines - 1] = fitPdfText(clipped[maxLines - 1], font, size, maxWidth);
+  return clipped;
+}
+
+function normalizeInvoiceProfileSnapshot(rawProfile = {}) {
+  const profile = rawProfile && typeof rawProfile === "object" ? rawProfile : {};
+  return {
+    companyName: String(profile.companyName || profile.company_name || "").trim(),
+    contactName: String(profile.contactName || profile.contact_name || "").trim(),
+    contactEmail: normalizeEmail(profile.contactEmail || profile.contact_email || ""),
+    contactPhone: String(profile.contactPhone || profile.contact_phone || "").trim(),
+    billingAddress: String(profile.billingAddress || profile.billing_address || "").trim(),
+    taxId: String(profile.taxId || profile.tax_id || "").trim(),
+    customerId: String(profile.customerId || profile.customer_id || "").trim(),
+    accountManager: String(profile.accountManager || profile.account_manager || "").trim(),
+  };
+}
+
+function resolveInvoiceProfileSnapshot(invoice = {}, user = null) {
+  const metadata =
+    invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const snapshot = normalizeInvoiceProfileSnapshot(metadata.invoice_profile);
+  const userProfile = user ? mapInvoiceProfileFromUser(user) : {};
+  return {
+    companyName:
+      snapshot.companyName
+      || String(invoice?.company_name || "").trim()
+      || userProfile.company_name
+      || "Client account",
+    contactName:
+      snapshot.contactName
+      || String(invoice?.contact_name || "").trim()
+      || userProfile.contact_name
+      || "",
+    contactEmail:
+      snapshot.contactEmail
+      || normalizeEmail(invoice?.contact_email || "")
+      || userProfile.contact_email
+      || "",
+    contactPhone: snapshot.contactPhone || userProfile.contact_phone || "",
+    billingAddress: snapshot.billingAddress || userProfile.billing_address || "",
+    taxId: snapshot.taxId || userProfile.tax_id || "",
+    customerId:
+      snapshot.customerId
+      || String(invoice?.customer_id || "").trim()
+      || userProfile.customer_id
+      || "",
+    accountManager:
+      snapshot.accountManager
+      || String(invoice?.account_manager || "").trim()
+      || userProfile.account_manager
+      || "",
+  };
+}
+
+function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
+  const manual = invoiceRequiresManualSettlement(invoice);
+  const issuedAt = options?.issuedAt || invoice?.issued_at || null;
+  const dueAt = options?.dueAt || invoice?.due_at || null;
+  const paidAt = options?.paidAt || invoice?.paid_at || issuedAt || null;
+  if (manual) {
+    return {
+      badge: "Monthly billing",
+      badgeTone: "accent",
+      lines: [
+        { label: "Terms", value: `Net ${getInvoiceTermsDays()} days` },
+        { label: "Due date", value: formatInvoicePdfDate(dueAt) },
+        { label: "Payment method", value: "Bank transfer" },
+        { label: "IBAN", value: DEFAULT_INVOICE_PDF_IBAN, mono: true },
+        { label: "Reference", value: String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim(), mono: true },
+      ],
+      note: "Please include the invoice reference with your transfer.",
+    };
+  }
+  return {
+    badge: "Paid automatically",
+    badgeTone: "success",
+    lines: [
+      { label: "Status", value: "Payment already collected" },
+      { label: "Captured on", value: formatInvoicePdfDate(paidAt) },
+      { label: "Payment method", value: formatInvoicePaymentModeLabel(invoice) },
+      { label: "Reference", value: String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim(), mono: true },
+    ],
+    note: "No bank transfer is required for this invoice.",
+  };
+}
+
+function drawInvoicePdfBrand(page, fonts, colors, x, yTop) {
+  const mark = 10;
+  const gap = 3;
+  const markBottom = yTop - mark;
+  page.drawRectangle({
+    x,
+    y: markBottom,
+    width: mark,
+    height: mark,
+    borderColor: colors.text,
+    borderWidth: 1,
+  });
+  page.drawRectangle({
+    x: x + gap + 4,
+    y: markBottom + gap + 4,
+    width: mark,
+    height: mark,
+    borderColor: colors.text,
+    borderWidth: 1,
+  });
+  page.drawText("Shipide", {
+    x: x + 26,
+    y: yTop - 15,
+    font: fonts.bold,
+    size: 18,
+    color: colors.text,
+  });
+}
+
+function drawInvoicePdfCard(page, colors, x, yTop, width, height) {
+  page.drawRectangle({
+    x,
+    y: yTop - height,
+    width,
+    height,
+    color: colors.panel,
+    borderColor: colors.stroke,
+    borderWidth: 1,
+  });
+}
+
+function drawInvoicePdfMetaList(page, fonts, colors, entries, x, yTop, width, options = {}) {
+  const labelWidth = Number(options?.labelWidth) || 82;
+  const rowGap = Number(options?.rowGap) || 18;
+  const labelSize = Number(options?.labelSize) || 8;
+  const valueSize = Number(options?.valueSize) || 10;
+  let cursor = yTop;
+  entries.forEach((entry) => {
+    const label = String(entry?.label || "").trim();
+    const value = String(entry?.value || "--").trim() || "--";
+    const valueFont = entry?.mono ? fonts.mono : fonts.regular;
+    page.drawText(label, {
+      x,
+      y: cursor - labelSize,
+      font: fonts.regular,
+      size: labelSize,
+      color: colors.muted,
+    });
+    page.drawText(fitPdfText(value, valueFont, valueSize, Math.max(20, width - labelWidth)), {
+      x: x + labelWidth,
+      y: cursor - valueSize,
+      font: valueFont,
+      size: valueSize,
+      color: colors.text,
+    });
+    cursor -= rowGap;
+  });
+}
+
+async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
+  const pdf = await PDFDocument.create();
+  const fonts = {
+    regular: await pdf.embedFont(StandardFonts.Helvetica),
+    bold: await pdf.embedFont(StandardFonts.HelveticaBold),
+    mono: await pdf.embedFont(StandardFonts.Courier),
+  };
+  const colors = {
+    page: rgb(11 / 255, 16 / 255, 24 / 255),
+    panel: rgb(28 / 255, 34 / 255, 44 / 255),
+    stroke: rgb(53 / 255, 60 / 255, 75 / 255),
+    text: rgb(243 / 255, 246 / 255, 255 / 255),
+    muted: rgb(154 / 255, 163 / 255, 178 / 255),
+    accent: rgb(119 / 255, 71 / 255, 227 / 255),
+    accentSoft: rgb(58 / 255, 37 / 255, 112 / 255),
+    success: rgb(143 / 255, 226 / 255, 178 / 255),
+  };
+  const reference = toInvoiceReference(invoice?.id);
+  const profile = resolveInvoiceProfileSnapshot(invoice, options?.user || null);
+  const settlement = buildInvoicePdfSettlementModel(invoice, options);
+  const issueDate = formatInvoicePdfDate(options?.issuedAt || invoice?.issued_at);
+  const paymentBadgeColor = settlement.badgeTone === "success" ? colors.success : colors.accent;
+  const paymentBadgeFill = settlement.badgeTone === "success" ? rgb(28 / 255, 49 / 255, 38 / 255) : colors.accentSoft;
+
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const marginX = 26;
+  const marginTop = 28;
+  const marginBottom = 24;
+  const footerHeight = 20;
+  const contentWidth = pageWidth - marginX * 2;
+  const tableGap = 16;
+  const rowHeight = 24;
+  const tableHeadHeight = 28;
+  const tableTitleHeight = 46;
+  const tablePadding = 14;
+
+  const lineRows = (Array.isArray(items) ? items : []).map((item, index) => {
+    const recipientBits = [
+      item?.recipient_name,
+      [item?.recipient_city, item?.recipient_country].filter(Boolean).join(", "),
+    ].filter(Boolean);
+    return {
+      service: String(item?.service_type || "Shipping label").trim() || "Shipping label",
+      reference: String(item?.tracking_id || item?.label_id || `LINE-${index + 1}`).trim() || `LINE-${index + 1}`,
+      recipient: recipientBits.join(" - ") || "--",
+      amount: formatInvoicePdfMoney(item?.amount_inc_vat ?? item?.amount_ex_vat),
+    };
+  });
+
+  const pageRows = [];
+  let rowIndex = 0;
+  while (rowIndex < Math.max(1, lineRows.length)) {
+    const firstPage = pageRows.length === 0;
+    const page = pdf.addPage([pageWidth, pageHeight]);
+    page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: colors.page });
+    page.drawRectangle({ x: 0, y: pageHeight - 4, width: pageWidth, height: 4, color: colors.accent });
+
+    const footerY = marginBottom;
+    page.drawLine({
+      start: { x: marginX, y: footerY + footerHeight + 8 },
+      end: { x: pageWidth - marginX, y: footerY + footerHeight + 8 },
+      thickness: 1,
+      color: colors.stroke,
+      opacity: 0.65,
+    });
+    page.drawText("Shipide - billing@shipide.com", {
+      x: marginX,
+      y: footerY,
+      font: fonts.regular,
+      size: 9,
+      color: colors.muted,
+    });
+    page.drawText(reference, {
+      x: pageWidth - marginX - fonts.mono.widthOfTextAtSize(reference, 9),
+      y: footerY,
+      font: fonts.mono,
+      size: 9,
+      color: colors.muted,
+    });
+
+    let cursorY = pageHeight - marginTop;
+    if (firstPage) {
+      drawInvoicePdfBrand(page, fonts, colors, marginX, cursorY - 2);
+      page.drawText("Invoice", {
+        x: pageWidth - marginX - fonts.bold.widthOfTextAtSize("Invoice", 12),
+        y: cursorY - 14,
+        font: fonts.bold,
+        size: 12,
+        color: colors.text,
+      });
+      page.drawText(reference, {
+        x: pageWidth - marginX - fonts.mono.widthOfTextAtSize(reference, 10),
+        y: cursorY - 32,
+        font: fonts.mono,
+        size: 10,
+        color: colors.muted,
+      });
+      cursorY -= 56;
+
+      const cardGap = 14;
+      const cardWidth = (contentWidth - cardGap) / 2;
+      const topRowHeight = 112;
+      const bottomRowHeight = 102;
+
+      drawInvoicePdfCard(page, colors, marginX, cursorY, cardWidth, topRowHeight);
+      drawInvoicePdfCard(page, colors, marginX + cardWidth + cardGap, cursorY, cardWidth, topRowHeight);
+      drawInvoicePdfCard(page, colors, marginX, cursorY - topRowHeight - cardGap, cardWidth, bottomRowHeight);
+      drawInvoicePdfCard(
+        page,
+        colors,
+        marginX + cardWidth + cardGap,
+        cursorY - topRowHeight - cardGap,
+        cardWidth,
+        bottomRowHeight
+      );
+
+      const supplierTop = cursorY - 18;
+      page.drawText("Issued By", {
+        x: marginX + 16,
+        y: supplierTop - 9,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      page.drawText("Shipide", {
+        x: marginX + 16,
+        y: supplierTop - 32,
+        font: fonts.bold,
+        size: 13,
+        color: colors.text,
+      });
+      page.drawText("billing@shipide.com", {
+        x: marginX + 16,
+        y: supplierTop - 52,
+        font: fonts.regular,
+        size: 10,
+        color: colors.text,
+      });
+      page.drawText(formatInvoicePaymentModeLabel(invoice), {
+        x: marginX + 16,
+        y: supplierTop - 72,
+        font: fonts.regular,
+        size: 10,
+        color: colors.muted,
+      });
+
+      const billedTop = supplierTop;
+      page.drawText("Billed To", {
+        x: marginX + cardWidth + cardGap + 16,
+        y: billedTop - 9,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      const billedX = marginX + cardWidth + cardGap + 16;
+      page.drawText(
+        fitPdfText(profile.companyName || "Client account", fonts.bold, 13, cardWidth - 32),
+        {
+          x: billedX,
+          y: billedTop - 32,
+          font: fonts.bold,
+          size: 13,
+          color: colors.text,
+        }
+      );
+      const billedLines = [
+        [profile.contactName, profile.contactEmail].filter(Boolean).join(" - "),
+        ...splitInvoiceAddressLines(profile.billingAddress),
+        [profile.taxId, profile.customerId].filter(Boolean).join(" - "),
+      ].filter(Boolean);
+      let billedLineY = billedTop - 52;
+      billedLines.slice(0, 3).forEach((line, index) => {
+        const lines = wrapPdfText(line, index === 2 ? fonts.mono : fonts.regular, 9, cardWidth - 32, 1);
+        if (lines[0]) {
+          page.drawText(lines[0], {
+            x: billedX,
+            y: billedLineY,
+            font: index === 2 ? fonts.mono : fonts.regular,
+            size: 9,
+            color: index === 2 ? colors.text : colors.muted,
+          });
+          billedLineY -= 18;
+        }
+      });
+
+      const summaryTop = cursorY - topRowHeight - cardGap - 18;
+      page.drawText("Invoice Summary", {
+        x: marginX + 16,
+        y: summaryTop - 9,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      drawInvoicePdfMetaList(
+        page,
+        fonts,
+        colors,
+        [
+          { label: "Invoice No.", value: reference, mono: true },
+          { label: "Issue date", value: issueDate },
+          {
+            label: "Period",
+            value: `${formatInvoicePdfDate(invoice?.period_start)} to ${formatInvoicePdfDate(invoice?.period_end)}`,
+          },
+          { label: "Labels", value: String(Number(invoice?.labels_count) || lineRows.length || 0), mono: true },
+          { label: "Total", value: formatInvoicePdfMoney(invoice?.total_inc_vat) },
+        ],
+        marginX + 16,
+        summaryTop - 26,
+        cardWidth - 32,
+        { labelWidth: 74, rowGap: 15, labelSize: 8, valueSize: 9.5 }
+      );
+
+      const paymentTop = summaryTop;
+      const paymentX = marginX + cardWidth + cardGap + 16;
+      const badgeWidth = Math.min(
+        cardWidth - 32,
+        fonts.regular.widthOfTextAtSize(settlement.badge, 8) + 18
+      );
+      page.drawText("Settlement", {
+        x: paymentX,
+        y: paymentTop - 9,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      page.drawRectangle({
+        x: paymentX,
+        y: paymentTop - 34,
+        width: badgeWidth,
+        height: 16,
+        color: paymentBadgeFill,
+        borderColor: paymentBadgeColor,
+        borderWidth: 1,
+      });
+      page.drawText(settlement.badge, {
+        x: paymentX + 9,
+        y: paymentTop - 29,
+        font: fonts.regular,
+        size: 8,
+        color: paymentBadgeColor,
+      });
+      drawInvoicePdfMetaList(
+        page,
+        fonts,
+        colors,
+        settlement.lines,
+        paymentX,
+        paymentTop - 46,
+        cardWidth - 32,
+        { labelWidth: 82, rowGap: 14, labelSize: 8, valueSize: 8.5 }
+      );
+      const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, cardWidth - 32, 2);
+      noteLines.forEach((line, index) => {
+        page.drawText(line, {
+          x: paymentX,
+          y: paymentTop - 94 - index * 11,
+          font: fonts.regular,
+          size: 8,
+          color: colors.muted,
+        });
+      });
+
+      cursorY -= topRowHeight + bottomRowHeight + cardGap * 2 + tableGap;
+    } else {
+      cursorY -= 6;
+    }
+
+    const tableTop = cursorY;
+    const titleHeight = firstPage ? tableTitleHeight : 0;
+    const availableHeight = tableTop - (marginBottom + footerHeight + 16);
+    const maxRows = Math.max(
+      1,
+      Math.floor((availableHeight - titleHeight - tableHeadHeight - tablePadding * 2) / rowHeight)
+    );
+    const rowsForPage = lineRows.length
+      ? lineRows.slice(rowIndex, rowIndex + maxRows)
+      : [{ service: "--", reference: "--", recipient: "--", amount: formatInvoicePdfMoney(invoice?.total_inc_vat) }];
+    rowIndex += lineRows.length ? rowsForPage.length : 1;
+
+    const tableHeight =
+      titleHeight + tableHeadHeight + tablePadding * 2 + rowsForPage.length * rowHeight;
+    drawInvoicePdfCard(page, colors, marginX, tableTop, contentWidth, tableHeight);
+
+    let tableCursor = tableTop - tablePadding;
+    if (firstPage) {
+      page.drawText("Line Items", {
+        x: marginX + 16,
+        y: tableCursor - 12,
+        font: fonts.bold,
+        size: 13,
+        color: colors.text,
+      });
+      page.drawText("One line per billed shipment label.", {
+        x: marginX + 16,
+        y: tableCursor - 28,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      const badge = `${Number(invoice?.labels_count) || lineRows.length || 0} labels`;
+      page.drawText(badge, {
+        x: pageWidth - marginX - 16 - fonts.mono.widthOfTextAtSize(badge, 9),
+        y: tableCursor - 20,
+        font: fonts.mono,
+        size: 9,
+        color: colors.text,
+      });
+      tableCursor -= titleHeight;
+    }
+
+    const colX = {
+      service: marginX + 16,
+      reference: marginX + 164,
+      recipient: marginX + 282,
+      amount: pageWidth - marginX - 76,
+    };
+    const colWidths = {
+      service: 134,
+      reference: 102,
+      recipient: 188,
+      amount: 60,
+    };
+
+    page.drawLine({
+      start: { x: marginX + 14, y: tableCursor - tableHeadHeight + 4 },
+      end: { x: pageWidth - marginX - 14, y: tableCursor - tableHeadHeight + 4 },
+      thickness: 1,
+      color: colors.stroke,
+      opacity: 0.8,
+    });
+    [
+      ["Service", colX.service],
+      ["Reference", colX.reference],
+      ["Recipient", colX.recipient],
+      ["Amount", colX.amount],
+    ].forEach(([label, x]) => {
+      page.drawText(label, {
+        x,
+        y: tableCursor - 18,
+        font: fonts.regular,
+        size: 8,
+        color: colors.muted,
+      });
+    });
+    tableCursor -= tableHeadHeight;
+
+    rowsForPage.forEach((row, index) => {
+      const baseY = tableCursor - index * rowHeight;
+      if (index > 0) {
+        page.drawLine({
+          start: { x: marginX + 14, y: baseY + 4 },
+          end: { x: pageWidth - marginX - 14, y: baseY + 4 },
+          thickness: 1,
+          color: colors.stroke,
+          opacity: 0.45,
+        });
+      }
+      page.drawText(
+        fitPdfText(row.service, fonts.regular, 9, colWidths.service),
+        {
+          x: colX.service,
+          y: baseY - 14,
+          font: fonts.regular,
+          size: 9,
+          color: colors.text,
+        }
+      );
+      page.drawText(
+        fitPdfText(row.reference, fonts.mono, 8.5, colWidths.reference),
+        {
+          x: colX.reference,
+          y: baseY - 14,
+          font: fonts.mono,
+          size: 8.5,
+          color: colors.text,
+        }
+      );
+      page.drawText(
+        fitPdfText(row.recipient, fonts.regular, 8.5, colWidths.recipient),
+        {
+          x: colX.recipient,
+          y: baseY - 14,
+          font: fonts.regular,
+          size: 8.5,
+          color: colors.text,
+        }
+      );
+      const amountWidth = fonts.mono.widthOfTextAtSize(row.amount, 9);
+      page.drawText(row.amount, {
+        x: pageWidth - marginX - 16 - amountWidth,
+        y: baseY - 14,
+        font: fonts.mono,
+        size: 9,
+        color: colors.text,
+      });
+    });
+  }
+
+  return Buffer.from(await pdf.save());
+}
+
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
   const isOverdueReminder = isReminder && reminderStage >= 5;
+  const manualSettlement = invoiceRequiresManualSettlement(invoice);
   const logoUrl = "https://portal.shipide.com/shipide_logo.png";
   const titleLine1 = isOverdueReminder
     ? "Urgent Invoice"
@@ -2482,7 +3127,12 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   let stageBg = "rgba(143, 226, 178, 0.16)";
   let stageBorder = "#8fe2b2";
   let stageText = "#8fe2b2";
-  if (reminderStage === 1) {
+  if (!manualSettlement) {
+    stageLabel = "Paid automatically";
+    stageBg = "rgba(143, 226, 178, 0.16)";
+    stageBorder = "#8fe2b2";
+    stageText = "#8fe2b2";
+  } else if (reminderStage === 1) {
     stageLabel = "Due in 15 days";
     stageBg = "#2f2515";
     stageBorder = "#b57d23";
@@ -2577,13 +3227,18 @@ function buildInvoiceEmailText(invoice, options = {}) {
     ? new Date(invoice.due_at).toISOString().slice(0, 10)
     : "--";
   const prefix = options?.isReminder ? "Payment reminder" : "Invoice";
-  return [
+  const lines = [
     `${prefix}: ${reference}`,
     `Client: ${invoice?.company_name || "Client account"}`,
-    `Due date: ${dueLabel}`,
     `Subtotal: €${fromCents(toCents(invoice?.subtotal_ex_vat)).toFixed(2)}`,
     `Total: €${fromCents(toCents(invoice?.total_inc_vat)).toFixed(2)}`,
-  ].join("\n");
+  ];
+  if (invoiceRequiresManualSettlement(invoice)) {
+    lines.splice(2, 0, `Due date: ${dueLabel}`);
+  } else {
+    lines.splice(2, 0, "Status: Paid automatically");
+  }
+  return lines.join("\n");
 }
 
 function formatEmailEuroAmount(value) {
@@ -2727,6 +3382,9 @@ function mapInvoiceProfileFromUser(user = {}) {
     contact_name: String(metadata.contact_name || metadata.contactName || "").trim() || "",
     contact_email:
       normalizeEmail(metadata.contact_email || metadata.contactEmail || user?.email || "") || "",
+    contact_phone: String(metadata.contact_phone || metadata.contactPhone || "").trim() || "",
+    billing_address: String(metadata.billing_address || metadata.billingAddress || "").trim() || "",
+    tax_id: String(metadata.tax_id || metadata.taxId || "").trim() || "",
     customer_id: String(metadata.customer_id || metadata.customerId || "").trim() || "",
     account_manager: String(metadata.account_manager || metadata.accountManager || "").trim() || "",
   };
@@ -3207,9 +3865,17 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
     };
   }
 
+  let user = null;
+  if (invoiceWithItems.user_id) {
+    try {
+      user = await getSupabaseUserById(invoiceWithItems.user_id);
+    } catch (_error) {
+      user = null;
+    }
+  }
+
   let toEmail = getInvoiceRecipientFromSnapshot(invoiceWithItems, "");
   if (!toEmail) {
-    const user = await getSupabaseUserById(invoiceWithItems.user_id);
     toEmail = normalizeEmail(user?.email || "");
   }
   if (!toEmail) {
@@ -3219,31 +3885,75 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Number(options?.reminderStage) || 0;
   const reminderTitle = String(options?.reminderTitle || "").trim();
-  const subject = buildInvoiceEmailSubject(invoiceWithItems, { isReminder, reminderStage });
+  const nowIso = new Date().toISOString();
+  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
+  const effectiveIssuedAt = parseIsoTimestamp(invoiceWithItems.issued_at || nowIso) || nowIso;
+  const shouldResetDueDate = manualSettlement && (!invoiceWithItems.sent_at || !invoiceWithItems.issued_at);
+  const effectiveDueAt = manualSettlement
+    ? (
+        shouldResetDueDate
+          ? addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays()).toISOString()
+          : parseIsoTimestamp(invoiceWithItems.due_at)
+            || addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays()).toISOString()
+      )
+    : null;
+  const effectivePaidAt = manualSettlement
+    ? parseIsoTimestamp(invoiceWithItems.paid_at || "")
+    : parseIsoTimestamp(invoiceWithItems.paid_at || invoiceWithItems.sent_at || effectiveIssuedAt)
+      || effectiveIssuedAt;
+  const pdfInvoice = {
+    ...invoiceWithItems,
+    issued_at: effectiveIssuedAt,
+    due_at: effectiveDueAt,
+    paid_at: effectivePaidAt,
+  };
+  const pdfBytes = await buildInvoicePdf(pdfInvoice, invoiceWithItems.items || [], {
+    user,
+    issuedAt: effectiveIssuedAt,
+    dueAt: effectiveDueAt,
+    paidAt: effectivePaidAt,
+  });
+  const subject = buildInvoiceEmailSubject(pdfInvoice, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail({
     to: toEmail,
     subject,
-    html: buildInvoiceEmailHtml(invoiceWithItems, invoiceWithItems.items || [], {
+    html: buildInvoiceEmailHtml(pdfInvoice, invoiceWithItems.items || [], {
       isReminder,
       reminderTitle,
       reminderStage,
     }),
-    text: buildInvoiceEmailText(invoiceWithItems, { isReminder }),
+    text: buildInvoiceEmailText(pdfInvoice, { isReminder }),
+    attachments: [
+      {
+        filename: buildInvoicePdfFilename(invoiceWithItems),
+        content: pdfBytes,
+        contentType: "application/pdf",
+      },
+    ],
   });
 
-  const nowIso = new Date().toISOString();
-  const dueMs = Date.parse(invoiceWithItems.due_at || 0);
-  const nextStatus =
-    Number.isFinite(dueMs) && dueMs < Date.now() && currentStatus !== "paid" ? "overdue" : "sent";
+  const dueMs = Date.parse(effectiveDueAt || 0);
+  const nextStatus = manualSettlement
+    ? Number.isFinite(dueMs) && dueMs < Date.now() && currentStatus !== "paid"
+      ? "overdue"
+      : "sent"
+    : "paid";
   const patch = {
     status: nextStatus,
     email_message_id: String(emailPayload?.id || "").trim() || null,
   };
   if (!invoiceWithItems.issued_at) {
-    patch.issued_at = nowIso;
+    patch.issued_at = effectiveIssuedAt;
   }
   if (!invoiceWithItems.sent_at) {
     patch.sent_at = nowIso;
+  }
+  if (manualSettlement) {
+    if (!invoiceWithItems.due_at || shouldResetDueDate) {
+      patch.due_at = effectiveDueAt;
+    }
+  } else if (!invoiceWithItems.paid_at) {
+    patch.paid_at = effectivePaidAt;
   }
   if (isReminder) {
     patch.reminder_stage = Math.max(Number(invoiceWithItems.reminder_stage) || 0, reminderStage);
@@ -3448,12 +4158,25 @@ async function buildInvoicesFromLabelHistory(options = {}) {
       account_manager: profile.account_manager,
       payment_reference: existing?.payment_reference || null,
       payment_received_amount: existing?.payment_received_amount ?? null,
-      metadata:
-        existing?.metadata && typeof existing.metadata === "object"
-          ? existing.metadata
-          : {
-              source: "portal_label_generations",
-            },
+      metadata: {
+        ...(
+          existing?.metadata && typeof existing.metadata === "object"
+            ? existing.metadata
+            : {
+                source: "portal_label_generations",
+              }
+        ),
+        invoice_profile: {
+          companyName: profile.company_name,
+          contactName: profile.contact_name,
+          contactEmail: profile.contact_email,
+          contactPhone: profile.contact_phone,
+          billingAddress: profile.billing_address,
+          taxId: profile.tax_id,
+          customerId: profile.customer_id,
+          accountManager: profile.account_manager,
+        },
+      },
       updated_at: runTimestamp,
     };
 
@@ -4551,21 +5274,42 @@ function buildAdminBillingTestInvoice(toEmail) {
     invoice: {
       id: crypto.randomUUID(),
       company_name: "Test Client",
+      contact_name: "Claire Dupont",
       contact_email: toEmail,
       period_start: nowIso.slice(0, 10),
       period_end: nowIso.slice(0, 10),
       due_at: addUtcDays(now, getInvoiceTermsDays()).toISOString(),
+      issued_at: nowIso,
       subtotal_ex_vat: 120,
       vat_amount: 0,
       total_inc_vat: 120,
       vat_rate: DEFAULT_VAT_RATE,
+      labels_count: 1,
+      line_count: 1,
+      payment_mode: "invoice",
+      metadata: {
+        invoice_profile: {
+          companyName: "Atelier Meridian",
+          contactName: "Claire Dupont",
+          contactEmail: toEmail,
+          contactPhone: "+32 2 555 01 29",
+          billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+          taxId: "BE0123456789",
+          customerId: "SHIPIDE-TEST",
+          accountManager: "Shipide Billing",
+        },
+      },
     },
     items: [
       {
         service_type: "Economy",
         recipient_name: "Sample Recipient",
+        recipient_city: "Brussels",
         recipient_country: "Belgium",
+        tracking_id: "TRK-50482912",
+        label_id: "LBL-201948",
         amount_ex_vat: 120,
+        amount_inc_vat: 120,
       },
     ],
   };
@@ -4592,17 +5336,45 @@ async function sendAdminBillingTestSequenceEmails(toEmail) {
       isReminder: step.isReminder,
       reminderStage: step.reminderStage,
     });
+    const manualSettlement = invoiceRequiresManualSettlement(invoice);
+    const issuedAt = parseIsoTimestamp(invoice.issued_at || new Date().toISOString()) || new Date().toISOString();
+    const dueAt = manualSettlement
+      ? (
+          step.isReminder
+            ? parseIsoTimestamp(invoice.due_at)
+            : addUtcDays(new Date(issuedAt), getInvoiceTermsDays()).toISOString()
+        )
+      : null;
+    const paidAt = manualSettlement ? null : issuedAt;
+    const emailInvoice = {
+      ...invoice,
+      issued_at: issuedAt,
+      due_at: dueAt,
+      paid_at: paidAt,
+    };
+    const pdfBytes = await buildInvoicePdf(emailInvoice, items, {
+      issuedAt,
+      dueAt,
+      paidAt,
+    });
     try {
       const response = await sendResendEmail({
         to: toEmail,
         subject,
-        html: buildInvoiceEmailHtml(invoice, items, {
+        html: buildInvoiceEmailHtml(emailInvoice, items, {
           isReminder: step.isReminder,
           reminderStage: step.reminderStage,
         }),
-        text: buildInvoiceEmailText(invoice, {
+        text: buildInvoiceEmailText(emailInvoice, {
           isReminder: step.isReminder,
         }),
+        attachments: [
+          {
+            filename: buildInvoicePdfFilename(emailInvoice),
+            content: pdfBytes,
+            contentType: "application/pdf",
+          },
+        ],
       });
       results.push({
         step: step.key,
@@ -4657,6 +5429,10 @@ async function handleAdminInvoiceSendTest(req, res) {
   }
   try {
     const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(toEmail);
+    const pdfBytes = await buildInvoicePdf(testInvoice, testItems, {
+      issuedAt: testInvoice.issued_at,
+      dueAt: testInvoice.due_at,
+    });
     const resendResponse = await sendResendEmail({
       to: toEmail,
       subject: buildInvoiceEmailSubject(testInvoice, { isReminder: false, reminderStage: 0 }),
@@ -4667,6 +5443,13 @@ async function handleAdminInvoiceSendTest(req, res) {
       text: buildInvoiceEmailText(testInvoice, {
         isReminder: false,
       }),
+      attachments: [
+        {
+          filename: buildInvoicePdfFilename(testInvoice),
+          content: pdfBytes,
+          contentType: "application/pdf",
+        },
+      ],
     });
     sendJson(res, 200, {
       ok: true,

@@ -7232,6 +7232,56 @@ function formatReceiptParcel(data = {}) {
   return parts.length ? parts.join(" • ") : "--";
 }
 
+function buildReceiptTrackingId(rawId) {
+  const raw = String(rawId || "").trim();
+  if (!raw) {
+    return {
+      display: "--",
+      slug: "label-order",
+    };
+  }
+
+  const parts = raw.split("-").filter(Boolean);
+  let suffix = "";
+  let coreParts = parts;
+
+  if (parts.length > 5 && /^\d+$/.test(parts[parts.length - 1])) {
+    suffix = parts[parts.length - 1];
+    coreParts = parts.slice(0, -1);
+  }
+
+  const compact = coreParts.join("").replace(/[^a-z0-9]/gi, "");
+  if (!compact) {
+    const safeSlug = raw
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+    return {
+      display: raw.toUpperCase(),
+      slug: safeSlug || "label-order",
+    };
+  }
+
+  const lead = compact.slice(0, 6).toUpperCase();
+  const tail = compact.length > 6 ? compact.slice(-4).toUpperCase() : "";
+  const displayParts = ["RCPT", lead];
+  const slugParts = [lead.toLowerCase()];
+
+  if (tail) {
+    displayParts.push(tail);
+    slugParts.push(tail.toLowerCase());
+  }
+  if (suffix) {
+    displayParts.push(suffix.toUpperCase());
+    slugParts.push(suffix.toLowerCase());
+  }
+
+  return {
+    display: displayParts.join("-"),
+    slug: slugParts.join("-"),
+  };
+}
+
 function buildReceiptViewModel(record) {
   const totals = calculateRecordTotals(record);
   const profile = buildMockAccountProfile(currentUser);
@@ -7241,6 +7291,7 @@ function buildReceiptViewModel(record) {
   const labels = accountLabels.length ? accountLabels : record.payload?.labels || [];
   const headlineParts = formatHistoryHeadlineParts(record.created_at);
   const issuedAt = `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " ");
+  const receiptTracking = buildReceiptTrackingId(record?.id);
   return {
     record,
     totals,
@@ -7248,7 +7299,8 @@ function buildReceiptViewModel(record) {
     serviceType,
     labels,
     issuedAt,
-    receiptNumber: record.id || "--",
+    receiptNumber: receiptTracking.display,
+    receiptSlug: receiptTracking.slug,
     quantity: totals.quantity,
     billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
   };
@@ -7531,7 +7583,8 @@ function measureReceiptRegions(receiptDoc, scale) {
 }
 
 function getReceiptPdfFilename() {
-  return `receipt-${accountActiveRecord?.id || tr("label-order")}.pdf`;
+  const tracking = buildReceiptTrackingId(accountActiveRecord?.id);
+  return `receipt-${tracking.slug || tr("label-order")}.pdf`;
 }
 
 function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
