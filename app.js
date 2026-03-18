@@ -1328,6 +1328,7 @@ const accountCustomerId = document.getElementById("accountCustomerId");
 const accountAccountManager = document.getElementById("accountAccountManager");
 const languageSelect = document.getElementById("languageSelect");
 const warehouseStatus = document.getElementById("warehouseStatus");
+const warehouseStatusRow = warehouseStatus?.closest(".warehouse-status-row") || null;
 const warehouseList = document.getElementById("warehouseList");
 const warehouseAddButton = document.getElementById("warehouseAdd");
 const warehouseSaveButton = document.getElementById("warehouseSave");
@@ -1480,6 +1481,7 @@ const quantityInput = document.getElementById("labelQuantity");
 const batchPanel = document.getElementById("batchPanel");
 const batchList = document.getElementById("batchList");
 const batchPreview = document.getElementById("batchPreview");
+const adminOnlyTestTools = document.getElementById("adminOnlyTestTools");
 const autoCsvButton = document.getElementById("autoCsv");
 const csvEditToggle = document.getElementById("csvEditToggle");
 const csvSection = document.getElementById("csvSection");
@@ -1565,6 +1567,35 @@ const csvMapApply = document.getElementById("csvMapApply");
 const csvMapError = document.getElementById("csvMapError");
 const csvDropzone = document.getElementById("csvDropzone");
 const csvFileInput = document.getElementById("csvFileInput");
+const defaultLabelErrorMessage = String(labelError?.textContent || "").trim()
+  || "Complete all required fields or use Auto-generate CSV.";
+const defaultPaymentMethodErrorMessage = String(paymentMethodError?.textContent || "").trim()
+  || "Select a payment method to continue.";
+
+[
+  authAgreementStatus,
+  authInviteStatus,
+  authError,
+  providerStatus,
+  labelError,
+  customsError,
+  paymentMethodError,
+  warehouseStatus,
+  clientInviteStatus,
+  adminBillingRunStatus,
+  accountHistoryStatus,
+  shopifySettingsStatus,
+  ibanTopupStatus,
+  csvMapError,
+].forEach((element) => {
+  if (element) {
+    element.hidden = true;
+  }
+});
+
+if (warehouseStatusRow) {
+  warehouseStatusRow.hidden = true;
+}
 
 const inputMap = {
   senderName: document.getElementById("senderName"),
@@ -2410,6 +2441,48 @@ function showToast(message, options = {}) {
   window.setTimeout(dismiss, Math.max(1800, Number(duration) || 3400));
 }
 
+let lastStatusToast = {
+  message: "",
+  tone: "",
+  title: "",
+  at: 0,
+};
+
+function showStatusToast(message, options = {}) {
+  const text = String(message || "").trim();
+  const title = String(options?.title || "").trim();
+  const tone = String(options?.tone || "info").trim() || "info";
+  if (!text) return;
+  const now = Date.now();
+  if (
+    lastStatusToast.message === text
+    && lastStatusToast.tone === tone
+    && lastStatusToast.title === title
+    && now - lastStatusToast.at < 900
+  ) {
+    return;
+  }
+  lastStatusToast = {
+    message: text,
+    tone,
+    title,
+    at: now,
+  };
+  showToast(text, { ...options, title, tone });
+}
+
+function setInlineFormErrorToast(errorEl, message = "", tone = "error") {
+  const text = String(message || "").trim();
+  if (errorEl) {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+    errorEl.classList.remove("is-visible", "is-error", "is-success", "is-info");
+  }
+  if (text) {
+    showStatusToast(text, { tone });
+  }
+}
+
 function updateToastStackLayout() {
   if (!toastStack) return;
   const toasts = Array.from(toastStack.querySelectorAll(".toast"));
@@ -2436,22 +2509,19 @@ function getToastIconSvg(tone) {
 }
 
 function setProviderStatus(message = "", options = {}) {
-  if (!providerStatus) return;
-  const { kind = "info", persist = false, toast = !persist } = options;
+  const { kind = "info", toast = Boolean(message) } = options;
   const text = String(message || "").trim();
-  providerStatus.textContent = persist ? text : "";
-  providerStatus.classList.remove("is-success", "is-error");
-  if (persist && kind === "success") {
-    providerStatus.classList.add("is-success");
-  } else if (persist && kind === "error") {
-    providerStatus.classList.add("is-error");
+  if (providerStatus) {
+    providerStatus.hidden = true;
+    providerStatus.textContent = "";
+    providerStatus.classList.remove("is-success", "is-error");
   }
   if (providerStatusTimer) {
     window.clearTimeout(providerStatusTimer);
     providerStatusTimer = 0;
   }
   if (toast && text) {
-    showToast(text, { tone: kind });
+    showStatusToast(text, { tone: kind });
   }
 }
 
@@ -2466,18 +2536,15 @@ function setShopifySettingsModalOpen(open) {
 }
 
 function setShopifySettingsStatus(message = "", options = {}) {
-  if (!shopifySettingsStatus) return;
-  const { kind = "info", toast = kind !== "info" } = options;
+  const { kind = "info", toast = Boolean(message) } = options;
   const text = String(message || "").trim();
-  shopifySettingsStatus.textContent = kind === "info" ? text : "";
-  shopifySettingsStatus.classList.remove("is-success", "is-error");
-  if (kind === "success" && !toast) {
-    shopifySettingsStatus.classList.add("is-success");
-  } else if (kind === "error" && !toast) {
-    shopifySettingsStatus.classList.add("is-error");
+  if (shopifySettingsStatus) {
+    shopifySettingsStatus.hidden = true;
+    shopifySettingsStatus.textContent = "";
+    shopifySettingsStatus.classList.remove("is-success", "is-error");
   }
   if (toast && text) {
-    showToast(text, { tone: kind });
+    showStatusToast(text, { tone: kind });
   }
 }
 
@@ -3049,28 +3116,25 @@ async function loadClientInviteHistory(options = {}) {
     const invites = Array.isArray(payload?.invites) ? payload.invites : [];
     renderClientInviteHistory(invites);
   } catch (error) {
+    showStatusToast(error?.message || tr("Could not load invites."), { tone: "error" });
     renderClientInviteHistory([]);
     if (clientInviteHistoryEmpty) {
-      clientInviteHistoryEmpty.textContent = error?.message || tr("No invites yet.");
+      clientInviteHistoryEmpty.textContent = tr("No invites yet.");
       clientInviteHistoryEmpty.classList.remove("is-hidden");
     }
   }
 }
 
 function setClientInviteStatus(message = "", options = {}) {
-  if (!clientInviteStatus) return;
-  const { tone = "info", persist = tone === "info", toast = !persist } = options;
+  const { tone = "info", toast = Boolean(message) } = options;
   const text = String(message || "").trim();
-  clientInviteStatus.textContent = persist ? text : "";
-  clientInviteStatus.classList.remove("is-error", "is-success");
-  if (toast && text) {
-    showToast(text, { tone: tone === "muted" ? "info" : tone });
+  if (clientInviteStatus) {
+    clientInviteStatus.hidden = true;
+    clientInviteStatus.textContent = "";
+    clientInviteStatus.classList.remove("is-error", "is-success");
   }
-  if (!clientInviteStatus.textContent) return;
-  if (tone === "error") {
-    clientInviteStatus.classList.add("is-error");
-  } else if (tone === "success") {
-    clientInviteStatus.classList.add("is-success");
+  if (toast && text) {
+    showStatusToast(text, { tone: tone === "muted" ? "info" : tone });
   }
 }
 
@@ -3387,6 +3451,19 @@ function setAdminClientBillingBusy(userId, isBusy) {
     adminClientBillingBusyIds.delete(safeUserId);
   }
   renderAdminClientsList();
+}
+
+function refreshAdminOnlyTestTools() {
+  const canUseAdminTestTools = Boolean(currentUser && adminAccessAllowed);
+  if (adminOnlyTestTools) {
+    adminOnlyTestTools.classList.toggle("is-hidden", !canUseAdminTestTools);
+  }
+  if (autoFillButton) {
+    autoFillButton.disabled = !canUseAdminTestTools;
+  }
+  if (autoCsvButton) {
+    autoCsvButton.disabled = !canUseAdminTestTools;
+  }
 }
 
 function renderAdminMockDataButton() {
@@ -3873,6 +3950,7 @@ async function loadAdminAccessStatus(options = {}) {
     if (openAdminPageButton) {
       openAdminPageButton.classList.add("is-hidden");
     }
+    refreshAdminOnlyTestTools();
     return false;
   }
   try {
@@ -3887,6 +3965,7 @@ async function loadAdminAccessStatus(options = {}) {
   if (openAdminPageButton) {
     openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
   }
+  refreshAdminOnlyTestTools();
   if (!adminAccessAllowed && currentMainView === "admin") {
     setAdminPageVisible(false, { replace: true });
   }
@@ -4019,14 +4098,15 @@ function setAdminBillingBusy(isBusy) {
 }
 
 function setAdminBillingStatus(message = "", options = {}) {
-  if (!adminBillingRunStatus) return;
-  adminBillingRunStatus.textContent = message;
-  adminBillingRunStatus.classList.remove("is-error", "is-success");
-  if (!message) return;
-  if (options?.tone === "error") {
-    adminBillingRunStatus.classList.add("is-error");
-  } else if (options?.tone === "success") {
-    adminBillingRunStatus.classList.add("is-success");
+  const text = String(message || "").trim();
+  const tone = String(options?.tone || "info").trim() || "info";
+  if (adminBillingRunStatus) {
+    adminBillingRunStatus.hidden = true;
+    adminBillingRunStatus.textContent = "";
+    adminBillingRunStatus.classList.remove("is-error", "is-success");
+  }
+  if (text) {
+    showStatusToast(text, { tone });
   }
 }
 
@@ -4145,13 +4225,11 @@ async function runAdminBillingCycle(mode = "preview") {
     });
     renderAdminBillingRunResult(payload);
     setAdminBillingStatus(tr("Billing run completed."), { tone: "success" });
-    showToast(tr("Billing run completed."), { tone: "success" });
     await loadAdminDashboard({ quiet: true });
     await loadAdminInvoices({ quiet: true });
     await loadBillingOverview({ quiet: true });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Billing run failed."), { tone: "error" });
-    showToast(error?.message || tr("Billing run failed."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4175,12 +4253,10 @@ async function sendAdminBillingTestEmail() {
       tr("Test invoice email sent to {email}.", { email: String(payload?.to || toEmail) }),
       { tone: "success" }
     );
-    showToast(tr("Test invoice email sent."), { tone: "success" });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send test invoice email."), {
       tone: "error",
     });
-    showToast(error?.message || tr("Could not send test invoice email."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4211,7 +4287,6 @@ async function sendAdminBillingTestSequence() {
         total: String(total),
       });
       setAdminBillingStatus(message, { tone: "error" });
-      showToast(message, { tone: "warning" });
       return;
     }
     const message = tr("Follow-up sequence sent to {email} ({count} emails).", {
@@ -4219,12 +4294,10 @@ async function sendAdminBillingTestSequence() {
       count: String(total || sent),
     });
     setAdminBillingStatus(message, { tone: "success" });
-    showToast(tr("Follow-up sequence sent."), { tone: "success" });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send follow-up sequence."), {
       tone: "error",
     });
-    showToast(error?.message || tr("Could not send follow-up sequence."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4253,12 +4326,10 @@ async function sendAdminReportsTestEmail() {
       }),
       { tone: "success" }
     );
-    showToast(tr("Reports test email sent."), { tone: "success" });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send reports test email."), {
       tone: "error",
     });
-    showToast(error?.message || tr("Could not send reports test email."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4301,7 +4372,6 @@ async function previewAdminAgreementEmail() {
     setAdminBillingStatus(error?.message || tr("Could not preview agreement email."), {
       tone: "error",
     });
-    showToast(error?.message || tr("Could not preview agreement email."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4328,12 +4398,8 @@ async function sendAdminAgreementTestEmail() {
       }),
       { tone: "success" }
     );
-    showToast(tr("Agreement test email sent."), { tone: "success" });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send test agreement email."), {
-      tone: "error",
-    });
-    showToast(error?.message || tr("Could not send test agreement email."), {
       tone: "error",
     });
   } finally {
@@ -4352,12 +4418,10 @@ async function sendAdminInvoice(invoiceId) {
       body: JSON.stringify({ invoiceId: safeInvoiceId }),
     });
     setAdminBillingStatus(tr("Invoice sent."), { tone: "success" });
-    showToast(tr("Invoice sent."), { tone: "success" });
     await loadAdminInvoices({ quiet: true });
     await loadAdminDashboard({ quiet: true });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send invoice."), { tone: "error" });
-    showToast(error?.message || tr("Could not send invoice."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4374,7 +4438,6 @@ async function markAdminInvoicePaid(invoiceId) {
       body: JSON.stringify({ invoiceId: safeInvoiceId }),
     });
     setAdminBillingStatus(tr("Invoice marked as paid."), { tone: "success" });
-    showToast(tr("Invoice marked as paid."), { tone: "success" });
     await loadAdminInvoices({ quiet: true });
     await loadAdminDashboard({ quiet: true });
     await loadBillingOverview({ quiet: true });
@@ -4382,7 +4445,6 @@ async function markAdminInvoicePaid(invoiceId) {
     setAdminBillingStatus(error?.message || tr("Could not mark invoice as paid."), {
       tone: "error",
     });
-    showToast(error?.message || tr("Could not mark invoice as paid."), { tone: "error" });
   } finally {
     setAdminBillingBusy(false);
   }
@@ -4494,9 +4556,7 @@ function applyImportedRows(rows, sourceLabel, options = {}) {
     syncCsvRowsWithSelectedOrigin({ rerender: false });
   }
   setCsvEditMode(false);
-  if (labelError) {
-    labelError.classList.remove("is-visible");
-  }
+  setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();
   updatePayment();
@@ -5748,19 +5808,18 @@ function applyWarehouseToSender(origin, options = {}) {
 }
 
 function setWarehouseStatus(message, options = {}) {
-  const { tone = "muted", persist = !["error", "success"].includes(tone), toast = !persist } =
-    options;
-  if (!warehouseStatus) return;
+  const { tone = "muted", toast = Boolean(message) } = options;
   const text = String(message || "").trim();
-  warehouseStatus.textContent = persist ? text : "";
-  warehouseStatus.classList.remove("is-error", "is-success");
-  if (toast && text) {
-    showToast(text, { tone: tone === "muted" ? "info" : tone });
+  if (warehouseStatusRow) {
+    warehouseStatusRow.hidden = true;
   }
-  if (tone === "error") {
-    warehouseStatus.classList.add("is-error");
-  } else if (tone === "success") {
-    warehouseStatus.classList.add("is-success");
+  if (warehouseStatus) {
+    warehouseStatus.hidden = true;
+    warehouseStatus.textContent = "";
+    warehouseStatus.classList.remove("is-error", "is-success");
+  }
+  if (toast && text) {
+    showStatusToast(text, { tone: tone === "muted" ? "info" : tone });
   }
 }
 
@@ -6552,14 +6611,16 @@ function setRestrictedGoodsModalOpen(open) {
 }
 
 function setIbanTopupStatus(message = "", options = {}) {
-  if (!ibanTopupStatus) return;
-  ibanTopupStatus.textContent = message;
-  ibanTopupStatus.classList.remove("is-error", "is-success");
-  if (!message) return;
-  if (options?.tone === "error") {
-    ibanTopupStatus.classList.add("is-error");
-  } else if (options?.tone === "success") {
-    ibanTopupStatus.classList.add("is-success");
+  const text = String(message || "").trim();
+  const tone = String(options?.tone || "info").trim() || "info";
+  const toast = options?.toast ?? Boolean(text);
+  if (ibanTopupStatus) {
+    ibanTopupStatus.hidden = true;
+    ibanTopupStatus.textContent = "";
+    ibanTopupStatus.classList.remove("is-error", "is-success");
+  }
+  if (toast && text) {
+    showStatusToast(text, { tone });
   }
 }
 
@@ -6635,7 +6696,7 @@ async function createIbanTopupRequest(options = {}) {
     typeof options?.loadingMessage === "string" && options.loadingMessage.trim()
       ? options.loadingMessage
       : tr("Creating top-up request...");
-  setIbanTopupStatus(loadingMessage);
+  setIbanTopupStatus(loadingMessage, { tone: "info" });
   try {
     const payload = await fetchApiWithAuth("/api/billing/topups/request", {
       method: "POST",
@@ -6645,16 +6706,14 @@ async function createIbanTopupRequest(options = {}) {
     populateIbanTopupResult(payload);
     setIbanTopupStatus(tr("Transfer reference generated. Use it as communication."), {
       tone: "success",
+      toast: true,
     });
-    if (!options?.silentToast) {
-      showToast(tr("IBAN top-up request created."), { tone: "success" });
-    }
     await loadBillingOverview({ quiet: true });
   } catch (error) {
     setIbanTopupStatus(error?.message || tr("Could not create top-up request."), {
       tone: "error",
+      toast: true,
     });
-    showToast(error?.message || tr("Could not create top-up request."), { tone: "error" });
   } finally {
     ibanTopupRequestInFlight = false;
     if (ibanTopupRequest) {
@@ -6874,10 +6933,15 @@ function syncAccountHistorySelection() {
 }
 
 function setAccountHistoryStatus(message) {
-  if (!accountHistoryStatus) return;
   const text = String(message || "").trim();
-  accountHistoryStatus.textContent = text;
-  accountHistoryStatus.classList.toggle("is-hidden", !text);
+  if (accountHistoryStatus) {
+    accountHistoryStatus.hidden = true;
+    accountHistoryStatus.textContent = "";
+    accountHistoryStatus.classList.add("is-hidden");
+  }
+  if (text) {
+    showStatusToast(text, { tone: "info" });
+  }
 }
 
 async function loadGenerationHistory(options = {}) {
@@ -8855,6 +8919,7 @@ function setAuthMessage(message, options = {}) {
   const { isError = true, tone = isError ? "error" : "info", toast = true } = options;
   const text = String(message || "").trim();
   if (authError) {
+    authError.hidden = true;
     authError.textContent = "";
     authError.classList.remove("is-visible", "is-info");
   }
@@ -8867,6 +8932,7 @@ function setAuthInviteStatus(message = "", options = {}) {
   const { tone = "info", toast = true } = options;
   const text = String(message || "").trim();
   if (authInviteStatus) {
+    authInviteStatus.hidden = true;
     authInviteStatus.textContent = "";
     authInviteStatus.classList.remove("is-visible", "is-error", "is-success");
   }
@@ -8879,6 +8945,7 @@ function setAuthAgreementStatus(message = "", options = {}) {
   const { tone = "info", toast = true } = options;
   const text = String(message || "").trim();
   if (authAgreementStatus) {
+    authAgreementStatus.hidden = true;
     authAgreementStatus.textContent = "";
     authAgreementStatus.classList.remove("is-success");
   }
@@ -9943,6 +10010,7 @@ function setAuthView(session, options = {}) {
     startAuthKeepAlive();
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
+    refreshAdminOnlyTestTools();
     loadAdminAccessStatus({ quiet: true });
     loadBillingOverview({ quiet: true });
     if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
@@ -9969,6 +10037,7 @@ function setAuthView(session, options = {}) {
     adminMockModeEnabled = false;
     adminMockSnapshot = null;
     billingOverview = null;
+    refreshAdminOnlyTestTools();
     renderClientInviteHistory([]);
     setClientInviteStatus("");
     setClientInviteResult("");
@@ -10003,6 +10072,7 @@ function setAuthView(session, options = {}) {
   if (openAdminPageButton) {
     openAdminPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
   }
+  refreshAdminOnlyTestTools();
   if (openHistoryPageButton) {
     openHistoryPageButton.classList.toggle("is-hidden", !isAuthed);
   }
@@ -10672,9 +10742,7 @@ function handleCsvInput(event) {
   state.csvRows[rowIndex][key] = input.value.trim();
   invalidateCustomsCompletion();
   input.classList.remove("is-invalid");
-  if (labelError) {
-    labelError.classList.remove("is-visible");
-  }
+  setInlineFormErrorToast(labelError, "");
   if (key === "recipientCountry") {
     const icon = input.parentElement?.querySelector(".csv-country-icon");
     if (icon) {
@@ -11050,8 +11118,8 @@ function setCheckoutPaymentMethod(method, options = {}) {
     });
   }
 
-  if (paymentMethodError && !options.quiet) {
-    paymentMethodError.classList.remove("is-visible");
+  if (!options.quiet) {
+    setInlineFormErrorToast(paymentMethodError, "");
   }
   updateCardFormVisibility();
 }
@@ -11135,7 +11203,7 @@ function renderCheckoutStepMode() {
     if (step3Sub) step3Sub.textContent = tr("Billing profile and approval");
     if (invoiceReviewWrap) invoiceReviewWrap.classList.remove("is-hidden");
     if (directPaymentWrap) directPaymentWrap.classList.add("is-hidden");
-    if (paymentMethodError) paymentMethodError.classList.remove("is-visible");
+    setInlineFormErrorToast(paymentMethodError, "");
     if (checkoutStepTitle) checkoutStepTitle.textContent = tr("Confirm invoice information");
     if (checkoutStepSubtitle) {
       checkoutStepSubtitle.textContent = tr(
@@ -11217,9 +11285,15 @@ function renderActiveBuilderPanel() {
 }
 
 function setCustomsError(message = "") {
-  if (!customsError) return;
-  customsError.textContent = message;
-  customsError.classList.toggle("is-visible", Boolean(message));
+  const text = String(message || "").trim();
+  if (customsError) {
+    customsError.hidden = true;
+    customsError.textContent = "";
+    customsError.classList.remove("is-visible");
+  }
+  if (text) {
+    showStatusToast(text, { tone: "error" });
+  }
 }
 
 function setCustomsFieldInvalid(input, invalid) {
@@ -11641,40 +11715,32 @@ function validateFields(fieldIds, lookup, errorEl, validator) {
   });
 
   if (firstInvalid) {
-    if (errorEl) {
-      errorEl.classList.add("is-visible");
-    }
+    setInlineFormErrorToast(errorEl, defaultLabelErrorMessage, "error");
     firstInvalid.focus();
     return false;
   }
 
-  if (errorEl) {
-    errorEl.classList.remove("is-visible");
-  }
+  setInlineFormErrorToast(errorEl, "");
   return true;
 }
 
 function validateLabelInfo() {
   if (state.csvMode) {
     const ok = validateCsvRows();
-    if (!ok && labelError) {
-      labelError.classList.add("is-visible");
-    }
-    if (ok && labelError) {
-      labelError.classList.remove("is-visible");
+    if (!ok) {
+      setInlineFormErrorToast(labelError, defaultLabelErrorMessage, "error");
+    } else {
+      setInlineFormErrorToast(labelError, "");
     }
     return ok;
   }
   const selectedOrigin = ensureSelectedWarehouseOrigin();
   if (!selectedOrigin) {
-    if (senderOriginNote) {
-      senderOriginNote.textContent = tr(
-        "Add at least one shipping origin in Account settings before continuing."
-      );
-    }
-    if (labelError) {
-      labelError.classList.add("is-visible");
-    }
+    setInlineFormErrorToast(
+      labelError,
+      tr("Add at least one shipping origin in Account settings before continuing."),
+      "error"
+    );
     return false;
   }
   applyWarehouseToSender(selectedOrigin, { announce: false });
@@ -11685,9 +11751,7 @@ Object.entries(inputMap).forEach(([_, input]) => {
   input.addEventListener("input", () => {
     syncInfoState();
     input.classList.remove("is-invalid");
-    if (labelError) {
-      labelError.classList.remove("is-visible");
-    }
+    setInlineFormErrorToast(labelError, "");
   });
 });
 
@@ -12409,9 +12473,7 @@ if (paymentMethodList) {
     if (target.classList.contains("is-disabled")) return;
     const method = String(target.dataset.paymentMethod || "").trim().toLowerCase();
     setCheckoutPaymentMethod(method);
-    if (paymentMethodError) {
-      paymentMethodError.classList.remove("is-visible");
-    }
+    setInlineFormErrorToast(paymentMethodError, "");
   });
 
   paymentMethodList.addEventListener("keydown", (event) => {
@@ -12423,9 +12485,7 @@ if (paymentMethodList) {
     event.preventDefault();
     const method = String(target.dataset.paymentMethod || "").trim().toLowerCase();
     setCheckoutPaymentMethod(method);
-    if (paymentMethodError) {
-      paymentMethodError.classList.remove("is-visible");
-    }
+    setInlineFormErrorToast(paymentMethodError, "");
   });
 }
 
@@ -12628,9 +12688,7 @@ function autoFill() {
   state.csvRows = [];
   state.csvPage = 1;
   state.csvValidationAttempted = false;
-  if (labelError) {
-    labelError.classList.remove("is-visible");
-  }
+  setInlineFormErrorToast(labelError, "");
   const profile = sampleProfiles[Math.floor(Math.random() * sampleProfiles.length)];
   maybeApplyDefaultWarehouseToSender();
 
@@ -12655,6 +12713,10 @@ function autoFill() {
 if (autoFillButton) {
   autoFillButton.addEventListener("click", (event) => {
     event.preventDefault();
+    if (!currentUser || !adminAccessAllowed) {
+      showToast(tr("Only admin accounts can use Auto-fill."), { tone: "error" });
+      return;
+    }
     autoFill();
   });
 }
@@ -12662,6 +12724,10 @@ if (autoFillButton) {
 if (autoCsvButton) {
   autoCsvButton.addEventListener("click", (event) => {
     event.preventDefault();
+    if (!currentUser || !adminAccessAllowed) {
+      showToast(tr("Only admin accounts can use Auto CSV."), { tone: "error" });
+      return;
+    }
     clearBatchState();
     state.csvRows = generateCsvRows(3);
     state.csvPage = 1;
@@ -12670,9 +12736,7 @@ if (autoCsvButton) {
     setCsvMode(true);
     syncCsvRowsWithSelectedOrigin({ rerender: false });
     setCsvEditMode(false);
-    if (labelError) {
-      labelError.classList.remove("is-visible");
-    }
+    setInlineFormErrorToast(labelError, "");
     updatePreview();
     updateSummary();
     updatePayment();
@@ -12759,31 +12823,24 @@ async function handleCheckoutAndGenerate() {
       method = walletEnabled ? "wallet" : cardEnabled ? "card" : "";
     }
     if (!method) {
-      if (paymentMethodError) {
-        paymentMethodError.textContent = tr("Select a payment method to continue.");
-        paymentMethodError.classList.add("is-visible");
-      }
+      setInlineFormErrorToast(paymentMethodError, defaultPaymentMethodErrorMessage, "error");
       return;
     }
     if (method === "wallet") {
       const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
       if (walletBalance + 0.0001 < total) {
-        if (paymentMethodError) {
-          paymentMethodError.textContent = tr(
-            "Insufficient wallet balance. Top up by IBAN or use card."
-          );
-          paymentMethodError.classList.add("is-visible");
-        }
+        setInlineFormErrorToast(
+          paymentMethodError,
+          tr("Insufficient wallet balance. Top up by IBAN or use card."),
+          "error"
+        );
         return;
       }
     }
     if (method === "card") {
       const cardValidation = validateCardDetails();
       if (!cardValidation.ok) {
-        if (paymentMethodError) {
-          paymentMethodError.textContent = cardValidation.message;
-          paymentMethodError.classList.add("is-visible");
-        }
+        setInlineFormErrorToast(paymentMethodError, cardValidation.message, "error");
         return;
       }
       cardMeta = {
@@ -12828,11 +12885,11 @@ async function handleCheckoutAndGenerate() {
     goToStep(4);
   } catch (error) {
     const message = error?.message || tr("Could not process checkout.");
-    if (paymentMethodError && !invoiceEnabled) {
-      paymentMethodError.textContent = message;
-      paymentMethodError.classList.add("is-visible");
+    if (!invoiceEnabled) {
+      setInlineFormErrorToast(paymentMethodError, message, "error");
+    } else {
+      showToast(message, { tone: "error" });
     }
-    showToast(message, { tone: "error" });
   } finally {
     payButton.disabled = false;
     payButton.innerHTML = originalMarkup;
@@ -13244,9 +13301,7 @@ function resetAll() {
   syncInfoState();
   selectLabel(labelCards[0]);
   updatePayment();
-  if (paymentMethodError) {
-    paymentMethodError.classList.remove("is-visible");
-  }
+  setInlineFormErrorToast(paymentMethodError, "");
 }
 
 startOver.addEventListener("click", () => {
@@ -13362,9 +13417,15 @@ if (shopifySettingsModal) {
 // ── CSV upload modal ──
 
 function setCsvMapError(message = "") {
-  if (!csvMapError) return;
-  csvMapError.textContent = message;
-  csvMapError.classList.toggle("is-visible", Boolean(message));
+  const text = String(message || "").trim();
+  if (csvMapError) {
+    csvMapError.hidden = true;
+    csvMapError.textContent = "";
+    csvMapError.classList.remove("is-visible");
+  }
+  if (text) {
+    showStatusToast(text, { tone: "error" });
+  }
 }
 
 function setCsvModalStep(step, options = {}) {
@@ -14138,7 +14199,7 @@ function applyCsvMapping() {
   setCsvMode(true);
   syncCsvRowsWithSelectedOrigin({ rerender: false });
   setCsvEditMode(false);
-  if (labelError) labelError.classList.remove("is-visible");
+  setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();
   updatePayment();
