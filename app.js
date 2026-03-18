@@ -763,6 +763,7 @@ const TRANSLATIONS = {
   "Download Label PDF": { fr: "Télécharger PDF étiquette", nl: "Label-PDF downloaden" },
   "Download Labels (.PDF)": { fr: "Télécharger les étiquettes (.PDF)", nl: "Labels downloaden (.PDF)" },
   "View Receipt": { fr: "Voir le reçu", nl: "Bon bekijken" },
+  "Download Invoice": { fr: "Télécharger la facture", nl: "Factuur downloaden" },
   "No label PDF selected yet. Choose a generation to preview.": { fr: "Aucun PDF d’étiquette sélectionné. Choisissez une génération pour prévisualiser.", nl: "Nog geen label-PDF geselecteerd. Kies een generatie om te bekijken." },
   "Shipping Reports": { fr: "Rapports d’expédition", nl: "Verzendrapporten" },
   "Interactive visibility into savings, payments, shipment volume, services, and destinations.": { fr: "Vue interactive des économies, paiements, volumes, services et destinations.", nl: "Interactief inzicht in besparingen, betalingen, volume, services en bestemmingen." },
@@ -875,6 +876,15 @@ const TRANSLATIONS = {
   "Price EX. VAT": { fr: "Prix hors TVA", nl: "Prijs excl. btw" },
   "Price INCL. VAT": { fr: "Prix TVA incluse", nl: "Prijs incl. btw" },
   "Download Receipt PDF": { fr: "Télécharger le reçu PDF", nl: "Bon-PDF downloaden" },
+  "Preparing invoice PDF...": {
+    fr: "Préparation du PDF de facture...",
+    nl: "Factuur-PDF wordt voorbereid..."
+  },
+  "Could not generate invoice PDF.": {
+    fr: "Impossible de générer le PDF de facture.",
+    nl: "Kon de factuur-PDF niet genereren."
+  },
+  "Invoice PDF ready.": { fr: "PDF de facture prêt.", nl: "Factuur-PDF klaar." },
   "Prepared for the shipping batch shown below.": {
     fr: "Préparé pour le lot d’expédition affiché ci-dessous.",
     nl: "Opgesteld voor de hieronder getoonde verzendbatch.",
@@ -1392,6 +1402,7 @@ const accountHistoryStatus = document.getElementById("accountHistoryStatus");
 const accountHistoryList = document.getElementById("accountHistoryList");
 const accountPreviewMeta = document.getElementById("accountPreviewMeta");
 const accountDownloadPdf = document.getElementById("accountDownloadPdf");
+const accountDownloadInvoice = document.getElementById("accountDownloadInvoice");
 const openReceiptModalButton = document.getElementById("openReceiptModal");
 const accountBatchPanel = document.getElementById("accountBatchPanel");
 const accountBatchList = document.getElementById("accountBatchList");
@@ -6870,6 +6881,9 @@ function resetAccountPreview() {
   if (accountDownloadPdf) {
     accountDownloadPdf.disabled = true;
   }
+  if (accountDownloadInvoice) {
+    accountDownloadInvoice.disabled = true;
+  }
   if (openReceiptModalButton) {
     openReceiptModalButton.disabled = true;
   }
@@ -7282,6 +7296,49 @@ function buildReceiptTrackingId(rawId) {
   };
 }
 
+function buildInvoiceTrackingId(rawId) {
+  const receiptLike = buildReceiptTrackingId(rawId);
+  const display = String(receiptLike.display || "--").replace(/^RCPT\b/, "INV");
+  const slug = String(receiptLike.slug || "invoice").replace(/^receipt-/, "").replace(/^rcpt-/, "");
+  return {
+    display,
+    slug,
+  };
+}
+
+function getHistoryInvoicePaymentMode() {
+  const paymentMode = String(billingOverview?.payment_mode || "").trim().toLowerCase();
+  if (["invoice", "card", "wallet", "hybrid"].includes(paymentMode)) {
+    return paymentMode;
+  }
+  if (!billingOverview) {
+    return "invoice";
+  }
+  const { invoiceEnabled, cardEnabled, walletEnabled } = getBillingFlags();
+  if (invoiceEnabled) return "invoice";
+  if (walletEnabled && !cardEnabled) return "wallet";
+  if (cardEnabled) return "card";
+  return "invoice";
+}
+
+function addDaysLocal(dateLike, days) {
+  const source = new Date(dateLike);
+  if (Number.isNaN(source.getTime())) return null;
+  const next = new Date(source);
+  next.setDate(next.getDate() + Number(days || 0));
+  return next;
+}
+
+function formatInvoiceDateDisplay(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleDateString(getUiLocale(), {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
 function buildReceiptViewModel(record) {
   const totals = calculateRecordTotals(record);
   const profile = buildMockAccountProfile(currentUser);
@@ -7303,6 +7360,51 @@ function buildReceiptViewModel(record) {
     receiptSlug: receiptTracking.slug,
     quantity: totals.quantity,
     billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
+  };
+}
+
+function buildInvoiceViewModel(record) {
+  const totals = calculateRecordTotals(record);
+  const profile = buildMockAccountProfile(currentUser);
+  const serviceType = translateServiceName(
+    record.payload?.selection?.type || record.service_type || "--"
+  );
+  const labels = accountLabels.length ? accountLabels : record.payload?.labels || [];
+  const issuedDate = new Date(record?.created_at || Date.now());
+  const issuedAt = formatInvoiceDateDisplay(issuedDate);
+  const invoiceTracking = buildInvoiceTrackingId(record?.id);
+  const paymentMode = getHistoryInvoicePaymentMode();
+  const isMonthlyBilling = paymentMode === "invoice";
+  const dueDate = isMonthlyBilling ? formatInvoiceDateDisplay(addDaysLocal(issuedDate, 30)) : "--";
+  const paymentMethodLabel =
+    paymentMode === "invoice"
+      ? "Monthly billing"
+      : paymentMode === "wallet"
+        ? "Wallet debit"
+        : "Automatic collection";
+  const settlementNote = isMonthlyBilling
+    ? `Payment due within 30 days from issue. Transfer to Shipide on IBAN BE71 0000 1111 2222 using reference ${invoiceTracking.display}.`
+    : `This invoice has already been settled automatically via ${paymentMethodLabel.toLowerCase()}. No additional bank transfer is required.`;
+
+  return {
+    record,
+    totals,
+    profile,
+    serviceType,
+    labels,
+    issuedAt,
+    issuedIso: issuedDate.toISOString(),
+    dueAt: dueDate,
+    invoiceNumber: invoiceTracking.display,
+    invoiceSlug: invoiceTracking.slug,
+    quantity: totals.quantity,
+    billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
+    paymentMode,
+    paymentMethodLabel,
+    isMonthlyBilling,
+    settlementTitle: "Settlement",
+    settlementNote,
+    bankIban: "BE71 0000 1111 2222",
   };
 }
 
@@ -7329,6 +7431,33 @@ function buildReceiptRowsHtml(viewModel, rowIndices = null) {
               <td><span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span></td>
               <td>
                 <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(totals.unitIncVat))}</span>
+              </td>
+            </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="4"><span class="receipt-cell-primary" style="color:var(--muted)">--</span></td></tr>`;
+}
+
+function buildInvoiceRowsHtml(viewModel, rowIndices = null) {
+  const scopedLabels = Array.isArray(rowIndices)
+    ? rowIndices.map((index) => viewModel.labels[index]).filter(Boolean)
+    : viewModel.labels;
+
+  return scopedLabels.length
+    ? scopedLabels
+        .map((label) => {
+          const data = label?.data || {};
+          const recipientName = data.recipientName || "--";
+          const destination = formatReceiptDestination(data);
+          const recipientMeta = destination && destination !== "--" ? ` · ${destination}` : "";
+          const reference = label?.trackingId || label?.labelId || "--";
+          return `
+            <tr>
+              <td><span class="receipt-cell-primary">${escapeHtml(viewModel.serviceType)}</span></td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(reference)}</span></td>
+              <td><span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span></td>
+              <td>
+                <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(viewModel.totals.unitIncVat))}</span>
               </td>
             </tr>`;
         })
@@ -7413,6 +7542,90 @@ function buildReceiptHeaderHtml(viewModel) {
   `;
 }
 
+function buildInvoiceHeaderHtml(viewModel) {
+  const {
+    profile,
+    issuedAt,
+    dueAt,
+    quantity,
+    billingAddressLines,
+    totals,
+    invoiceNumber,
+    paymentMethodLabel,
+    isMonthlyBilling,
+  } = viewModel;
+  const profileName = profile?.companyName || "--";
+  const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
+  const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
+
+  return `
+    <div class="receipt-topline">
+      <div class="receipt-brand">
+        <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
+      </div>
+      <div class="receipt-top-meta">
+        <span class="receipt-chip">${escapeHtml(tr("Invoice"))}</span>
+        <div class="receipt-top-meta-lines mono">
+          <span>${escapeHtml(issuedAt)}</span>
+          <span>${escapeHtml(invoiceNumber)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="receipt-grid">
+      <section class="receipt-panel">
+        <div class="receipt-panel-title">${escapeHtml(tr("Billed To"))}</div>
+        <div class="receipt-address">
+          <div class="receipt-address-block">
+            <span class="receipt-address-name">${escapeHtml(profileName)}</span>
+            <div class="receipt-address-lines">
+              <span>${escapeHtml(contactLine)}</span>
+              ${billingAddressLines
+                .map((line) => `<span>${escapeHtml(line)}</span>`)
+                .join("")}
+            </div>
+          </div>
+          <div class="receipt-address-meta mono">
+            <span>${escapeHtml(taxLine)}</span>
+            <span>${escapeHtml(profile?.contactPhone || "--")}</span>
+            <span>${escapeHtml("Shipide")}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="receipt-panel receipt-panel-summary">
+        <div class="receipt-panel-title">${escapeHtml(tr("Invoice Summary"))}</div>
+        <div class="receipt-kv-grid receipt-kv-grid-compact">
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Invoice No."))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(invoiceNumber)}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Issue date"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(issuedAt)}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(isMonthlyBilling ? tr("Due date") : tr("Status"))}</span>
+            <span class="receipt-kv-value">${escapeHtml(isMonthlyBilling ? dueAt : tr("Paid automatically"))}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Payment method"))}</span>
+            <span class="receipt-kv-value">${escapeHtml(paymentMethodLabel)}</span>
+          </div>
+          <div class="receipt-kv">
+            <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
+          </div>
+          <div class="receipt-kv receipt-kv-total">
+            <span class="receipt-kv-key">${escapeHtml(tr("Total"))}</span>
+            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function buildReceiptTableCardHtml(viewModel, options = {}) {
   const {
     rowIndices = null,
@@ -7452,6 +7665,45 @@ function buildReceiptTableCardHtml(viewModel, options = {}) {
   `;
 }
 
+function buildInvoiceTableCardHtml(viewModel, options = {}) {
+  const {
+    rowIndices = null,
+    showSectionHead = true,
+    showColumnHead = true,
+  } = options;
+  const invoiceRows = buildInvoiceRowsHtml(viewModel, rowIndices);
+  const quantityValue = Array.isArray(rowIndices) ? rowIndices.length : viewModel.quantity;
+
+  return `
+    <section class="receipt-table-card${showSectionHead ? "" : " is-continuation"}">
+      ${showSectionHead ? `
+        <div class="receipt-table-head">
+          <div class="receipt-table-copy">
+            <span class="receipt-table-title">${escapeHtml(tr("Line Items"))}</span>
+            <span class="receipt-table-sub">${escapeHtml(tr("One line per billed shipment label."))}</span>
+          </div>
+          <span class="receipt-table-badge mono">${escapeHtml(`${quantityValue} ${tr("labels")}`)}</span>
+        </div>
+      ` : ""}
+      <div class="receipt-table-wrap">
+        <table class="receipt-table">
+          ${showColumnHead ? `
+            <thead>
+              <tr>
+                <th>${escapeHtml(tr("Item"))}</th>
+                <th>${escapeHtml(tr("Reference"))}</th>
+                <th>${escapeHtml(tr("Recipient"))}</th>
+                <th>${escapeHtml(tr("Amount"))}</th>
+              </tr>
+            </thead>
+          ` : ""}
+          <tbody>${invoiceRows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function buildReceiptDisclaimerHtml() {
   return `
     <section class="receipt-disclaimer">
@@ -7467,6 +7719,24 @@ function buildReceiptDisclaimerHtml() {
             "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping."
           )
         )}</span>
+      </div>
+    </section>
+  `;
+}
+
+function buildInvoiceSettlementHtml(viewModel) {
+  const title = viewModel.settlementTitle || tr("Settlement");
+  const note = viewModel.settlementNote || "--";
+  return `
+    <section class="receipt-disclaimer">
+      <svg class="receipt-disclaimer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16"></rect>
+        <path d="M8 9h8"></path>
+        <path d="M8 13h8"></path>
+      </svg>
+      <div class="receipt-disclaimer-copy">
+        <span class="receipt-disclaimer-title">${escapeHtml(title)}</span>
+        <span class="receipt-disclaimer-text">${escapeHtml(note)}</span>
       </div>
     </section>
   `;
@@ -7513,6 +7783,45 @@ function buildReceiptDocumentHtml(record) {
     showColumnHead: true,
     showDisclaimer: true,
   });
+}
+
+function buildInvoicePageHtml(viewModel, options = {}) {
+  const {
+    rowIndices = null,
+    showHeader = true,
+    showTableCard = true,
+    showSectionHead = true,
+    showColumnHead = true,
+    showSettlement = true,
+  } = options;
+
+  return `
+    <div class="receipt-sheet">
+      <div class="receipt-sheet-body">
+        ${showHeader ? buildInvoiceHeaderHtml(viewModel) : ""}
+        ${showTableCard ? buildInvoiceTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
+        ${showSettlement ? buildInvoiceSettlementHtml(viewModel) : ""}
+      </div>
+      ${buildReceiptFooterHtml(viewModel.invoiceNumber)}
+    </div>
+  `;
+}
+
+function buildInvoiceDocumentHtml(record) {
+  const viewModel = buildInvoiceViewModel(record);
+  return buildInvoicePageHtml(viewModel, {
+    rowIndices: viewModel.labels.map((_, index) => index),
+    showHeader: true,
+    showTableCard: true,
+    showSectionHead: true,
+    showColumnHead: true,
+    showSettlement: true,
+  });
+}
+
+function renderInvoiceDetails(record) {
+  if (!receiptDocument || !record) return;
+  receiptDocument.innerHTML = buildInvoiceDocumentHtml(record);
 }
 
 function renderReceiptDetails(record) {
@@ -7585,6 +7894,11 @@ function measureReceiptRegions(receiptDoc, scale) {
 function getReceiptPdfFilename() {
   const tracking = buildReceiptTrackingId(accountActiveRecord?.id);
   return `receipt-${tracking.slug || tr("label-order")}.pdf`;
+}
+
+function getInvoicePdfFilename() {
+  const tracking = buildInvoiceTrackingId(accountActiveRecord?.id);
+  return `invoice-${tracking.slug || "shipide"}.pdf`;
 }
 
 function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
@@ -7799,6 +8113,174 @@ async function buildReceiptPdfExport() {
   }
 }
 
+async function buildInvoicePdfExport() {
+  if (!accountActiveRecord) return;
+  renderInvoiceDetails(accountActiveRecord);
+
+  try {
+    if (
+      receiptDocument &&
+      window.html2canvas &&
+      window.jspdf &&
+      typeof window.jspdf.jsPDF === "function"
+    ) {
+      receiptDocument.classList.add("is-exporting");
+      if (document.fonts?.ready) {
+        await document.fonts.ready.catch(() => {});
+      }
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+
+      const scaleFactor = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
+      const h2cOpts = {
+        backgroundColor: "#0b1018",
+        scale: scaleFactor,
+        useCORS: true,
+        logging: false,
+      };
+
+      const tableWrap = receiptDocument.querySelector(".receipt-table-wrap");
+      const origMaxH = tableWrap ? tableWrap.style.maxHeight : "";
+      const origOverflow = tableWrap ? tableWrap.style.overflow : "";
+      if (tableWrap) {
+        tableWrap.style.maxHeight = "none";
+        tableWrap.style.overflow = "visible";
+      }
+
+      await new Promise((r) => window.requestAnimationFrame(r));
+      const regions = measureReceiptRegions(receiptDocument, scaleFactor);
+      const fullCanvas = await window.html2canvas(receiptDocument, h2cOpts);
+
+      if (tableWrap) {
+        tableWrap.style.maxHeight = origMaxH;
+        tableWrap.style.overflow = origOverflow;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 18;
+      const cW = pageWidth - margin * 2;
+      const usableH = pageHeight - margin * 2;
+
+      const paintBg = () => {
+        pdf.setFillColor(0, 6, 15);
+        pdf.rect(0, 0, pageWidth, pageHeight, "F");
+      };
+      const toPt = (canvasPx) => (canvasPx * cW) / fullCanvas.width;
+      const fullPdfH = toPt(fullCanvas.height);
+
+      if (fullPdfH <= usableH) {
+        paintBg();
+        pdf.addImage(fullCanvas.toDataURL("image/png"), "PNG", margin, margin, cW, fullPdfH, undefined, "FAST");
+      } else {
+        const headerPt = toPt(regions.headerH);
+        const tableGapPt = toPt(regions.tableGapY);
+        const tableSectionHeadPt = toPt(regions.tableSectionHeadH);
+        const theadPt = toPt(regions.theadH);
+        const footerPt = regions.footer ? toPt(regions.footer.h) : 0;
+        const settlementPt = regions.disclaimer ? toPt(regions.disclaimer.h) : 0;
+        const footerGap = 8;
+        const contentBudget = usableH - footerPt - footerGap;
+
+        const pages = [];
+        let rowIdx = 0;
+        const rowCount = regions.rows.length;
+        let budget = contentBudget - headerPt - tableGapPt - tableSectionHeadPt - theadPt;
+        let pageRows = [];
+
+        while (rowIdx < rowCount) {
+          const rowPt = toPt(regions.rows[rowIdx].h);
+          if (rowPt <= budget) {
+            pageRows.push(rowIdx);
+            budget -= rowPt;
+            rowIdx += 1;
+          } else {
+            pages.push({ firstPage: pages.length === 0, rows: pageRows });
+            pageRows = [];
+            budget = contentBudget - theadPt;
+          }
+        }
+
+        const isFirstPage = pages.length === 0;
+        if (settlementPt + 4 <= budget) {
+          pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: true });
+        } else {
+          pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: false });
+          pages.push({ firstPage: false, rows: [], hasSettlement: true });
+        }
+
+        const viewModel = buildInvoiceViewModel(accountActiveRecord);
+        const renderExportPage = async (pageConfig) => {
+          receiptDocument.innerHTML = buildInvoicePageHtml(viewModel, {
+            rowIndices: pageConfig.rows,
+            showHeader: pageConfig.firstPage,
+            showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+            showSectionHead: pageConfig.firstPage,
+            showColumnHead: true,
+            showSettlement: Boolean(pageConfig.hasSettlement),
+          });
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+          return window.html2canvas(receiptDocument, h2cOpts);
+        };
+
+        for (let p = 0; p < pages.length; p += 1) {
+          const pageCanvas = await renderExportPage(pages[p]);
+          if (p > 0) pdf.addPage();
+          paintBg();
+          const pagePdfH = (pageCanvas.height * cW) / pageCanvas.width;
+          pdf.addImage(
+            pageCanvas.toDataURL("image/png"),
+            "PNG",
+            margin,
+            margin,
+            cW,
+            pagePdfH,
+            undefined,
+            "FAST"
+          );
+        }
+      }
+
+      return {
+        blob: pdf.output("blob"),
+        filename: getInvoicePdfFilename(),
+      };
+    }
+
+    const viewModel = buildInvoiceViewModel(accountActiveRecord);
+    const fallbackLines = [
+      tr("Invoice"),
+      `${tr("Invoice No.")}: ${viewModel.invoiceNumber}`,
+      `${tr("Issue date")}: ${viewModel.issuedAt}`,
+      `${viewModel.isMonthlyBilling ? tr("Due date") : tr("Status")}: ${viewModel.isMonthlyBilling ? viewModel.dueAt : tr("Paid automatically")}`,
+      `${tr("Payment method")}: ${viewModel.paymentMethodLabel}`,
+      `${tr("Quantity")}: ${viewModel.quantity}`,
+      `${tr("Total")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
+      "",
+      viewModel.settlementNote,
+    ];
+    const blob = buildPdf(fallbackLines, {
+      pageWidth: 612,
+      pageHeight: 792,
+      marginX: 40,
+      marginTop: 48,
+      marginBottom: 48,
+      fontSize: 11,
+      lineHeight: 14,
+    });
+    return {
+      blob,
+      filename: getInvoicePdfFilename(),
+    };
+  } finally {
+    if (receiptDocument) {
+      receiptDocument.classList.remove("is-exporting");
+      renderReceiptDetails(accountActiveRecord);
+    }
+  }
+}
+
 async function downloadReceiptPdfFile() {
   if (!accountActiveRecord) return;
   const restoreButton = setReceiptActionBusy(
@@ -7835,6 +8317,29 @@ async function openReceiptPdfFile() {
     showToast(tr("Receipt PDF ready."), { tone: "success" });
   } catch (error) {
     showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
+  } finally {
+    restoreButton();
+  }
+}
+
+async function downloadInvoicePdfFile() {
+  if (!accountActiveRecord) return;
+  const restoreButton = setReceiptActionBusy(
+    accountDownloadInvoice,
+    true,
+    tr("Download Invoice")
+  );
+  try {
+    const exportData = await buildInvoicePdfExport();
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate invoice PDF."));
+    }
+    const url = URL.createObjectURL(exportData.blob);
+    triggerFileDownload(url, exportData.filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showToast(tr("Invoice PDF ready."), { tone: "success" });
+  } catch (error) {
+    showToast(error?.message || tr("Could not generate invoice PDF."), { tone: "error" });
   } finally {
     restoreButton();
   }
@@ -7884,6 +8389,9 @@ function selectAccountRecord(index) {
 
   if (accountDownloadPdf) {
     accountDownloadPdf.disabled = false;
+  }
+  if (accountDownloadInvoice) {
+    accountDownloadInvoice.disabled = false;
   }
   if (openReceiptModalButton) {
     openReceiptModalButton.disabled = false;
@@ -12790,6 +13298,13 @@ if (receiptDownloadPdf) {
   receiptDownloadPdf.addEventListener("click", (event) => {
     event.preventDefault();
     downloadReceiptPdfFile();
+  });
+}
+
+if (accountDownloadInvoice) {
+  accountDownloadInvoice.addEventListener("click", (event) => {
+    event.preventDefault();
+    downloadInvoicePdfFile();
   });
 }
 
