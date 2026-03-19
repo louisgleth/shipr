@@ -5360,6 +5360,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     paid_at: effectivePaidAt,
   };
   const desiredStage = isReminder ? reminderStage : 0;
+  const requireApprovedPdf = options?.requireApprovedPdf === true;
   const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
   let persistedPdfVariants = [];
   if (providedVariants.length) {
@@ -5432,14 +5433,19 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
   const pdfBytes = providedVariant?.bytes
     || storedVariant?.bytes
     || renderedVariant?.bytes
-    || await buildInvoicePdf(env, pdfInvoice, invoiceWithItems.items || [], {
-      user,
-      issuedAt: effectiveIssuedAt,
-      dueAt: effectiveDueAt,
-      paidAt: effectivePaidAt,
-      isReminder,
-      reminderStage,
-    });
+    || (requireApprovedPdf
+      ? null
+      : await buildInvoicePdf(env, pdfInvoice, invoiceWithItems.items || [], {
+          user,
+          issuedAt: effectiveIssuedAt,
+          dueAt: effectiveDueAt,
+          paidAt: effectivePaidAt,
+          isReminder,
+          reminderStage,
+        }));
+  if (!pdfBytes) {
+    throw new Error("Approved invoice PDF is unavailable. Regenerate the invoice and try again.");
+  }
   const pdfFilename =
     String(providedVariant?.filename || storedVariant?.filename || renderedVariant?.filename || "").trim()
     || buildInvoicePdfFilename(invoiceWithItems);
@@ -6105,6 +6111,7 @@ async function handleAdminInvoiceSend(request, env) {
     const result = await sendBillingInvoiceById(env, invoiceId, {
       isReminder: false,
       pdfVariants: providedVariants,
+      requireApprovedPdf: true,
     });
     return jsonResponse({
       ok: true,
@@ -6237,13 +6244,10 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
         ).catch(() => null);
     const pdfBytes = providedVariant?.bytes
       || renderedVariant?.bytes
-      || await buildInvoicePdf(env, emailInvoice, items, {
-        issuedAt,
-        dueAt,
-        paidAt,
-        isReminder: step.isReminder,
-        reminderStage: step.reminderStage,
-      });
+      || null;
+    if (!pdfBytes) {
+      throw new Error(`Approved invoice PDF is unavailable for sequence stage ${step.reminderStage}.`);
+    }
     try {
       const response = await sendResendEmail(env, {
         to: toEmail,
@@ -6334,10 +6338,10 @@ async function handleAdminInvoiceSendTest(request, env) {
     const pdfBytes = providedPdfBase64
       ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
       : renderedVariant?.bytes
-        || await buildInvoicePdf(env, testInvoice, testItems, {
-          issuedAt: testInvoice.issued_at,
-          dueAt: testInvoice.due_at,
-        });
+        || null;
+    if (!pdfBytes) {
+      throw new Error("Approved invoice PDF is unavailable for the test email.");
+    }
     const resendResponse = await sendResendEmail(env, {
       to: toEmail,
       subject: buildInvoiceEmailSubject(testInvoice, { isReminder: false, reminderStage: 0 }),
