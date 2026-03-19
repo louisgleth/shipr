@@ -8490,6 +8490,12 @@ function buildInvoicePdfFilenameFromReference(reference) {
   return `invoice-${safe || "shipide"}.pdf`;
 }
 
+function buildInvoiceVariantPdfFilename(reference, reminderStage = 0) {
+  const base = buildInvoicePdfFilenameFromReference(reference).replace(/\.pdf$/i, "");
+  const stage = Math.max(0, Number(reminderStage) || 0);
+  return stage > 0 ? `${base}-stage-${stage}.pdf` : `${base}.pdf`;
+}
+
 function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
   if (!triggerButton) return () => {};
   const label = triggerButton.querySelector("span");
@@ -8970,11 +8976,11 @@ function getInvoiceVariantStagesForPaymentMode(paymentMode = "") {
 
 async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
   const filenameReference = String(invoiceRecord?.reference || buildInvoiceTrackingId(invoiceRecord?.id).display || "shipide").trim();
-  const filename = buildInvoicePdfFilenameFromReference(filenameReference);
   const stages = getInvoiceVariantStagesForPaymentMode(invoiceRecord?.payment_mode);
   const variants = [];
   for (const reminderStage of stages) {
     const viewModel = buildBillingInvoiceViewModel(invoiceRecord, { reminderStage });
+    const filename = buildInvoiceVariantPdfFilename(filenameReference, reminderStage);
     const exportData = await buildInvoicePdfExportFromViewModel(viewModel, filename);
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
