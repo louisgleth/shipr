@@ -4089,12 +4089,12 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
       window.__SHIPIDE_PRINT_READY__ = false;
       window.__SHIPIDE_PRINT_ERROR__ = "";
     </script>
-    <script src="${publicAppUrl}/app.js"></script>
   </head>
   <body>
     <div class="receipt-export-host" aria-hidden="true">
       <div id="receiptDocument"></div>
     </div>
+    <script src="${publicAppUrl}/app.js"></script>
     <script>
       ${viewModelScript}
       ${invoiceScript}

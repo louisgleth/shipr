@@ -8344,7 +8344,12 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
 }
 
 async function renderInvoicePrintDocumentFromViewModel(viewModel) {
-  if (!receiptDocument || !viewModel) return "";
+  if (!viewModel) {
+    throw new Error("Invoice print view model is required.");
+  }
+  if (!receiptDocument) {
+    throw new Error("Invoice print container is missing.");
+  }
   const pages = await buildPaginatedInvoicePageConfigs(viewModel);
   receiptDocument.innerHTML = pages
     .map((pageConfig) =>
