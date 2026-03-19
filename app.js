@@ -8741,6 +8741,44 @@ async function requestSelectableInvoicePdf(viewModel, filename) {
   };
 }
 
+function base64ToBlob(base64, contentType = "application/pdf") {
+  const normalized = String(base64 || "").trim();
+  if (!normalized) return null;
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: contentType });
+}
+
+async function requestSelectableInvoicePdfBatch(entries = []) {
+  if (
+    !Array.isArray(entries)
+    || !entries.length
+    || (typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)
+  ) {
+    return [];
+  }
+  const payload = await fetchApiWithAuth("/api/billing/render-invoice-pdf-batch", {
+    method: "POST",
+    timeoutMs: 180000,
+    body: JSON.stringify({
+      variants: entries.map((entry) => ({
+        reminderStage: entry?.reminderStage,
+        filename: entry?.filename,
+        viewModel: entry?.viewModel,
+      })),
+    }),
+  });
+  const rows = Array.isArray(payload?.variants) ? payload.variants : [];
+  return rows.map((entry, index) => ({
+    reminderStage: Math.max(0, Number(entry?.reminderStage ?? entries[index]?.reminderStage) || 0),
+    filename: String(entry?.filename || entries[index]?.filename || "invoice-shipide.pdf").trim() || "invoice-shipide.pdf",
+    blob: base64ToBlob(entry?.pdfBase64, "application/pdf"),
+  }));
+}
+
 async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf", options = {}) {
   if (!viewModel) return null;
   const allowRasterFallback = options?.allowRasterFallback !== false;
@@ -8987,18 +9025,36 @@ function getInvoiceVariantStagesForPaymentMode(paymentMode = "") {
 async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
   const filenameReference = String(invoiceRecord?.reference || buildInvoiceTrackingId(invoiceRecord?.id).display || "shipide").trim();
   const stages = getInvoiceVariantStagesForPaymentMode(invoiceRecord?.payment_mode);
+  const jobs = stages.map((reminderStage) => ({
+    reminderStage,
+    viewModel: buildBillingInvoiceViewModel(invoiceRecord, { reminderStage }),
+    filename: buildInvoiceVariantPdfFilename(filenameReference, reminderStage),
+  }));
+  try {
+    const batchResults = await requestSelectableInvoicePdfBatch(jobs);
+    if (batchResults.length === jobs.length && batchResults.every((entry) => entry?.blob)) {
+      return Promise.all(
+        batchResults.map(async (entry) => ({
+          reminderStage: entry.reminderStage,
+          filename: entry.filename,
+          pdfBase64: await blobToBase64(entry.blob),
+        }))
+      );
+    }
+  } catch (_error) {
+    // Fall through to the per-stage renderer below.
+  }
+
   const variants = [];
-  for (const reminderStage of stages) {
-    const viewModel = buildBillingInvoiceViewModel(invoiceRecord, { reminderStage });
-    const filename = buildInvoiceVariantPdfFilename(filenameReference, reminderStage);
-    const exportData = await buildInvoicePdfExportFromViewModel(viewModel, filename, {
+  for (const job of jobs) {
+    const exportData = await buildInvoicePdfExportFromViewModel(job.viewModel, job.filename, {
       allowRasterFallback: false,
     });
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
     }
     variants.push({
-      reminderStage,
+      reminderStage: job.reminderStage,
       filename: exportData.filename,
       pdfBase64: await blobToBase64(exportData.blob),
     });
