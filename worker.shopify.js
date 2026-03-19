@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
-const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_SHOPIFY_SCOPES = "read_orders,read_locations";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
@@ -27,6 +27,7 @@ const DEFAULT_WELCOME_PORTAL_URL = "https://portal.shipide.com/login";
 const CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL = "/assets/contracts/commAgreement-v1-template.pdf";
 const CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL = "/assets/fonts/PTMono-Regular.ttf";
 const CLICKWRAP_STORAGE_BUCKET = "clickwrap-contracts";
+const BILLING_INVOICE_STORAGE_BUCKET = "billing-invoices";
 const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
@@ -135,6 +136,9 @@ export default {
       }
       if (pathname === "/api/admin/invoices" && request.method === "GET") {
         return handleAdminInvoicesList(request, env, url);
+      }
+      if (pathname === "/api/admin/invoices/detail" && request.method === "GET") {
+        return handleAdminInvoiceDetail(request, env, url);
       }
       if (pathname === "/api/admin/invoices/run" && request.method === "POST") {
         return handleAdminInvoicesRun(request, env);
@@ -1296,6 +1300,177 @@ async function persistAcceptedClickwrapContract(env, { contract, recordId, pdfBy
     sizeBytes: pdfBytes.byteLength,
     acceptedAt: parseIsoTimestamp(acceptedAt),
     storedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeInvoicePdfVariantStage(stage) {
+  return String(Math.max(0, Number(stage) || 0));
+}
+
+function buildBillingInvoiceStoragePath(invoice, reminderStage, filename) {
+  const referenceSegment = toInvoiceReference(invoice?.id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const stageSegment = normalizeInvoicePdfVariantStage(reminderStage);
+  return `pdf/${referenceSegment || "invoice"}/stage-${stageSegment}/${filename}`;
+}
+
+async function ensureBillingInvoiceStorageBucket(env) {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required for Supabase Storage uploads.");
+  }
+  const bucketUrl = `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/bucket/${encodeURIComponent(
+    BILLING_INVOICE_STORAGE_BUCKET
+  )}`;
+  const headers = {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  };
+  const response = await fetch(bucketUrl, { method: "GET", headers });
+  if (response.ok) {
+    return;
+  }
+  const details = await response.text().catch(() => "");
+  const missingBucket =
+    response.status === 404
+    || /not found|does not exist|not exists/i.test(details);
+  if (!missingBucket) {
+    throw new Error(`Could not access billing invoice storage bucket (${response.status}) ${details}`.trim());
+  }
+  const createResponse = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/bucket`,
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: BILLING_INVOICE_STORAGE_BUCKET,
+        name: BILLING_INVOICE_STORAGE_BUCKET,
+        public: false,
+        allowed_mime_types: ["application/pdf"],
+        file_size_limit: "25MB",
+      }),
+    }
+  );
+  if (!createResponse.ok) {
+    const createDetails = await createResponse.text().catch(() => "");
+    if (!/already exists/i.test(createDetails)) {
+      throw new Error(
+        `Could not create billing invoice storage bucket (${createResponse.status}) ${createDetails}`.trim()
+      );
+    }
+  }
+}
+
+async function persistBillingInvoicePdfVariant(env, invoice, reminderStage, pdfBytes, filename) {
+  const safeFilename = String(filename || buildInvoicePdfFilename(invoice)).trim() || buildInvoicePdfFilename(invoice);
+  const storagePath = buildBillingInvoiceStoragePath(invoice, reminderStage, safeFilename);
+  await ensureBillingInvoiceStorageBucket(env);
+  const uploadUrl = `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${BILLING_INVOICE_STORAGE_BUCKET}/${storagePath}`;
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+      "cache-control": "3600",
+    },
+    body: pdfBytes,
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not store invoice PDF (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => ({}));
+  return {
+    stage: normalizeInvoicePdfVariantStage(reminderStage),
+    filename: safeFilename,
+    bucket: BILLING_INVOICE_STORAGE_BUCKET,
+    objectPath: payload?.Key || payload?.path || storagePath,
+    fullPath: storagePath,
+    sha256: await sha256HexBytes(pdfBytes),
+    sizeBytes: pdfBytes.byteLength,
+    storedAt: new Date().toISOString(),
+  };
+}
+
+function getBillingInvoicePdfVariantMap(invoice) {
+  const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const variants =
+    metadata?.invoice_pdf_variants && typeof metadata.invoice_pdf_variants === "object"
+      ? metadata.invoice_pdf_variants
+      : {};
+  return variants;
+}
+
+function getBillingInvoicePdfVariantRecord(invoice, reminderStage, options = {}) {
+  const variants = getBillingInvoicePdfVariantMap(invoice);
+  const exactKey = normalizeInvoicePdfVariantStage(reminderStage);
+  const exact = variants[exactKey] && typeof variants[exactKey] === "object" ? variants[exactKey] : null;
+  if (exact) return exact;
+  if (options?.allowFallback !== false) {
+    const initial = variants["0"] && typeof variants["0"] === "object" ? variants["0"] : null;
+    if (initial) return initial;
+  }
+  return null;
+}
+
+function mergeBillingInvoicePdfVariantMetadata(invoice, variants = []) {
+  const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const nextVariants = {
+    ...getBillingInvoicePdfVariantMap(invoice),
+  };
+  (Array.isArray(variants) ? variants : []).forEach((variant) => {
+    const stageKey = normalizeInvoicePdfVariantStage(variant?.stage);
+    nextVariants[stageKey] = {
+      stage: stageKey,
+      filename: String(variant?.filename || "").trim() || buildInvoicePdfFilename(invoice),
+      bucket: String(variant?.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET,
+      objectPath: String(variant?.objectPath || variant?.fullPath || "").trim() || null,
+      fullPath: String(variant?.fullPath || variant?.objectPath || "").trim() || null,
+      sha256: String(variant?.sha256 || "").trim().toLowerCase() || null,
+      sizeBytes: Number(variant?.sizeBytes) || 0,
+      storedAt: parseIsoTimestamp(variant?.storedAt) || new Date().toISOString(),
+    };
+  });
+  return {
+    ...metadata,
+    invoice_pdf_variants: nextVariants,
+  };
+}
+
+async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, options = {}) {
+  const variant = getBillingInvoicePdfVariantRecord(invoice, reminderStage, options);
+  if (!variant?.objectPath && !variant?.fullPath) return null;
+  const objectPath = String(variant.objectPath || variant.fullPath || "").trim();
+  if (!objectPath) return null;
+  const response = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(
+      String(variant.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET
+    )}/${objectPath}`,
+    {
+      method: "GET",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not load stored invoice PDF (${response.status}) ${details}`.trim());
+  }
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    filename: String(variant.filename || buildInvoicePdfFilename(invoice)).trim() || buildInvoicePdfFilename(invoice),
+    stage: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage),
+    exact: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage) === normalizeInvoicePdfVariantStage(reminderStage),
   };
 }
 
@@ -3054,27 +3229,42 @@ function startOfUtcDay(dateLike) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-function formatInvoiceSettlementBadge(invoice = {}, options = {}) {
+function getInvoiceSettlementBadgeMeta(invoice = {}, options = {}) {
   const manual = invoiceRequiresManualSettlement(invoice);
   const status = normalizeInvoiceStatus(invoice?.status);
+  const reminderStage = Number(options?.reminderStage) || 0;
+  if (manual && reminderStage > 0) {
+    const mapping = {
+      1: { label: "Due in 15 days", tone: "warning" },
+      2: { label: "Due in 7 days", tone: "warning" },
+      3: { label: "Due tomorrow", tone: "attention" },
+      4: { label: "Due today", tone: "danger" },
+      5: { label: "3 days overdue", tone: "danger" },
+      6: { label: "10 days overdue", tone: "danger" },
+      7: { label: "15 days overdue", tone: "danger" },
+      8: { label: "30 days overdue", tone: "danger" },
+    };
+    if (mapping[reminderStage]) return mapping[reminderStage];
+  }
   if (!manual) {
-    if (status === "paid") return "Collected automatically";
-    if (status === "overdue") return "Collection overdue";
-    return "Pending collection";
+    if (status === "paid") return { label: "Collected automatically", tone: "success" };
+    if (status === "overdue") return { label: "Collection overdue", tone: "danger" };
+    return { label: "Pending collection", tone: "success" };
   }
   if (status === "paid") {
-    return "Paid";
+    return { label: "Paid", tone: "success" };
   }
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const today = startOfUtcDay(new Date());
   const dueDay = startOfUtcDay(dueAt);
-  if (!today || !dueDay) return `Due in ${getInvoiceTermsDays(envLike(options))} days`;
+  if (!today || !dueDay) return { label: `Due in ${getInvoiceTermsDays(envLike(options))} days`, tone: "success" };
   const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
-  if (diffDays > 1) return `Due in ${diffDays} days`;
-  if (diffDays === 1) return "Due tomorrow";
-  if (diffDays === 0) return "Due today";
-  if (diffDays === -1) return "1 day overdue";
-  return `${Math.abs(diffDays)} days overdue`;
+  if (diffDays > 15) return { label: `Due in ${diffDays} days`, tone: "success" };
+  if (diffDays > 1) return { label: `Due in ${diffDays} days`, tone: "warning" };
+  if (diffDays === 1) return { label: "Due tomorrow", tone: "attention" };
+  if (diffDays === 0) return { label: "Due today", tone: "danger" };
+  if (diffDays === -1) return { label: "1 day overdue", tone: "danger" };
+  return { label: `${Math.abs(diffDays)} days overdue`, tone: "danger" };
 }
 
 function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
@@ -3083,10 +3273,16 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const paidAt = options?.paidAt || invoice?.paid_at || issuedAt || null;
   const reference = String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim();
+  const badgeMeta = getInvoiceSettlementBadgeMeta(invoice, {
+    dueAt,
+    paidAt,
+    reminderStage: options?.reminderStage,
+    env: options?.env,
+  });
   if (manual) {
     return {
-      badge: formatInvoiceSettlementBadge(invoice, { dueAt, env: options?.env }),
-      badgeTone: "accent",
+      badge: badgeMeta.label,
+      badgeTone: badgeMeta.tone,
       transferRows: [
         {
           label: "IBAN",
@@ -3100,8 +3296,8 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
     };
   }
   return {
-    badge: formatInvoiceSettlementBadge(invoice, { paidAt, env: options?.env }),
-    badgeTone: "success",
+    badge: badgeMeta.label,
+    badgeTone: badgeMeta.tone,
     transferRows: [],
     lines: [],
     note: "",
@@ -3273,10 +3469,31 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     : "Paid automatically";
   const taxNote =
     "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.";
-  const paymentBadgeColor = settlement.badgeTone === "success" ? colors.success : colors.accent;
-  const paymentBadgeFill = settlement.badgeTone === "success"
-    ? rgb(28 / 255, 49 / 255, 38 / 255)
-    : colors.accentSoft;
+  const badgeStyles = {
+    success: {
+      color: colors.success,
+      fill: rgb(28 / 255, 49 / 255, 38 / 255),
+    },
+    warning: {
+      color: rgb(241 / 255, 194 / 255, 120 / 255),
+      fill: rgb(47 / 255, 37 / 255, 21 / 255),
+    },
+    attention: {
+      color: rgb(255 / 255, 200 / 255, 137 / 255),
+      fill: rgb(52 / 255, 36 / 255, 19 / 255),
+    },
+    danger: {
+      color: rgb(255 / 255, 188 / 255, 200 / 255),
+      fill: rgb(53 / 255, 26 / 255, 30 / 255),
+    },
+    accent: {
+      color: colors.accent,
+      fill: colors.accentSoft,
+    },
+  };
+  const selectedBadgeStyle = badgeStyles[settlement.badgeTone] || badgeStyles.accent;
+  const paymentBadgeColor = selectedBadgeStyle.color;
+  const paymentBadgeFill = selectedBadgeStyle.fill;
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
@@ -3660,9 +3877,10 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
         borderColor: paymentBadgeColor,
         borderWidth: 1,
       });
+      const badgeTextWidth = fonts.regular.widthOfTextAtSize(settlement.badge, 8);
       page.drawText(settlement.badge, {
-        x: paymentX + 9,
-        y: settlementTop - 37,
+        x: paymentX + (badgeWidth - badgeTextWidth) / 2,
+        y: settlementTop - 36.5,
         font: fonts.regular,
         size: 8,
         color: paymentBadgeColor,
@@ -3677,21 +3895,24 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
           opacity: 0.7,
         });
         transferRows.forEach((row, index) => {
-          const y = settlementTop - 22 - index * 26;
+          const rowY = index === 0 ? settlementTop - 48 : settlementTop - 92;
           const valueFont = row.mono ? fonts.mono : fonts.regular;
+          const labelWidth = 78;
+          const valueX = transferX + labelWidth;
+          const valueWidth = Math.max(36, transferWidth - labelWidth);
           page.drawText(row.label, {
             x: transferX,
-            y,
+            y: rowY,
             font: fonts.regular,
-            size: 8,
+            size: 9,
             color: colors.muted,
           });
-          const fittedValue = fitPdfText(row.value, valueFont, 9, transferWidth);
+          const fittedValue = fitPdfText(row.value, valueFont, 9.5, valueWidth);
           page.drawText(fittedValue, {
-            x: transferX,
-            y: y - 15,
+            x: valueX,
+            y: rowY,
             font: valueFont,
-            size: 9,
+            size: 9.5,
             color: colors.text,
           });
         });
@@ -4868,12 +5089,52 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     due_at: effectiveDueAt,
     paid_at: effectivePaidAt,
   };
-  const pdfBytes = await buildInvoicePdf(env, pdfInvoice, invoiceWithItems.items || [], {
-    user,
-    issuedAt: effectiveIssuedAt,
-    dueAt: effectiveDueAt,
-    paidAt: effectivePaidAt,
-  });
+  const desiredStage = isReminder ? reminderStage : 0;
+  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
+  let persistedPdfVariants = [];
+  if (providedVariants.length) {
+    persistedPdfVariants = await Promise.all(
+      providedVariants.map((variant) =>
+        persistBillingInvoicePdfVariant(
+          env,
+          pdfInvoice,
+          variant?.stage,
+          variant?.bytes,
+          variant?.filename || buildInvoicePdfFilename(invoiceWithItems)
+        )
+      )
+    );
+    const mergedMetadata = mergeBillingInvoicePdfVariantMetadata(invoiceWithItems, persistedPdfVariants);
+    const metadataUpdate = await updateBillingInvoiceFields(env, invoiceWithItems.id, {
+      metadata: mergedMetadata,
+    });
+    if (metadataUpdate?.metadata) {
+      invoiceWithItems.metadata = metadataUpdate.metadata;
+      pdfInvoice.metadata = metadataUpdate.metadata;
+    }
+  }
+  const providedVariant =
+    providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(desiredStage))
+    || (!isReminder
+      ? providedVariants.find((entry) => entry?.stage === "0")
+      : null)
+    || null;
+  const storedVariant = providedVariant
+    ? null
+    : await loadStoredBillingInvoicePdfVariant(env, pdfInvoice, desiredStage).catch(() => null);
+  const pdfBytes = providedVariant?.bytes
+    || storedVariant?.bytes
+    || await buildInvoicePdf(env, pdfInvoice, invoiceWithItems.items || [], {
+      user,
+      issuedAt: effectiveIssuedAt,
+      dueAt: effectiveDueAt,
+      paidAt: effectivePaidAt,
+      isReminder,
+      reminderStage,
+    });
+  const pdfFilename =
+    String(providedVariant?.filename || storedVariant?.filename || "").trim()
+    || buildInvoicePdfFilename(invoiceWithItems);
   const subject = buildInvoiceEmailSubject(pdfInvoice, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail(env, {
     to: toEmail,
@@ -4886,7 +5147,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     text: buildInvoiceEmailText(pdfInvoice, { isReminder }),
     attachments: [
       {
-        filename: buildInvoicePdfFilename(invoiceWithItems),
+        filename: pdfFilename,
         content: pdfBytes,
         contentType: "application/pdf",
       },
@@ -4930,6 +5191,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
       resend_id: emailPayload?.id || null,
       to: toEmail,
       reminder_stage: isReminder ? reminderStage : null,
+      attachment_source: providedVariant ? "browser-upload" : storedVariant ? "stored-browser-pdf" : "server-fallback",
     },
   });
   return {
@@ -5447,6 +5709,34 @@ async function handleAdminInvoicesList(request, env, url) {
   }
 }
 
+async function handleAdminInvoiceDetail(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to view invoices." }, 403);
+  }
+  const invoiceId = String(url.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  try {
+    const invoice = await getBillingInvoiceById(env, invoiceId, { withItems: true });
+    if (!invoice?.id) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    return jsonResponse({
+      invoice: {
+        ...invoice,
+        reference: toInvoiceReference(invoice.id),
+      },
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load invoice." }, 500);
+  }
+}
+
 async function handleAdminInvoicesRun(request, env) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
@@ -5497,8 +5787,10 @@ async function handleAdminInvoiceSend(request, env) {
     return jsonResponse({ error: "Invoice id is required." }, 400);
   }
   try {
+    const providedVariants = normalizeProvidedInvoicePdfVariantsFromBody(body);
     const result = await sendBillingInvoiceById(env, invoiceId, {
       isReminder: false,
+      pdfVariants: providedVariants,
     });
     return jsonResponse({
       ok: true,
@@ -5558,8 +5850,24 @@ function buildAdminBillingTestInvoice(env, toEmail) {
   };
 }
 
-async function sendAdminBillingTestSequenceEmails(env, toEmail) {
+function normalizeProvidedInvoicePdfVariantsFromBody(body = {}) {
+  const rows = Array.isArray(body?.pdfVariants) ? body.pdfVariants : [];
+  return rows
+    .map((entry) => {
+      const pdfBase64 = String(entry?.pdfBase64 || "").trim();
+      if (!pdfBase64) return null;
+      return {
+        stage: normalizeInvoicePdfVariantStage(entry?.reminderStage),
+        filename: String(entry?.filename || "").trim() || null,
+        bytes: Uint8Array.from(atob(pdfBase64), (char) => char.charCodeAt(0)),
+      };
+    })
+    .filter(Boolean);
+}
+
+async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
   const { invoice, items } = buildAdminBillingTestInvoice(env, toEmail);
+  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
   const steps = [
     { reminderStage: 0, isReminder: false, key: "initial" },
     { reminderStage: 1, isReminder: true, key: "due_15_days" },
@@ -5595,11 +5903,18 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail) {
       due_at: dueAt,
       paid_at: paidAt,
     };
-    const pdfBytes = await buildInvoicePdf(env, emailInvoice, items, {
-      issuedAt,
-      dueAt,
-      paidAt,
-    });
+    const providedVariant =
+      providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(step.reminderStage))
+      || providedVariants.find((entry) => entry?.stage === "0")
+      || null;
+    const pdfBytes = providedVariant?.bytes
+      || await buildInvoicePdf(env, emailInvoice, items, {
+        issuedAt,
+        dueAt,
+        paidAt,
+        isReminder: step.isReminder,
+        reminderStage: step.reminderStage,
+      });
     try {
       const response = await sendResendEmail(env, {
         to: toEmail,
@@ -5613,7 +5928,8 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail) {
         }),
         attachments: [
           {
-            filename: buildInvoicePdfFilename(emailInvoice),
+            filename:
+              String(providedVariant?.filename || "").trim() || buildInvoicePdfFilename(emailInvoice),
             content: pdfBytes,
             contentType: "application/pdf",
           },
@@ -5723,7 +6039,9 @@ async function handleAdminInvoiceSendTestSequence(request, env) {
     return jsonResponse({ error: "A valid test email is required." }, 400);
   }
   try {
-    const sequence = await sendAdminBillingTestSequenceEmails(env, toEmail);
+    const sequence = await sendAdminBillingTestSequenceEmails(env, toEmail, {
+      pdfVariants: normalizeProvidedInvoicePdfVariantsFromBody(body),
+    });
     return jsonResponse({
       ok: sequence.failed_count === 0,
       ...sequence,

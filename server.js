@@ -10,7 +10,7 @@ const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 4173;
 const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
-const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
@@ -64,6 +64,9 @@ const CLICKWRAP_CONTRACT_TEMPLATE_FONT_FILE = path.join(
 const CLICKWRAP_STORAGE_BUCKET =
   String(process.env.CLICKWRAP_STORAGE_BUCKET || "clickwrap-contracts").trim()
   || "clickwrap-contracts";
+const BILLING_INVOICE_STORAGE_BUCKET =
+  String(process.env.BILLING_INVOICE_STORAGE_BUCKET || "billing-invoices").trim()
+  || "billing-invoices";
 const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const CLICKWRAP_PREVIEW_MAX_ENTRIES = 128;
 const ADMIN_SETTINGS_SCOPE = "global";
@@ -200,6 +203,7 @@ const clickwrapPreviewStore = new Map();
 let clickwrapPreviewAssetsPromise = null;
 let supabaseAdminClient = null;
 let clickwrapStorageBucketPromise = null;
+let billingInvoiceStorageBucketPromise = null;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -888,6 +892,154 @@ async function persistAcceptedClickwrapContract({ contract, recordId, pdfBytes, 
     sizeBytes: Buffer.byteLength(pdfBytes),
     acceptedAt: parseIsoTimestamp(acceptedAt),
     storedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeInvoicePdfVariantStage(stage) {
+  return String(Math.max(0, Number(stage) || 0));
+}
+
+function buildBillingInvoiceStoragePath(invoice, reminderStage, filename) {
+  const referenceSegment = toInvoiceReference(invoice?.id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const stageSegment = normalizeInvoicePdfVariantStage(reminderStage);
+  return `pdf/${referenceSegment || "invoice"}/stage-${stageSegment}/${filename}`;
+}
+
+async function ensureBillingInvoiceStorageBucket() {
+  if (!billingInvoiceStorageBucketPromise) {
+    billingInvoiceStorageBucketPromise = (async () => {
+      const client = getSupabaseAdminClient();
+      const { data, error } = await client.storage.getBucket(BILLING_INVOICE_STORAGE_BUCKET);
+      if (!error && data) {
+        return data;
+      }
+      const message = String(error?.message || "").toLowerCase();
+      const missingBucket =
+        !message
+        || message.includes("not found")
+        || message.includes("does not exist")
+        || message.includes("not exists");
+      if (!missingBucket && error) {
+        throw new Error(error.message || "Could not access billing invoice storage bucket.");
+      }
+      const { data: createdBucket, error: createError } = await client.storage.createBucket(
+        BILLING_INVOICE_STORAGE_BUCKET,
+        {
+          public: false,
+          allowedMimeTypes: ["application/pdf"],
+          fileSizeLimit: "25MB",
+        }
+      );
+      if (createError) {
+        const createMessage = String(createError?.message || "").toLowerCase();
+        if (!createMessage.includes("already exists")) {
+          throw new Error(createError.message || "Could not create billing invoice storage bucket.");
+        }
+      }
+      return createdBucket || { id: BILLING_INVOICE_STORAGE_BUCKET, name: BILLING_INVOICE_STORAGE_BUCKET };
+    })().catch((error) => {
+      billingInvoiceStorageBucketPromise = null;
+      throw error;
+    });
+  }
+  return billingInvoiceStorageBucketPromise;
+}
+
+async function persistBillingInvoicePdfVariant(invoice, reminderStage, pdfBytes, filename) {
+  const safeFilename = String(filename || buildInvoicePdfFilename(invoice)).trim() || buildInvoicePdfFilename(invoice);
+  const storagePath = buildBillingInvoiceStoragePath(invoice, reminderStage, safeFilename);
+  await ensureBillingInvoiceStorageBucket();
+  const client = getSupabaseAdminClient();
+  const { data, error } = await client.storage
+    .from(BILLING_INVOICE_STORAGE_BUCKET)
+    .upload(storagePath, pdfBytes, {
+      contentType: "application/pdf",
+      cacheControl: "3600",
+      upsert: true,
+    });
+  if (error) {
+    throw new Error(error.message || "Could not store invoice PDF.");
+  }
+  return {
+    stage: normalizeInvoicePdfVariantStage(reminderStage),
+    filename: safeFilename,
+    bucket: BILLING_INVOICE_STORAGE_BUCKET,
+    objectPath: data?.path || storagePath,
+    fullPath: data?.fullPath || null,
+    sha256: crypto.createHash("sha256").update(pdfBytes).digest("hex"),
+    sizeBytes: Buffer.byteLength(pdfBytes),
+    storedAt: new Date().toISOString(),
+  };
+}
+
+function getBillingInvoicePdfVariantMap(invoice) {
+  const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const variants =
+    metadata?.invoice_pdf_variants && typeof metadata.invoice_pdf_variants === "object"
+      ? metadata.invoice_pdf_variants
+      : {};
+  return variants;
+}
+
+function getBillingInvoicePdfVariantRecord(invoice, reminderStage, options = {}) {
+  const variants = getBillingInvoicePdfVariantMap(invoice);
+  const exactKey = normalizeInvoicePdfVariantStage(reminderStage);
+  const exact = variants[exactKey] && typeof variants[exactKey] === "object" ? variants[exactKey] : null;
+  if (exact) return exact;
+  if (options?.allowFallback !== false) {
+    const initial = variants["0"] && typeof variants["0"] === "object" ? variants["0"] : null;
+    if (initial) return initial;
+  }
+  return null;
+}
+
+function mergeBillingInvoicePdfVariantMetadata(invoice, variants = []) {
+  const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const nextVariants = {
+    ...getBillingInvoicePdfVariantMap(invoice),
+  };
+  (Array.isArray(variants) ? variants : []).forEach((variant) => {
+    const stageKey = normalizeInvoicePdfVariantStage(variant?.stage);
+    nextVariants[stageKey] = {
+      stage: stageKey,
+      filename: String(variant?.filename || "").trim() || buildInvoicePdfFilename(invoice),
+      bucket: String(variant?.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET,
+      objectPath: String(variant?.objectPath || variant?.fullPath || "").trim() || null,
+      fullPath: String(variant?.fullPath || variant?.objectPath || "").trim() || null,
+      sha256: String(variant?.sha256 || "").trim().toLowerCase() || null,
+      sizeBytes: Number(variant?.sizeBytes) || 0,
+      storedAt: parseIsoTimestamp(variant?.storedAt) || new Date().toISOString(),
+    };
+  });
+  return {
+    ...metadata,
+    invoice_pdf_variants: nextVariants,
+  };
+}
+
+async function loadStoredBillingInvoicePdfVariant(invoice, reminderStage, options = {}) {
+  const variant = getBillingInvoicePdfVariantRecord(invoice, reminderStage, options);
+  if (!variant?.objectPath && !variant?.fullPath) return null;
+  const objectPath = String(variant.objectPath || variant.fullPath || "").trim();
+  if (!objectPath) return null;
+  const client = getSupabaseAdminClient();
+  const { data, error } = await client.storage
+    .from(String(variant.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET)
+    .download(objectPath);
+  if (error) {
+    throw new Error(error.message || "Could not load stored invoice PDF.");
+  }
+  const bytes = Buffer.from(await data.arrayBuffer());
+  return {
+    bytes,
+    filename: String(variant.filename || buildInvoicePdfFilename(invoice)).trim() || buildInvoicePdfFilename(invoice),
+    stage: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage),
+    exact: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage) === normalizeInvoicePdfVariantStage(reminderStage),
   };
 }
 
@@ -2618,27 +2770,42 @@ function startOfUtcDay(dateLike) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-function formatInvoiceSettlementBadge(invoice = {}, options = {}) {
+function getInvoiceSettlementBadgeMeta(invoice = {}, options = {}) {
   const manual = invoiceRequiresManualSettlement(invoice);
   const status = normalizeInvoiceStatus(invoice?.status);
+  const reminderStage = Number(options?.reminderStage) || 0;
+  if (manual && reminderStage > 0) {
+    const mapping = {
+      1: { label: "Due in 15 days", tone: "warning" },
+      2: { label: "Due in 7 days", tone: "warning" },
+      3: { label: "Due tomorrow", tone: "attention" },
+      4: { label: "Due today", tone: "danger" },
+      5: { label: "3 days overdue", tone: "danger" },
+      6: { label: "10 days overdue", tone: "danger" },
+      7: { label: "15 days overdue", tone: "danger" },
+      8: { label: "30 days overdue", tone: "danger" },
+    };
+    if (mapping[reminderStage]) return mapping[reminderStage];
+  }
   if (!manual) {
-    if (status === "paid") return "Collected automatically";
-    if (status === "overdue") return "Collection overdue";
-    return "Pending collection";
+    if (status === "paid") return { label: "Collected automatically", tone: "success" };
+    if (status === "overdue") return { label: "Collection overdue", tone: "danger" };
+    return { label: "Pending collection", tone: "success" };
   }
   if (status === "paid") {
-    return "Paid";
+    return { label: "Paid", tone: "success" };
   }
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const today = startOfUtcDay(new Date());
   const dueDay = startOfUtcDay(dueAt);
-  if (!today || !dueDay) return `Due in ${getInvoiceTermsDays()} days`;
+  if (!today || !dueDay) return { label: `Due in ${getInvoiceTermsDays()} days`, tone: "success" };
   const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
-  if (diffDays > 1) return `Due in ${diffDays} days`;
-  if (diffDays === 1) return "Due tomorrow";
-  if (diffDays === 0) return "Due today";
-  if (diffDays === -1) return "1 day overdue";
-  return `${Math.abs(diffDays)} days overdue`;
+  if (diffDays > 15) return { label: `Due in ${diffDays} days`, tone: "success" };
+  if (diffDays > 1) return { label: `Due in ${diffDays} days`, tone: "warning" };
+  if (diffDays === 1) return { label: "Due tomorrow", tone: "attention" };
+  if (diffDays === 0) return { label: "Due today", tone: "danger" };
+  if (diffDays === -1) return { label: "1 day overdue", tone: "danger" };
+  return { label: `${Math.abs(diffDays)} days overdue`, tone: "danger" };
 }
 
 function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
@@ -2647,10 +2814,15 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const paidAt = options?.paidAt || invoice?.paid_at || issuedAt || null;
   const reference = String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim();
+  const badgeMeta = getInvoiceSettlementBadgeMeta(invoice, {
+    dueAt,
+    paidAt,
+    reminderStage: options?.reminderStage,
+  });
   if (manual) {
     return {
-      badge: formatInvoiceSettlementBadge(invoice, { dueAt }),
-      badgeTone: "accent",
+      badge: badgeMeta.label,
+      badgeTone: badgeMeta.tone,
       transferRows: [
         { label: "IBAN", value: DEFAULT_INVOICE_PDF_IBAN, mono: true },
         { label: "Communication", value: reference, mono: true },
@@ -2660,8 +2832,8 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
     };
   }
   return {
-    badge: formatInvoiceSettlementBadge(invoice, { paidAt }),
-    badgeTone: "success",
+    badge: badgeMeta.label,
+    badgeTone: badgeMeta.tone,
     transferRows: [],
     lines: [],
     note: "",
@@ -2825,8 +2997,31 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
     : "Paid automatically";
   const taxNote =
     "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.";
-  const paymentBadgeColor = settlement.badgeTone === "success" ? colors.success : colors.accent;
-  const paymentBadgeFill = settlement.badgeTone === "success" ? rgb(28 / 255, 49 / 255, 38 / 255) : colors.accentSoft;
+  const badgeStyles = {
+    success: {
+      color: colors.success,
+      fill: rgb(28 / 255, 49 / 255, 38 / 255),
+    },
+    warning: {
+      color: rgb(241 / 255, 194 / 255, 120 / 255),
+      fill: rgb(47 / 255, 37 / 255, 21 / 255),
+    },
+    attention: {
+      color: rgb(255 / 255, 200 / 255, 137 / 255),
+      fill: rgb(52 / 255, 36 / 255, 19 / 255),
+    },
+    danger: {
+      color: rgb(255 / 255, 188 / 255, 200 / 255),
+      fill: rgb(53 / 255, 26 / 255, 30 / 255),
+    },
+    accent: {
+      color: colors.accent,
+      fill: colors.accentSoft,
+    },
+  };
+  const selectedBadgeStyle = badgeStyles[settlement.badgeTone] || badgeStyles.accent;
+  const paymentBadgeColor = selectedBadgeStyle.color;
+  const paymentBadgeFill = selectedBadgeStyle.fill;
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
@@ -3209,9 +3404,10 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         borderColor: paymentBadgeColor,
         borderWidth: 1,
       });
+      const badgeTextWidth = fonts.regular.widthOfTextAtSize(settlement.badge, 8);
       page.drawText(settlement.badge, {
-        x: paymentX + 9,
-        y: settlementTop - 37,
+        x: paymentX + (badgeWidth - badgeTextWidth) / 2,
+        y: settlementTop - 36.5,
         font: fonts.regular,
         size: 8,
         color: paymentBadgeColor,
@@ -3226,21 +3422,24 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
           opacity: 0.7,
         });
         transferRows.forEach((row, index) => {
-          const y = settlementTop - 22 - index * 26;
+          const rowY = index === 0 ? settlementTop - 48 : settlementTop - 92;
           const valueFont = row.mono ? fonts.mono : fonts.regular;
+          const labelWidth = 78;
+          const valueX = transferX + labelWidth;
+          const valueWidth = Math.max(36, transferWidth - labelWidth);
           page.drawText(row.label, {
             x: transferX,
-            y,
+            y: rowY,
             font: fonts.regular,
-            size: 8,
+            size: 9,
             color: colors.muted,
           });
-          const fittedValue = fitPdfText(row.value, valueFont, 9, transferWidth);
+          const fittedValue = fitPdfText(row.value, valueFont, 9.5, valueWidth);
           page.drawText(fittedValue, {
-            x: transferX,
-            y: y - 15,
+            x: valueX,
+            y: rowY,
             font: valueFont,
-            size: 9,
+            size: 9.5,
             color: colors.text,
           });
         });
@@ -4112,12 +4311,51 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
     due_at: effectiveDueAt,
     paid_at: effectivePaidAt,
   };
-  const pdfBytes = await buildInvoicePdf(pdfInvoice, invoiceWithItems.items || [], {
-    user,
-    issuedAt: effectiveIssuedAt,
-    dueAt: effectiveDueAt,
-    paidAt: effectivePaidAt,
-  });
+  const desiredStage = isReminder ? reminderStage : 0;
+  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
+  let persistedPdfVariants = [];
+  if (providedVariants.length) {
+    persistedPdfVariants = await Promise.all(
+      providedVariants.map((variant) =>
+        persistBillingInvoicePdfVariant(
+          pdfInvoice,
+          variant?.stage,
+          variant?.bytes,
+          variant?.filename || buildInvoicePdfFilename(invoiceWithItems)
+        )
+      )
+    );
+    const mergedMetadata = mergeBillingInvoicePdfVariantMetadata(invoiceWithItems, persistedPdfVariants);
+    const metadataUpdate = await updateBillingInvoiceFields(invoiceWithItems.id, {
+      metadata: mergedMetadata,
+    });
+    if (metadataUpdate?.metadata) {
+      invoiceWithItems.metadata = metadataUpdate.metadata;
+      pdfInvoice.metadata = metadataUpdate.metadata;
+    }
+  }
+  const providedVariant =
+    providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(desiredStage))
+    || (!isReminder
+      ? providedVariants.find((entry) => entry?.stage === "0")
+      : null)
+    || null;
+  const storedVariant = providedVariant
+    ? null
+    : await loadStoredBillingInvoicePdfVariant(pdfInvoice, desiredStage).catch(() => null);
+  const pdfBytes = providedVariant?.bytes
+    || storedVariant?.bytes
+    || await buildInvoicePdf(pdfInvoice, invoiceWithItems.items || [], {
+      user,
+      issuedAt: effectiveIssuedAt,
+      dueAt: effectiveDueAt,
+      paidAt: effectivePaidAt,
+      isReminder,
+      reminderStage,
+    });
+  const pdfFilename =
+    String(providedVariant?.filename || storedVariant?.filename || "").trim()
+    || buildInvoicePdfFilename(invoiceWithItems);
   const subject = buildInvoiceEmailSubject(pdfInvoice, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail({
     to: toEmail,
@@ -4130,7 +4368,7 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
     text: buildInvoiceEmailText(pdfInvoice, { isReminder }),
     attachments: [
       {
-        filename: buildInvoicePdfFilename(invoiceWithItems),
+        filename: pdfFilename,
         content: pdfBytes,
         contentType: "application/pdf",
       },
@@ -4174,6 +4412,7 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
       resend_id: emailPayload?.id || null,
       to: toEmail,
       reminder_stage: isReminder ? reminderStage : null,
+      attachment_source: providedVariant ? "browser-upload" : storedVariant ? "stored-browser-pdf" : "server-fallback",
     },
   });
   return {
@@ -5402,6 +5641,38 @@ async function handleAdminInvoicesList(req, res, requestUrl) {
   }
 }
 
+async function handleAdminInvoiceDetail(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to view invoices." });
+    return;
+  }
+  const invoiceId = String(requestUrl.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    sendJson(res, 400, { error: "Invoice id is required." });
+    return;
+  }
+  try {
+    const invoice = await getBillingInvoiceById(invoiceId, { withItems: true });
+    if (!invoice?.id) {
+      sendJson(res, 404, { error: "Invoice not found." });
+      return;
+    }
+    sendJson(res, 200, {
+      invoice: {
+        ...invoice,
+        reference: toInvoiceReference(invoice.id),
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load invoice." });
+  }
+}
+
 async function handleAdminInvoicesRun(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -5459,8 +5730,10 @@ async function handleAdminInvoiceSend(req, res) {
     return;
   }
   try {
+    const providedVariants = normalizeProvidedInvoicePdfVariantsFromBody(body);
     const result = await sendBillingInvoiceById(invoiceId, {
       isReminder: false,
+      pdfVariants: providedVariants,
     });
     sendJson(res, 200, {
       ok: true,
@@ -5520,8 +5793,24 @@ function buildAdminBillingTestInvoice(toEmail) {
   };
 }
 
-async function sendAdminBillingTestSequenceEmails(toEmail) {
+function normalizeProvidedInvoicePdfVariantsFromBody(body = {}) {
+  const rows = Array.isArray(body?.pdfVariants) ? body.pdfVariants : [];
+  return rows
+    .map((entry) => {
+      const pdfBase64 = String(entry?.pdfBase64 || "").trim();
+      if (!pdfBase64) return null;
+      return {
+        stage: normalizeInvoicePdfVariantStage(entry?.reminderStage),
+        filename: String(entry?.filename || "").trim() || null,
+        bytes: Buffer.from(pdfBase64, "base64"),
+      };
+    })
+    .filter(Boolean);
+}
+
+async function sendAdminBillingTestSequenceEmails(toEmail, options = {}) {
   const { invoice, items } = buildAdminBillingTestInvoice(toEmail);
+  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
   const steps = [
     { reminderStage: 0, isReminder: false, key: "initial" },
     { reminderStage: 1, isReminder: true, key: "due_15_days" },
@@ -5557,11 +5846,18 @@ async function sendAdminBillingTestSequenceEmails(toEmail) {
       due_at: dueAt,
       paid_at: paidAt,
     };
-    const pdfBytes = await buildInvoicePdf(emailInvoice, items, {
-      issuedAt,
-      dueAt,
-      paidAt,
-    });
+    const providedVariant =
+      providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(step.reminderStage))
+      || providedVariants.find((entry) => entry?.stage === "0")
+      || null;
+    const pdfBytes = providedVariant?.bytes
+      || await buildInvoicePdf(emailInvoice, items, {
+        issuedAt,
+        dueAt,
+        paidAt,
+        isReminder: step.isReminder,
+        reminderStage: step.reminderStage,
+      });
     try {
       const response = await sendResendEmail({
         to: toEmail,
@@ -5575,7 +5871,8 @@ async function sendAdminBillingTestSequenceEmails(toEmail) {
         }),
         attachments: [
           {
-            filename: buildInvoicePdfFilename(emailInvoice),
+            filename:
+              String(providedVariant?.filename || "").trim() || buildInvoicePdfFilename(emailInvoice),
             content: pdfBytes,
             contentType: "application/pdf",
           },
@@ -5693,7 +5990,9 @@ async function handleAdminInvoiceSendTestSequence(req, res) {
     return;
   }
   try {
-    const sequence = await sendAdminBillingTestSequenceEmails(toEmail);
+    const sequence = await sendAdminBillingTestSequenceEmails(toEmail, {
+      pdfVariants: normalizeProvidedInvoicePdfVariantsFromBody(body),
+    });
     sendJson(res, 200, {
       ok: sequence.failed_count === 0,
       ...sequence,
@@ -6799,6 +7098,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/admin/invoices" && req.method === "GET") {
     await handleAdminInvoicesList(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/admin/invoices/detail" && req.method === "GET") {
+    await handleAdminInvoiceDetail(req, res, requestUrl);
     return true;
   }
   if (pathname === "/api/admin/invoices/run" && req.method === "POST") {

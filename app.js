@@ -4239,21 +4239,70 @@ async function loadAdminInvoices(options = {}) {
   }
 }
 
+async function sendAdminInvoiceWithRenderer(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error(tr("Invoice id is required."));
+  }
+  const invoiceRecord = await fetchAdminInvoiceDetail(safeInvoiceId);
+  if (!invoiceRecord?.id) {
+    throw new Error(tr("Invoice not found."));
+  }
+  const pdfVariants = await buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord);
+  return fetchApiWithAuth("/api/admin/invoices/send", {
+    method: "POST",
+    timeoutMs: 120000,
+    body: JSON.stringify({
+      invoiceId: safeInvoiceId,
+      pdfVariants,
+    }),
+  });
+}
+
 async function runAdminBillingCycle(mode = "preview") {
   if (adminBillingBusy) return;
   setAdminBillingStatus("");
   setAdminBillingBusy(true);
   try {
+    const runMode = mode === "send" ? "create" : mode;
     const payload = await fetchApiWithAuth("/api/admin/invoices/run", {
       method: "POST",
       timeoutMs: 60000,
       body: JSON.stringify({
-        mode,
+        mode: runMode,
         periodMode: "previous",
         includeReminders: true,
       }),
     });
-    renderAdminBillingRunResult(payload);
+    if (mode === "send") {
+      const invoiceRows = Array.isArray(payload?.run?.invoices) ? payload.run.invoices : [];
+      let sentCount = 0;
+      let failedCount = 0;
+      for (const invoice of invoiceRows) {
+        const invoiceId = String(invoice?.id || "").trim();
+        if (!invoiceId) continue;
+        try {
+          await sendAdminInvoiceWithRenderer(invoiceId);
+          sentCount += 1;
+        } catch (_error) {
+          failedCount += 1;
+        }
+      }
+      if (payload?.run && typeof payload.run === "object") {
+        payload.run.invoices_sent = sentCount;
+      }
+      renderAdminBillingRunResult(payload);
+      if (failedCount > 0) {
+        throw new Error(
+          tr("Billing run sent {sent} invoices with {failed} failures.", {
+            sent: String(sentCount),
+            failed: String(failedCount),
+          })
+        );
+      }
+    } else {
+      renderAdminBillingRunResult(payload);
+    }
     setAdminBillingStatus(tr("Billing run completed."), { tone: "success" });
     await loadAdminDashboard({ quiet: true });
     await loadAdminInvoices({ quiet: true });
@@ -4316,10 +4365,15 @@ async function sendAdminBillingTestSequence() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
+    const testInvoiceRecord = buildAdminTestBillingInvoiceRecord(toEmail);
+    const pdfVariants = await buildInvoicePdfVariantsForInvoiceRecord(testInvoiceRecord);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test-sequence", {
       method: "POST",
-      timeoutMs: 45000,
-      body: JSON.stringify({ toEmail }),
+      timeoutMs: 120000,
+      body: JSON.stringify({
+        toEmail,
+        pdfVariants,
+      }),
     });
     const sent = Number(payload?.sent_count || 0);
     const failed = Number(payload?.failed_count || 0);
@@ -4457,10 +4511,7 @@ async function sendAdminInvoice(invoiceId) {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    await fetchApiWithAuth("/api/admin/invoices/send", {
-      method: "POST",
-      body: JSON.stringify({ invoiceId: safeInvoiceId }),
-    });
+    await sendAdminInvoiceWithRenderer(safeInvoiceId);
     setAdminBillingStatus(tr("Invoice sent."), { tone: "success" });
     await loadAdminInvoices({ quiet: true });
     await loadAdminDashboard({ quiet: true });
@@ -7378,34 +7429,61 @@ function startOfLocalDay(dateLike) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function getInvoiceSettlementBadgeLabel({ isMonthlyBilling, dueDate = null, paymentMode = "" } = {}) {
-  if (!isMonthlyBilling) {
-    if (paymentMode === "wallet") return "Settled via wallet";
-    return "Collected automatically";
-  }
-  const today = startOfLocalDay(new Date());
-  const dueDay = startOfLocalDay(dueDate);
-  if (!today || !dueDay) return "Due in 30 days";
-  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
-  if (diffDays > 1) return `Due in ${diffDays} days`;
-  if (diffDays === 1) return "Due tomorrow";
-  if (diffDays === 0) return "Due today";
-  if (diffDays === -1) return "1 day overdue";
-  return `${Math.abs(diffDays)} days overdue`;
+function invoiceRequiresManualSettlementClient(paymentMode = "") {
+  return String(paymentMode || "").trim().toLowerCase() === "invoice";
 }
 
-function getInvoiceSettlementBadgeTone({ isMonthlyBilling, dueDate = null, paymentMode = "" } = {}) {
+function getInvoicePaymentMethodLabel(paymentMode = "") {
+  const mode = String(paymentMode || "").trim().toLowerCase();
+  if (mode === "invoice") return "Monthly billing";
+  if (mode === "wallet") return "Wallet debit";
+  return "Automatic collection";
+}
+
+function getInvoiceSettlementBadgeMeta({
+  isMonthlyBilling,
+  dueDate = null,
+  paymentMode = "",
+  reminderStage = 0,
+} = {}) {
   if (!isMonthlyBilling) {
-    return paymentMode === "wallet" ? "success" : "success";
+    if (paymentMode === "wallet") return { label: "Settled via wallet", tone: "success" };
+    return { label: "Collected automatically", tone: "success" };
+  }
+  const stage = Math.max(0, Number(reminderStage) || 0);
+  if (stage > 0) {
+    const explicitStages = {
+      1: { label: "Due in 15 days", tone: "warning" },
+      2: { label: "Due in 7 days", tone: "warning" },
+      3: { label: "Due tomorrow", tone: "attention" },
+      4: { label: "Due today", tone: "danger" },
+      5: { label: "3 days overdue", tone: "danger" },
+      6: { label: "10 days overdue", tone: "danger" },
+      7: { label: "15 days overdue", tone: "danger" },
+      8: { label: "30 days overdue", tone: "danger" },
+    };
+    if (explicitStages[stage]) {
+      return explicitStages[stage];
+    }
   }
   const today = startOfLocalDay(new Date());
   const dueDay = startOfLocalDay(dueDate);
-  if (!today || !dueDay) return "success";
+  if (!today || !dueDay) return { label: "Due in 30 days", tone: "success" };
   const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
-  if (diffDays > 15) return "success";
-  if (diffDays > 1) return "warning";
-  if (diffDays === 1) return "attention";
-  return "danger";
+  if (diffDays > 15) return { label: `Due in ${diffDays} days`, tone: "success" };
+  if (diffDays > 1) return { label: `Due in ${diffDays} days`, tone: "warning" };
+  if (diffDays === 1) return { label: "Due tomorrow", tone: "attention" };
+  if (diffDays === 0) return { label: "Due today", tone: "danger" };
+  if (diffDays === -1) return { label: "1 day overdue", tone: "danger" };
+  return { label: `${Math.abs(diffDays)} days overdue`, tone: "danger" };
+}
+
+function getInvoiceSettlementBadgeLabel(options = {}) {
+  return getInvoiceSettlementBadgeMeta(options).label;
+}
+
+function getInvoiceSettlementBadgeTone(options = {}) {
+  return getInvoiceSettlementBadgeMeta(options).tone;
 }
 
 function formatInvoiceDateDisplay(value) {
@@ -7453,14 +7531,9 @@ function buildInvoiceViewModel(record) {
   const issuedAt = formatInvoiceDateDisplay(issuedDate);
   const invoiceTracking = buildInvoiceTrackingId(record?.id);
   const paymentMode = getHistoryInvoicePaymentMode();
-  const isMonthlyBilling = paymentMode === "invoice";
+  const isMonthlyBilling = invoiceRequiresManualSettlementClient(paymentMode);
   const dueDate = isMonthlyBilling ? formatInvoiceDateDisplay(addDaysLocal(issuedDate, 30)) : "--";
-  const paymentMethodLabel =
-    paymentMode === "invoice"
-      ? "Monthly billing"
-      : paymentMode === "wallet"
-        ? "Wallet debit"
-        : "Automatic collection";
+  const paymentMethodLabel = getInvoicePaymentMethodLabel(paymentMode);
   const settlementLines = isMonthlyBilling
     ? [
         `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
@@ -7481,6 +7554,11 @@ function buildInvoiceViewModel(record) {
       total: formatMoney(totals.totalIncVat),
     },
   ];
+  const settlementBadgeMeta = getInvoiceSettlementBadgeMeta({
+    isMonthlyBilling,
+    dueDate: addDaysLocal(issuedDate, 30),
+    paymentMode,
+  });
 
   return {
     record,
@@ -7498,16 +7576,8 @@ function buildInvoiceViewModel(record) {
     paymentMode,
     paymentMethodLabel,
     isMonthlyBilling,
-    settlementBadge: getInvoiceSettlementBadgeLabel({
-      isMonthlyBilling,
-      dueDate: addDaysLocal(issuedDate, 30),
-      paymentMode,
-    }),
-    settlementBadgeTone: getInvoiceSettlementBadgeTone({
-      isMonthlyBilling,
-      dueDate: addDaysLocal(issuedDate, 30),
-      paymentMode,
-    }),
+    settlementBadge: settlementBadgeMeta.label,
+    settlementBadgeTone: settlementBadgeMeta.tone,
     reverseVatNote:
       "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
     settlementTitle: "Payment & Summary",
@@ -7515,6 +7585,134 @@ function buildInvoiceViewModel(record) {
     settlementTransferRows,
     bankIban: INVOICE_ISSUER_PROFILE.iban,
     issuer: INVOICE_ISSUER_PROFILE,
+    serviceRows,
+  };
+}
+
+function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
+  const grouped = new Map();
+  const safeItems = Array.isArray(items) && items.length
+    ? items
+    : [
+        {
+          service_type: "Shipping labels",
+          quantity: Math.max(1, Number(invoice?.labels_count) || 1),
+          amount_inc_vat: Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0),
+          sort_index: 0,
+        },
+      ];
+
+  safeItems.forEach((item, index) => {
+    const service = translateServiceName(item?.service_type || "Shipping labels");
+    const key = String(service || "Shipping labels").trim().toLowerCase();
+    const quantity = Math.max(1, Number(item?.quantity) || 1);
+    const totalAmount = Number(item?.amount_inc_vat ?? item?.amount_ex_vat ?? 0) || 0;
+    const sortIndex = Number.isFinite(Number(item?.sort_index)) ? Number(item.sort_index) : index;
+    const existing = grouped.get(key) || {
+      service,
+      quantity: 0,
+      totalAmount: 0,
+      sortIndex,
+    };
+    existing.quantity += quantity;
+    existing.totalAmount += totalAmount;
+    existing.sortIndex = Math.min(existing.sortIndex, sortIndex);
+    grouped.set(key, existing);
+  });
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.sortIndex - right.sortIndex)
+    .map((entry) => ({
+      service: entry.service,
+      quantity: entry.quantity,
+      rate: formatMoney(entry.quantity ? entry.totalAmount / entry.quantity : entry.totalAmount),
+      total: formatMoney(entry.totalAmount),
+    }));
+}
+
+function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
+  const snapshot =
+    invoice?.metadata?.invoice_profile && typeof invoice.metadata.invoice_profile === "object"
+      ? invoice.metadata.invoice_profile
+      : {};
+  const paymentMode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
+  const isMonthlyBilling = invoiceRequiresManualSettlementClient(paymentMode);
+  const issuedDate =
+    new Date(
+      options?.issuedAt
+      || invoice?.issued_at
+      || invoice?.created_at
+      || Date.now()
+    );
+  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
+  const dueSource =
+    options?.dueAt
+    || invoice?.due_at
+    || (isMonthlyBilling ? addDaysLocal(resolvedIssuedDate, 30) : null);
+  const dueDate = dueSource ? new Date(dueSource) : null;
+  const resolvedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
+  const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
+  const invoiceNumber = String(
+    invoice?.reference
+    || buildInvoiceTrackingId(invoice?.id).display
+    || "--"
+  ).trim();
+  const serviceRows = buildInvoiceServiceRowsFromBillingItems(invoice?.items || [], invoice);
+  const quantity =
+    Number(invoice?.labels_count)
+    || serviceRows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0)
+    || 0;
+  const billingAddress = String(
+    snapshot?.billingAddress
+    || invoice?.billing_address
+    || ""
+  ).trim();
+  const profile = {
+    companyName: String(invoice?.company_name || snapshot?.companyName || "").trim() || "Client account",
+    billingAddress,
+    taxId: String(snapshot?.taxId || invoice?.tax_id || "").trim(),
+    contactEmail: String(invoice?.contact_email || snapshot?.contactEmail || "").trim(),
+  };
+  const settlementBadgeMeta = getInvoiceSettlementBadgeMeta({
+    isMonthlyBilling,
+    dueDate: resolvedDueDate,
+    paymentMode,
+    reminderStage,
+  });
+
+  return {
+    issuedAt: formatInvoiceDateDisplay(resolvedIssuedDate),
+    issuedIso: resolvedIssuedDate.toISOString(),
+    dueAt: resolvedDueDate ? formatInvoiceDateDisplay(resolvedDueDate) : "--",
+    invoiceNumber,
+    invoiceSlug: buildInvoicePdfFilenameFromReference(invoiceNumber).replace(/^invoice-/, "").replace(/\.pdf$/, ""),
+    quantity,
+    paymentMode,
+    paymentMethodLabel: getInvoicePaymentMethodLabel(paymentMode),
+    isMonthlyBilling,
+    settlementBadge: settlementBadgeMeta.label,
+    settlementBadgeTone: settlementBadgeMeta.tone,
+    settlementTitle: "Payment & Summary",
+    settlementLines: isMonthlyBilling
+      ? [
+          `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
+          `Communication ${invoiceNumber}`,
+        ]
+      : [],
+    settlementTransferRows: isMonthlyBilling
+      ? [
+          { label: "IBAN", value: INVOICE_ISSUER_PROFILE.iban },
+          { label: "Communication", value: invoiceNumber, mono: true },
+        ]
+      : [],
+    reverseVatNote:
+      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
+    issuer: INVOICE_ISSUER_PROFILE,
+    profile,
+    billingAddressLines: splitInvoiceAddressLines(profile.billingAddress),
+    totals: {
+      totalIncVat: Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0),
+    },
     serviceRows,
   };
 }
@@ -8460,56 +8658,84 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
   }
 }
 
-function buildAdminTestInvoiceViewModel(toEmail) {
+function buildAdminTestBillingInvoiceRecord(toEmail) {
   const invoiceId = typeof crypto?.randomUUID === "function"
     ? crypto.randomUUID()
     : `inv-${Date.now()}`;
-  const invoiceTracking = buildInvoiceTrackingId(invoiceId);
   const issuedDate = new Date();
-  const dueDate = addDaysLocal(issuedDate, 30);
-  const totalAmount = 120;
   return {
-    invoiceNumber: invoiceTracking.display,
-    invoiceSlug: invoiceTracking.slug,
-    issuedAt: formatInvoiceDateDisplay(issuedDate),
-    dueAt: formatInvoiceDateDisplay(dueDate),
-    quantity: 1,
-    paymentMode: "invoice",
-    paymentMethodLabel: "Monthly billing",
-    isMonthlyBilling: true,
-    settlementBadge: "Due in 30 days",
-    settlementBadgeTone: "success",
-    settlementTitle: "Payment & Summary",
-    settlementLines: [
-      `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
-      `Communication ${invoiceTracking.display}`,
-    ],
-    settlementTransferRows: [
-      { label: "IBAN", value: INVOICE_ISSUER_PROFILE.iban },
-      { label: "Communication", value: invoiceTracking.display, mono: true },
-    ],
-    reverseVatNote:
-      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
-    issuer: INVOICE_ISSUER_PROFILE,
-    profile: {
-      companyName: "Atelier Meridian",
-      billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
-      taxId: "BE0123456789",
-      contactEmail: toEmail,
+    id: invoiceId,
+    reference: buildInvoiceTrackingId(invoiceId).display,
+    company_name: "Atelier Meridian",
+    contact_name: "Claire Dupont",
+    contact_email: String(toEmail || "").trim(),
+    issued_at: issuedDate.toISOString(),
+    due_at: addDaysLocal(issuedDate, 30)?.toISOString() || null,
+    payment_mode: "invoice",
+    total_inc_vat: 120,
+    subtotal_ex_vat: 120,
+    labels_count: 1,
+    metadata: {
+      invoice_profile: {
+        companyName: "Atelier Meridian",
+        contactName: "Claire Dupont",
+        contactEmail: String(toEmail || "").trim(),
+        contactPhone: "+32 2 555 01 29",
+        billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+        taxId: "BE0123456789",
+        customerId: "SHIPIDE-TEST",
+      },
     },
-    billingAddressLines: splitInvoiceAddressLines("Avenue Louise 120, 1050 Brussels, Belgium"),
-    totals: {
-      totalIncVat: totalAmount,
-    },
-    serviceRows: [
+    items: [
       {
-        service: "Economy",
+        service_type: "Economy",
         quantity: 1,
-        rate: formatMoney(totalAmount),
-        total: formatMoney(totalAmount),
+        amount_inc_vat: 120,
       },
     ],
   };
+}
+
+function buildAdminTestInvoiceViewModel(toEmail) {
+  return buildBillingInvoiceViewModel(buildAdminTestBillingInvoiceRecord(toEmail), {
+    reminderStage: 0,
+  });
+}
+
+async function fetchAdminInvoiceDetail(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error(tr("Invoice id is required."));
+  }
+  const payload = await fetchApiWithAuth(
+    `/api/admin/invoices/detail?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
+    { timeoutMs: 30000 }
+  );
+  return payload?.invoice && typeof payload.invoice === "object" ? payload.invoice : null;
+}
+
+function getInvoiceVariantStagesForPaymentMode(paymentMode = "") {
+  return invoiceRequiresManualSettlementClient(paymentMode) ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [0];
+}
+
+async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
+  const filenameReference = String(invoiceRecord?.reference || buildInvoiceTrackingId(invoiceRecord?.id).display || "shipide").trim();
+  const filename = buildInvoicePdfFilenameFromReference(filenameReference);
+  const stages = getInvoiceVariantStagesForPaymentMode(invoiceRecord?.payment_mode);
+  const variants = [];
+  for (const reminderStage of stages) {
+    const viewModel = buildBillingInvoiceViewModel(invoiceRecord, { reminderStage });
+    const exportData = await buildInvoicePdfExportFromViewModel(viewModel, filename);
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate invoice PDF."));
+    }
+    variants.push({
+      reminderStage,
+      filename: exportData.filename,
+      pdfBase64: await blobToBase64(exportData.blob),
+    });
+  }
+  return variants;
 }
 
 function blobToBase64(blob) {
