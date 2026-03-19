@@ -8271,21 +8271,21 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
     ? viewModel.serviceRows.map((_, index) => index)
     : [];
   const previousMarkup = receiptDocument.innerHTML;
+  const previousClassName = receiptDocument.className;
 
   try {
-    receiptDocument.innerHTML = wrapReceiptPageDocumentHtml(
-      buildInvoicePageHtml(viewModel, {
-        rowIndices: allRows,
-        showHeader: true,
-        showTableCard: true,
-        showSectionHead: true,
-        showColumnHead: true,
-        showSettlement: true,
-      })
-    );
+    receiptDocument.className = "receipt-document";
+    receiptDocument.innerHTML = buildInvoicePageHtml(viewModel, {
+      rowIndices: allRows,
+      showHeader: true,
+      showTableCard: true,
+      showSectionHead: true,
+      showColumnHead: true,
+      showSettlement: true,
+    });
     await waitForAnimationFrame();
 
-    const measurementPage = receiptDocument.querySelector(".receipt-document");
+    const measurementPage = receiptDocument;
     if (!measurementPage) {
       return [{ firstPage: true, rows: allRows, hasSettlement: true }];
     }
@@ -8339,6 +8339,7 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
 
     return pages;
   } finally {
+    receiptDocument.className = previousClassName;
     receiptDocument.innerHTML = previousMarkup;
   }
 }
@@ -8351,6 +8352,27 @@ async function renderInvoicePrintDocumentFromViewModel(viewModel) {
     throw new Error("Invoice print container is missing.");
   }
   const pages = await buildPaginatedInvoicePageConfigs(viewModel);
+  if (pages.length <= 1) {
+    const pageConfig = pages[0] || {
+      firstPage: true,
+      rows: Array.isArray(viewModel.serviceRows)
+        ? viewModel.serviceRows.map((_, index) => index)
+        : [],
+      hasSettlement: true,
+    };
+    receiptDocument.className = "receipt-document";
+    receiptDocument.innerHTML = buildInvoicePageHtml(viewModel, {
+      rowIndices: pageConfig.rows,
+      showHeader: pageConfig.firstPage,
+      showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+      showSectionHead: pageConfig.firstPage,
+      showColumnHead: true,
+      showSettlement: Boolean(pageConfig.hasSettlement),
+    });
+    return receiptDocument.outerHTML;
+  }
+
+  receiptDocument.className = "receipt-print-pages";
   receiptDocument.innerHTML = pages
     .map((pageConfig) =>
       wrapReceiptPageDocumentHtml(

@@ -4015,6 +4015,9 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
     String(payload?.filename || buildInvoicePdfFilename(payload?.invoice || {})).trim()
     || "invoice-shipide.pdf";
   const reminderStage = Math.max(0, Number(payload?.reminderStage) || 0);
+  const printWidthPx = 746;
+  const sourceWidthPx = 860;
+  const printScale = printWidthPx / sourceWidthPx;
   const viewModelScript = payload?.viewModel && typeof payload.viewModel === "object"
     ? `const printViewModel = ${serializeForInlineScript(payload.viewModel)};`
     : "const printViewModel = null;";
@@ -4032,50 +4035,50 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
     <link rel="stylesheet" href="${publicAppUrl}/styles.css" />
     <style>
       @page {
-        size: 860px 1216px;
+        size: A4;
         margin: 0;
       }
       html, body {
         margin: 0;
         padding: 0;
-        width: 860px;
-        min-width: 860px;
+        width: 210mm;
+        min-height: 297mm;
         background: #00060f;
       }
       body {
         color: #f1f4fb;
         -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+      .invoice-print-stage {
+        width: ${printWidthPx}px;
+        margin: 24px auto 0;
+        overflow: visible;
       }
       .receipt-export-host {
         position: static !important;
         top: auto !important;
         left: auto !important;
-        width: 860px !important;
-        margin: 0 auto !important;
+        width: ${sourceWidthPx}px !important;
+        margin: 0 !important;
         pointer-events: auto !important;
         z-index: auto !important;
+        transform: scale(${printScale});
+        transform-origin: top left;
       }
       #receiptDocument {
+        width: ${sourceWidthPx}px;
+        margin: 0;
+      }
+      #receiptDocument.receipt-print-pages {
         display: grid;
         gap: 0;
-        width: 860px;
-        margin: 0 auto;
       }
-      #receiptDocument .receipt-document {
-        width: 860px;
-        min-height: 1216px;
-        margin: 0;
-        background: var(--primary);
-        padding: 24px;
-        box-sizing: border-box;
-        border: 0;
-        border-radius: 0;
-        display: flex;
-        flex-direction: column;
+      #receiptDocument.receipt-print-pages > .receipt-document {
         break-after: page;
         page-break-after: always;
       }
-      #receiptDocument .receipt-document:last-child {
+      #receiptDocument.receipt-print-pages > .receipt-document:last-child {
         break-after: auto;
         page-break-after: auto;
       }
@@ -4091,8 +4094,10 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
     </script>
   </head>
   <body>
-    <div class="receipt-export-host" aria-hidden="true">
-      <div id="receiptDocument"></div>
+    <div class="invoice-print-stage">
+      <div class="receipt-export-host" aria-hidden="true">
+        <div id="receiptDocument" class="receipt-document"></div>
+      </div>
     </div>
     <script src="${publicAppUrl}/app.js"></script>
     <script>
@@ -4152,8 +4157,7 @@ async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
       throw new Error(printError);
     }
     const pdfBuffer = await page.pdf({
-      width: "860px",
-      height: "1216px",
+      format: "A4",
       printBackground: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
