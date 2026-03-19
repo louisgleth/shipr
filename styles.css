@@ -4954,7 +4954,7 @@ body {
 
 .invoice-party-column .receipt-address-lines {
   gap: 4px;
-  color: var(--text);
+  color: var(--muted);
 }
 
 .invoice-meta-strip {
@@ -4971,13 +4971,16 @@ body {
   min-width: 0;
 }
 
+.invoice-settlement-stack {
+  display: grid;
+  gap: 12px;
+}
+
 .invoice-tax-note {
-  padding-top: 12px;
-  border-top: 1px solid var(--stroke);
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--muted);
-  max-width: 460px;
+  max-width: 520px;
 }
 
 .receipt-kv-grid {

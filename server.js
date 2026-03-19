@@ -2793,6 +2793,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
     Number(invoice?.labels_count)
       || lineRows.reduce((sum, row) => sum + Math.max(1, Number(row.quantity) || 1), 0)
   );
+  const settlementHeight = 128;
   const totalAmount = formatInvoicePdfMoney(invoice?.total_inc_vat ?? invoice?.subtotal_ex_vat ?? 0);
   const dueOrStatusLabel = invoiceRequiresManualSettlement(invoice) ? "Due date" : "Status";
   const dueOrStatusValue = invoiceRequiresManualSettlement(invoice)
@@ -2815,7 +2816,10 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
   const tableHeadHeight = 24;
   const tableTitleHeight = 42;
   const tablePadding = 14;
-  const settlementHeight = 128;
+  const taxNoteLines = wrapPdfText(taxNote, fonts.regular, 8.5, contentWidth, 3);
+  const taxNoteHeight = taxNoteLines.length * 11;
+  const settlementNoteGap = 10;
+  const settlementBlockHeight = settlementHeight + settlementNoteGap + taxNoteHeight;
   let rowIndex = 0;
   while (rowIndex < Math.max(1, lineRows.length)) {
     const firstPage = rowIndex === 0;
@@ -2929,7 +2933,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
             y: billedToLineY,
             font: valueFont,
             size: 9,
-            color: index === billedToLines.length - 1 ? colors.text : colors.muted,
+            color: colors.muted,
           });
           billedToLineY -= 16;
         }
@@ -2953,7 +2957,6 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       let billedByLineY = billedToTop - 50;
       billedByLines.forEach((line) => {
         const valueFont = line === issuer.email ? fonts.mono : fonts.regular;
-        const valueColor = line === issuer.email ? colors.text : colors.muted;
         const valueLines = wrapPdfText(line, valueFont, 9, partyWidth, 1);
         if (valueLines[0]) {
           page.drawText(valueLines[0], {
@@ -2961,7 +2964,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
             y: billedByLineY,
             font: valueFont,
             size: 9,
-            color: valueColor,
+            color: colors.muted,
           });
           billedByLineY -= 16;
         }
@@ -3003,19 +3006,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
           color: colors.text,
         });
       });
-      cursorY -= 44;
-
-      const taxNoteLines = wrapPdfText(taxNote, fonts.regular, 8.5, contentWidth, 3);
-      taxNoteLines.forEach((line, index) => {
-        page.drawText(line, {
-          x: marginX,
-          y: cursorY - 8 - index * 11,
-          font: fonts.regular,
-          size: 8.5,
-          color: colors.muted,
-        });
-      });
-      cursorY -= 12 + taxNoteLines.length * 11 + tableGap;
+      cursorY -= 44 + tableGap;
     } else {
       cursorY -= 6;
     }
@@ -3027,7 +3018,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
     const maxRowsWithSettlement = Math.max(
       1,
       Math.floor(
-        (availableHeight - settlementHeight - tableGap - titleHeight - tableHeadHeight - tablePadding * 2)
+        (availableHeight - settlementBlockHeight - tableGap - titleHeight - tableHeadHeight - tablePadding * 2)
           / rowHeight
       )
     );
@@ -3268,6 +3259,17 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         font: fonts.mono,
         size: 11,
         color: colors.text,
+      });
+
+      const taxNoteTop = settlementTop - settlementHeight - settlementNoteGap;
+      taxNoteLines.forEach((line, index) => {
+        page.drawText(line, {
+          x: marginX,
+          y: taxNoteTop - index * 11,
+          font: fonts.regular,
+          size: 8.5,
+          color: colors.muted,
+        });
       });
     }
   }

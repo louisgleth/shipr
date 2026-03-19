@@ -7661,8 +7661,6 @@ function buildInvoiceHeaderHtml(viewModel) {
         <div class="invoice-meta-value">${escapeHtml(paymentMethodLabel)}</div>
       </div>
     </div>
-
-    <div class="invoice-tax-note">${escapeHtml(viewModel.reverseVatNote || "")}</div>
   `;
 }
 
@@ -7771,31 +7769,34 @@ function buildInvoiceSettlementHtml(viewModel) {
     { label: "Total", value: formatMoney(viewModel.totals.totalIncVat), strong: true },
   ];
   return `
-    <section class="invoice-settlement-panel">
-      <div class="invoice-settlement-grid">
-        <div class="invoice-payment-block">
-          <span class="receipt-panel-title">${escapeHtml(title)}</span>
-          <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
-            viewModel.isMonthlyBilling ? "Monthly billing" : "Already settled"
-          )}</span>
-          ${viewModel.settlementLines.length
-            ? `<div class="invoice-payment-lines">
-                ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-              </div>`
-            : ""}
-        </div>
-        <div class="invoice-summary-block">
-          ${summaryRows
-            .map(
-              (row) => `
-                <div class="invoice-summary-row${row.strong ? " is-total" : ""}">
-                  <span>${escapeHtml(row.label)}</span>
-                  <span class="mono">${escapeHtml(row.value)}</span>
+    <section class="invoice-settlement-stack">
+      <div class="invoice-settlement-panel">
+        <div class="invoice-settlement-grid">
+          <div class="invoice-payment-block">
+            <span class="receipt-panel-title">${escapeHtml(title)}</span>
+            <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
+              viewModel.isMonthlyBilling ? "Monthly billing" : "Already settled"
+            )}</span>
+            ${viewModel.settlementLines.length
+              ? `<div class="invoice-payment-lines">
+                  ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
                 </div>`
-            )
-            .join("")}
+              : ""}
+          </div>
+          <div class="invoice-summary-block">
+            ${summaryRows
+              .map(
+                (row) => `
+                  <div class="invoice-summary-row${row.strong ? " is-total" : ""}">
+                    <span>${escapeHtml(row.label)}</span>
+                    <span class="mono">${escapeHtml(row.value)}</span>
+                  </div>`
+              )
+              .join("")}
+          </div>
         </div>
       </div>
+      <div class="invoice-tax-note">${escapeHtml(viewModel.reverseVatNote || "")}</div>
     </section>
   `;
 }
@@ -7952,7 +7953,9 @@ function measureReceiptRegions(receiptDoc, scale) {
   });
 
   const disclaimer = rel(
-    receiptDoc.querySelector(".invoice-settlement-panel") || receiptDoc.querySelector(".receipt-disclaimer")
+    receiptDoc.querySelector(".invoice-settlement-stack")
+      || receiptDoc.querySelector(".invoice-settlement-panel")
+      || receiptDoc.querySelector(".receipt-disclaimer")
   );
 
   /* footer */
