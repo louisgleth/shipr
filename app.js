@@ -4391,7 +4391,10 @@ async function sendAdminBillingTestEmail() {
     const testViewModel = buildAdminTestInvoiceViewModel(toEmail);
     const exportData = await buildInvoicePdfExportFromViewModel(
       testViewModel,
-      buildInvoicePdfFilenameFromReference(testViewModel.invoiceNumber)
+      buildInvoicePdfFilenameFromReference(testViewModel.invoiceNumber),
+      {
+        allowRasterFallback: false,
+      }
     );
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
@@ -8738,14 +8741,21 @@ async function requestSelectableInvoicePdf(viewModel, filename) {
   };
 }
 
-async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf") {
+async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf", options = {}) {
   if (!viewModel) return null;
+  const allowRasterFallback = options?.allowRasterFallback !== false;
   try {
     const renderedPdf = await requestSelectableInvoicePdf(viewModel, filename);
     if (renderedPdf?.blob) {
       return renderedPdf;
     }
-  } catch (_error) {
+    if (!allowRasterFallback) {
+      throw new Error(tr("Could not generate the approved invoice PDF."));
+    }
+  } catch (error) {
+    if (!allowRasterFallback) {
+      throw error;
+    }
     // Fall back to the local raster export when server-side print rendering is unavailable.
   }
 
@@ -8981,7 +8991,9 @@ async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
   for (const reminderStage of stages) {
     const viewModel = buildBillingInvoiceViewModel(invoiceRecord, { reminderStage });
     const filename = buildInvoiceVariantPdfFilename(filenameReference, reminderStage);
-    const exportData = await buildInvoicePdfExportFromViewModel(viewModel, filename);
+    const exportData = await buildInvoicePdfExportFromViewModel(viewModel, filename, {
+      allowRasterFallback: false,
+    });
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
     }
