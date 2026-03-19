@@ -2515,9 +2515,11 @@ function splitInvoiceAddressLines(value) {
     .map((part) => part.trim())
     .filter(Boolean);
   if (parts.length <= 2) return parts;
-  const first = parts.slice(0, 2).join(", ");
-  const second = parts.slice(2).join(", ");
-  return [first, second].filter(Boolean);
+  return [
+    parts[0],
+    parts.slice(1, -1).join(", "),
+    parts.at(-1),
+  ].filter(Boolean);
 }
 
 function fitPdfText(text, font, size, maxWidth) {
@@ -2796,6 +2798,8 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
   const dueOrStatusValue = invoiceRequiresManualSettlement(invoice)
     ? formatInvoicePdfDate(options?.dueAt || invoice?.due_at)
     : "Paid automatically";
+  const taxNote =
+    "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.";
   const paymentBadgeColor = settlement.badgeTone === "success" ? colors.success : colors.accent;
   const paymentBadgeFill = settlement.badgeTone === "success" ? rgb(28 / 255, 49 / 255, 38 / 255) : colors.accentSoft;
 
@@ -2845,10 +2849,20 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
     let cursorY = pageHeight - marginTop;
     if (firstPage) {
       drawInvoicePdfBrand(page, fonts, colors, marginX, cursorY - 2);
-      page.drawText("Invoice", {
-        x: pageWidth - marginX - fonts.regular.widthOfTextAtSize("Invoice", 11),
+      const tagLabel = "Invoice";
+      const tagLabelWidth = fonts.mono.widthOfTextAtSize(tagLabel, 11);
+      const tagLabelX = pageWidth - marginX - tagLabelWidth;
+      page.drawRectangle({
+        x: tagLabelX - 14,
+        y: cursorY - 10,
+        width: 6,
+        height: 6,
+        color: colors.accent,
+      });
+      page.drawText(tagLabel, {
+        x: tagLabelX,
         y: cursorY - 12,
-        font: fonts.regular,
+        font: fonts.mono,
         size: 11,
         color: colors.text,
       });
@@ -2880,6 +2894,17 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       const partyGap = 18;
       const partyWidth = (contentWidth - partyGap) / 2;
       const billedToTop = cursorY;
+      const billedToLines = [
+        ...splitInvoiceAddressLines(profile.billingAddress),
+        profile.taxId ? `VAT ${profile.taxId}` : "",
+      ].filter(Boolean);
+      const billedByLines = [
+        issuer.descriptor,
+        ...splitInvoiceAddressLines(issuer.jurisdiction),
+        issuer.email,
+      ].filter(Boolean);
+      const partyLineCount = Math.max(billedToLines.length, billedByLines.length, 1);
+      const partyBlockHeight = 52 + partyLineCount * 16;
       page.drawText("Billed to", {
         x: marginX,
         y: billedToTop - 9,
@@ -2894,14 +2919,8 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         size: 13,
         color: colors.text,
       });
-      const billedToLines = [
-        profile.contactName,
-        profile.contactEmail,
-        ...splitInvoiceAddressLines(profile.billingAddress),
-        profile.taxId,
-      ].filter(Boolean);
       let billedToLineY = billedToTop - 50;
-      billedToLines.slice(0, 4).forEach((line, index) => {
+      billedToLines.forEach((line, index) => {
         const valueFont = index === billedToLines.length - 1 ? fonts.mono : fonts.regular;
         const valueLines = wrapPdfText(line, valueFont, 9, partyWidth, 1);
         if (valueLines[0]) {
@@ -2931,28 +2950,24 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         size: 13,
         color: colors.text,
       });
-      const billedByLines = [
-        issuer.brandName,
-        issuer.descriptor,
-        issuer.jurisdiction,
-        issuer.email,
-      ].filter(Boolean);
       let billedByLineY = billedToTop - 50;
       billedByLines.forEach((line) => {
-        const valueLines = wrapPdfText(line, fonts.regular, 9, partyWidth, 1);
+        const valueFont = line === issuer.email ? fonts.mono : fonts.regular;
+        const valueColor = line === issuer.email ? colors.text : colors.muted;
+        const valueLines = wrapPdfText(line, valueFont, 9, partyWidth, 1);
         if (valueLines[0]) {
           page.drawText(valueLines[0], {
             x: billedByX,
             y: billedByLineY,
-            font: fonts.regular,
+            font: valueFont,
             size: 9,
-            color: colors.muted,
+            color: valueColor,
           });
           billedByLineY -= 16;
         }
       });
 
-      cursorY -= 96;
+      cursorY -= partyBlockHeight;
       page.drawLine({
         start: { x: marginX, y: cursorY },
         end: { x: pageWidth - marginX, y: cursorY },
@@ -2988,7 +3003,19 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
           color: colors.text,
         });
       });
-      cursorY -= 44 + tableGap;
+      cursorY -= 44;
+
+      const taxNoteLines = wrapPdfText(taxNote, fonts.regular, 8.5, contentWidth, 3);
+      taxNoteLines.forEach((line, index) => {
+        page.drawText(line, {
+          x: marginX,
+          y: cursorY - 8 - index * 11,
+          font: fonts.regular,
+          size: 8.5,
+          color: colors.muted,
+        });
+      });
+      cursorY -= 12 + taxNoteLines.length * 11 + tableGap;
     } else {
       cursorY -= 6;
     }

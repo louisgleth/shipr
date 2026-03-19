@@ -7243,9 +7243,11 @@ function splitInvoiceAddressLines(value) {
     .map((part) => part.trim())
     .filter(Boolean);
   if (parts.length <= 2) return parts.length ? parts : ["--"];
-  const first = parts.slice(0, 2).join(", ");
-  const second = parts.slice(2).join(", ");
-  return [first, second].filter(Boolean);
+  return [
+    parts[0],
+    parts.slice(1, -1).join(", "),
+    parts.at(-1),
+  ].filter(Boolean);
 }
 
 function formatReceiptDestination(data = {}) {
@@ -7441,6 +7443,8 @@ function buildInvoiceViewModel(record) {
     paymentMode,
     paymentMethodLabel,
     isMonthlyBilling,
+    reverseVatNote:
+      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
     settlementTitle: "Payment & Summary",
     settlementLines,
     bankIban: INVOICE_ISSUER_PROFILE.iban,
@@ -7587,15 +7591,12 @@ function buildInvoiceHeaderHtml(viewModel) {
   } = viewModel;
   const profileName = profile?.companyName || "--";
   const clientLines = [
-    profile?.contactName || "",
-    profile?.contactEmail || "",
     ...billingAddressLines,
-    profile?.taxId || "",
+    profile?.taxId ? `VAT ${profile.taxId}` : "",
   ].filter(Boolean);
   const issuerLines = [
-    issuer?.brandName || "",
     issuer?.descriptor || "",
-    issuer?.jurisdiction || "",
+    ...splitInvoiceAddressLines(issuer?.jurisdiction || ""),
     issuer?.email || "",
   ].filter(Boolean);
 
@@ -7605,7 +7606,10 @@ function buildInvoiceHeaderHtml(viewModel) {
         <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
       </div>
       <div class="receipt-top-meta">
-        <span class="receipt-chip">${escapeHtml(tr("Invoice"))}</span>
+        <div class="invoice-top-tag">
+          <span class="invoice-top-tag-marker" aria-hidden="true"></span>
+          <span class="invoice-top-tag-label mono">${escapeHtml(tr("Invoice"))}</span>
+        </div>
         <div class="receipt-top-meta-lines mono">
           <span>${escapeHtml(issuedAt)}</span>
           <span>${escapeHtml(invoiceNumber)}</span>
@@ -7657,6 +7661,8 @@ function buildInvoiceHeaderHtml(viewModel) {
         <div class="invoice-meta-value">${escapeHtml(paymentMethodLabel)}</div>
       </div>
     </div>
+
+    <div class="invoice-tax-note">${escapeHtml(viewModel.reverseVatNote || "")}</div>
   `;
 }
 

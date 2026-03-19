@@ -4891,9 +4891,28 @@ body {
 .invoice-party-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 20px;
   padding-top: 14px;
   border-top: 1px solid var(--stroke);
+}
+
+.invoice-top-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.invoice-top-tag-marker {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+.invoice-top-tag-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: rgba(241, 244, 251, 0.72);
 }
 
 .receipt-panel {
@@ -4921,8 +4940,21 @@ body {
 
 .invoice-party-column {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 2px 0 0;
+}
+
+.invoice-party-column .receipt-address {
+  gap: 0;
+}
+
+.invoice-party-column .receipt-address-block {
+  gap: 4px;
+}
+
+.invoice-party-column .receipt-address-lines {
+  gap: 4px;
+  color: var(--text);
 }
 
 .invoice-meta-strip {
@@ -4937,6 +4969,15 @@ body {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.invoice-tax-note {
+  padding-top: 12px;
+  border-top: 1px solid var(--stroke);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 460px;
 }
 
 .receipt-kv-grid {
