@@ -33,6 +33,9 @@ const BILLING_INVOICE_STORAGE_BUCKET = "billing-invoices";
 const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
+const DEFAULT_INVOICE_EMAIL_QUEUE_DELAY_MS = 1200;
+const DEFAULT_BROWSER_RENDER_RETRY_ATTEMPTS = 4;
+const DEFAULT_BROWSER_RENDER_RETRY_BASE_MS = 1500;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
@@ -107,6 +110,7 @@ const RETAIL_BASE_RATE = {
 const textEncoder = new TextEncoder();
 let clickwrapTemplateBytesPromise = null;
 let clickwrapFontBytesPromise = null;
+let invoiceBrowserRenderQueue = Promise.resolve();
 
 export default {
   async fetch(request, env) {
@@ -253,6 +257,65 @@ function noStoreHeaders(extra = {}) {
     "Cache-Control": "no-store",
     ...extra,
   };
+}
+
+function waitMs(ms) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  if (!safeMs) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, safeMs));
+}
+
+function getInvoiceEmailQueueDelayMs(env) {
+  const configured = Number(env?.INVOICE_EMAIL_QUEUE_DELAY_MS);
+  if (Number.isFinite(configured) && configured >= 0) {
+    return configured;
+  }
+  return DEFAULT_INVOICE_EMAIL_QUEUE_DELAY_MS;
+}
+
+function getBrowserRenderRetryAttempts(env) {
+  const configured = Number(env?.BROWSER_RENDER_RETRY_ATTEMPTS);
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return DEFAULT_BROWSER_RENDER_RETRY_ATTEMPTS;
+}
+
+function getBrowserRenderRetryBaseMs(env) {
+  const configured = Number(env?.BROWSER_RENDER_RETRY_BASE_MS);
+  if (Number.isFinite(configured) && configured >= 0) {
+    return configured;
+  }
+  return DEFAULT_BROWSER_RENDER_RETRY_BASE_MS;
+}
+
+function isBrowserRateLimitError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("429") || message.includes("rate limit exceeded");
+}
+
+function enqueueInvoiceBrowserRender(task) {
+  const run = invoiceBrowserRenderQueue.catch(() => {}).then(task);
+  invoiceBrowserRenderQueue = run.catch(() => {});
+  return run;
+}
+
+async function launchInvoiceBrowserWithRetry(env) {
+  const attempts = getBrowserRenderRetryAttempts(env);
+  const baseDelayMs = getBrowserRenderRetryBaseMs(env);
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await puppeteer.launch(env.BROWSER);
+    } catch (error) {
+      lastError = error;
+      if (!isBrowserRateLimitError(error) || attempt >= attempts) {
+        throw error;
+      }
+      await waitMs(baseDelayMs * attempt);
+    }
+  }
+  throw lastError || new Error("Unable to create browser.");
 }
 
 function jsonResponse(payload, status = 200) {
@@ -4257,19 +4320,21 @@ async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
   if (!env?.BROWSER) {
     throw new Error("Cloudflare Browser Rendering is not configured.");
   }
-  const browser = await puppeteer.launch(env.BROWSER);
-  let page = null;
-  try {
-    page = await browser.newPage();
-    await page.emulateMediaType("screen");
-    await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
-    return await renderSelectableInvoicePdfOnPage(page, env, payload, options);
-  } finally {
-    if (page) {
-      await page.close().catch(() => {});
+  return enqueueInvoiceBrowserRender(async () => {
+    const browser = await launchInvoiceBrowserWithRetry(env);
+    let page = null;
+    try {
+      page = await browser.newPage();
+      await page.emulateMediaType("screen");
+      await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
+      return await renderSelectableInvoicePdfOnPage(page, env, payload, options);
+    } finally {
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      await browser.close().catch(() => {});
     }
-    await browser.close().catch(() => {});
-  }
+  });
 }
 
 async function renderSelectableInvoicePdfBatch(env, payloads = [], options = {}) {
@@ -4278,23 +4343,25 @@ async function renderSelectableInvoicePdfBatch(env, payloads = [], options = {})
   }
   const jobs = Array.isArray(payloads) ? payloads.filter(Boolean) : [];
   if (!jobs.length) return [];
-  const browser = await puppeteer.launch(env.BROWSER);
-  let page = null;
-  try {
-    page = await browser.newPage();
-    await page.emulateMediaType("screen");
-    await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
-    const rendered = [];
-    for (const payload of jobs) {
-      rendered.push(await renderSelectableInvoicePdfOnPage(page, env, payload, options));
+  return enqueueInvoiceBrowserRender(async () => {
+    const browser = await launchInvoiceBrowserWithRetry(env);
+    let page = null;
+    try {
+      page = await browser.newPage();
+      await page.emulateMediaType("screen");
+      await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
+      const rendered = [];
+      for (const payload of jobs) {
+        rendered.push(await renderSelectableInvoicePdfOnPage(page, env, payload, options));
+      }
+      return rendered;
+    } finally {
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      await browser.close().catch(() => {});
     }
-    return rendered;
-  } finally {
-    if (page) {
-      await page.close().catch(() => {});
-    }
-    await browser.close().catch(() => {});
-  }
+  });
 }
 
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
@@ -5567,6 +5634,7 @@ async function runInvoiceReminders(env, options = {}) {
   });
   const nowMs = Date.now();
   const out = [];
+  let hasQueuedReminderSend = false;
   for (const invoice of candidateInvoices) {
     const dueAt = invoice?.due_at;
     const desiredStage = getReminderStageForDueDate(dueAt, nowMs);
@@ -5574,12 +5642,16 @@ async function runInvoiceReminders(env, options = {}) {
     if (desiredStage <= currentStage) continue;
     const reminderTitle = getReminderTitleByStage(desiredStage, dueAt);
     try {
+      if (hasQueuedReminderSend) {
+        await waitMs(getInvoiceEmailQueueDelayMs(env));
+      }
       const result = await sendBillingInvoiceById(env, invoice.id, {
         isReminder: true,
         reminderStage: desiredStage,
         reminderTitle,
         requireApprovedPdf: true,
       });
+      hasQueuedReminderSend = true;
       out.push({
         invoice_id: invoice.id,
         reminder_stage: desiredStage,
@@ -5661,6 +5733,7 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
       carrier_discount_pct: normalizePercent(settings?.carrier_discount_pct, DEFAULT_ADMIN_SETTINGS.carrier_discount_pct),
     },
   };
+  let hasQueuedInvoiceSend = false;
 
   for (const [userId, userRows] of rowsByUser.entries()) {
     const billingPref = billingByUserId.get(userId) || { ...DEFAULT_CLIENT_BILLING_PREF };
@@ -5832,10 +5905,14 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
     let finalInvoice = persisted;
     if (mode === "send") {
       try {
+        if (hasQueuedInvoiceSend) {
+          await waitMs(getInvoiceEmailQueueDelayMs(env));
+        }
         const sendResult = await sendBillingInvoiceById(env, persisted.id, {
           isReminder: false,
           requireApprovedPdf: true,
         });
+        hasQueuedInvoiceSend = true;
         if (!sendResult?.skipped) {
           result.invoices_sent += 1;
         }
@@ -6238,9 +6315,66 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
     { reminderStage: 8, isReminder: true, key: "overdue_30_days" },
   ];
 
+  const providedVariantMap = new Map(
+    providedVariants.map((entry) => [normalizeInvoicePdfVariantStage(entry?.stage), entry]).filter(([key, value]) => key && value)
+  );
+  const missingSteps = steps.filter(
+    (step) => !providedVariantMap.has(normalizeInvoicePdfVariantStage(step.reminderStage))
+  );
+  const renderedVariantMap = new Map();
+  if (missingSteps.length) {
+    if (!env?.BROWSER) {
+      throw new Error("Approved invoice PDF is unavailable for the requested sequence.");
+    }
+    const renderJobs = missingSteps.map((step) => {
+      const manualSettlement = invoiceRequiresManualSettlement(invoice);
+      const issuedAt = parseIsoTimestamp(invoice.issued_at || new Date().toISOString()) || new Date().toISOString();
+      const dueAt = manualSettlement
+        ? (
+            step.isReminder
+              ? parseIsoTimestamp(invoice.due_at)
+              : addUtcDays(new Date(issuedAt), getInvoiceTermsDays(env)).toISOString()
+          )
+        : null;
+      const paidAt = manualSettlement ? null : issuedAt;
+      const emailInvoice = {
+        ...invoice,
+        issued_at: issuedAt,
+        due_at: dueAt,
+        paid_at: paidAt,
+      };
+      return {
+        step,
+        payload: {
+          invoice: {
+            ...emailInvoice,
+            items,
+            reference: toInvoiceReference(emailInvoice.id),
+          },
+          reminderStage: step.reminderStage,
+          filename: buildInvoiceVariantPdfFilename(emailInvoice, step.reminderStage),
+        },
+      };
+    });
+    const renderedVariants = await renderSelectableInvoicePdfBatch(
+      env,
+      renderJobs.map((job) => job.payload),
+      { request: options?.request || null }
+    );
+    renderJobs.forEach((job, index) => {
+      const rendered = renderedVariants[index] || null;
+      if (rendered?.bytes) {
+        renderedVariantMap.set(normalizeInvoicePdfVariantStage(job.step.reminderStage), rendered);
+      }
+    });
+  }
+
   const results = [];
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index];
+    if (index > 0) {
+      await waitMs(getInvoiceEmailQueueDelayMs(env));
+    }
     const subject = buildInvoiceEmailSubject(invoice, {
       isReminder: step.isReminder,
       reminderStage: step.reminderStage,
@@ -6261,23 +6395,9 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
       due_at: dueAt,
       paid_at: paidAt,
     };
-    const providedVariant =
-      providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(step.reminderStage))
-      || null;
-    const renderedVariant = providedVariant || !env?.BROWSER
-      ? null
-      : await renderSelectableInvoicePdf(
-          env,
-          {
-            invoice: {
-              ...emailInvoice,
-              items,
-              reference: toInvoiceReference(emailInvoice.id),
-            },
-            reminderStage: step.reminderStage,
-            filename: buildInvoiceVariantPdfFilename(emailInvoice, step.reminderStage),
-          }
-        ).catch(() => null);
+    const stageKey = normalizeInvoicePdfVariantStage(step.reminderStage);
+    const providedVariant = providedVariantMap.get(stageKey) || null;
+    const renderedVariant = renderedVariantMap.get(stageKey) || null;
     const pdfBytes = providedVariant?.bytes
       || renderedVariant?.bytes
       || null;
@@ -6320,9 +6440,6 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
         error: error?.message || "Could not send email.",
         ok: false,
       });
-    }
-    if (index < steps.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 120));
     }
   }
   return {
@@ -6427,6 +6544,7 @@ async function handleAdminInvoiceSendTestSequence(request, env) {
   try {
     const sequence = await sendAdminBillingTestSequenceEmails(env, toEmail, {
       pdfVariants: normalizeProvidedInvoicePdfVariantsFromBody(body),
+      request,
     });
     return jsonResponse({
       ok: sequence.failed_count === 0,

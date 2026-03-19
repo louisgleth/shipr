@@ -4308,17 +4308,11 @@ async function sendAdminInvoiceWithRenderer(invoiceId) {
   if (!safeInvoiceId) {
     throw new Error(tr("Invoice id is required."));
   }
-  const invoiceRecord = await fetchAdminInvoiceDetail(safeInvoiceId);
-  if (!invoiceRecord?.id) {
-    throw new Error(tr("Invoice not found."));
-  }
-  const pdfVariants = await buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord);
   return fetchApiWithAuth("/api/admin/invoices/send", {
     method: "POST",
     timeoutMs: 120000,
     body: JSON.stringify({
       invoiceId: safeInvoiceId,
-      pdfVariants,
     }),
   });
 }
@@ -4388,25 +4382,11 @@ async function sendAdminBillingTestEmail() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    const testViewModel = buildAdminTestInvoiceViewModel(toEmail);
-    const exportData = await buildInvoicePdfExportFromViewModel(
-      testViewModel,
-      buildInvoicePdfFilenameFromReference(testViewModel.invoiceNumber),
-      {
-        allowRasterFallback: false,
-      }
-    );
-    if (!exportData?.blob) {
-      throw new Error(tr("Could not generate invoice PDF."));
-    }
-    const pdfBase64 = await blobToBase64(exportData.blob);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test", {
       method: "POST",
-      timeoutMs: 45000,
+      timeoutMs: 120000,
       body: JSON.stringify({
         toEmail,
-        pdfBase64,
-        filename: exportData.filename,
       }),
     });
     setAdminBillingStatus(
@@ -4432,14 +4412,11 @@ async function sendAdminBillingTestSequence() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    const testInvoiceRecord = buildAdminTestBillingInvoiceRecord(toEmail);
-    const pdfVariants = await buildInvoicePdfVariantsForInvoiceRecord(testInvoiceRecord);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test-sequence", {
       method: "POST",
-      timeoutMs: 120000,
+      timeoutMs: 240000,
       body: JSON.stringify({
         toEmail,
-        pdfVariants,
       }),
     });
     const sent = Number(payload?.sent_count || 0);
@@ -8779,22 +8756,86 @@ async function requestSelectableInvoicePdfBatch(entries = []) {
   }));
 }
 
+function collectInvoicePdfTextSnapshot(pageNode) {
+  if (!(pageNode instanceof HTMLElement)) {
+    return {
+      width: 0,
+      height: 0,
+      textRuns: [],
+    };
+  }
+  const pageRect = pageNode.getBoundingClientRect();
+  const elements = Array.from(pageNode.querySelectorAll("*"));
+  return {
+    width: pageRect.width,
+    height: pageRect.height,
+    textRuns: elements
+      .filter((el) => {
+        if (!(el instanceof HTMLElement)) return false;
+        if (el.children.length > 0) return false;
+        return Boolean(String(el.textContent || "").trim());
+      })
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return {
+          text: String(el.textContent || "").replace(/\s+/g, " ").trim(),
+          x: rect.left - pageRect.left,
+          y: rect.top - pageRect.top,
+          width: rect.width,
+          height: rect.height,
+          fontSize: Number.parseFloat(style.fontSize) || rect.height || 12,
+          fontFamily: style.fontFamily || "",
+        };
+      })
+      .filter((item) => item.text),
+  };
+}
+
+function drawInvoicePdfTextLayer(pdf, snapshot, layout = {}) {
+  if (!pdf || !snapshot?.textRuns?.length || !snapshot?.width) return;
+  const margin = Number(layout?.margin) || 18;
+  const pageHeight = Number(layout?.pageHeight) || 841.89;
+  const contentWidth = Number(layout?.contentWidth) || 559.28;
+  const scale = contentWidth / snapshot.width;
+
+  snapshot.textRuns.forEach((run) => {
+    const fontName = /mono/i.test(run.fontFamily) ? "courier" : "helvetica";
+    const fontSize = Math.max(4, run.fontSize * scale);
+    const baselineY =
+      pageHeight
+      - margin
+      - ((run.y + run.height) * scale)
+      + fontSize * 0.2;
+    pdf.setFont(fontName, "normal");
+    pdf.setFontSize(fontSize);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(run.text, margin + run.x * scale, baselineY, {
+      baseline: "alphabetic",
+      maxWidth: Math.max(fontSize, run.width * scale),
+    });
+  });
+}
+
 async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf", options = {}) {
   if (!viewModel) return null;
   const allowRasterFallback = options?.allowRasterFallback !== false;
-  try {
-    const renderedPdf = await requestSelectableInvoicePdf(viewModel, filename);
-    if (renderedPdf?.blob) {
-      return renderedPdf;
+  const preferServerRender = options?.preferServerRender !== false;
+  if (preferServerRender) {
+    try {
+      const renderedPdf = await requestSelectableInvoicePdf(viewModel, filename);
+      if (renderedPdf?.blob) {
+        return renderedPdf;
+      }
+      if (!allowRasterFallback) {
+        throw new Error(tr("Could not generate the approved invoice PDF."));
+      }
+    } catch (error) {
+      if (!allowRasterFallback) {
+        throw error;
+      }
+      // Fall back to the local renderer when server-side print rendering is unavailable.
     }
-    if (!allowRasterFallback) {
-      throw new Error(tr("Could not generate the approved invoice PDF."));
-    }
-  } catch (error) {
-    if (!allowRasterFallback) {
-      throw error;
-    }
-    // Fall back to the local raster export when server-side print rendering is unavailable.
   }
 
   const previousMarkup = receiptDocument ? receiptDocument.innerHTML : "";
@@ -8855,6 +8896,11 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
 
       if (fullPdfH <= usableH) {
         paintBg();
+        drawInvoicePdfTextLayer(pdf, collectInvoicePdfTextSnapshot(receiptDocument), {
+          margin,
+          pageHeight,
+          contentWidth: cW,
+        });
         pdf.addImage(fullCanvas.toDataURL("image/png"), "PNG", margin, margin, cW, fullPdfH, undefined, "FAST");
       } else {
         const headerPt = toPt(regions.headerH);
@@ -8903,13 +8949,21 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
             showSettlement: Boolean(pageConfig.hasSettlement),
           });
           await new Promise((resolve) => window.requestAnimationFrame(resolve));
-          return window.html2canvas(receiptDocument, h2cOpts);
+          const snapshot = collectInvoicePdfTextSnapshot(receiptDocument);
+          const canvas = await window.html2canvas(receiptDocument, h2cOpts);
+          return { canvas, snapshot };
         };
 
         for (let p = 0; p < pages.length; p += 1) {
-          const pageCanvas = await renderExportPage(pages[p]);
+          const pageRender = await renderExportPage(pages[p]);
+          const pageCanvas = pageRender?.canvas;
           if (p > 0) pdf.addPage();
           paintBg();
+          drawInvoicePdfTextLayer(pdf, pageRender?.snapshot, {
+            margin,
+            pageHeight,
+            contentWidth: cW,
+          });
           const pagePdfH = (pageCanvas.height * cW) / pageCanvas.width;
           pdf.addImage(
             pageCanvas.toDataURL("image/png"),
@@ -9030,25 +9084,11 @@ async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
     viewModel: buildBillingInvoiceViewModel(invoiceRecord, { reminderStage }),
     filename: buildInvoiceVariantPdfFilename(filenameReference, reminderStage),
   }));
-  try {
-    const batchResults = await requestSelectableInvoicePdfBatch(jobs);
-    if (batchResults.length === jobs.length && batchResults.every((entry) => entry?.blob)) {
-      return Promise.all(
-        batchResults.map(async (entry) => ({
-          reminderStage: entry.reminderStage,
-          filename: entry.filename,
-          pdfBase64: await blobToBase64(entry.blob),
-        }))
-      );
-    }
-  } catch (_error) {
-    // Fall through to the per-stage renderer below.
-  }
-
   const variants = [];
   for (const job of jobs) {
     const exportData = await buildInvoicePdfExportFromViewModel(job.viewModel, job.filename, {
       allowRasterFallback: false,
+      preferServerRender: false,
     });
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
