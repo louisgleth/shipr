@@ -3001,6 +3001,70 @@ async function fetchApiWithAuth(path, options = {}) {
   }
 }
 
+async function fetchApiBlobWithAuth(path, options = {}) {
+  const { timeoutMs = 15000, ...requestOptions } = options;
+  const sendWithToken = async (token) => {
+    if (!token) {
+      throw new Error(tr("You must be signed in."));
+    }
+    const headers = new Headers(requestOptions.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    if (requestOptions.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort("request-timeout");
+    }, Math.max(3000, Number(timeoutMs) || 15000));
+    try {
+      const response = await fetch(path, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+          ? await response.json().catch(() => ({}))
+          : await response.text().catch(() => "");
+        const message =
+          (payload && typeof payload === "object" && payload.error) ||
+          (typeof payload === "string" ? payload : "") ||
+          tr("Request failed ({status})", { status: response.status });
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
+      }
+      return {
+        blob: await response.blob(),
+        headers: response.headers,
+      };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(tr("Request timed out. Please try again."));
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  let token = await getAuthAccessToken();
+  try {
+    return await sendWithToken(token);
+  } catch (error) {
+    if (Number(error?.status) !== 401) {
+      throw error;
+    }
+    token = await refreshAuthAccessToken();
+    if (!token) {
+      cachedAuthAccessToken = "";
+      throw new Error(tr("You must be signed in."));
+    }
+    return sendWithToken(token);
+  }
+}
+
 function isValidEmailFormat(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
@@ -8182,6 +8246,132 @@ function renderInvoiceViewModel(viewModel) {
   receiptDocument.innerHTML = buildInvoiceDocumentHtmlFromViewModel(viewModel);
 }
 
+function wrapReceiptPageDocumentHtml(pageHtml) {
+  return `<div class="receipt-document">${pageHtml}</div>`;
+}
+
+function waitForAnimationFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+async function buildPaginatedInvoicePageConfigs(viewModel) {
+  if (!receiptDocument || !viewModel) {
+    return [
+      {
+        firstPage: true,
+        rows: Array.isArray(viewModel?.serviceRows)
+          ? viewModel.serviceRows.map((_, index) => index)
+          : [],
+        hasSettlement: true,
+      },
+    ];
+  }
+
+  const allRows = Array.isArray(viewModel.serviceRows)
+    ? viewModel.serviceRows.map((_, index) => index)
+    : [];
+  const previousMarkup = receiptDocument.innerHTML;
+
+  try {
+    receiptDocument.innerHTML = wrapReceiptPageDocumentHtml(
+      buildInvoicePageHtml(viewModel, {
+        rowIndices: allRows,
+        showHeader: true,
+        showTableCard: true,
+        showSectionHead: true,
+        showColumnHead: true,
+        showSettlement: true,
+      })
+    );
+    await waitForAnimationFrame();
+
+    const measurementPage = receiptDocument.querySelector(".receipt-document");
+    if (!measurementPage) {
+      return [{ firstPage: true, rows: allRows, hasSettlement: true }];
+    }
+
+    const regions = measureReceiptRegions(measurementPage, 1);
+    const bodyNode = measurementPage.querySelector(".receipt-sheet-body");
+    const footerNode = measurementPage.querySelector(".receipt-footer");
+    const bodyRect = bodyNode?.getBoundingClientRect();
+    const footerRect = footerNode?.getBoundingClientRect();
+    const footerGap = 8;
+    const contentBudget =
+      bodyRect && footerRect
+        ? Math.max(0, footerRect.top - bodyRect.top - footerGap)
+        : Math.max(0, bodyRect?.height || 0);
+
+    if (!contentBudget || !regions.rows.length) {
+      return [{ firstPage: true, rows: allRows, hasSettlement: true }];
+    }
+
+    const headerPx = regions.headerH;
+    const tableGapPx = regions.tableGapY;
+    const tableSectionHeadPx = regions.tableSectionHeadH;
+    const theadPx = regions.theadH;
+    const settlementPx = regions.disclaimer ? regions.disclaimer.h : 0;
+
+    const pages = [];
+    let rowIdx = 0;
+    let budget = contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx;
+    let pageRows = [];
+
+    while (rowIdx < regions.rows.length) {
+      const rowPx = regions.rows[rowIdx]?.h || 0;
+      if (rowPx <= budget) {
+        pageRows.push(rowIdx);
+        budget -= rowPx;
+        rowIdx += 1;
+      } else {
+        pages.push({ firstPage: pages.length === 0, rows: pageRows });
+        pageRows = [];
+        budget = contentBudget - theadPx;
+      }
+    }
+
+    const isFirstPage = pages.length === 0;
+    if (settlementPx + 4 <= budget) {
+      pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: true });
+    } else {
+      pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: false });
+      pages.push({ firstPage: false, rows: [], hasSettlement: true });
+    }
+
+    return pages;
+  } finally {
+    receiptDocument.innerHTML = previousMarkup;
+  }
+}
+
+async function renderInvoicePrintDocumentFromViewModel(viewModel) {
+  if (!receiptDocument || !viewModel) return "";
+  const pages = await buildPaginatedInvoicePageConfigs(viewModel);
+  receiptDocument.innerHTML = pages
+    .map((pageConfig) =>
+      wrapReceiptPageDocumentHtml(
+        buildInvoicePageHtml(viewModel, {
+          rowIndices: pageConfig.rows,
+          showHeader: pageConfig.firstPage,
+          showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+          showSectionHead: pageConfig.firstPage,
+          showColumnHead: true,
+          showSettlement: Boolean(pageConfig.hasSettlement),
+        })
+      )
+    )
+    .join("");
+  return receiptDocument.innerHTML;
+}
+
+if (typeof window !== "undefined") {
+  window.__shipideInvoiceRenderer = {
+    renderViewModel: renderInvoiceViewModel,
+    renderPrintViewModel: renderInvoicePrintDocumentFromViewModel,
+    buildDocumentHtmlFromViewModel: buildInvoiceDocumentHtmlFromViewModel,
+    buildViewModelFromBillingInvoice: buildBillingInvoiceViewModel,
+  };
+}
+
 function renderReceiptDetails(record) {
   if (!receiptDocument || !record) return;
   receiptDocument.innerHTML = buildReceiptDocumentHtml(record);
@@ -8491,8 +8681,41 @@ async function buildInvoicePdfExport() {
   return buildInvoicePdfExportFromViewModel(viewModel, getInvoicePdfFilename());
 }
 
+async function requestSelectableInvoicePdf(viewModel, filename) {
+  if (
+    !viewModel
+    || (typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)
+  ) {
+    return null;
+  }
+  const response = await fetchApiBlobWithAuth("/api/billing/render-invoice-pdf", {
+    method: "POST",
+    timeoutMs: 120000,
+    body: JSON.stringify({
+      viewModel,
+      filename,
+    }),
+  });
+  if (!response?.blob) {
+    return null;
+  }
+  return {
+    blob: response.blob,
+    filename,
+  };
+}
+
 async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf") {
   if (!viewModel) return null;
+  try {
+    const renderedPdf = await requestSelectableInvoicePdf(viewModel, filename);
+    if (renderedPdf?.blob) {
+      return renderedPdf;
+    }
+  } catch (_error) {
+    // Fall back to the local raster export when server-side print rendering is unavailable.
+  }
+
   const previousMarkup = receiptDocument ? receiptDocument.innerHTML : "";
   renderInvoiceViewModel(viewModel);
 
@@ -12887,6 +13110,7 @@ function validateLabelInfo() {
   return validateFields(labelRequiredFields, inputMap, labelError, isLabelFieldValid);
 }
 
+if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
 Object.entries(inputMap).forEach(([_, input]) => {
   input.addEventListener("input", () => {
     syncInfoState();
@@ -15446,108 +15670,111 @@ function parseCsvText(text) {
   return buildCsvRowsFromAnalysis(analysis, analysis.autoColumnIndices);
 }
 
-ensureIdentifiers();
-state.quantity = Number(quantityInput.value) || 1;
-updateCountryFlag();
-updateSummary();
-updatePayment();
-updatePreview();
-const initialRoute = parseRouteFromLocation();
-const initialStep =
-  initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
+if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
+  ensureIdentifiers();
+  state.quantity = Number(quantityInput.value) || 1;
+  updateCountryFlag();
+  updateSummary();
+  updatePayment();
+  updatePreview();
+  const initialRoute = parseRouteFromLocation();
+  const initialStep =
+    initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
 
-goToStep(initialStep, { push: false, regenerate: false });
-if (initialRoute.view === "register") {
-  history.replaceState(
-    routeToState(initialRoute),
-    "",
-    `${window.location.pathname}${window.location.search || ""}`
-  );
-} else {
-  updateRoute(
-    initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
-    { replace: true }
-  );
-}
+  goToStep(initialStep, { push: false, regenerate: false });
+  if (initialRoute.view === "register") {
+    history.replaceState(
+      routeToState(initialRoute),
+      "",
+      `${window.location.pathname}${window.location.search || ""}`
+    );
+  } else {
+    updateRoute(
+      initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
+      { replace: true }
+    );
+  }
 
-window.addEventListener("popstate", (event) => {
-  const route =
-    event.state && typeof event.state.view === "string"
-      ? event.state
-      : parseRouteFromLocation();
+  window.addEventListener("popstate", (event) => {
+    const route =
+      event.state && typeof event.state.view === "string"
+        ? event.state
+        : parseRouteFromLocation();
 
-  if (!currentUser) {
-    setMainView("builder", { push: false });
-    if (route.view === "register") {
-      setAuthMode("register", { inviteToken: route.inviteToken });
-      void loadRegistrationInvite(route.inviteToken, {
-        preview: Boolean(route.previewRegistration),
-        previewStep: route.previewStep,
+    if (!currentUser) {
+      setMainView("builder", { push: false });
+      if (route.view === "register") {
+        setAuthMode("register", { inviteToken: route.inviteToken });
+        void loadRegistrationInvite(route.inviteToken, {
+          preview: Boolean(route.previewRegistration),
+          previewStep: route.previewStep,
+        });
+      } else {
+        setAuthMode("login");
+        updateRoute({ view: "login" }, { replace: true });
+      }
+      return;
+    }
+
+    if (route.view === "account") {
+      setMainView("account", { push: false });
+      loadWarehouseSettings({ quiet: true });
+      loadBillingOverview({ quiet: true });
+      return;
+    }
+
+    if (route.view === "admin") {
+      setMainView("admin", { push: false });
+      loadAdminDashboard({ quiet: true });
+      return;
+    }
+
+    if (route.view === "history") {
+      setMainView("history", { push: false });
+      loadGenerationHistory({ preferLatest: true });
+      return;
+    }
+
+    if (route.view === "reports") {
+      setMainView("reports", {
+        push: false,
+        reportRange: String(route?.reportRange || getReportRangeFromLocation(window.location) || ""),
       });
-    } else {
-      setAuthMode("login");
-      updateRoute({ view: "login" }, { replace: true });
+      loadGenerationHistory({ preferLatest: true });
+      return;
     }
-    return;
-  }
 
-  if (route.view === "account") {
-    setMainView("account", { push: false });
-    loadWarehouseSettings({ quiet: true });
-    loadBillingOverview({ quiet: true });
-    return;
-  }
+    if (route.view === "builder") {
+      setMainView("builder", { push: false });
+      const targetStep = clampStep(route.step);
+      goToStep(targetStep, { push: false, regenerate: false });
+      if (route.customs && targetStep === 1) {
+        setCustomsGhostVisible(true, { push: false });
+      }
+      return;
+    }
 
-  if (route.view === "admin") {
-    setMainView("admin", { push: false });
-    loadAdminDashboard({ quiet: true });
-    return;
-  }
-
-  if (route.view === "history") {
-    setMainView("history", { push: false });
-    loadGenerationHistory({ preferLatest: true });
-    return;
-  }
-
-  if (route.view === "reports") {
-    setMainView("reports", {
-      push: false,
-      reportRange: String(route?.reportRange || getReportRangeFromLocation(window.location) || ""),
-    });
-    loadGenerationHistory({ preferLatest: true });
-    return;
-  }
-
-  if (route.view === "builder") {
     setMainView("builder", { push: false });
-    const targetStep = clampStep(route.step);
-    goToStep(targetStep, { push: false, regenerate: false });
-    if (route.customs && targetStep === 1) {
-      setCustomsGhostVisible(true, { push: false });
-    }
-    return;
+    updateRoute({ view: "builder", step: state.step }, { replace: true });
+  });
+
+  window.addEventListener("focus", () => {
+    if (!currentUser) return;
+    void refreshAuthAccessToken();
+  });
+
+  if (batchPreview) {
+    batchPreview.classList.add("is-single");
   }
+  renderCsvTable();
 
-  setMainView("builder", { push: false });
-  updateRoute({ view: "builder", step: state.step }, { replace: true });
-});
-
-window.addEventListener("focus", () => {
-  if (!currentUser) return;
-  void refreshAuthAccessToken();
-});
-
-if (batchPreview) {
-  batchPreview.classList.add("is-single");
+  renderAdminInvoiceList();
+  setAdminBillingBusy(false);
+  resetWarehouseState();
+  initializeAuthLogo();
+  initializeAppLogo();
+  initializeAuthParticles();
+  void setLanguage(resolvePreferredLanguage(null), { persist: false });
+  initializeAuth();
 }
-renderCsvTable();
-
-renderAdminInvoiceList();
-setAdminBillingBusy(false);
-resetWarehouseState();
-initializeAuthLogo();
-initializeAppLogo();
-initializeAuthParticles();
-void setLanguage(resolvePreferredLanguage(null), { persist: false });
-initializeAuth();
+}

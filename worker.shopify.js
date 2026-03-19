@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import puppeteer from "@cloudflare/puppeteer";
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -24,6 +25,7 @@ const CLICKWRAP_ACCEPTANCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CLICKWRAP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_CLICKWRAP_CONTRACT_PDF_URL = "/assets/contracts/commAgreement-v1.pdf";
 const DEFAULT_WELCOME_PORTAL_URL = "https://portal.shipide.com/login";
+const DEFAULT_PUBLIC_APP_URL = "https://portal.shipide.com";
 const CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL = "/assets/contracts/commAgreement-v1-template.pdf";
 const CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL = "/assets/fonts/PTMono-Regular.ttf";
 const CLICKWRAP_STORAGE_BUCKET = "clickwrap-contracts";
@@ -216,6 +218,9 @@ export default {
       if (pathname === "/api/billing/overview" && request.method === "GET") {
         return handleBillingOverview(request, env);
       }
+      if (pathname === "/api/billing/render-invoice-pdf" && request.method === "POST") {
+        return handleBillingInvoicePdfRender(request, env);
+      }
       if (pathname === "/api/billing/topups" && request.method === "GET") {
         return handleBillingTopups(request, env, url);
       }
@@ -268,6 +273,26 @@ function redirectResponse(location) {
 function getPublicOrigin(request) {
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
+}
+
+function getPublicAppUrl(env, request = null) {
+  const explicit = String(env?.PUBLIC_APP_URL || "").trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+  if (request) {
+    return getPublicOrigin(request).replace(/\/+$/, "");
+  }
+  return DEFAULT_PUBLIC_APP_URL;
+}
+
+function serializeForInlineScript(value) {
+  return JSON.stringify(value ?? null)
+    .replace(/</g, "\\u003C")
+    .replace(/>/g, "\\u003E")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 function normalizeShopDomain(value) {
@@ -3984,6 +4009,168 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
   return await pdf.save();
 }
 
+function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
+  const publicAppUrl = getPublicAppUrl(env, options?.request || null);
+  const safeFilename =
+    String(payload?.filename || buildInvoicePdfFilename(payload?.invoice || {})).trim()
+    || "invoice-shipide.pdf";
+  const reminderStage = Math.max(0, Number(payload?.reminderStage) || 0);
+  const viewModelScript = payload?.viewModel && typeof payload.viewModel === "object"
+    ? `const printViewModel = ${serializeForInlineScript(payload.viewModel)};`
+    : "const printViewModel = null;";
+  const invoiceScript = payload?.invoice && typeof payload.invoice === "object"
+    ? `const printInvoice = ${serializeForInlineScript(payload.invoice)};`
+    : "const printInvoice = null;";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeFilename}</title>
+    <base href="${publicAppUrl}/" />
+    <link rel="stylesheet" href="${publicAppUrl}/styles.css" />
+    <style>
+      @page {
+        size: 860px 1216px;
+        margin: 0;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 860px;
+        min-width: 860px;
+        background: #00060f;
+      }
+      body {
+        color: #f1f4fb;
+        -webkit-font-smoothing: antialiased;
+      }
+      .receipt-export-host {
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        width: 860px !important;
+        margin: 0 auto !important;
+        pointer-events: auto !important;
+        z-index: auto !important;
+      }
+      #receiptDocument {
+        display: grid;
+        gap: 0;
+        width: 860px;
+        margin: 0 auto;
+      }
+      #receiptDocument .receipt-document {
+        width: 860px;
+        min-height: 1216px;
+        margin: 0;
+        background: var(--primary);
+        padding: 24px;
+        box-sizing: border-box;
+        border: 0;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
+        break-after: page;
+        page-break-after: always;
+      }
+      #receiptDocument .receipt-document:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+      #receiptDocument .receipt-table-wrap {
+        overflow: visible !important;
+        max-height: none !important;
+      }
+    </style>
+    <script>
+      window.__SHIPIDE_INVOICE_PRINT_MODE__ = true;
+      window.__SHIPIDE_PRINT_READY__ = false;
+      window.__SHIPIDE_PRINT_ERROR__ = "";
+    </script>
+    <script src="${publicAppUrl}/app.js"></script>
+  </head>
+  <body>
+    <div class="receipt-export-host" aria-hidden="true">
+      <div id="receiptDocument"></div>
+    </div>
+    <script>
+      ${viewModelScript}
+      ${invoiceScript}
+      const reminderStage = ${serializeForInlineScript(reminderStage)};
+
+      const waitForRenderer = async () => {
+        for (let index = 0; index < 200; index += 1) {
+          if (window.__shipideInvoiceRenderer) return window.__shipideInvoiceRenderer;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        throw new Error("Invoice renderer did not load.");
+      };
+
+      const boot = async () => {
+        try {
+          const renderer = await waitForRenderer();
+          const nextViewModel = printViewModel
+            || renderer.buildViewModelFromBillingInvoice(printInvoice || {}, { reminderStage });
+          await renderer.renderPrintViewModel(nextViewModel);
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready.catch(() => {});
+          }
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          window.__SHIPIDE_PRINT_READY__ = true;
+        } catch (error) {
+          window.__SHIPIDE_PRINT_ERROR__ = String(error && error.message ? error.message : error || "Print render failed.");
+        }
+      };
+
+      void boot();
+    </script>
+  </body>
+</html>`;
+}
+
+async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
+  if (!env?.BROWSER) {
+    throw new Error("Cloudflare Browser Rendering is not configured.");
+  }
+  const browser = await puppeteer.launch(env.BROWSER);
+  let page = null;
+  try {
+    page = await browser.newPage();
+    await page.emulateMediaType("screen");
+    await page.setViewport({ width: 860, height: 1216, deviceScaleFactor: 1 });
+    await page.setContent(buildInvoicePrintDocumentHtml(env, payload, options), {
+      waitUntil: "networkidle0",
+    });
+    await page.waitForFunction(
+      () => window.__SHIPIDE_PRINT_READY__ === true || Boolean(window.__SHIPIDE_PRINT_ERROR__),
+      { timeout: 60000 }
+    );
+    const printError = await page.evaluate(() => String(window.__SHIPIDE_PRINT_ERROR__ || "").trim());
+    if (printError) {
+      throw new Error(printError);
+    }
+    const pdfBuffer = await page.pdf({
+      width: "860px",
+      height: "1216px",
+      printBackground: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+    return {
+      bytes: pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer),
+      filename:
+        String(payload?.filename || buildInvoicePdfFilename(payload?.invoice || {})).trim()
+        || "invoice-shipide.pdf",
+    };
+  } finally {
+    if (page) {
+      await page.close().catch(() => {});
+    }
+    await browser.close().catch(() => {});
+  }
+}
+
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
@@ -5122,8 +5309,46 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
   const storedVariant = providedVariant
     ? null
     : await loadStoredBillingInvoicePdfVariant(env, pdfInvoice, desiredStage).catch(() => null);
+  let renderedVariant = null;
+  if (!providedVariant && !storedVariant && env?.BROWSER) {
+    try {
+      renderedVariant = await renderSelectableInvoicePdf(
+        env,
+        {
+          invoice: {
+            ...pdfInvoice,
+            items: invoiceWithItems.items || [],
+            reference: toInvoiceReference(invoiceWithItems.id),
+          },
+          reminderStage,
+          filename: buildInvoicePdfFilename(invoiceWithItems),
+        },
+        {}
+      );
+      if (renderedVariant?.bytes) {
+        const persistedRenderedVariant = await persistBillingInvoicePdfVariant(
+          env,
+          pdfInvoice,
+          desiredStage,
+          renderedVariant.bytes,
+          renderedVariant.filename
+        );
+        const mergedMetadata = mergeBillingInvoicePdfVariantMetadata(invoiceWithItems, [persistedRenderedVariant]);
+        const metadataUpdate = await updateBillingInvoiceFields(env, invoiceWithItems.id, {
+          metadata: mergedMetadata,
+        });
+        if (metadataUpdate?.metadata) {
+          invoiceWithItems.metadata = metadataUpdate.metadata;
+          pdfInvoice.metadata = metadataUpdate.metadata;
+        }
+      }
+    } catch (_error) {
+      renderedVariant = null;
+    }
+  }
   const pdfBytes = providedVariant?.bytes
     || storedVariant?.bytes
+    || renderedVariant?.bytes
     || await buildInvoicePdf(env, pdfInvoice, invoiceWithItems.items || [], {
       user,
       issuedAt: effectiveIssuedAt,
@@ -5133,7 +5358,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
       reminderStage,
     });
   const pdfFilename =
-    String(providedVariant?.filename || storedVariant?.filename || "").trim()
+    String(providedVariant?.filename || storedVariant?.filename || renderedVariant?.filename || "").trim()
     || buildInvoicePdfFilename(invoiceWithItems);
   const subject = buildInvoiceEmailSubject(pdfInvoice, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail(env, {
@@ -5191,7 +5416,13 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
       resend_id: emailPayload?.id || null,
       to: toEmail,
       reminder_stage: isReminder ? reminderStage : null,
-      attachment_source: providedVariant ? "browser-upload" : storedVariant ? "stored-browser-pdf" : "server-fallback",
+      attachment_source: providedVariant
+        ? "browser-upload"
+        : storedVariant
+          ? "stored-browser-pdf"
+          : renderedVariant
+            ? "worker-browser-render"
+            : "server-fallback",
     },
   });
   return {
@@ -5907,7 +6138,22 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
       providedVariants.find((entry) => entry?.stage === normalizeInvoicePdfVariantStage(step.reminderStage))
       || providedVariants.find((entry) => entry?.stage === "0")
       || null;
+    const renderedVariant = providedVariant || !env?.BROWSER
+      ? null
+      : await renderSelectableInvoicePdf(
+          env,
+          {
+            invoice: {
+              ...emailInvoice,
+              items,
+              reference: toInvoiceReference(emailInvoice.id),
+            },
+            reminderStage: step.reminderStage,
+            filename: buildInvoicePdfFilename(emailInvoice),
+          }
+        ).catch(() => null);
     const pdfBytes = providedVariant?.bytes
+      || renderedVariant?.bytes
       || await buildInvoicePdf(env, emailInvoice, items, {
         issuedAt,
         dueAt,
@@ -5929,7 +6175,8 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
         attachments: [
           {
             filename:
-              String(providedVariant?.filename || "").trim() || buildInvoicePdfFilename(emailInvoice),
+              String(providedVariant?.filename || renderedVariant?.filename || "").trim()
+              || buildInvoicePdfFilename(emailInvoice),
             content: pdfBytes,
             contentType: "application/pdf",
           },
@@ -5986,9 +6233,25 @@ async function handleAdminInvoiceSendTest(request, env) {
     const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(env, toEmail);
     const providedPdfBase64 = String(body?.pdfBase64 || "").trim();
     const providedFilename = String(body?.filename || "").trim();
+    const renderedVariant = providedPdfBase64 || !env?.BROWSER
+      ? null
+      : await renderSelectableInvoicePdf(
+          env,
+          {
+            invoice: {
+              ...testInvoice,
+              items: testItems,
+              reference: toInvoiceReference(testInvoice.id),
+            },
+            reminderStage: 0,
+            filename: buildInvoicePdfFilename(testInvoice),
+          },
+          { request }
+        ).catch(() => null);
     const pdfBytes = providedPdfBase64
       ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
-      : await buildInvoicePdf(env, testInvoice, testItems, {
+      : renderedVariant?.bytes
+        || await buildInvoicePdf(env, testInvoice, testItems, {
           issuedAt: testInvoice.issued_at,
           dueAt: testInvoice.due_at,
         });
@@ -6004,7 +6267,7 @@ async function handleAdminInvoiceSendTest(request, env) {
       }),
       attachments: [
         {
-          filename: providedFilename || buildInvoicePdfFilename(testInvoice),
+          filename: providedFilename || renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
           content: pdfBytes,
           contentType: "application/pdf",
         },
@@ -6382,6 +6645,43 @@ async function handleBillingTopupRequest(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not create top-up request." }, 500);
+  }
+}
+
+async function handleBillingInvoicePdfRender(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const viewModel = body?.viewModel && typeof body.viewModel === "object" ? body.viewModel : null;
+  const filename = String(body?.filename || "invoice-shipide.pdf").trim() || "invoice-shipide.pdf";
+  if (!viewModel) {
+    return jsonResponse({ error: "Invoice view model is required." }, 400);
+  }
+  try {
+    const rendered = await renderSelectableInvoicePdf(
+      env,
+      {
+        viewModel,
+        filename,
+      },
+      { request }
+    );
+    return new Response(rendered.bytes, {
+      status: 200,
+      headers: noStoreHeaders({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${rendered.filename}"`,
+      }),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not render invoice PDF." }, 500);
   }
 }
 
