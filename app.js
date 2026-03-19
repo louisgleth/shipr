@@ -7230,6 +7230,24 @@ function splitReceiptAddressLines(value) {
   return parts.length ? parts : [text];
 }
 
+function splitInvoiceAddressLines(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return ["--"];
+  const directLines = raw
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (directLines.length > 1) return directLines;
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 2) return parts.length ? parts : ["--"];
+  const first = parts.slice(0, 2).join(", ");
+  const second = parts.slice(2).join(", ");
+  return [first, second].filter(Boolean);
+}
+
 function formatReceiptDestination(data = {}) {
   const destination = [data.recipientCity, data.recipientCountry].filter(Boolean).join(", ");
   return destination || "--";
@@ -7305,6 +7323,15 @@ function buildInvoiceTrackingId(rawId) {
     slug,
   };
 }
+
+const INVOICE_ISSUER_PROFILE = Object.freeze({
+  legalName: "Cryvelin LLC",
+  brandName: "Shipide",
+  descriptor: "Operates Shipide",
+  jurisdiction: "Delaware, United States",
+  email: "billing@shipide.com",
+  iban: "BE71 0000 1111 2222",
+});
 
 function getHistoryInvoicePaymentMode() {
   const paymentMode = String(billingOverview?.payment_mode || "").trim().toLowerCase();
@@ -7382,9 +7409,24 @@ function buildInvoiceViewModel(record) {
       : paymentMode === "wallet"
         ? "Wallet debit"
         : "Automatic collection";
-  const settlementNote = isMonthlyBilling
-    ? `Payment due within 30 days from issue. Transfer to Shipide on IBAN BE71 0000 1111 2222 using reference ${invoiceTracking.display}.`
-    : `This invoice has already been settled automatically via ${paymentMethodLabel.toLowerCase()}. No additional bank transfer is required.`;
+  const settlementLines = isMonthlyBilling
+    ? [
+        "Payment due within 30 days from issue.",
+        `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
+        `Reference ${invoiceTracking.display}`,
+      ]
+    : [
+        `Payment was already collected via ${paymentMethodLabel.toLowerCase()}.`,
+        "No additional bank transfer is required.",
+      ];
+  const serviceRows = [
+    {
+      service: serviceType,
+      quantity: totals.quantity,
+      rate: formatMoney(totals.unitIncVat),
+      total: formatMoney(totals.totalIncVat),
+    },
+  ];
 
   return {
     record,
@@ -7398,13 +7440,15 @@ function buildInvoiceViewModel(record) {
     invoiceNumber: invoiceTracking.display,
     invoiceSlug: invoiceTracking.slug,
     quantity: totals.quantity,
-    billingAddressLines: splitReceiptAddressLines(profile?.billingAddress),
+    billingAddressLines: splitInvoiceAddressLines(profile?.billingAddress),
     paymentMode,
     paymentMethodLabel,
     isMonthlyBilling,
-    settlementTitle: "Settlement",
-    settlementNote,
-    bankIban: "BE71 0000 1111 2222",
+    settlementTitle: "Payment & Summary",
+    settlementLines,
+    bankIban: INVOICE_ISSUER_PROFILE.iban,
+    issuer: INVOICE_ISSUER_PROFILE,
+    serviceRows,
   };
 }
 
@@ -7439,28 +7483,19 @@ function buildReceiptRowsHtml(viewModel, rowIndices = null) {
 }
 
 function buildInvoiceRowsHtml(viewModel, rowIndices = null) {
-  const scopedLabels = Array.isArray(rowIndices)
-    ? rowIndices.map((index) => viewModel.labels[index]).filter(Boolean)
-    : viewModel.labels;
+  const scopedRows = Array.isArray(rowIndices)
+    ? rowIndices.map((index) => viewModel.serviceRows[index]).filter(Boolean)
+    : viewModel.serviceRows;
 
-  return scopedLabels.length
-    ? scopedLabels
-        .map((label) => {
-          const data = label?.data || {};
-          const recipientName = data.recipientName || "--";
-          const destination = formatReceiptDestination(data);
-          const recipientMeta = destination && destination !== "--" ? ` · ${destination}` : "";
-          const reference = label?.trackingId || label?.labelId || "--";
-          return `
+  return scopedRows.length
+    ? scopedRows
+        .map((row) => `
             <tr>
-              <td><span class="receipt-cell-primary">${escapeHtml(viewModel.serviceType)}</span></td>
-              <td><span class="receipt-cell-primary mono">${escapeHtml(reference)}</span></td>
-              <td><span class="receipt-cell-primary">${escapeHtml(recipientName)}<span class="receipt-inline-meta">${escapeHtml(recipientMeta)}</span></span></td>
-              <td>
-                <span class="receipt-cell-primary mono">${escapeHtml(formatMoney(viewModel.totals.unitIncVat))}</span>
-              </td>
-            </tr>`;
-        })
+              <td><span class="receipt-cell-primary">${escapeHtml(row.service || "--")}</span></td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(String(row.quantity || "--"))}</span></td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(row.rate || "--")}</span></td>
+              <td><span class="receipt-cell-primary mono">${escapeHtml(row.total || "--")}</span></td>
+            </tr>`)
         .join("")
     : `<tr><td colspan="4"><span class="receipt-cell-primary" style="color:var(--muted)">--</span></td></tr>`;
 }
@@ -7547,80 +7582,82 @@ function buildInvoiceHeaderHtml(viewModel) {
     profile,
     issuedAt,
     dueAt,
-    quantity,
     billingAddressLines,
-    totals,
     invoiceNumber,
     paymentMethodLabel,
     isMonthlyBilling,
+    issuer,
   } = viewModel;
   const profileName = profile?.companyName || "--";
-  const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
-  const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
+  const clientLines = [
+    profile?.contactName || "",
+    profile?.contactEmail || "",
+    ...billingAddressLines,
+    profile?.taxId || "",
+  ].filter(Boolean);
+  const issuerLines = [
+    issuer?.brandName || "",
+    issuer?.descriptor || "",
+    issuer?.jurisdiction || "",
+    issuer?.email || "",
+  ].filter(Boolean);
 
   return `
-    <div class="receipt-topline">
+    <div class="invoice-topline">
+      <div class="invoice-title-block">
+        <h1 class="invoice-title">${escapeHtml(tr("Invoice"))}</h1>
+        <div class="receipt-top-meta-lines mono">
+          <span>${escapeHtml(invoiceNumber)}</span>
+          <span>${escapeHtml(issuedAt)}</span>
+        </div>
+      </div>
       <div class="receipt-brand">
         <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
       </div>
-      <div class="receipt-top-meta">
-        <span class="receipt-chip">${escapeHtml(tr("Invoice"))}</span>
-        <div class="receipt-top-meta-lines mono">
-          <span>${escapeHtml(issuedAt)}</span>
-          <span>${escapeHtml(invoiceNumber)}</span>
-        </div>
-      </div>
     </div>
 
-    <div class="receipt-grid">
-      <section class="receipt-panel">
-        <div class="receipt-panel-title">${escapeHtml(tr("Billed To"))}</div>
+    <div class="invoice-party-grid">
+      <section class="receipt-panel invoice-party-card">
+        <div class="receipt-panel-title">${escapeHtml("Billed to")}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
             <span class="receipt-address-name">${escapeHtml(profileName)}</span>
             <div class="receipt-address-lines">
-              <span>${escapeHtml(contactLine)}</span>
-              ${billingAddressLines
-                .map((line) => `<span>${escapeHtml(line)}</span>`)
-                .join("")}
+              ${clientLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
             </div>
-          </div>
-          <div class="receipt-address-meta mono">
-            <span>${escapeHtml(taxLine)}</span>
-            <span>${escapeHtml(profile?.contactPhone || "--")}</span>
-            <span>${escapeHtml("Shipide")}</span>
           </div>
         </div>
       </section>
 
-      <section class="receipt-panel receipt-panel-summary">
-        <div class="receipt-panel-title">${escapeHtml(tr("Invoice Summary"))}</div>
-        <div class="receipt-kv-grid receipt-kv-grid-compact">
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Invoice No."))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(invoiceNumber)}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Issue date"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(issuedAt)}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(isMonthlyBilling ? tr("Due date") : tr("Status"))}</span>
-            <span class="receipt-kv-value">${escapeHtml(isMonthlyBilling ? dueAt : tr("Paid automatically"))}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Payment method"))}</span>
-            <span class="receipt-kv-value">${escapeHtml(paymentMethodLabel)}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
-          </div>
-          <div class="receipt-kv receipt-kv-total">
-            <span class="receipt-kv-key">${escapeHtml(tr("Total"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
+      <section class="receipt-panel invoice-party-card">
+        <div class="receipt-panel-title">${escapeHtml("Billed by")}</div>
+        <div class="receipt-address">
+          <div class="receipt-address-block">
+            <span class="receipt-address-name">${escapeHtml(issuer?.legalName || "--")}</span>
+            <div class="receipt-address-lines">
+              ${issuerLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+            </div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <div class="invoice-meta-grid">
+      <section class="receipt-panel invoice-meta-card">
+        <div class="receipt-panel-title">${escapeHtml("Invoice no.")}</div>
+        <div class="invoice-meta-value mono">${escapeHtml(invoiceNumber)}</div>
+      </section>
+      <section class="receipt-panel invoice-meta-card">
+        <div class="receipt-panel-title">${escapeHtml("Invoice date")}</div>
+        <div class="invoice-meta-value mono">${escapeHtml(issuedAt)}</div>
+      </section>
+      <section class="receipt-panel invoice-meta-card">
+        <div class="receipt-panel-title">${escapeHtml(isMonthlyBilling ? "Due date" : "Status")}</div>
+        <div class="invoice-meta-value">${escapeHtml(isMonthlyBilling ? dueAt : "Paid automatically")}</div>
+      </section>
+      <section class="receipt-panel invoice-meta-card">
+        <div class="receipt-panel-title">${escapeHtml("Payment")}</div>
+        <div class="invoice-meta-value">${escapeHtml(paymentMethodLabel)}</div>
       </section>
     </div>
   `;
@@ -7672,15 +7709,15 @@ function buildInvoiceTableCardHtml(viewModel, options = {}) {
     showColumnHead = true,
   } = options;
   const invoiceRows = buildInvoiceRowsHtml(viewModel, rowIndices);
-  const quantityValue = Array.isArray(rowIndices) ? rowIndices.length : viewModel.quantity;
+  const quantityValue = viewModel.quantity;
 
   return `
-    <section class="receipt-table-card${showSectionHead ? "" : " is-continuation"}">
+    <section class="receipt-table-card invoice-table-card${showSectionHead ? "" : " is-continuation"}">
       ${showSectionHead ? `
         <div class="receipt-table-head">
           <div class="receipt-table-copy">
-            <span class="receipt-table-title">${escapeHtml(tr("Line Items"))}</span>
-            <span class="receipt-table-sub">${escapeHtml(tr("One line per billed shipment label."))}</span>
+            <span class="receipt-table-title">${escapeHtml("Services")}</span>
+            <span class="receipt-table-sub">${escapeHtml("Condensed by billed service.")}</span>
           </div>
           <span class="receipt-table-badge mono">${escapeHtml(`${quantityValue} ${tr("labels")}`)}</span>
         </div>
@@ -7690,10 +7727,10 @@ function buildInvoiceTableCardHtml(viewModel, options = {}) {
           ${showColumnHead ? `
             <thead>
               <tr>
-                <th>${escapeHtml(tr("Item"))}</th>
-                <th>${escapeHtml(tr("Reference"))}</th>
-                <th>${escapeHtml(tr("Recipient"))}</th>
-                <th>${escapeHtml(tr("Amount"))}</th>
+                <th>${escapeHtml("Services")}</th>
+                <th>${escapeHtml("Qty")}</th>
+                <th>${escapeHtml("Rate")}</th>
+                <th>${escapeHtml("Line total")}</th>
               </tr>
             </thead>
           ` : ""}
@@ -7725,20 +7762,45 @@ function buildReceiptDisclaimerHtml() {
 }
 
 function buildInvoiceSettlementHtml(viewModel) {
-  const title = viewModel.settlementTitle || tr("Settlement");
-  const note = viewModel.settlementNote || "--";
+  const title = viewModel.settlementTitle || "Payment & Summary";
+  const summaryRows = [
+    { label: "Subtotal", value: formatMoney(viewModel.totals.totalIncVat) },
+    { label: "Total", value: formatMoney(viewModel.totals.totalIncVat), strong: true },
+  ];
   return `
-    <section class="receipt-disclaimer">
-      <svg class="receipt-disclaimer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-        <rect x="4" y="4" width="16" height="16"></rect>
-        <path d="M8 9h8"></path>
-        <path d="M8 13h8"></path>
-      </svg>
-      <div class="receipt-disclaimer-copy">
-        <span class="receipt-disclaimer-title">${escapeHtml(title)}</span>
-        <span class="receipt-disclaimer-text">${escapeHtml(note)}</span>
+    <section class="invoice-settlement-panel">
+      <div class="invoice-settlement-grid">
+        <div class="invoice-payment-block">
+          <span class="receipt-panel-title">${escapeHtml(title)}</span>
+          <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
+            viewModel.isMonthlyBilling ? "Monthly billing" : "Already settled"
+          )}</span>
+          <div class="invoice-payment-lines">
+            ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="invoice-summary-block">
+          ${summaryRows
+            .map(
+              (row) => `
+                <div class="invoice-summary-row${row.strong ? " is-total" : ""}">
+                  <span>${escapeHtml(row.label)}</span>
+                  <span class="mono">${escapeHtml(row.value)}</span>
+                </div>`
+            )
+            .join("")}
+        </div>
       </div>
     </section>
+  `;
+}
+
+function buildInvoiceFooterHtml(invoiceNumber) {
+  return `
+    <div class="receipt-footer">
+      <span class="receipt-footer-left">Cryvelin LLC · billing@shipide.com</span>
+      <span class="receipt-footer-right">${escapeHtml(invoiceNumber)}</span>
+    </div>
   `;
 }
 
@@ -7764,7 +7826,7 @@ function buildReceiptPageHtml(viewModel, options = {}) {
   return `
     <div class="receipt-sheet">
       <div class="receipt-sheet-body">
-        ${showHeader ? buildReceiptHeaderHtml(viewModel) : ""}
+        ${showHeader ? `<div class="receipt-header-region">${buildReceiptHeaderHtml(viewModel)}</div>` : ""}
         ${showTableCard ? buildReceiptTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
         ${showDisclaimer ? buildReceiptDisclaimerHtml() : ""}
       </div>
@@ -7798,11 +7860,11 @@ function buildInvoicePageHtml(viewModel, options = {}) {
   return `
     <div class="receipt-sheet">
       <div class="receipt-sheet-body">
-        ${showHeader ? buildInvoiceHeaderHtml(viewModel) : ""}
+        ${showHeader ? `<div class="receipt-header-region">${buildInvoiceHeaderHtml(viewModel)}</div>` : ""}
         ${showTableCard ? buildInvoiceTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
         ${showSettlement ? buildInvoiceSettlementHtml(viewModel) : ""}
       </div>
-      ${buildReceiptFooterHtml(viewModel.invoiceNumber)}
+      ${buildInvoiceFooterHtml(viewModel.invoiceNumber)}
     </div>
   `;
 }
@@ -7810,7 +7872,7 @@ function buildInvoicePageHtml(viewModel, options = {}) {
 function buildInvoiceDocumentHtml(record) {
   const viewModel = buildInvoiceViewModel(record);
   return buildInvoicePageHtml(viewModel, {
-    rowIndices: viewModel.labels.map((_, index) => index),
+    rowIndices: viewModel.serviceRows.map((_, index) => index),
     showHeader: true,
     showTableCard: true,
     showSectionHead: true,
@@ -7857,10 +7919,12 @@ function measureReceiptRegions(receiptDoc, scale) {
     return { y: (r.top - docRect.top) * scale, h: r.height * scale };
   };
 
-  /* header = everything from top through .receipt-grid */
+  const headerRegion = rel(receiptDoc.querySelector(".receipt-header-region"));
   const grid = receiptDoc.querySelector(".receipt-grid");
   const gridPos = rel(grid);
-  const headerH = gridPos ? gridPos.y + gridPos.h : 0;
+  const headerH = headerRegion
+    ? headerRegion.y + headerRegion.h
+    : (gridPos ? gridPos.y + gridPos.h : 0);
 
   /* table layout */
   const tableCard = receiptDoc.querySelector(".receipt-table-card");
@@ -7882,8 +7946,9 @@ function measureReceiptRegions(receiptDoc, scale) {
     if (p) rows.push(p);
   });
 
-  /* disclaimer */
-  const disclaimer = rel(receiptDoc.querySelector(".receipt-disclaimer"));
+  const disclaimer = rel(
+    receiptDoc.querySelector(".invoice-settlement-panel") || receiptDoc.querySelector(".receipt-disclaimer")
+  );
 
   /* footer */
   const footer = rel(receiptDoc.querySelector(".receipt-footer"));
@@ -8258,7 +8323,7 @@ async function buildInvoicePdfExport() {
       `${tr("Quantity")}: ${viewModel.quantity}`,
       `${tr("Total")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
       "",
-      viewModel.settlementNote,
+      ...viewModel.settlementLines,
     ];
     const blob = buildPdf(fallbackLines, {
       pageWidth: 612,

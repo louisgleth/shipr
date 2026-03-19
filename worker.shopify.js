@@ -37,6 +37,13 @@ const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
 const DEFAULT_IBAN_TRANSFER_NOTE =
   "Transfers are credited once received (typically 1-2 business days).";
+const DEFAULT_INVOICE_ISSUER = Object.freeze({
+  legalName: "Cryvelin LLC",
+  brandName: "Shipide",
+  descriptor: "Operates Shipide",
+  jurisdiction: "Delaware, United States",
+  email: "billing@shipide.com",
+});
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -3044,6 +3051,7 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const issuedAt = options?.issuedAt || invoice?.issued_at || null;
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const paidAt = options?.paidAt || invoice?.paid_at || issuedAt || null;
+  const reference = String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim();
   if (manual) {
     return {
       badge: "Monthly billing",
@@ -3051,13 +3059,12 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
       lines: [
         { label: "Terms", value: `Net ${getInvoiceTermsDays(envLike(options))} days` },
         { label: "Due date", value: formatInvoicePdfDate(dueAt) },
-        { label: "Payment method", value: "Bank transfer" },
         {
           label: "IBAN",
           value: String(options?.iban || "BE71 0000 1111 2222").trim(),
           mono: true,
         },
-        { label: "Reference", value: String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim(), mono: true },
+        { label: "Reference", value: reference, mono: true },
       ],
       note: "Please include the invoice reference with your transfer.",
     };
@@ -3068,15 +3075,67 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
     lines: [
       { label: "Status", value: "Payment already collected" },
       { label: "Captured on", value: formatInvoicePdfDate(paidAt) },
-      { label: "Payment method", value: formatInvoicePaymentModeLabel(invoice) },
-      { label: "Reference", value: String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim(), mono: true },
+      { label: "Method", value: formatInvoicePaymentModeLabel(invoice) },
+      { label: "Reference", value: reference, mono: true },
     ],
-    note: "No bank transfer is required for this invoice.",
+    note: "No further payment action is required.",
   };
 }
 
 function envLike(options = {}) {
   return options?.env && typeof options.env === "object" ? options.env : {};
+}
+
+function formatInvoicePdfServiceName(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Shipping labels";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildInvoicePdfServiceRows(items = [], invoice = {}) {
+  const grouped = new Map();
+  const safeItems = Array.isArray(items) && items.length
+    ? items
+    : [{
+        service_type: "Shipping labels",
+        quantity: Math.max(1, Number(invoice?.labels_count) || 1),
+        amount_inc_vat: invoice?.total_inc_vat ?? invoice?.subtotal_ex_vat ?? 0,
+        sort_index: 0,
+      }];
+
+  safeItems.forEach((item, index) => {
+    const service = formatInvoicePdfServiceName(item?.service_type || "Shipping labels");
+    const key = service.toLowerCase();
+    const sortIndex = Number.isFinite(Number(item?.sort_index)) ? Number(item.sort_index) : index;
+    const quantity = Math.max(1, Number(item?.quantity) || 1);
+    const totalCents = toCents(item?.amount_inc_vat ?? item?.amount_ex_vat);
+    const existing = grouped.get(key) || {
+      service,
+      quantity: 0,
+      totalCents: 0,
+      sortIndex,
+    };
+    existing.quantity += quantity;
+    existing.totalCents += totalCents;
+    existing.sortIndex = Math.min(existing.sortIndex, sortIndex);
+    grouped.set(key, existing);
+  });
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.sortIndex - right.sortIndex)
+    .map((entry) => {
+      const unitCents = entry.quantity ? Math.round(entry.totalCents / entry.quantity) : entry.totalCents;
+      return {
+        service: entry.service,
+        quantity: String(entry.quantity),
+        rate: formatInvoicePdfMoney(fromCents(unitCents)),
+        total: formatInvoicePdfMoney(fromCents(entry.totalCents)),
+      };
+    });
 }
 
 function drawInvoicePdfBrand(page, fonts, colors, x, yTop) {
@@ -3173,6 +3232,18 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     iban: String(env?.INVOICE_PDF_IBAN || "BE71 0000 1111 2222").trim(),
   });
   const issueDate = formatInvoicePdfDate(options?.issuedAt || invoice?.issued_at);
+  const issuer = DEFAULT_INVOICE_ISSUER;
+  const lineRows = buildInvoicePdfServiceRows(items, invoice);
+  const labelCount = Math.max(
+    1,
+    Number(invoice?.labels_count)
+      || lineRows.reduce((sum, row) => sum + Math.max(1, Number(row.quantity) || 1), 0)
+  );
+  const totalAmount = formatInvoicePdfMoney(invoice?.total_inc_vat ?? invoice?.subtotal_ex_vat ?? 0);
+  const dueOrStatusLabel = invoiceRequiresManualSettlement(invoice) ? "Due date" : "Status";
+  const dueOrStatusValue = invoiceRequiresManualSettlement(invoice)
+    ? formatInvoicePdfDate(options?.dueAt || invoice?.due_at)
+    : "Paid automatically";
   const paymentBadgeColor = settlement.badgeTone === "success" ? colors.success : colors.accent;
   const paymentBadgeFill = settlement.badgeTone === "success"
     ? rgb(28 / 255, 49 / 255, 38 / 255)
@@ -3186,23 +3257,11 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
   const footerHeight = 20;
   const contentWidth = pageWidth - marginX * 2;
   const tableGap = 16;
-  const rowHeight = 24;
-  const tableHeadHeight = 28;
-  const tableTitleHeight = 46;
+  const rowHeight = 28;
+  const tableHeadHeight = 24;
+  const tableTitleHeight = 42;
   const tablePadding = 14;
-
-  const lineRows = (Array.isArray(items) ? items : []).map((item, index) => {
-    const recipientBits = [
-      item?.recipient_name,
-      [item?.recipient_city, item?.recipient_country].filter(Boolean).join(", "),
-    ].filter(Boolean);
-    return {
-      service: String(item?.service_type || "Shipping label").trim() || "Shipping label",
-      reference: String(item?.tracking_id || item?.label_id || `LINE-${index + 1}`).trim() || `LINE-${index + 1}`,
-      recipient: recipientBits.join(" - ") || "--",
-      amount: formatInvoicePdfMoney(item?.amount_inc_vat ?? item?.amount_ex_vat),
-    };
-  });
+  const settlementHeight = 128;
 
   let rowIndex = 0;
   while (rowIndex < Math.max(1, lineRows.length)) {
@@ -3219,7 +3278,7 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
       color: colors.stroke,
       opacity: 0.65,
     });
-    page.drawText("Shipide - billing@shipide.com", {
+    page.drawText("Cryvelin LLC - billing@shipide.com", {
       x: marginX,
       y: footerY,
       font: fonts.regular,
@@ -3236,75 +3295,42 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
 
     let cursorY = pageHeight - marginTop;
     if (firstPage) {
-      drawInvoicePdfBrand(page, fonts, colors, marginX, cursorY - 2);
       page.drawText("Invoice", {
-        x: pageWidth - marginX - fonts.bold.widthOfTextAtSize("Invoice", 12),
-        y: cursorY - 14,
+        x: marginX,
+        y: cursorY - 32,
         font: fonts.bold,
-        size: 12,
+        size: 28,
         color: colors.text,
       });
       page.drawText(reference, {
-        x: pageWidth - marginX - fonts.mono.widthOfTextAtSize(reference, 10),
-        y: cursorY - 32,
+        x: marginX,
+        y: cursorY - 54,
         font: fonts.mono,
         size: 10,
         color: colors.muted,
       });
-      cursorY -= 56;
+      page.drawText(issueDate, {
+        x: marginX,
+        y: cursorY - 70,
+        font: fonts.regular,
+        size: 10,
+        color: colors.muted,
+      });
+      drawInvoicePdfBrand(page, fonts, colors, pageWidth - marginX - 106, cursorY - 2);
+      cursorY -= 90;
 
       const cardGap = 14;
       const cardWidth = (contentWidth - cardGap) / 2;
-      const topRowHeight = 112;
-      const bottomRowHeight = 102;
+      const topRowHeight = 118;
+      const metaRowHeight = 72;
 
       drawInvoicePdfCard(page, colors, marginX, cursorY, cardWidth, topRowHeight);
       drawInvoicePdfCard(page, colors, marginX + cardWidth + cardGap, cursorY, cardWidth, topRowHeight);
-      drawInvoicePdfCard(page, colors, marginX, cursorY - topRowHeight - cardGap, cardWidth, bottomRowHeight);
-      drawInvoicePdfCard(
-        page,
-        colors,
-        marginX + cardWidth + cardGap,
-        cursorY - topRowHeight - cardGap,
-        cardWidth,
-        bottomRowHeight
-      );
 
-      const supplierTop = cursorY - 18;
-      page.drawText("Issued By", {
+      const billedToTop = cursorY - 18;
+      page.drawText("Billed to", {
         x: marginX + 16,
-        y: supplierTop - 9,
-        font: fonts.regular,
-        size: 9,
-        color: colors.muted,
-      });
-      page.drawText("Shipide", {
-        x: marginX + 16,
-        y: supplierTop - 32,
-        font: fonts.bold,
-        size: 13,
-        color: colors.text,
-      });
-      page.drawText("billing@shipide.com", {
-        x: marginX + 16,
-        y: supplierTop - 52,
-        font: fonts.regular,
-        size: 10,
-        color: colors.text,
-      });
-      page.drawText(formatInvoicePaymentModeLabel(invoice), {
-        x: marginX + 16,
-        y: supplierTop - 72,
-        font: fonts.regular,
-        size: 10,
-        color: colors.muted,
-      });
-
-      const billedTop = supplierTop;
-      const billedX = marginX + cardWidth + cardGap + 16;
-      page.drawText("Billed To", {
-        x: billedX,
-        y: billedTop - 9,
+        y: billedToTop - 9,
         font: fonts.regular,
         size: 9,
         color: colors.muted,
@@ -3312,112 +3338,104 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
       page.drawText(
         fitPdfText(profile.companyName || "Client account", fonts.bold, 13, cardWidth - 32),
         {
-          x: billedX,
-          y: billedTop - 32,
+        x: marginX + 16,
+        y: billedToTop - 32,
+        font: fonts.bold,
+        size: 13,
+        color: colors.text,
+      });
+      const billedToLines = [
+        profile.contactName,
+        profile.contactEmail,
+        ...splitInvoiceAddressLines(profile.billingAddress),
+        profile.taxId,
+      ].filter(Boolean);
+      let billedToLineY = billedToTop - 52;
+      billedToLines.slice(0, 4).forEach((line, index) => {
+        const valueFont = index === billedToLines.length - 1 ? fonts.mono : fonts.regular;
+        const valueLines = wrapPdfText(line, valueFont, 9, cardWidth - 32, 1);
+        if (valueLines[0]) {
+          page.drawText(valueLines[0], {
+            x: marginX + 16,
+            y: billedToLineY,
+            font: valueFont,
+            size: 9,
+            color: index === billedToLines.length - 1 ? colors.text : colors.muted,
+          });
+          billedToLineY -= 18;
+        }
+      });
+
+      const billedByX = marginX + cardWidth + cardGap + 16;
+      const billedByTop = cursorY - 18;
+      page.drawText("Billed by", {
+        x: billedByX,
+        y: billedByTop - 9,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      page.drawText(
+        fitPdfText(issuer.legalName, fonts.bold, 13, cardWidth - 32),
+        {
+          x: billedByX,
+          y: billedByTop - 32,
           font: fonts.bold,
           size: 13,
           color: colors.text,
         }
       );
-      const billedLines = [
-        [profile.contactName, profile.contactEmail].filter(Boolean).join(" - "),
-        ...splitInvoiceAddressLines(profile.billingAddress),
-        [profile.taxId, profile.customerId].filter(Boolean).join(" - "),
+      const billedByLines = [
+        issuer.brandName,
+        issuer.descriptor,
+        issuer.jurisdiction,
+        issuer.email,
       ].filter(Boolean);
-      let billedLineY = billedTop - 52;
-      billedLines.slice(0, 3).forEach((line, index) => {
-        const lines = wrapPdfText(line, index === 2 ? fonts.mono : fonts.regular, 9, cardWidth - 32, 1);
+      let billedByLineY = billedByTop - 52;
+      billedByLines.forEach((line) => {
+        const lines = wrapPdfText(line, fonts.regular, 9, cardWidth - 32, 1);
         if (lines[0]) {
           page.drawText(lines[0], {
-            x: billedX,
-            y: billedLineY,
-            font: index === 2 ? fonts.mono : fonts.regular,
+            x: billedByX,
+            y: billedByLineY,
+            font: fonts.regular,
             size: 9,
-            color: index === 2 ? colors.text : colors.muted,
+            color: colors.muted,
           });
-          billedLineY -= 18;
+          billedByLineY -= 18;
         }
       });
 
-      const summaryTop = cursorY - topRowHeight - cardGap - 18;
-      page.drawText("Invoice Summary", {
-        x: marginX + 16,
-        y: summaryTop - 9,
-        font: fonts.regular,
-        size: 9,
-        color: colors.muted,
-      });
-      drawInvoicePdfMetaList(
-        page,
-        fonts,
-        colors,
-        [
-          { label: "Invoice No.", value: reference, mono: true },
-          { label: "Issue date", value: issueDate },
-          {
-            label: "Period",
-            value: `${formatInvoicePdfDate(invoice?.period_start)} to ${formatInvoicePdfDate(invoice?.period_end)}`,
-          },
-          { label: "Labels", value: String(Number(invoice?.labels_count) || lineRows.length || 0), mono: true },
-          { label: "Total", value: formatInvoicePdfMoney(invoice?.total_inc_vat) },
-        ],
-        marginX + 16,
-        summaryTop - 26,
-        cardWidth - 32,
-        { labelWidth: 74, rowGap: 15, labelSize: 8, valueSize: 9.5 }
-      );
+      cursorY -= topRowHeight + cardGap;
 
-      const paymentTop = summaryTop;
-      const paymentX = marginX + cardWidth + cardGap + 16;
-      const badgeWidth = Math.min(
-        cardWidth - 32,
-        fonts.regular.widthOfTextAtSize(settlement.badge, 8) + 18
-      );
-      page.drawText("Settlement", {
-        x: paymentX,
-        y: paymentTop - 9,
-        font: fonts.regular,
-        size: 9,
-        color: colors.muted,
-      });
-      page.drawRectangle({
-        x: paymentX,
-        y: paymentTop - 34,
-        width: badgeWidth,
-        height: 16,
-        color: paymentBadgeFill,
-        borderColor: paymentBadgeColor,
-        borderWidth: 1,
-      });
-      page.drawText(settlement.badge, {
-        x: paymentX + 9,
-        y: paymentTop - 29,
-        font: fonts.regular,
-        size: 8,
-        color: paymentBadgeColor,
-      });
-      drawInvoicePdfMetaList(
-        page,
-        fonts,
-        colors,
-        settlement.lines,
-        paymentX,
-        paymentTop - 46,
-        cardWidth - 32,
-        { labelWidth: 82, rowGap: 14, labelSize: 8, valueSize: 8.5 }
-      );
-      const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, cardWidth - 32, 2);
-      noteLines.forEach((line, index) => {
-        page.drawText(line, {
-          x: paymentX,
-          y: paymentTop - 94 - index * 11,
+      const metaGap = 10;
+      const metaWidth = (contentWidth - metaGap * 3) / 4;
+      const metaCards = [
+        { label: "Invoice no.", value: reference, mono: true },
+        { label: "Invoice date", value: issueDate, mono: true },
+        { label: dueOrStatusLabel, value: dueOrStatusValue, mono: invoiceRequiresManualSettlement(invoice) },
+        { label: "Payment", value: formatInvoicePaymentModeLabel(invoice), mono: false },
+      ];
+      metaCards.forEach((entry, index) => {
+        const cardX = marginX + index * (metaWidth + metaGap);
+        const valueFont = entry.mono ? fonts.mono : fonts.regular;
+        drawInvoicePdfCard(page, colors, cardX, cursorY, metaWidth, metaRowHeight);
+        page.drawText(entry.label, {
+          x: cardX + 14,
+          y: cursorY - 18,
           font: fonts.regular,
           size: 8,
           color: colors.muted,
         });
+        page.drawText(fitPdfText(entry.value, valueFont, 11, metaWidth - 28), {
+          x: cardX + 14,
+          y: cursorY - 42,
+          font: valueFont,
+          size: 11,
+          color: colors.text,
+        });
       });
-
-      cursorY -= topRowHeight + bottomRowHeight + cardGap * 2 + tableGap;
+      cursorY -= metaRowHeight + tableGap;
     } else {
       cursorY -= 6;
     }
@@ -3425,14 +3443,24 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     const tableTop = cursorY;
     const titleHeight = firstPage ? tableTitleHeight : 0;
     const availableHeight = tableTop - (marginBottom + footerHeight + 16);
-    const maxRows = Math.max(
+    const remainingRows = lineRows.length - rowIndex;
+    const maxRowsWithSettlement = Math.max(
+      1,
+      Math.floor(
+        (availableHeight - settlementHeight - tableGap - titleHeight - tableHeadHeight - tablePadding * 2)
+          / rowHeight
+      )
+    );
+    const maxRowsNoSettlement = Math.max(
       1,
       Math.floor((availableHeight - titleHeight - tableHeadHeight - tablePadding * 2) / rowHeight)
     );
-    const rowsForPage = lineRows.length
-      ? lineRows.slice(rowIndex, rowIndex + maxRows)
-      : [{ service: "--", reference: "--", recipient: "--", amount: formatInvoicePdfMoney(invoice?.total_inc_vat) }];
-    rowIndex += lineRows.length ? rowsForPage.length : 1;
+    const showSettlement = remainingRows <= maxRowsWithSettlement;
+    const rowsForPage = lineRows.slice(
+      rowIndex,
+      rowIndex + Math.min(remainingRows, showSettlement ? maxRowsWithSettlement : maxRowsNoSettlement)
+    );
+    rowIndex += rowsForPage.length;
 
     const tableHeight =
       titleHeight + tableHeadHeight + tablePadding * 2 + rowsForPage.length * rowHeight;
@@ -3440,21 +3468,21 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
 
     let tableCursor = tableTop - tablePadding;
     if (firstPage) {
-      page.drawText("Line Items", {
+      page.drawText("Services", {
         x: marginX + 16,
         y: tableCursor - 12,
         font: fonts.bold,
         size: 13,
         color: colors.text,
       });
-      page.drawText("One line per billed shipment label.", {
+      page.drawText("Condensed by billed service.", {
         x: marginX + 16,
         y: tableCursor - 28,
         font: fonts.regular,
         size: 9,
         color: colors.muted,
       });
-      const badge = `${Number(invoice?.labels_count) || lineRows.length || 0} labels`;
+      const badge = `${labelCount} labels`;
       page.drawText(badge, {
         x: pageWidth - marginX - 16 - fonts.mono.widthOfTextAtSize(badge, 9),
         y: tableCursor - 20,
@@ -3467,15 +3495,12 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
 
     const colX = {
       service: marginX + 16,
-      reference: marginX + 164,
-      recipient: marginX + 282,
-      amount: pageWidth - marginX - 76,
+      qty: marginX + 356,
+      rateRight: pageWidth - marginX - 118,
+      totalRight: pageWidth - marginX - 16,
     };
     const colWidths = {
-      service: 134,
-      reference: 102,
-      recipient: 188,
-      amount: 60,
+      service: 300,
     };
 
     page.drawLine({
@@ -3487,9 +3512,7 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     });
     [
       ["Service", colX.service],
-      ["Reference", colX.reference],
-      ["Recipient", colX.recipient],
-      ["Amount", colX.amount],
+      ["Qty", colX.qty],
     ].forEach(([label, x]) => {
       page.drawText(label, {
         x,
@@ -3498,6 +3521,22 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
         size: 8,
         color: colors.muted,
       });
+    });
+    const rateLabel = "Rate";
+    const totalLabel = "Line total";
+    page.drawText(rateLabel, {
+      x: colX.rateRight - fonts.regular.widthOfTextAtSize(rateLabel, 8),
+      y: tableCursor - 18,
+      font: fonts.regular,
+      size: 8,
+      color: colors.muted,
+    });
+    page.drawText(totalLabel, {
+      x: colX.totalRight - fonts.regular.widthOfTextAtSize(totalLabel, 8),
+      y: tableCursor - 18,
+      font: fonts.regular,
+      size: 8,
+      color: colors.muted,
     });
     tableCursor -= tableHeadHeight;
 
@@ -3522,35 +3561,133 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
           color: colors.text,
         }
       );
-      page.drawText(
-        fitPdfText(row.reference, fonts.mono, 8.5, colWidths.reference),
-        {
-          x: colX.reference,
-          y: baseY - 14,
-          font: fonts.mono,
-          size: 8.5,
-          color: colors.text,
-        }
-      );
-      page.drawText(
-        fitPdfText(row.recipient, fonts.regular, 8.5, colWidths.recipient),
-        {
-          x: colX.recipient,
-          y: baseY - 14,
-          font: fonts.regular,
-          size: 8.5,
-          color: colors.text,
-        }
-      );
-      const amountWidth = fonts.mono.widthOfTextAtSize(row.amount, 9);
-      page.drawText(row.amount, {
-        x: pageWidth - marginX - 16 - amountWidth,
+      page.drawText(row.quantity, {
+        x: colX.qty,
+        y: baseY - 14,
+        font: fonts.mono,
+        size: 9,
+        color: colors.text,
+      });
+      const rateWidth = fonts.mono.widthOfTextAtSize(row.rate, 9);
+      page.drawText(row.rate, {
+        x: colX.rateRight - rateWidth,
+        y: baseY - 14,
+        font: fonts.mono,
+        size: 9,
+        color: colors.text,
+      });
+      const totalWidth = fonts.mono.widthOfTextAtSize(row.total, 9);
+      page.drawText(row.total, {
+        x: colX.totalRight - totalWidth,
         y: baseY - 14,
         font: fonts.mono,
         size: 9,
         color: colors.text,
       });
     });
+
+    if (showSettlement) {
+      const settlementTop = tableTop - tableHeight - tableGap;
+      const summaryWidth = 148;
+      const summaryX = pageWidth - marginX - summaryWidth;
+      const paymentX = marginX + 16;
+      const paymentWidth = summaryX - marginX - 28;
+      drawInvoicePdfCard(page, colors, marginX, settlementTop, contentWidth, settlementHeight);
+      page.drawText("Payment", {
+        x: paymentX,
+        y: settlementTop - 18,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      const badgeWidth = Math.min(paymentWidth, fonts.regular.widthOfTextAtSize(settlement.badge, 8) + 18);
+      page.drawRectangle({
+        x: paymentX,
+        y: settlementTop - 42,
+        width: badgeWidth,
+        height: 16,
+        color: paymentBadgeFill,
+        borderColor: paymentBadgeColor,
+        borderWidth: 1,
+      });
+      page.drawText(settlement.badge, {
+        x: paymentX + 9,
+        y: settlementTop - 37,
+        font: fonts.regular,
+        size: 8,
+        color: paymentBadgeColor,
+      });
+      drawInvoicePdfMetaList(
+        page,
+        fonts,
+        colors,
+        settlement.lines,
+        paymentX,
+        settlementTop - 54,
+        paymentWidth,
+        { labelWidth: 72, rowGap: 15, labelSize: 8, valueSize: 9 }
+      );
+      const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, paymentWidth, 2);
+      noteLines.forEach((line, index) => {
+        page.drawText(line, {
+          x: paymentX,
+          y: settlementTop - 108 - index * 11,
+          font: fonts.regular,
+          size: 8,
+          color: colors.muted,
+        });
+      });
+
+      page.drawLine({
+        start: { x: summaryX - 18, y: settlementTop - settlementHeight + 16 },
+        end: { x: summaryX - 18, y: settlementTop - 16 },
+        thickness: 1,
+        color: colors.stroke,
+        opacity: 0.7,
+      });
+      page.drawText("Summary", {
+        x: summaryX,
+        y: settlementTop - 18,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      page.drawText("Subtotal", {
+        x: summaryX,
+        y: settlementTop - 48,
+        font: fonts.regular,
+        size: 9,
+        color: colors.muted,
+      });
+      page.drawText(totalAmount, {
+        x: pageWidth - marginX - 16 - fonts.mono.widthOfTextAtSize(totalAmount, 9),
+        y: settlementTop - 48,
+        font: fonts.mono,
+        size: 9,
+        color: colors.text,
+      });
+      page.drawLine({
+        start: { x: summaryX, y: settlementTop - 64 },
+        end: { x: pageWidth - marginX - 16, y: settlementTop - 64 },
+        thickness: 1,
+        color: colors.stroke,
+        opacity: 0.7,
+      });
+      page.drawText("Total", {
+        x: summaryX,
+        y: settlementTop - 92,
+        font: fonts.bold,
+        size: 11,
+        color: colors.text,
+      });
+      page.drawText(totalAmount, {
+        x: pageWidth - marginX - 16 - fonts.mono.widthOfTextAtSize(totalAmount, 11),
+        y: settlementTop - 92,
+        font: fonts.mono,
+        size: 11,
+        color: colors.text,
+      });
+    }
   }
 
   return await pdf.save();
