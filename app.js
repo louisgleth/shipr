@@ -7394,6 +7394,20 @@ function getInvoiceSettlementBadgeLabel({ isMonthlyBilling, dueDate = null, paym
   return `${Math.abs(diffDays)} days overdue`;
 }
 
+function getInvoiceSettlementBadgeTone({ isMonthlyBilling, dueDate = null, paymentMode = "" } = {}) {
+  if (!isMonthlyBilling) {
+    return paymentMode === "wallet" ? "success" : "success";
+  }
+  const today = startOfLocalDay(new Date());
+  const dueDay = startOfLocalDay(dueDate);
+  if (!today || !dueDay) return "success";
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+  if (diffDays > 15) return "success";
+  if (diffDays > 1) return "warning";
+  if (diffDays === 1) return "attention";
+  return "danger";
+}
+
 function formatInvoiceDateDisplay(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--";
@@ -7485,6 +7499,11 @@ function buildInvoiceViewModel(record) {
     paymentMethodLabel,
     isMonthlyBilling,
     settlementBadge: getInvoiceSettlementBadgeLabel({
+      isMonthlyBilling,
+      dueDate: addDaysLocal(issuedDate, 30),
+      paymentMode,
+    }),
+    settlementBadgeTone: getInvoiceSettlementBadgeTone({
       isMonthlyBilling,
       dueDate: addDaysLocal(issuedDate, 30),
       paymentMode,
@@ -7824,7 +7843,9 @@ function buildInvoiceSettlementHtml(viewModel) {
         <div class="invoice-settlement-grid${transferRows.length ? " has-transfer" : ""}">
           <div class="invoice-payment-block">
             <span class="receipt-panel-title">${escapeHtml(title)}</span>
-            <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
+            <span class="invoice-payment-badge is-${escapeHtml(
+              viewModel.settlementBadgeTone || (viewModel.isMonthlyBilling ? "success" : "success")
+            )}">${escapeHtml(
               viewModel.settlementBadge || (viewModel.isMonthlyBilling ? "Due in 30 days" : "Collected automatically")
             )}</span>
           </div>
@@ -7833,10 +7854,12 @@ function buildInvoiceSettlementHtml(viewModel) {
                 <div class="invoice-transfer-lines">
                   ${transferRows
                     .map(
-                      (row) => `
-                        <div class="invoice-transfer-row">
+                      (row, index) => `
+                        <div class="invoice-transfer-row${index === transferRows.length - 1 ? " is-total" : ""}">
                           <span>${escapeHtml(row.label || "--")}</span>
-                          <span class="${row.mono ? "mono" : ""}">${escapeHtml(row.value || "--")}</span>
+                          <span class="invoice-transfer-value${row.mono ? " mono" : ""}">${escapeHtml(
+                            row.value || "--"
+                          )}</span>
                         </div>`
                     )
                     .join("")}
@@ -8455,6 +8478,7 @@ function buildAdminTestInvoiceViewModel(toEmail) {
     paymentMethodLabel: "Monthly billing",
     isMonthlyBilling: true,
     settlementBadge: "Due in 30 days",
+    settlementBadgeTone: "success",
     settlementTitle: "Payment & Summary",
     settlementLines: [
       `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
