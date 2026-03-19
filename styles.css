@@ -5204,9 +5204,13 @@ body {
 
 .invoice-settlement-grid {
   display: grid;
-  grid-template-columns: 1.3fr 0.9fr;
+  grid-template-columns: 1fr 0.9fr;
   gap: 18px;
   align-items: start;
+}
+
+.invoice-settlement-grid.has-transfer {
+  grid-template-columns: 0.72fr 1fr 0.9fr;
 }
 
 .invoice-payment-block {
@@ -5233,12 +5237,30 @@ body {
   color: #8fe2b2;
 }
 
-.invoice-payment-lines {
+.invoice-transfer-block {
   display: grid;
-  gap: 4px;
+  gap: 10px;
+  padding-left: 18px;
+  border-left: 1px solid var(--stroke);
+}
+
+.invoice-transfer-lines {
+  display: grid;
+  gap: 8px;
   font-size: var(--fs-xs);
   color: var(--muted);
   line-height: 1.45;
+}
+
+.invoice-transfer-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.invoice-transfer-row .mono {
+  font-family: var(--font-mono);
 }
 
 .invoice-summary-block {

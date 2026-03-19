@@ -2612,6 +2612,35 @@ function resolveInvoiceProfileSnapshot(invoice = {}, user = null) {
   };
 }
 
+function startOfUtcDay(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function formatInvoiceSettlementBadge(invoice = {}, options = {}) {
+  const manual = invoiceRequiresManualSettlement(invoice);
+  const status = normalizeInvoiceStatus(invoice?.status);
+  if (!manual) {
+    if (status === "paid") return "Collected automatically";
+    if (status === "overdue") return "Collection overdue";
+    return "Pending collection";
+  }
+  if (status === "paid") {
+    return "Paid";
+  }
+  const dueAt = options?.dueAt || invoice?.due_at || null;
+  const today = startOfUtcDay(new Date());
+  const dueDay = startOfUtcDay(dueAt);
+  if (!today || !dueDay) return `Due in ${getInvoiceTermsDays()} days`;
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+  if (diffDays > 1) return `Due in ${diffDays} days`;
+  if (diffDays === 1) return "Due tomorrow";
+  if (diffDays === 0) return "Due today";
+  if (diffDays === -1) return "1 day overdue";
+  return `${Math.abs(diffDays)} days overdue`;
+}
+
 function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const manual = invoiceRequiresManualSettlement(invoice);
   const issuedAt = options?.issuedAt || invoice?.issued_at || null;
@@ -2620,26 +2649,21 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const reference = String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim();
   if (manual) {
     return {
-      badge: "Monthly billing",
+      badge: formatInvoiceSettlementBadge(invoice, { dueAt }),
       badgeTone: "accent",
-      lines: [
-        { label: "Terms", value: `Net ${getInvoiceTermsDays()} days` },
-        { label: "Due date", value: formatInvoicePdfDate(dueAt) },
+      transferRows: [
         { label: "IBAN", value: DEFAULT_INVOICE_PDF_IBAN, mono: true },
-        { label: "Reference", value: reference, mono: true },
+        { label: "Communication", value: reference, mono: true },
       ],
-      note: "Please include the invoice reference with your transfer.",
+      lines: [],
+      note: "",
     };
   }
   return {
-    badge: "Paid automatically",
+    badge: formatInvoiceSettlementBadge(invoice, { paidAt }),
     badgeTone: "success",
-    lines: [
-      { label: "Status", value: "Payment already collected" },
-      { label: "Captured on", value: formatInvoicePdfDate(paidAt) },
-      { label: "Method", value: formatInvoicePaymentModeLabel(invoice) },
-      { label: "Reference", value: reference, mono: true },
-    ],
+    transferRows: [],
+    lines: [],
     note: "",
   };
 }
@@ -3162,7 +3186,11 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       const summaryWidth = 148;
       const summaryX = pageWidth - marginX - summaryWidth;
       const paymentX = marginX + 16;
-      const paymentWidth = summaryX - marginX - 28;
+      const transferRows = Array.isArray(settlement.transferRows) ? settlement.transferRows : [];
+      const hasTransferRows = transferRows.length > 0;
+      const paymentWidth = hasTransferRows ? 118 : summaryX - marginX - 28;
+      const transferX = paymentX + paymentWidth + 26;
+      const transferWidth = hasTransferRows ? Math.max(92, summaryX - transferX - 18) : 0;
       drawInvoicePdfCard(page, colors, marginX, settlementTop, contentWidth, settlementHeight);
       page.drawText("Payment", {
         x: paymentX,
@@ -3188,25 +3216,32 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         size: 8,
         color: paymentBadgeColor,
       });
-      drawInvoicePdfMetaList(
-        page,
-        fonts,
-        colors,
-        settlement.lines,
-        paymentX,
-        settlementTop - 54,
-        paymentWidth,
-        { labelWidth: 72, rowGap: 15, labelSize: 8, valueSize: 9 }
-      );
-      if (settlement.note) {
-        const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, paymentWidth, 2);
-        noteLines.forEach((line, index) => {
-          page.drawText(line, {
-            x: paymentX,
-            y: settlementTop - 108 - index * 11,
+
+      if (hasTransferRows) {
+        page.drawLine({
+          start: { x: transferX - 18, y: settlementTop - settlementHeight + 16 },
+          end: { x: transferX - 18, y: settlementTop - 16 },
+          thickness: 1,
+          color: colors.stroke,
+          opacity: 0.7,
+        });
+        transferRows.forEach((row, index) => {
+          const y = settlementTop - 22 - index * 26;
+          const valueFont = row.mono ? fonts.mono : fonts.regular;
+          page.drawText(row.label, {
+            x: transferX,
+            y,
             font: fonts.regular,
             size: 8,
             color: colors.muted,
+          });
+          const fittedValue = fitPdfText(row.value, valueFont, 9, transferWidth);
+          page.drawText(fittedValue, {
+            x: transferX,
+            y: y - 15,
+            font: valueFont,
+            size: 9,
+            color: colors.text,
           });
         });
       }
@@ -5599,10 +5634,14 @@ async function handleAdminInvoiceSendTest(req, res) {
   }
   try {
     const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(toEmail);
-    const pdfBytes = await buildInvoicePdf(testInvoice, testItems, {
-      issuedAt: testInvoice.issued_at,
-      dueAt: testInvoice.due_at,
-    });
+    const providedPdfBase64 = String(body?.pdfBase64 || "").trim();
+    const providedFilename = String(body?.filename || "").trim();
+    const pdfBytes = providedPdfBase64
+      ? Buffer.from(providedPdfBase64, "base64")
+      : await buildInvoicePdf(testInvoice, testItems, {
+          issuedAt: testInvoice.issued_at,
+          dueAt: testInvoice.due_at,
+        });
     const resendResponse = await sendResendEmail({
       to: toEmail,
       subject: buildInvoiceEmailSubject(testInvoice, { isReminder: false, reminderStage: 0 }),
@@ -5615,7 +5654,7 @@ async function handleAdminInvoiceSendTest(req, res) {
       }),
       attachments: [
         {
-          filename: buildInvoicePdfFilename(testInvoice),
+          filename: providedFilename || buildInvoicePdfFilename(testInvoice),
           content: pdfBytes,
           contentType: "application/pdf",
         },

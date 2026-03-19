@@ -4275,9 +4275,23 @@ async function sendAdminBillingTestEmail() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
+    const testViewModel = buildAdminTestInvoiceViewModel(toEmail);
+    const exportData = await buildInvoicePdfExportFromViewModel(
+      testViewModel,
+      buildInvoicePdfFilenameFromReference(testViewModel.invoiceNumber)
+    );
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate invoice PDF."));
+    }
+    const pdfBase64 = await blobToBase64(exportData.blob);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test", {
       method: "POST",
-      body: JSON.stringify({ toEmail }),
+      timeoutMs: 45000,
+      body: JSON.stringify({
+        toEmail,
+        pdfBase64,
+        filename: exportData.filename,
+      }),
     });
     setAdminBillingStatus(
       tr("Test invoice email sent to {email}.", { email: String(payload?.to || toEmail) }),
@@ -7358,6 +7372,28 @@ function addDaysLocal(dateLike, days) {
   return next;
 }
 
+function startOfLocalDay(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function getInvoiceSettlementBadgeLabel({ isMonthlyBilling, dueDate = null, paymentMode = "" } = {}) {
+  if (!isMonthlyBilling) {
+    if (paymentMode === "wallet") return "Settled via wallet";
+    return "Collected automatically";
+  }
+  const today = startOfLocalDay(new Date());
+  const dueDay = startOfLocalDay(dueDate);
+  if (!today || !dueDay) return "Due in 30 days";
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+  if (diffDays > 1) return `Due in ${diffDays} days`;
+  if (diffDays === 1) return "Due tomorrow";
+  if (diffDays === 0) return "Due today";
+  if (diffDays === -1) return "1 day overdue";
+  return `${Math.abs(diffDays)} days overdue`;
+}
+
 function formatInvoiceDateDisplay(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--";
@@ -7413,9 +7449,14 @@ function buildInvoiceViewModel(record) {
         : "Automatic collection";
   const settlementLines = isMonthlyBilling
     ? [
-        "Payment due within 30 days from issue.",
         `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
-        `Reference ${invoiceTracking.display}`,
+        `Communication ${invoiceTracking.display}`,
+      ]
+    : [];
+  const settlementTransferRows = isMonthlyBilling
+    ? [
+        { label: "IBAN", value: INVOICE_ISSUER_PROFILE.iban },
+        { label: "Communication", value: invoiceTracking.display, mono: true },
       ]
     : [];
   const serviceRows = [
@@ -7443,10 +7484,16 @@ function buildInvoiceViewModel(record) {
     paymentMode,
     paymentMethodLabel,
     isMonthlyBilling,
+    settlementBadge: getInvoiceSettlementBadgeLabel({
+      isMonthlyBilling,
+      dueDate: addDaysLocal(issuedDate, 30),
+      paymentMode,
+    }),
     reverseVatNote:
       "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
     settlementTitle: "Payment & Summary",
     settlementLines,
+    settlementTransferRows,
     bankIban: INVOICE_ISSUER_PROFILE.iban,
     issuer: INVOICE_ISSUER_PROFILE,
     serviceRows,
@@ -7764,6 +7811,9 @@ function buildReceiptDisclaimerHtml() {
 
 function buildInvoiceSettlementHtml(viewModel) {
   const title = viewModel.settlementTitle || "Payment & Summary";
+  const transferRows = Array.isArray(viewModel.settlementTransferRows)
+    ? viewModel.settlementTransferRows
+    : [];
   const summaryRows = [
     { label: "Subtotal", value: formatMoney(viewModel.totals.totalIncVat) },
     { label: "Total", value: formatMoney(viewModel.totals.totalIncVat), strong: true },
@@ -7771,18 +7821,28 @@ function buildInvoiceSettlementHtml(viewModel) {
   return `
     <section class="invoice-settlement-stack">
       <div class="invoice-settlement-panel">
-        <div class="invoice-settlement-grid">
+        <div class="invoice-settlement-grid${transferRows.length ? " has-transfer" : ""}">
           <div class="invoice-payment-block">
             <span class="receipt-panel-title">${escapeHtml(title)}</span>
             <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
-              viewModel.isMonthlyBilling ? "Monthly billing" : "Already settled"
+              viewModel.settlementBadge || (viewModel.isMonthlyBilling ? "Due in 30 days" : "Collected automatically")
             )}</span>
-            ${viewModel.settlementLines.length
-              ? `<div class="invoice-payment-lines">
-                  ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-                </div>`
-              : ""}
           </div>
+          ${transferRows.length
+            ? `<div class="invoice-transfer-block">
+                <div class="invoice-transfer-lines">
+                  ${transferRows
+                    .map(
+                      (row) => `
+                        <div class="invoice-transfer-row">
+                          <span>${escapeHtml(row.label || "--")}</span>
+                          <span class="${row.mono ? "mono" : ""}">${escapeHtml(row.value || "--")}</span>
+                        </div>`
+                    )
+                    .join("")}
+                </div>
+              </div>`
+            : ""}
           <div class="invoice-summary-block">
             ${summaryRows
               .map(
@@ -7877,6 +7937,10 @@ function buildInvoicePageHtml(viewModel, options = {}) {
 
 function buildInvoiceDocumentHtml(record) {
   const viewModel = buildInvoiceViewModel(record);
+  return buildInvoiceDocumentHtmlFromViewModel(viewModel);
+}
+
+function buildInvoiceDocumentHtmlFromViewModel(viewModel) {
   return buildInvoicePageHtml(viewModel, {
     rowIndices: viewModel.serviceRows.map((_, index) => index),
     showHeader: true,
@@ -7890,6 +7954,11 @@ function buildInvoiceDocumentHtml(record) {
 function renderInvoiceDetails(record) {
   if (!receiptDocument || !record) return;
   receiptDocument.innerHTML = buildInvoiceDocumentHtml(record);
+}
+
+function renderInvoiceViewModel(viewModel) {
+  if (!receiptDocument || !viewModel) return;
+  receiptDocument.innerHTML = buildInvoiceDocumentHtmlFromViewModel(viewModel);
 }
 
 function renderReceiptDetails(record) {
@@ -7972,6 +8041,15 @@ function getReceiptPdfFilename() {
 function getInvoicePdfFilename() {
   const tracking = buildInvoiceTrackingId(accountActiveRecord?.id);
   return `invoice-${tracking.slug || "shipide"}.pdf`;
+}
+
+function buildInvoicePdfFilenameFromReference(reference) {
+  const safe = String(reference || "shipide")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `invoice-${safe || "shipide"}.pdf`;
 }
 
 function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
@@ -8188,7 +8266,14 @@ async function buildReceiptPdfExport() {
 
 async function buildInvoicePdfExport() {
   if (!accountActiveRecord) return;
-  renderInvoiceDetails(accountActiveRecord);
+  const viewModel = buildInvoiceViewModel(accountActiveRecord);
+  return buildInvoicePdfExportFromViewModel(viewModel, getInvoicePdfFilename());
+}
+
+async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf") {
+  if (!viewModel) return null;
+  const previousMarkup = receiptDocument ? receiptDocument.innerHTML : "";
+  renderInvoiceViewModel(viewModel);
 
   try {
     if (
@@ -8283,7 +8368,6 @@ async function buildInvoicePdfExport() {
           pages.push({ firstPage: false, rows: [], hasSettlement: true });
         }
 
-        const viewModel = buildInvoiceViewModel(accountActiveRecord);
         const renderExportPage = async (pageConfig) => {
           receiptDocument.innerHTML = buildInvoicePageHtml(viewModel, {
             rowIndices: pageConfig.rows,
@@ -8317,11 +8401,10 @@ async function buildInvoicePdfExport() {
 
       return {
         blob: pdf.output("blob"),
-        filename: getInvoicePdfFilename(),
+        filename,
       };
     }
 
-    const viewModel = buildInvoiceViewModel(accountActiveRecord);
     const fallbackLines = [
       tr("Invoice"),
       `${tr("Invoice No.")}: ${viewModel.invoiceNumber}`,
@@ -8344,14 +8427,78 @@ async function buildInvoicePdfExport() {
     });
     return {
       blob,
-      filename: getInvoicePdfFilename(),
+      filename,
     };
   } finally {
     if (receiptDocument) {
       receiptDocument.classList.remove("is-exporting");
-      renderReceiptDetails(accountActiveRecord);
+      receiptDocument.innerHTML = previousMarkup;
     }
   }
+}
+
+function buildAdminTestInvoiceViewModel(toEmail) {
+  const invoiceId = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `inv-${Date.now()}`;
+  const invoiceTracking = buildInvoiceTrackingId(invoiceId);
+  const issuedDate = new Date();
+  const dueDate = addDaysLocal(issuedDate, 30);
+  const totalAmount = 120;
+  return {
+    invoiceNumber: invoiceTracking.display,
+    invoiceSlug: invoiceTracking.slug,
+    issuedAt: formatInvoiceDateDisplay(issuedDate),
+    dueAt: formatInvoiceDateDisplay(dueDate),
+    quantity: 1,
+    paymentMode: "invoice",
+    paymentMethodLabel: "Monthly billing",
+    isMonthlyBilling: true,
+    settlementBadge: "Due in 30 days",
+    settlementTitle: "Payment & Summary",
+    settlementLines: [
+      `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
+      `Communication ${invoiceTracking.display}`,
+    ],
+    settlementTransferRows: [
+      { label: "IBAN", value: INVOICE_ISSUER_PROFILE.iban },
+      { label: "Communication", value: invoiceTracking.display, mono: true },
+    ],
+    reverseVatNote:
+      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
+    issuer: INVOICE_ISSUER_PROFILE,
+    profile: {
+      companyName: "Atelier Meridian",
+      billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+      taxId: "BE0123456789",
+      contactEmail: toEmail,
+    },
+    billingAddressLines: splitInvoiceAddressLines("Avenue Louise 120, 1050 Brussels, Belgium"),
+    totals: {
+      totalIncVat: totalAmount,
+    },
+    serviceRows: [
+      {
+        service: "Economy",
+        quantity: 1,
+        rate: formatMoney(totalAmount),
+        total: formatMoney(totalAmount),
+      },
+    ],
+  };
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not encode PDF attachment."));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",").pop() : result;
+      resolve(base64 || "");
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function downloadReceiptPdfFile() {
