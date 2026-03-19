@@ -2638,7 +2638,7 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
       { label: "Method", value: formatInvoicePaymentModeLabel(invoice) },
       { label: "Reference", value: reference, mono: true },
     ],
-    note: "No further payment action is required.",
+    note: "",
   };
 }
 
@@ -2844,51 +2844,52 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
 
     let cursorY = pageHeight - marginTop;
     if (firstPage) {
+      drawInvoicePdfBrand(page, fonts, colors, marginX, cursorY - 2);
       page.drawText("Invoice", {
-        x: marginX,
-        y: cursorY - 32,
-        font: fonts.bold,
-        size: 28,
+        x: pageWidth - marginX - fonts.regular.widthOfTextAtSize("Invoice", 11),
+        y: cursorY - 12,
+        font: fonts.regular,
+        size: 11,
         color: colors.text,
       });
-      page.drawText(reference, {
-        x: marginX,
-        y: cursorY - 54,
-        font: fonts.mono,
-        size: 10,
-        color: colors.muted,
-      });
       page.drawText(issueDate, {
-        x: marginX,
-        y: cursorY - 70,
-        font: fonts.regular,
-        size: 10,
+        x: pageWidth - marginX - fonts.mono.widthOfTextAtSize(issueDate, 9),
+        y: cursorY - 30,
+        font: fonts.mono,
+        size: 9,
         color: colors.muted,
       });
-      drawInvoicePdfBrand(page, fonts, colors, pageWidth - marginX - 106, cursorY - 2);
-      cursorY -= 90;
+      page.drawText(reference, {
+        x: pageWidth - marginX - fonts.mono.widthOfTextAtSize(reference, 9),
+        y: cursorY - 44,
+        font: fonts.mono,
+        size: 9,
+        color: colors.muted,
+      });
+      cursorY -= 58;
 
-      const cardGap = 14;
-      const cardWidth = (contentWidth - cardGap) / 2;
-      const topRowHeight = 118;
-      const metaRowHeight = 72;
+      page.drawLine({
+        start: { x: marginX, y: cursorY },
+        end: { x: pageWidth - marginX, y: cursorY },
+        thickness: 1,
+        color: colors.stroke,
+        opacity: 0.7,
+      });
+      cursorY -= 18;
 
-      drawInvoicePdfCard(page, colors, marginX, cursorY, cardWidth, topRowHeight);
-      drawInvoicePdfCard(page, colors, marginX + cardWidth + cardGap, cursorY, cardWidth, topRowHeight);
-
-      const billedToTop = cursorY - 18;
+      const partyGap = 18;
+      const partyWidth = (contentWidth - partyGap) / 2;
+      const billedToTop = cursorY;
       page.drawText("Billed to", {
-        x: marginX + 16,
+        x: marginX,
         y: billedToTop - 9,
         font: fonts.regular,
         size: 9,
         color: colors.muted,
       });
-      page.drawText(
-        fitPdfText(profile.companyName || "Client account", fonts.bold, 13, cardWidth - 32),
-        {
-        x: marginX + 16,
-        y: billedToTop - 32,
+      page.drawText(fitPdfText(profile.companyName || "Client account", fonts.bold, 13, partyWidth), {
+        x: marginX,
+        y: billedToTop - 31,
         font: fonts.bold,
         size: 13,
         color: colors.text,
@@ -2899,92 +2900,95 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         ...splitInvoiceAddressLines(profile.billingAddress),
         profile.taxId,
       ].filter(Boolean);
-      let billedToLineY = billedToTop - 52;
+      let billedToLineY = billedToTop - 50;
       billedToLines.slice(0, 4).forEach((line, index) => {
         const valueFont = index === billedToLines.length - 1 ? fonts.mono : fonts.regular;
-        const valueLines = wrapPdfText(line, valueFont, 9, cardWidth - 32, 1);
+        const valueLines = wrapPdfText(line, valueFont, 9, partyWidth, 1);
         if (valueLines[0]) {
           page.drawText(valueLines[0], {
-            x: marginX + 16,
+            x: marginX,
             y: billedToLineY,
             font: valueFont,
             size: 9,
             color: index === billedToLines.length - 1 ? colors.text : colors.muted,
           });
-          billedToLineY -= 18;
+          billedToLineY -= 16;
         }
       });
 
-      const billedByX = marginX + cardWidth + cardGap + 16;
-      const billedByTop = cursorY - 18;
+      const billedByX = marginX + partyWidth + partyGap;
       page.drawText("Billed by", {
         x: billedByX,
-        y: billedByTop - 9,
+        y: billedToTop - 9,
         font: fonts.regular,
         size: 9,
         color: colors.muted,
       });
-      page.drawText(
-        fitPdfText(issuer.legalName, fonts.bold, 13, cardWidth - 32),
-        {
-          x: billedByX,
-          y: billedByTop - 32,
-          font: fonts.bold,
-          size: 13,
-          color: colors.text,
-        }
-      );
+      page.drawText(fitPdfText(issuer.legalName, fonts.bold, 13, partyWidth), {
+        x: billedByX,
+        y: billedToTop - 31,
+        font: fonts.bold,
+        size: 13,
+        color: colors.text,
+      });
       const billedByLines = [
         issuer.brandName,
         issuer.descriptor,
         issuer.jurisdiction,
         issuer.email,
       ].filter(Boolean);
-      let billedByLineY = billedByTop - 52;
+      let billedByLineY = billedToTop - 50;
       billedByLines.forEach((line) => {
-        const lines = wrapPdfText(line, fonts.regular, 9, cardWidth - 32, 1);
-        if (lines[0]) {
-          page.drawText(lines[0], {
+        const valueLines = wrapPdfText(line, fonts.regular, 9, partyWidth, 1);
+        if (valueLines[0]) {
+          page.drawText(valueLines[0], {
             x: billedByX,
             y: billedByLineY,
             font: fonts.regular,
             size: 9,
             color: colors.muted,
           });
-          billedByLineY -= 18;
+          billedByLineY -= 16;
         }
       });
 
-      cursorY -= topRowHeight + cardGap;
+      cursorY -= 96;
+      page.drawLine({
+        start: { x: marginX, y: cursorY },
+        end: { x: pageWidth - marginX, y: cursorY },
+        thickness: 1,
+        color: colors.stroke,
+        opacity: 0.7,
+      });
+      cursorY -= 16;
 
-      const metaGap = 10;
+      const metaGap = 18;
       const metaWidth = (contentWidth - metaGap * 3) / 4;
-      const metaCards = [
+      const metaEntries = [
         { label: "Invoice no.", value: reference, mono: true },
         { label: "Invoice date", value: issueDate, mono: true },
         { label: dueOrStatusLabel, value: dueOrStatusValue, mono: invoiceRequiresManualSettlement(invoice) },
         { label: "Payment", value: formatInvoicePaymentModeLabel(invoice), mono: false },
       ];
-      metaCards.forEach((entry, index) => {
-        const cardX = marginX + index * (metaWidth + metaGap);
+      metaEntries.forEach((entry, index) => {
+        const x = marginX + index * (metaWidth + metaGap);
         const valueFont = entry.mono ? fonts.mono : fonts.regular;
-        drawInvoicePdfCard(page, colors, cardX, cursorY, metaWidth, metaRowHeight);
         page.drawText(entry.label, {
-          x: cardX + 14,
-          y: cursorY - 18,
+          x,
+          y: cursorY - 8,
           font: fonts.regular,
           size: 8,
           color: colors.muted,
         });
-        page.drawText(fitPdfText(entry.value, valueFont, 11, metaWidth - 28), {
-          x: cardX + 14,
-          y: cursorY - 42,
+        page.drawText(fitPdfText(entry.value, valueFont, 10.5, metaWidth), {
+          x,
+          y: cursorY - 28,
           font: valueFont,
-          size: 11,
+          size: 10.5,
           color: colors.text,
         });
       });
-      cursorY -= metaRowHeight + tableGap;
+      cursorY -= 44 + tableGap;
     } else {
       cursorY -= 6;
     }
@@ -3176,16 +3180,18 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         paymentWidth,
         { labelWidth: 72, rowGap: 15, labelSize: 8, valueSize: 9 }
       );
-      const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, paymentWidth, 2);
-      noteLines.forEach((line, index) => {
-        page.drawText(line, {
-          x: paymentX,
-          y: settlementTop - 108 - index * 11,
-          font: fonts.regular,
-          size: 8,
-          color: colors.muted,
+      if (settlement.note) {
+        const noteLines = wrapPdfText(settlement.note, fonts.regular, 8, paymentWidth, 2);
+        noteLines.forEach((line, index) => {
+          page.drawText(line, {
+            x: paymentX,
+            y: settlementTop - 108 - index * 11,
+            font: fonts.regular,
+            size: 8,
+            color: colors.muted,
+          });
         });
-      });
+      }
 
       page.drawLine({
         start: { x: summaryX - 18, y: settlementTop - settlementHeight + 16 },

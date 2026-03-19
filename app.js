@@ -7415,10 +7415,7 @@ function buildInvoiceViewModel(record) {
         `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
         `Reference ${invoiceTracking.display}`,
       ]
-    : [
-        `Payment was already collected via ${paymentMethodLabel.toLowerCase()}.`,
-        "No additional bank transfer is required.",
-      ];
+    : [];
   const serviceRows = [
     {
       service: serviceType,
@@ -7603,21 +7600,21 @@ function buildInvoiceHeaderHtml(viewModel) {
   ].filter(Boolean);
 
   return `
-    <div class="invoice-topline">
-      <div class="invoice-title-block">
-        <h1 class="invoice-title">${escapeHtml(tr("Invoice"))}</h1>
-        <div class="receipt-top-meta-lines mono">
-          <span>${escapeHtml(invoiceNumber)}</span>
-          <span>${escapeHtml(issuedAt)}</span>
-        </div>
-      </div>
+    <div class="receipt-topline">
       <div class="receipt-brand">
         <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
+      </div>
+      <div class="receipt-top-meta">
+        <span class="receipt-chip">${escapeHtml(tr("Invoice"))}</span>
+        <div class="receipt-top-meta-lines mono">
+          <span>${escapeHtml(issuedAt)}</span>
+          <span>${escapeHtml(invoiceNumber)}</span>
+        </div>
       </div>
     </div>
 
     <div class="invoice-party-grid">
-      <section class="receipt-panel invoice-party-card">
+      <section class="invoice-party-column">
         <div class="receipt-panel-title">${escapeHtml("Billed to")}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
@@ -7629,7 +7626,7 @@ function buildInvoiceHeaderHtml(viewModel) {
         </div>
       </section>
 
-      <section class="receipt-panel invoice-party-card">
+      <section class="invoice-party-column">
         <div class="receipt-panel-title">${escapeHtml("Billed by")}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
@@ -7642,23 +7639,23 @@ function buildInvoiceHeaderHtml(viewModel) {
       </section>
     </div>
 
-    <div class="invoice-meta-grid">
-      <section class="receipt-panel invoice-meta-card">
+    <div class="invoice-meta-strip">
+      <div class="invoice-meta-item">
         <div class="receipt-panel-title">${escapeHtml("Invoice no.")}</div>
         <div class="invoice-meta-value mono">${escapeHtml(invoiceNumber)}</div>
-      </section>
-      <section class="receipt-panel invoice-meta-card">
+      </div>
+      <div class="invoice-meta-item">
         <div class="receipt-panel-title">${escapeHtml("Invoice date")}</div>
         <div class="invoice-meta-value mono">${escapeHtml(issuedAt)}</div>
-      </section>
-      <section class="receipt-panel invoice-meta-card">
+      </div>
+      <div class="invoice-meta-item">
         <div class="receipt-panel-title">${escapeHtml(isMonthlyBilling ? "Due date" : "Status")}</div>
         <div class="invoice-meta-value">${escapeHtml(isMonthlyBilling ? dueAt : "Paid automatically")}</div>
-      </section>
-      <section class="receipt-panel invoice-meta-card">
+      </div>
+      <div class="invoice-meta-item">
         <div class="receipt-panel-title">${escapeHtml("Payment")}</div>
         <div class="invoice-meta-value">${escapeHtml(paymentMethodLabel)}</div>
-      </section>
+      </div>
     </div>
   `;
 }
@@ -7775,9 +7772,11 @@ function buildInvoiceSettlementHtml(viewModel) {
           <span class="invoice-payment-badge${viewModel.isMonthlyBilling ? "" : " is-success"}">${escapeHtml(
             viewModel.isMonthlyBilling ? "Monthly billing" : "Already settled"
           )}</span>
-          <div class="invoice-payment-lines">
-            ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-          </div>
+          ${viewModel.settlementLines.length
+            ? `<div class="invoice-payment-lines">
+                ${viewModel.settlementLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+              </div>`
+            : ""}
         </div>
         <div class="invoice-summary-block">
           ${summaryRows
