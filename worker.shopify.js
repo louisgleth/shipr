@@ -4111,34 +4111,93 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
       html, body {
         margin: 0;
         padding: 0;
-        width: 1000px;
-        min-height: 1400px;
         background: #000000;
       }
       body {
         color: #f1f4fb;
         -webkit-font-smoothing: antialiased;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body.invoice-native-print-view {
+        background: #000000;
+        color: #f1f4fb;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
       .receipt-export-host {
         position: static !important;
         top: auto !important;
         left: auto !important;
-        width: 860px !important;
+        width: 210mm !important;
         margin: 0 auto !important;
         pointer-events: auto !important;
         z-index: auto !important;
       }
       #receiptDocument {
-        width: 860px;
+        width: 210mm;
         margin: 0 auto;
+        min-height: 297mm;
       }
       #receiptDocument.receipt-print-pages {
-        display: grid;
-        gap: 0;
+        display: block;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document {
+        width: 210mm !important;
+        min-height: 297mm !important;
+        margin: 0 auto !important;
+        break-after: page;
+        page-break-after: always;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document:last-child {
+        break-after: auto;
+        page-break-after: auto;
       }
       #receiptDocument .receipt-table-wrap {
         overflow: visible !important;
         max-height: none !important;
+      }
+      .invoice-native-print-view .invoice-party-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+      .invoice-native-print-view .invoice-meta-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      }
+      .invoice-native-print-view .receipt-topline {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+      }
+      .invoice-native-print-view .receipt-top-meta {
+        justify-items: end !important;
+      }
+      .invoice-native-print-view .receipt-top-meta-lines {
+        text-align: right !important;
+      }
+      .invoice-native-print-view .invoice-settlement-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        min-height: 50px !important;
+      }
+      .invoice-native-print-view .invoice-settlement-grid.has-transfer {
+        grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr) !important;
+      }
+      .invoice-native-print-view .invoice-transfer-block {
+        padding: 0 28px !important;
+        border-left: 1px solid var(--stroke) !important;
+      }
+      .invoice-native-print-view .invoice-summary-block {
+        padding: 0 14px 0 28px !important;
+        border-left: 1px solid var(--stroke) !important;
+        border-top: 0 !important;
+      }
+      .invoice-native-print-view .receipt-footer {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+      }
+      @page {
+        size: A4;
+        margin: 0;
       }
     </style>
     <script>
@@ -4147,7 +4206,7 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
       window.__SHIPIDE_PRINT_ERROR__ = "";
     </script>
   </head>
-  <body>
+  <body class="invoice-native-print-view">
     <div class="receipt-export-host" aria-hidden="true">
       <div id="receiptDocument" class="receipt-document"></div>
     </div>
@@ -4199,117 +4258,20 @@ async function renderSelectableInvoicePdfOnPage(page, env, payload = {}, options
   if (printError) {
     throw new Error(printError);
   }
-  const pageSnapshots = await page.evaluate(() => {
-    const root = document.getElementById("receiptDocument");
-    if (!root) {
-      throw new Error("Invoice print container is missing.");
-    }
-    const pages =
-      root.classList.contains("receipt-document")
-        ? [root]
-        : Array.from(root.querySelectorAll(":scope > .receipt-document"));
-
-    const collectTextRuns = (pageNode) => {
-      const pageRect = pageNode.getBoundingClientRect();
-      const elements = Array.from(pageNode.querySelectorAll("*"));
-      return elements
-        .filter((el) => {
-          if (!(el instanceof HTMLElement)) return false;
-          if (el.children.length > 0) return false;
-          return Boolean(String(el.textContent || "").trim());
-        })
-        .map((el) => {
-          const rect = el.getBoundingClientRect();
-          const style = window.getComputedStyle(el);
-          return {
-            text: String(el.textContent || "").replace(/\s+/g, " ").trim(),
-            x: rect.left - pageRect.left,
-            y: rect.top - pageRect.top,
-            width: rect.width,
-            height: rect.height,
-            fontSize: Number.parseFloat(style.fontSize) || rect.height || 12,
-            fontFamily: style.fontFamily || "",
-            fontWeight: style.fontWeight || "",
-          };
-        })
-        .filter((item) => item.text);
-    };
-
-    return pages.map((pageNode) => {
-      const rect = pageNode.getBoundingClientRect();
-      return {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-        textRuns: collectTextRuns(pageNode),
-      };
-    });
+  await page.emulateMediaType("print");
+  const pdfBytes = await page.pdf({
+    format: "A4",
+    printBackground: true,
+    preferCSSPageSize: true,
+    margin: {
+      top: "0",
+      right: "0",
+      bottom: "0",
+      left: "0",
+    },
   });
-
-  const pdf = await PDFDocument.create();
-  const fonts = {
-    regular: await pdf.embedFont(StandardFonts.Helvetica),
-    mono: await pdf.embedFont(StandardFonts.Courier),
-  };
-  const pageWidth = 595.28;
-  const pageHeight = 841.89;
-  const margin = 0;
-  const contentWidth = pageWidth - margin * 2;
-  const background = rgb(0, 0, 0);
-
-  for (const snapshot of pageSnapshots) {
-    const clip = {
-      x: Math.max(0, Math.floor(snapshot.x)),
-      y: Math.max(0, Math.floor(snapshot.y)),
-      width: Math.max(1, Math.ceil(snapshot.width)),
-      height: Math.max(1, Math.ceil(snapshot.height)),
-    };
-    const pngBytes = await page.screenshot({
-      type: "png",
-      clip,
-      captureBeyondViewport: true,
-    });
-    const pdfPage = pdf.addPage([pageWidth, pageHeight]);
-    pdfPage.drawRectangle({
-      x: 0,
-      y: 0,
-      width: pageWidth,
-      height: pageHeight,
-      color: background,
-    });
-    const png = await pdf.embedPng(pngBytes);
-    const scale = contentWidth / clip.width;
-    const imageHeight = clip.height * scale;
-    pdfPage.drawImage(png, {
-      x: margin,
-      y: pageHeight - margin - imageHeight,
-      width: contentWidth,
-      height: imageHeight,
-    });
-
-    snapshot.textRuns.forEach((run) => {
-      const font = /mono/i.test(run.fontFamily) ? fonts.mono : fonts.regular;
-      const fontSize = Math.max(4, run.fontSize * scale);
-      const baselineY =
-        pageHeight
-        - margin
-        - ((run.y + run.height) * scale)
-        + fontSize * 0.2;
-      pdfPage.drawText(run.text, {
-        x: margin + run.x * scale,
-        y: baselineY,
-        font,
-        size: fontSize,
-        opacity: 0.001,
-        maxWidth: Math.max(fontSize, run.width * scale),
-        lineHeight: fontSize * 1.1,
-      });
-    });
-  }
-
   return {
-    bytes: await pdf.save(),
+    bytes: pdfBytes,
     filename:
       String(payload?.filename || buildInvoicePdfFilename(payload?.invoice || {})).trim()
       || "invoice-shipide.pdf",
@@ -4325,8 +4287,7 @@ async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
     let page = null;
     try {
       page = await browser.newPage();
-      await page.emulateMediaType("screen");
-      await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
+      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
       return await renderSelectableInvoicePdfOnPage(page, env, payload, options);
     } finally {
       if (page) {
@@ -4348,8 +4309,7 @@ async function renderSelectableInvoicePdfBatch(env, payloads = [], options = {})
     let page = null;
     try {
       page = await browser.newPage();
-      await page.emulateMediaType("screen");
-      await page.setViewport({ width: 1000, height: 1400, deviceScaleFactor: 2 });
+      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
       const rendered = [];
       for (const payload of jobs) {
         rendered.push(await renderSelectableInvoicePdfOnPage(page, env, payload, options));

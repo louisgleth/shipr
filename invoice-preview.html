@@ -61,6 +61,55 @@
         color: rgba(241, 244, 251, 0.62);
       }
 
+      .invoice-preview-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+      }
+
+      .invoice-preview-action {
+        height: 38px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f4f6fb;
+        font: inherit;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+      }
+
+      .invoice-preview-action:hover {
+        border-color: rgba(119, 71, 227, 0.55);
+        background: rgba(119, 71, 227, 0.12);
+        color: #ffffff;
+      }
+
+      .invoice-preview-native-tools {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 20;
+        display: none;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .invoice-preview-native-tools.is-visible {
+        display: flex;
+      }
+
+      .invoice-preview-native-link {
+        color: rgba(241, 244, 251, 0.66);
+        text-decoration: none;
+        font-size: 12px;
+      }
+
+      .invoice-preview-native-link:hover {
+        color: #ffffff;
+      }
+
       .invoice-preview-control {
         display: grid;
         gap: 6px;
@@ -123,6 +172,176 @@
       #receiptDocument {
         width: 860px;
         margin: 0 auto;
+      }
+
+      body.is-native-print-view {
+        background: #000000;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      body.is-native-print-view .invoice-preview-page {
+        min-height: auto;
+        grid-template-rows: 1fr;
+      }
+
+      body.is-native-print-view .invoice-preview-toolbar {
+        display: none;
+      }
+
+      body.is-native-print-view .invoice-preview-stage {
+        min-height: 100vh;
+        padding: 0;
+        overflow: visible;
+        background: #000000;
+      }
+
+      body.is-native-print-view .invoice-preview-canvas {
+        padding: 0;
+      }
+
+      body.is-native-print-view .receipt-export-host,
+      body.is-native-print-view #receiptDocument {
+        width: 210mm !important;
+        max-width: 210mm !important;
+      }
+
+      body.is-native-print-view #receiptDocument {
+        min-height: 297mm;
+      }
+
+      body.is-native-print-view .invoice-party-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      body.is-native-print-view .invoice-meta-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      }
+
+      body.is-native-print-view .receipt-topline {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+      }
+
+      body.is-native-print-view .receipt-top-meta {
+        justify-items: end !important;
+      }
+
+      body.is-native-print-view .receipt-top-meta-lines {
+        text-align: right !important;
+      }
+
+      body.is-native-print-view .invoice-settlement-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        min-height: 50px !important;
+      }
+
+      body.is-native-print-view .invoice-settlement-grid.has-transfer {
+        grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr) !important;
+      }
+
+      body.is-native-print-view .invoice-transfer-block {
+        padding: 0 28px !important;
+        border-left: 1px solid var(--stroke) !important;
+      }
+
+      body.is-native-print-view .invoice-summary-block {
+        padding: 0 14px 0 28px !important;
+        border-left: 1px solid var(--stroke) !important;
+        border-top: 0 !important;
+      }
+
+      body.is-native-print-view .receipt-footer {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        html,
+        body {
+          margin: 0;
+          background: #000000 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        .invoice-preview-native-tools {
+          display: none !important;
+        }
+
+        .invoice-preview-page,
+        .invoice-preview-stage,
+        .invoice-preview-canvas,
+        .receipt-export-host,
+        #receiptDocument {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        .receipt-export-host,
+        #receiptDocument {
+          width: 210mm !important;
+          max-width: 210mm !important;
+        }
+
+        #receiptDocument {
+          min-height: 297mm !important;
+        }
+
+        .invoice-party-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .invoice-meta-strip {
+          grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        }
+
+        .receipt-topline {
+          flex-direction: row !important;
+          justify-content: space-between !important;
+          align-items: flex-start !important;
+        }
+
+        .receipt-top-meta {
+          justify-items: end !important;
+        }
+
+        .receipt-top-meta-lines {
+          text-align: right !important;
+        }
+
+        .invoice-settlement-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          min-height: 50px !important;
+        }
+
+        .invoice-settlement-grid.has-transfer {
+          grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr) !important;
+        }
+
+        .invoice-transfer-block {
+          padding: 0 28px !important;
+          border-left: 1px solid var(--stroke) !important;
+        }
+
+        .invoice-summary-block {
+          padding: 0 14px 0 28px !important;
+          border-left: 1px solid var(--stroke) !important;
+          border-top: 0 !important;
+        }
+
+        .receipt-footer {
+          flex-direction: row !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+        }
       }
 
       @media (max-width: 960px) {
@@ -204,7 +423,22 @@
         <div class="invoice-preview-status" id="invoicePreviewStatus">
           Waiting for renderer...
         </div>
+
+        <div class="invoice-preview-actions">
+          <button type="button" class="invoice-preview-action" id="openNativePrintView">
+            HTML/CSS PDF Test
+          </button>
+        </div>
       </form>
+
+      <div class="invoice-preview-native-tools" id="invoicePreviewNativeTools">
+        <button type="button" class="invoice-preview-action" id="triggerNativePrint">
+          Print / Save PDF
+        </button>
+        <a class="invoice-preview-native-link" id="backToEditorLink" href="/invoice-preview">
+          Back to editor
+        </a>
+      </div>
 
       <div class="invoice-preview-stage">
         <div class="invoice-preview-canvas">
@@ -217,6 +451,8 @@
 
     <script src="/app.js"></script>
     <script>
+      const URL_PARAMS = new URLSearchParams(window.location.search);
+      const IS_NATIVE_PRINT_VIEW = URL_PARAMS.get("native") === "1";
       const DEFAULT_STATE = Object.freeze({
         company: "Atelier Meridian",
         paymentMode: "invoice",
@@ -230,7 +466,16 @@
       const STATUS_EL = document.getElementById("invoicePreviewStatus");
       const FORM_EL = document.getElementById("invoicePreviewControls");
       const STAGE_INPUT = document.getElementById("previewStage");
+      const OPEN_NATIVE_PRINT_VIEW_BUTTON = document.getElementById("openNativePrintView");
+      const NATIVE_TOOLS_EL = document.getElementById("invoicePreviewNativeTools");
+      const TRIGGER_NATIVE_PRINT_BUTTON = document.getElementById("triggerNativePrint");
+      const BACK_TO_EDITOR_LINK = document.getElementById("backToEditorLink");
       let previewVersion = "";
+
+      if (IS_NATIVE_PRINT_VIEW) {
+        document.body.classList.add("is-native-print-view");
+        NATIVE_TOOLS_EL.classList.add("is-visible");
+      }
 
       function normalizeState(raw = {}) {
         const serviceLines = String(Math.max(1, Math.min(5, Number(raw.serviceLines) || 1)));
@@ -290,6 +535,9 @@
         params.set("lines", nextState.serviceLines);
         params.set("rate", nextState.rate);
         params.set("ref", nextState.reference);
+        if (IS_NATIVE_PRINT_VIEW) {
+          params.set("native", "1");
+        }
         const nextUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.replaceState({}, "", nextUrl);
         return nextState;
@@ -381,6 +629,20 @@
         };
       }
 
+      function buildNativePrintUrl() {
+        const state = normalizeState(readFormState());
+        const params = new URLSearchParams();
+        params.set("company", state.company);
+        params.set("mode", state.paymentMode);
+        params.set("stage", state.reminderStage);
+        params.set("qty", state.quantity);
+        params.set("lines", state.serviceLines);
+        params.set("rate", state.rate);
+        params.set("ref", state.reference);
+        params.set("native", "1");
+        return `${window.location.pathname}?${params.toString()}`;
+      }
+
       async function waitForRenderer() {
         for (let index = 0; index < 200; index += 1) {
           if (window.__shipideInvoiceRenderer) return window.__shipideInvoiceRenderer;
@@ -398,7 +660,20 @@
           { reminderStage: Number(state.reminderStage) || 0 }
         );
         renderer.renderViewModel(viewModel);
-        STATUS_EL.textContent = "Live preview is up to date.";
+        if (IS_NATIVE_PRINT_VIEW) {
+          STATUS_EL.textContent = "Native print view is up to date.";
+          BACK_TO_EDITOR_LINK.href = `${window.location.pathname}?${new URLSearchParams({
+            company: state.company,
+            mode: state.paymentMode,
+            stage: state.reminderStage,
+            qty: state.quantity,
+            lines: state.serviceLines,
+            rate: state.rate,
+            ref: state.reference,
+          }).toString()}`;
+        } else {
+          STATUS_EL.textContent = "Live preview is up to date.";
+        }
       }
 
       async function fetchPreviewVersion() {
@@ -444,6 +719,18 @@
       FORM_EL.addEventListener("change", () => {
         void renderPreview();
       });
+
+      if (OPEN_NATIVE_PRINT_VIEW_BUTTON) {
+        OPEN_NATIVE_PRINT_VIEW_BUTTON.addEventListener("click", () => {
+          window.open(buildNativePrintUrl(), "_blank", "noopener");
+        });
+      }
+
+      if (TRIGGER_NATIVE_PRINT_BUTTON) {
+        TRIGGER_NATIVE_PRINT_BUTTON.addEventListener("click", () => {
+          window.print();
+        });
+      }
 
       (async () => {
         const mergedState = normalizeState({

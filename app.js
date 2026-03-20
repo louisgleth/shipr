@@ -9124,7 +9124,7 @@ async function buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord) {
   for (const job of jobs) {
     const exportData = await buildInvoicePdfExportFromViewModel(job.viewModel, job.filename, {
       allowRasterFallback: false,
-      preferServerRender: false,
+      preferServerRender: true,
     });
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
