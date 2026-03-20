@@ -1332,6 +1332,7 @@ const appLogoLottie = document.getElementById("appLogoLottie");
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
+const openBuilderPageButton = document.getElementById("openBuilderPage");
 const openAdminPageButton = document.getElementById("openAdminPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
@@ -6661,6 +6662,7 @@ function setMainView(view, options = {}) {
 
   const applyView = () => {
     currentMainView = nextView;
+    syncTopbarNavState(nextView);
     if (builderPage) {
       builderPage.classList.toggle("is-hidden", nextView !== "builder");
     }
@@ -6723,6 +6725,28 @@ function setMainView(view, options = {}) {
   }
 }
 
+function syncTopbarNavState(view = currentMainView) {
+  const nextView =
+    view === "account" ||
+    view === "admin" ||
+    view === "history" ||
+    view === "reports" ||
+    view === "builder"
+      ? view
+      : "builder";
+  const navButtons = [
+    [openBuilderPageButton, "builder"],
+    [openAccountPageButton, "account"],
+    [openAdminPageButton, "admin"],
+    [openHistoryPageButton, "history"],
+    [openReportsPageButton, "reports"],
+  ];
+  navButtons.forEach(([button, targetView]) => {
+    if (!button) return;
+    button.classList.toggle("is-active", nextView === targetView);
+  });
+}
+
 function setAccountPageVisible(visible, options = {}) {
   setMainView(visible ? "account" : "builder", options);
 }
@@ -6773,7 +6797,9 @@ function resetIbanTopupResult() {
   if (ibanResultBic) ibanResultBic.textContent = "--";
   if (ibanResultReference) ibanResultReference.textContent = "--";
   if (ibanResultEta) ibanResultEta.textContent = "Instant / Up to 3 days";
-  if (ibanResultNote) ibanResultNote.textContent = "";
+  if (ibanResultNote) {
+    ibanResultNote.textContent = tr("Transfers are credited once received (typically 1-2 business days).");
+  }
 }
 
 function setIbanTopupModalOpen(open, options = {}) {
@@ -6818,7 +6844,9 @@ function populateIbanTopupResult(payload) {
     ibanResultEta.textContent = "Instant / Up to 3 days";
   }
   if (ibanResultNote) {
-    ibanResultNote.textContent = String(instructions.note || "");
+    ibanResultNote.textContent =
+      String(instructions.note || "").trim()
+      || tr("Transfers are credited once received (typically 1-2 business days).");
   }
   if (ibanTopupResult) {
     ibanTopupResult.classList.remove("is-hidden");
@@ -9222,11 +9250,7 @@ function selectAccountRecord(index) {
 
   const totals = calculateRecordTotals(record);
   if (accountPreviewMeta) {
-    accountPreviewMeta.textContent = tr("{service} • {count} labels • Total {amount}", {
-      service: serviceType,
-      count: totals.quantity,
-      amount: formatMoney(totals.totalIncVat),
-    });
+    accountPreviewMeta.textContent = "";
   }
 
   if (accountDownloadPdf) {
@@ -11581,6 +11605,9 @@ function setAuthView(session, options = {}) {
   if (openAccountPageButton) {
     openAccountPageButton.classList.toggle("is-hidden", !isAuthed);
   }
+  if (openBuilderPageButton) {
+    openBuilderPageButton.classList.toggle("is-hidden", !isAuthed);
+  }
   if (openAdminPageButton) {
     openAdminPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
   }
@@ -13371,6 +13398,13 @@ if (openAccountPageButton) {
       loadWarehouseSettings({ quiet: true }),
       loadBillingOverview({ quiet: true }),
     ]);
+  });
+}
+
+if (openBuilderPageButton) {
+  openBuilderPageButton.addEventListener("click", () => {
+    setMainView("builder");
+    updateRoute({ view: "builder", step: state.step }, { replace: false });
   });
 }
 
