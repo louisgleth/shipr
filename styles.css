@@ -1009,6 +1009,7 @@ body {
   padding: 0;
   border-radius: 0;
   border: 0;
+  border-left: 1px solid var(--stroke);
   background: transparent;
   color: var(--muted);
   font-size: var(--fs-2xs);
@@ -1016,7 +1017,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-left: 8px;
+  margin-left: 14px;
+  padding-left: 18px;
 }
 
 .account-chip-dot {
@@ -7499,6 +7501,7 @@ input.is-invalid {
 
   .account-chip {
     margin-left: 0;
+    padding-left: 14px;
   }
 
   .auth-actions {
