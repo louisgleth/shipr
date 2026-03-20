@@ -1006,10 +1006,10 @@ body {
   align-items: center;
   gap: 6px;
   height: 34px;
+  position: relative;
   padding: 0;
   border-radius: 0;
   border: 0;
-  border-left: 1px solid var(--stroke);
   background: transparent;
   color: var(--muted);
   font-size: var(--fs-2xs);
@@ -1017,8 +1017,18 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-left: 14px;
-  padding-left: 18px;
+  margin-left: 24px;
+}
+
+.account-chip::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 1px;
+  height: 18px;
+  background: var(--stroke);
+  transform: translateY(-50%);
 }
 
 .account-chip-dot {
@@ -7501,7 +7511,10 @@ input.is-invalid {
 
   .account-chip {
     margin-left: 0;
-    padding-left: 14px;
+  }
+
+  .account-chip::before {
+    display: none;
   }
 
   .auth-actions {
