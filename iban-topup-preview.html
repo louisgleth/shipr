@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipide IBAN Top-Up Preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #111111;
+      }
+
+      body {
+        color: #f4f6fb;
+      }
+
+      .iban-preview-page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .iban-preview-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 14px;
+        padding: 18px 22px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+          linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(17, 17, 17, 0.94));
+        backdrop-filter: blur(14px);
+      }
+
+      .iban-preview-title {
+        margin-right: 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .iban-preview-title h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 500;
+      }
+
+      .iban-preview-title p,
+      .iban-preview-status {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(241, 244, 251, 0.62);
+      }
+
+      .iban-preview-control {
+        display: grid;
+        gap: 6px;
+      }
+
+      .iban-preview-control label {
+        font-size: 11px;
+        color: rgba(241, 244, 251, 0.58);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .iban-preview-control input,
+      .iban-preview-control select {
+        min-width: 118px;
+        height: 38px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f4f6fb;
+        font: inherit;
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .iban-preview-control input:focus,
+      .iban-preview-control select:focus {
+        border-color: rgba(119, 71, 227, 0.7);
+        box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.18);
+      }
+
+      .iban-preview-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+      }
+
+      .iban-preview-action {
+        height: 38px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f4f6fb;
+        font: inherit;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+      }
+
+      .iban-preview-action:hover {
+        border-color: rgba(119, 71, 227, 0.55);
+        background: rgba(119, 71, 227, 0.12);
+        color: #ffffff;
+      }
+
+      .iban-preview-stage {
+        min-height: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+      }
+
+      .iban-preview-shell {
+        width: min(620px, calc(100vw - 36px));
+      }
+
+      .iban-preview-meta {
+        margin: 0 0 14px;
+        font-size: 12px;
+        color: rgba(241, 244, 251, 0.5);
+        text-align: center;
+      }
+
+      .iban-preview-modal {
+        position: relative;
+        display: grid;
+        gap: 0;
+      }
+
+      .iban-preview-result-wrap {
+        display: grid;
+        gap: 12px;
+      }
+
+      @media (max-width: 720px) {
+        .iban-preview-toolbar {
+          padding: 16px;
+        }
+
+        .iban-preview-stage {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="iban-preview-page">
+      <form class="iban-preview-toolbar" id="ibanPreviewControls" autocomplete="off">
+        <div class="iban-preview-title">
+          <h1>IBAN Top-Up Preview</h1>
+          <p>Replay the loading state locally while styles auto-refresh.</p>
+        </div>
+
+        <div class="iban-preview-control">
+          <label for="ibanPreviewDelay">Reveal delay</label>
+          <input id="ibanPreviewDelay" name="delay" type="number" min="0" step="50" value="1200" />
+        </div>
+
+        <div class="iban-preview-control">
+          <label for="ibanPreviewMode">Start mode</label>
+          <select id="ibanPreviewMode" name="mode">
+            <option value="replay">Replay</option>
+            <option value="loading">Loading only</option>
+            <option value="ready">Ready only</option>
+          </select>
+        </div>
+
+        <div class="iban-preview-control">
+          <label for="ibanPreviewReference">Reference</label>
+          <input id="ibanPreviewReference" name="reference" type="text" value="TP-24F8-Q7M2" />
+        </div>
+
+        <div class="iban-preview-status" id="ibanPreviewStatus">
+          Live preview is up to date.
+        </div>
+
+        <div class="iban-preview-actions">
+          <button type="button" class="iban-preview-action" id="ibanPreviewReplay">Replay</button>
+          <button type="button" class="iban-preview-action" id="ibanPreviewReady">Show ready</button>
+          <button type="button" class="iban-preview-action" id="ibanPreviewLoadingOnly">Loading only</button>
+        </div>
+      </form>
+
+      <div class="iban-preview-stage">
+        <div class="iban-preview-shell">
+          <p class="iban-preview-meta">Use this to tune the loader, reveal timing, and final transition before it hits the real billing flow.</p>
+          <div class="shopify-settings-modal iban-topup-modal iban-preview-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Top up by IBAN</span>
+              <button type="button" class="csv-modal-close" aria-label="Close preview">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body iban-topup-body">
+              <div class="iban-topup-loading" id="ibanPreviewLoading" aria-live="polite" aria-busy="true">
+                <span class="iban-topup-spinner" aria-hidden="true">
+                  <span class="iban-topup-spinner-bar"></span>
+                  <span class="iban-topup-spinner-bar"></span>
+                  <span class="iban-topup-spinner-bar"></span>
+                </span>
+                <div class="iban-topup-loading-copy">
+                  <strong class="iban-topup-loading-title">Preparing transfer instructions...</strong>
+                  <span class="iban-topup-loading-sub">Generating your transfer reference and bank details.</span>
+                </div>
+              </div>
+
+              <div class="iban-topup-result is-hidden" id="ibanPreviewResult">
+                <div class="iban-topup-eta-pill">Instant / Up to 3 days</div>
+                <div class="iban-topup-reference-block">
+                  <span class="iban-topup-kicker">Transfer Reference</span>
+                  <strong class="mono iban-topup-reference" id="ibanPreviewResultReference">TP-24F8-Q7M2</strong>
+                </div>
+                <div class="iban-topup-lines">
+                  <div class="iban-topup-line">
+                    <span>Beneficiary</span>
+                    <strong>Shipide</strong>
+                  </div>
+                  <div class="iban-topup-line">
+                    <span>IBAN</span>
+                    <strong class="mono">BE68 5390 0754 7034</strong>
+                  </div>
+                  <div class="iban-topup-line">
+                    <span>BIC</span>
+                    <strong class="mono">KREDBEBB</strong>
+                  </div>
+                </div>
+              </div>
+
+              <p class="shopify-settings-note iban-topup-footer-note" id="ibanPreviewNote">
+                Transfers are credited once received (typically 1-2 business days).
+              </p>
+
+              <div class="iban-topup-actions">
+                <button type="button" class="btn btn-secondary btn-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  <span>Copy Reference</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  <span>Copy IBAN</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const STORAGE_KEY = "shipide.iban-topup-preview.state.v1";
+      const FORM_EL = document.getElementById("ibanPreviewControls");
+      const STATUS_EL = document.getElementById("ibanPreviewStatus");
+      const LOADING_EL = document.getElementById("ibanPreviewLoading");
+      const RESULT_EL = document.getElementById("ibanPreviewResult");
+      const REFERENCE_EL = document.getElementById("ibanPreviewResultReference");
+      const REPLAY_BUTTON = document.getElementById("ibanPreviewReplay");
+      const READY_BUTTON = document.getElementById("ibanPreviewReady");
+      const LOADING_BUTTON = document.getElementById("ibanPreviewLoadingOnly");
+      let previewVersion = "";
+      let revealTimer = 0;
+
+      function normalizeState(raw = {}) {
+        const delay = String(Math.max(0, Number(raw.delay) || 0));
+        const mode = ["replay", "loading", "ready"].includes(raw.mode) ? raw.mode : "replay";
+        const reference = String(raw.reference || "TP-24F8-Q7M2").trim() || "TP-24F8-Q7M2";
+        return { delay, mode, reference };
+      }
+
+      function readStateFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return normalizeState({
+          delay: params.get("delay"),
+          mode: params.get("mode"),
+          reference: params.get("reference"),
+        });
+      }
+
+      function readStateFromStorage() {
+        try {
+          const stored = window.localStorage.getItem(STORAGE_KEY);
+          return stored ? normalizeState(JSON.parse(stored)) : normalizeState();
+        } catch (_error) {
+          return normalizeState();
+        }
+      }
+
+      function writeState(state) {
+        const next = normalizeState(state);
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        } catch (_error) {
+          // Preview-only state.
+        }
+        const params = new URLSearchParams();
+        params.set("delay", next.delay);
+        params.set("mode", next.mode);
+        params.set("reference", next.reference);
+        window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+        return next;
+      }
+
+      function applyStateToForm(state) {
+        FORM_EL.elements.delay.value = state.delay;
+        FORM_EL.elements.mode.value = state.mode;
+        FORM_EL.elements.reference.value = state.reference;
+        if (REFERENCE_EL) {
+          REFERENCE_EL.textContent = state.reference;
+        }
+      }
+
+      function readFormState() {
+        const formData = new window.FormData(FORM_EL);
+        return normalizeState({
+          delay: formData.get("delay"),
+          mode: formData.get("mode"),
+          reference: formData.get("reference"),
+        });
+      }
+
+      function clearReplayTimer() {
+        if (revealTimer) {
+          window.clearTimeout(revealTimer);
+          revealTimer = 0;
+        }
+      }
+
+      function showLoadingState() {
+        clearReplayTimer();
+        if (LOADING_EL) LOADING_EL.classList.remove("is-hidden");
+        if (RESULT_EL) {
+          RESULT_EL.classList.add("is-hidden");
+          RESULT_EL.classList.remove("is-revealed");
+        }
+      }
+
+      function showReadyState() {
+        clearReplayTimer();
+        if (LOADING_EL) LOADING_EL.classList.add("is-hidden");
+        if (RESULT_EL) {
+          RESULT_EL.classList.remove("is-hidden");
+          RESULT_EL.classList.remove("is-revealed");
+          void RESULT_EL.offsetWidth;
+          RESULT_EL.classList.add("is-revealed");
+        }
+      }
+
+      function replayAnimation() {
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+        showLoadingState();
+        const delay = Number(state.delay) || 0;
+        revealTimer = window.setTimeout(() => {
+          showReadyState();
+        }, delay);
+      }
+
+      async function fetchPreviewVersion() {
+        const response = await window.fetch(`/__preview-version?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`Preview version request failed (${response.status})`);
+        }
+        return response.json();
+      }
+
+      async function startPreviewPolling() {
+        try {
+          const initial = await fetchPreviewVersion();
+          previewVersion = initial.version || "";
+        } catch (_error) {
+          return;
+        }
+
+        window.setInterval(async () => {
+          try {
+            const next = await fetchPreviewVersion();
+            if (previewVersion && next.version && next.version !== previewVersion) {
+              STATUS_EL.textContent = "Change detected. Reloading preview...";
+              window.location.reload();
+              return;
+            }
+            previewVersion = next.version || previewVersion;
+          } catch (_error) {
+            // Ignore transient polling issues.
+          }
+        }, 900);
+      }
+
+      FORM_EL.addEventListener("submit", (event) => {
+        event.preventDefault();
+      });
+
+      FORM_EL.addEventListener("input", () => {
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+      });
+
+      FORM_EL.addEventListener("change", () => {
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+      });
+
+      REPLAY_BUTTON.addEventListener("click", () => {
+        FORM_EL.elements.mode.value = "replay";
+        replayAnimation();
+      });
+
+      READY_BUTTON.addEventListener("click", () => {
+        FORM_EL.elements.mode.value = "ready";
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+        showReadyState();
+      });
+
+      LOADING_BUTTON.addEventListener("click", () => {
+        FORM_EL.elements.mode.value = "loading";
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+        showLoadingState();
+      });
+
+      (async () => {
+        const state = normalizeState({
+          ...readStateFromStorage(),
+          ...readStateFromUrl(),
+        });
+        applyStateToForm(state);
+        writeState(state);
+        if (state.mode === "loading") {
+          showLoadingState();
+        } else if (state.mode === "ready") {
+          showReadyState();
+        } else {
+          replayAnimation();
+        }
+        await startPreviewPolling();
+      })();
+    </script>
+  </body>
+</html>

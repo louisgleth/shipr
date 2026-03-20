@@ -11,6 +11,7 @@ const PORT = Number(process.env.PORT) || 4173;
 const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
 const INVOICE_PREVIEW_FILE = path.join(ROOT, "invoice-preview.html");
+const IBAN_TOPUP_PREVIEW_FILE = path.join(ROOT, "iban-topup-preview.html");
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -226,6 +227,7 @@ const MIME_TYPES = {
 
 const PREVIEW_VERSION_FILES = Object.freeze([
   path.join(ROOT, "invoice-preview.html"),
+  path.join(ROOT, "iban-topup-preview.html"),
   path.join(ROOT, "app.js"),
   path.join(ROOT, "styles.css"),
 ]);
@@ -7290,6 +7292,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/invoice-preview" || pathname === "/invoice-preview/") {
     sendFile(res, INVOICE_PREVIEW_FILE);
+    return;
+  }
+
+  if (pathname === "/iban-topup-preview" || pathname === "/iban-topup-preview/") {
+    sendFile(res, IBAN_TOPUP_PREVIEW_FILE);
     return;
   }
 
