@@ -7623,7 +7623,7 @@ function buildInvoiceViewModel(record) {
     settlementBadge: settlementBadgeMeta.label,
     settlementBadgeTone: settlementBadgeMeta.tone,
     reverseVatNote:
-      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
+      "VAT not charged. Any reverse-charge VAT is due by the recipient.",
     settlementTitle: "Payment & Summary",
     settlementLines,
     settlementTransferRows,
@@ -7750,7 +7750,7 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
         ]
       : [],
     reverseVatNote:
-      "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.",
+      "VAT not charged. Any reverse-charge VAT is due by the recipient.",
     issuer: INVOICE_ISSUER_PROFILE,
     profile,
     billingAddressLines: splitInvoiceAddressLines(profile.billingAddress),
@@ -8121,7 +8121,6 @@ function buildInvoiceSettlementHtml(viewModel) {
           </div>
         </div>
       </div>
-      <div class="invoice-tax-note">${escapeHtml(viewModel.reverseVatNote || "")}</div>
     </section>
   `;
 }
@@ -8189,11 +8188,18 @@ function buildInvoicePageHtml(viewModel, options = {}) {
   } = options;
 
   return `
-    <div class="receipt-sheet">
+    <div class="receipt-sheet invoice-sheet">
       <div class="receipt-sheet-body">
         ${showHeader ? `<div class="receipt-header-region">${buildInvoiceHeaderHtml(viewModel)}</div>` : ""}
         ${showTableCard ? buildInvoiceTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
-        ${showSettlement ? buildInvoiceSettlementHtml(viewModel) : ""}
+        ${showSettlement ? `
+          <section class="invoice-lower-stack">
+            ${buildInvoiceSettlementHtml(viewModel)}
+            ${viewModel.reverseVatNote
+              ? `<div class="invoice-tax-note">${escapeHtml(viewModel.reverseVatNote)}</div>`
+              : ""}
+          </section>
+        ` : ""}
       </div>
       ${buildInvoiceFooterHtml(viewModel.invoiceNumber)}
     </div>
@@ -8440,8 +8446,10 @@ function measureReceiptRegions(receiptDoc, scale) {
   });
 
   const disclaimer = rel(
-    receiptDoc.querySelector(".invoice-settlement-stack")
+    receiptDoc.querySelector(".invoice-lower-stack")
+      || receiptDoc.querySelector(".invoice-settlement-stack")
       || receiptDoc.querySelector(".invoice-settlement-panel")
+      || receiptDoc.querySelector(".invoice-tax-note")
       || receiptDoc.querySelector(".receipt-disclaimer")
   );
 

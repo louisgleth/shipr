@@ -3570,7 +3570,7 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     ? formatInvoicePdfDate(options?.dueAt || invoice?.due_at)
     : "Paid automatically";
   const taxNote =
-    "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.";
+    "VAT not charged. Any reverse-charge VAT is due by the recipient.";
   const badgeStyles = {
     success: {
       color: colors.success,

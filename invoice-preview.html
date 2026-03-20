@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipide Invoice Preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #111111;
+      }
+
+      body {
+        color: #f4f6fb;
+      }
+
+      .invoice-preview-page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .invoice-preview-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 14px;
+        padding: 18px 22px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+          linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(17, 17, 17, 0.94));
+        backdrop-filter: blur(14px);
+      }
+
+      .invoice-preview-title {
+        margin-right: 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .invoice-preview-title h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 500;
+      }
+
+      .invoice-preview-title p,
+      .invoice-preview-status {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(241, 244, 251, 0.62);
+      }
+
+      .invoice-preview-control {
+        display: grid;
+        gap: 6px;
+      }
+
+      .invoice-preview-control label {
+        font-size: 11px;
+        color: rgba(241, 244, 251, 0.58);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .invoice-preview-control input,
+      .invoice-preview-control select {
+        min-width: 124px;
+        height: 38px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f4f6fb;
+        font: inherit;
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .invoice-preview-control input:focus,
+      .invoice-preview-control select:focus {
+        border-color: rgba(119, 71, 227, 0.7);
+        box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.18);
+      }
+
+      .invoice-preview-control.is-wide input {
+        min-width: 220px;
+      }
+
+      .invoice-preview-stage {
+        padding: 28px 28px 40px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        overflow: auto;
+      }
+
+      .invoice-preview-canvas {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+
+      .receipt-export-host {
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        width: 860px !important;
+        pointer-events: auto !important;
+        z-index: auto !important;
+      }
+
+      #receiptDocument {
+        width: 860px;
+        margin: 0 auto;
+      }
+
+      @media (max-width: 960px) {
+        .invoice-preview-toolbar {
+          padding: 16px;
+        }
+
+        .invoice-preview-stage {
+          padding: 16px 12px 28px;
+        }
+
+        .receipt-export-host,
+        #receiptDocument {
+          width: min(860px, calc(100vw - 24px)) !important;
+        }
+      }
+    </style>
+    <script>
+      window.__SHIPIDE_INVOICE_PRINT_MODE__ = true;
+    </script>
+  </head>
+  <body>
+    <div class="invoice-preview-page">
+      <form class="invoice-preview-toolbar" id="invoicePreviewControls" autocomplete="off">
+        <div class="invoice-preview-title">
+          <h1>Invoice Preview</h1>
+          <p>Auto-refreshes when invoice files change locally.</p>
+        </div>
+
+        <div class="invoice-preview-control is-wide">
+          <label for="previewCompany">Company</label>
+          <input id="previewCompany" name="company" type="text" value="Atelier Meridian" />
+        </div>
+
+        <div class="invoice-preview-control">
+          <label for="previewMode">Payment</label>
+          <select id="previewMode" name="paymentMode">
+            <option value="invoice">Monthly billing</option>
+            <option value="card">Automatic collection</option>
+            <option value="wallet">Wallet debit</option>
+          </select>
+        </div>
+
+        <div class="invoice-preview-control">
+          <label for="previewStage">Stage</label>
+          <select id="previewStage" name="reminderStage">
+            <option value="0">Initial</option>
+            <option value="1">Due in 15 days</option>
+            <option value="2">Due in 7 days</option>
+            <option value="3">Due tomorrow</option>
+            <option value="4">Due today</option>
+            <option value="5">3 days overdue</option>
+            <option value="6">10 days overdue</option>
+            <option value="7">15 days overdue</option>
+            <option value="8">30 days overdue</option>
+          </select>
+        </div>
+
+        <div class="invoice-preview-control">
+          <label for="previewQuantity">Qty</label>
+          <input id="previewQuantity" name="quantity" type="number" min="1" step="1" value="1" />
+        </div>
+
+        <div class="invoice-preview-control">
+          <label for="previewServiceLines">Service lines</label>
+          <input id="previewServiceLines" name="serviceLines" type="number" min="1" max="5" step="1" value="1" />
+        </div>
+
+        <div class="invoice-preview-control">
+          <label for="previewRate">Rate (EUR)</label>
+          <input id="previewRate" name="rate" type="number" min="0" step="0.01" value="120" />
+        </div>
+
+        <div class="invoice-preview-control is-wide">
+          <label for="previewReference">Reference</label>
+          <input id="previewReference" name="reference" type="text" value="INV-F529D138" />
+        </div>
+
+        <div class="invoice-preview-status" id="invoicePreviewStatus">
+          Waiting for renderer...
+        </div>
+      </form>
+
+      <div class="invoice-preview-stage">
+        <div class="invoice-preview-canvas">
+          <div class="receipt-export-host">
+            <div class="receipt-document" id="receiptDocument"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+    <script>
+      const DEFAULT_STATE = Object.freeze({
+        company: "Atelier Meridian",
+        paymentMode: "invoice",
+        reminderStage: "0",
+        quantity: "1",
+        serviceLines: "1",
+        rate: "120",
+        reference: "INV-F529D138",
+      });
+      const STORAGE_KEY = "shipide.invoice-preview.state.v1";
+      const STATUS_EL = document.getElementById("invoicePreviewStatus");
+      const FORM_EL = document.getElementById("invoicePreviewControls");
+      const STAGE_INPUT = document.getElementById("previewStage");
+      let previewVersion = "";
+
+      function normalizeState(raw = {}) {
+        const serviceLines = String(Math.max(1, Math.min(5, Number(raw.serviceLines) || 1)));
+        const quantity = String(Math.max(Number(serviceLines) || 1, Number(raw.quantity) || 1));
+        const rate = String(Math.max(0, Number(raw.rate) || 0));
+        const paymentMode = ["invoice", "card", "wallet"].includes(raw.paymentMode)
+          ? raw.paymentMode
+          : DEFAULT_STATE.paymentMode;
+        const reminderStage = String(Math.max(0, Math.min(8, Number(raw.reminderStage) || 0)));
+        const reference = String(raw.reference || DEFAULT_STATE.reference).trim() || DEFAULT_STATE.reference;
+        const company = String(raw.company || DEFAULT_STATE.company).trim() || DEFAULT_STATE.company;
+        return {
+          company,
+          paymentMode,
+          reminderStage,
+          quantity,
+          serviceLines,
+          rate,
+          reference,
+        };
+      }
+
+      function readStateFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return normalizeState({
+          company: params.get("company"),
+          paymentMode: params.get("mode"),
+          reminderStage: params.get("stage"),
+          quantity: params.get("qty"),
+          serviceLines: params.get("lines"),
+          rate: params.get("rate"),
+          reference: params.get("ref"),
+        });
+      }
+
+      function readStateFromStorage() {
+        try {
+          const stored = window.localStorage.getItem(STORAGE_KEY);
+          return stored ? normalizeState(JSON.parse(stored)) : DEFAULT_STATE;
+        } catch (error) {
+          return DEFAULT_STATE;
+        }
+      }
+
+      function writeState(state) {
+        const nextState = normalizeState(state);
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        } catch (error) {
+          // Intentionally ignored for preview mode.
+        }
+        const params = new URLSearchParams();
+        params.set("company", nextState.company);
+        params.set("mode", nextState.paymentMode);
+        params.set("stage", nextState.reminderStage);
+        params.set("qty", nextState.quantity);
+        params.set("lines", nextState.serviceLines);
+        params.set("rate", nextState.rate);
+        params.set("ref", nextState.reference);
+        const nextUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({}, "", nextUrl);
+        return nextState;
+      }
+
+      function readFormState() {
+        const formData = new window.FormData(FORM_EL);
+        return normalizeState({
+          company: formData.get("company"),
+          paymentMode: formData.get("paymentMode"),
+          reminderStage: formData.get("reminderStage"),
+          quantity: formData.get("quantity"),
+          serviceLines: formData.get("serviceLines"),
+          rate: formData.get("rate"),
+          reference: formData.get("reference"),
+        });
+      }
+
+      function applyStateToForm(state) {
+        FORM_EL.elements.company.value = state.company;
+        FORM_EL.elements.paymentMode.value = state.paymentMode;
+        FORM_EL.elements.reminderStage.value = state.reminderStage;
+        FORM_EL.elements.quantity.value = state.quantity;
+        FORM_EL.elements.serviceLines.value = state.serviceLines;
+        FORM_EL.elements.rate.value = state.rate;
+        FORM_EL.elements.reference.value = state.reference;
+        STAGE_INPUT.disabled = state.paymentMode !== "invoice";
+      }
+
+      const PREVIEW_SERVICE_VARIANTS = [
+        { service_type: "Economy", multiplier: 1 },
+        { service_type: "Priority", multiplier: 1.08 },
+        { service_type: "International Express", multiplier: 1.22 },
+        { service_type: "Standard Ground", multiplier: 0.94 },
+        { service_type: "Express Saver", multiplier: 1.14 },
+      ];
+
+      function roundMoney(value) {
+        return Math.round((Number(value) || 0) * 100) / 100;
+      }
+
+      function buildPreviewInvoiceItems(state) {
+        const serviceLines = Math.max(1, Math.min(
+          PREVIEW_SERVICE_VARIANTS.length,
+          Number(state.serviceLines) || 1
+        ));
+        const quantity = Math.max(serviceLines, Number(state.quantity) || 1);
+        const baseRate = Math.max(0, Number(state.rate) || 0);
+        const baseQty = Math.floor(quantity / serviceLines);
+        let remainder = quantity % serviceLines;
+
+        return PREVIEW_SERVICE_VARIANTS.slice(0, serviceLines).map((variant, index) => {
+          const rowQuantity = baseQty + (remainder > 0 ? 1 : 0);
+          if (remainder > 0) remainder -= 1;
+          const unitRate = roundMoney(baseRate * variant.multiplier);
+          const lineTotal = roundMoney(rowQuantity * unitRate);
+          return {
+            service_type: variant.service_type,
+            quantity: rowQuantity,
+            amount_inc_vat: lineTotal,
+            sort_index: index,
+          };
+        });
+      }
+
+      function buildPreviewInvoice(state) {
+        const items = buildPreviewInvoiceItems(state);
+        const quantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+        const total = roundMoney(
+          items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
+        );
+        return {
+          id: "preview-invoice",
+          reference: state.reference,
+          company_name: state.company,
+          payment_mode: state.paymentMode,
+          issued_at: "2026-03-20T10:00:00.000Z",
+          due_at: "2026-04-19T10:00:00.000Z",
+          labels_count: quantity,
+          total_inc_vat: total,
+          billing_address: "Avenue Louise 120\n1050 Brussels\nBelgium",
+          metadata: {
+            invoice_profile: {
+              taxId: "VAT BE0123456789",
+              billingAddress: "Avenue Louise 120\n1050 Brussels\nBelgium",
+            },
+          },
+          items,
+        };
+      }
+
+      async function waitForRenderer() {
+        for (let index = 0; index < 200; index += 1) {
+          if (window.__shipideInvoiceRenderer) return window.__shipideInvoiceRenderer;
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
+        throw new Error("Invoice renderer did not load.");
+      }
+
+      async function renderPreview() {
+        const state = writeState(readFormState());
+        applyStateToForm(state);
+        const renderer = await waitForRenderer();
+        const viewModel = renderer.buildViewModelFromBillingInvoice(
+          buildPreviewInvoice(state),
+          { reminderStage: Number(state.reminderStage) || 0 }
+        );
+        renderer.renderViewModel(viewModel);
+        STATUS_EL.textContent = "Live preview is up to date.";
+      }
+
+      async function fetchPreviewVersion() {
+        const response = await window.fetch(`/__preview-version?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`Preview version request failed (${response.status})`);
+        }
+        return response.json();
+      }
+
+      async function startPreviewPolling() {
+        try {
+          const initial = await fetchPreviewVersion();
+          previewVersion = initial.version || "";
+        } catch (error) {
+          STATUS_EL.textContent = "Live preview is up to date.";
+          return;
+        }
+
+        window.setInterval(async () => {
+          try {
+            const next = await fetchPreviewVersion();
+            if (previewVersion && next.version && next.version !== previewVersion) {
+              STATUS_EL.textContent = "Change detected. Reloading preview...";
+              window.location.reload();
+              return;
+            }
+            previewVersion = next.version || previewVersion;
+          } catch (error) {
+            // Ignore transient polling errors so the preview stays open.
+          }
+        }, 900);
+      }
+
+      FORM_EL.addEventListener("submit", (event) => {
+        event.preventDefault();
+      });
+      FORM_EL.addEventListener("input", () => {
+        void renderPreview();
+      });
+      FORM_EL.addEventListener("change", () => {
+        void renderPreview();
+      });
+
+      (async () => {
+        const mergedState = normalizeState({
+          ...readStateFromStorage(),
+          ...readStateFromUrl(),
+        });
+        applyStateToForm(mergedState);
+        writeState(mergedState);
+        try {
+          await renderPreview();
+          await startPreviewPolling();
+        } catch (error) {
+          STATUS_EL.textContent = error?.message || "Invoice preview failed to render.";
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -10,6 +10,7 @@ const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 4173;
 const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
+const INVOICE_PREVIEW_FILE = path.join(ROOT, "invoice-preview.html");
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -222,6 +223,12 @@ const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
 };
 
+const PREVIEW_VERSION_FILES = Object.freeze([
+  path.join(ROOT, "invoice-preview.html"),
+  path.join(ROOT, "app.js"),
+  path.join(ROOT, "styles.css"),
+]);
+
 function send(res, status, headers, body) {
   res.writeHead(status, headers);
   res.end(body);
@@ -237,6 +244,34 @@ function sendJson(res, status, payload) {
     },
     JSON.stringify(payload)
   );
+}
+
+function buildPreviewVersionPayload() {
+  const files = PREVIEW_VERSION_FILES.map((filePath) => {
+    try {
+      const stats = fs.statSync(filePath);
+      return {
+        file: path.relative(ROOT, filePath),
+        size: stats.size,
+        mtimeMs: Math.round(stats.mtimeMs),
+      };
+    } catch (error) {
+      return {
+        file: path.relative(ROOT, filePath),
+        missing: true,
+      };
+    }
+  });
+  const version = crypto
+    .createHash("sha1")
+    .update(JSON.stringify(files))
+    .digest("hex");
+  return {
+    scope: "invoice-preview",
+    version,
+    files,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function sendRedirect(res, location) {
@@ -3007,7 +3042,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
     ? formatInvoicePdfDate(options?.dueAt || invoice?.due_at)
     : "Paid automatically";
   const taxNote =
-    "VAT not charged. Supplier established outside the European Union; any VAT due must be accounted for by the recipient under applicable reverse-charge rules.";
+    "VAT not charged. Any reverse-charge VAT is due by the recipient.";
   const badgeStyles = {
     success: {
       color: colors.success,
@@ -7242,6 +7277,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   let pathname = decodeURIComponent(requestUrl.pathname);
+
+  if (pathname === "/__preview-version") {
+    sendJson(res, 200, buildPreviewVersionPayload());
+    return;
+  }
+
+  if (pathname === "/invoice-preview" || pathname === "/invoice-preview/") {
+    sendFile(res, INVOICE_PREVIEW_FILE);
+    return;
+  }
 
   if (pathname === "/") {
     sendFile(res, INDEX_FILE);
