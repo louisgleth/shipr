@@ -6447,7 +6447,9 @@ async function handleAdminInvoiceSendTest(request, env) {
             filename: buildInvoicePdfFilename(testInvoice),
           },
           { request }
-        ).catch(() => null);
+        ).catch((error) => {
+          throw new Error(error?.message || "Could not render the approved invoice PDF for the test email.");
+        });
     const pdfBytes = providedPdfBase64
       ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
       : renderedVariant?.bytes
