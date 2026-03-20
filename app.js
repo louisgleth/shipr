@@ -1742,6 +1742,7 @@ let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
 let billingOverview = null;
 let checkoutPaymentMethod = "invoice";
+const IBAN_TOPUP_REFERENCE_REUSE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 let ibanTopupDraft = null;
 let ibanTopupRequestInFlight = false;
 let ibanTopupRequestPromise = null;
@@ -6857,6 +6858,12 @@ function setIbanTopupModalOpen(open, options = {}) {
         tr("Generate a transfer reference, then send your bank transfer. Funds are credited once received.");
     }
     setIbanTopupStatus("");
+    const reusableTopup = getReusableIbanTopupFromOverview();
+    if (reusableTopup) {
+      resetIbanTopupResult({ clearDraft: false });
+      populateIbanTopupResult(reusableTopup);
+      return;
+    }
     resetIbanTopupResult();
     setIbanTopupLoading(true, {
       title: tr("Preparing transfer instructions..."),
@@ -6874,6 +6881,7 @@ function setWalletHistoryModalOpen(open) {
 }
 
 function populateIbanTopupResult(payload) {
+  ibanTopupDraft = payload && typeof payload === "object" ? payload : ibanTopupDraft;
   const instructions = payload?.instructions && typeof payload.instructions === "object"
     ? payload.instructions
     : getIbanInstructionsFromOverview();
@@ -8581,16 +8589,49 @@ function buildInvoiceVariantPdfFilename(reference, reminderStage = 0) {
   return stage > 0 ? `${base}-stage-${stage}.pdf` : `${base}.pdf`;
 }
 
-function setReceiptActionBusy(triggerButton, isBusy, idleLabel = "") {
+function setPdfActionBusy(triggerButton, isBusy, options = {}) {
   if (!triggerButton) return () => {};
-  const label = triggerButton.querySelector("span");
+  const idleLabel = String(options?.idleLabel || "").trim();
+  const busyLabel = String(options?.busyLabel || "").trim();
+  const label = Array.from(triggerButton.children).find(
+    (child) => child.tagName === "SPAN" && !child.classList.contains("btn-inline-loader")
+  ) || null;
+  const icon = triggerButton.querySelector("svg");
   const originalLabel = label ? label.textContent : "";
+  let loader = triggerButton.querySelector(".btn-inline-loader");
   triggerButton.disabled = Boolean(isBusy);
+  triggerButton.classList.toggle("is-loading", Boolean(isBusy));
+  if (icon) {
+    icon.hidden = Boolean(isBusy);
+  }
+  if (!loader) {
+    loader = document.createElement("span");
+    loader.className = "btn-inline-loader is-hidden";
+    loader.setAttribute("aria-hidden", "true");
+    for (let index = 0; index < 3; index += 1) {
+      const bar = document.createElement("span");
+      bar.className = "btn-inline-loader-bar";
+      loader.appendChild(bar);
+    }
+    if (label) {
+      triggerButton.insertBefore(loader, label);
+    } else {
+      triggerButton.appendChild(loader);
+    }
+  }
+  loader.classList.toggle("is-hidden", !isBusy);
   if (label) {
-    label.textContent = isBusy ? tr("Preparing receipt PDF...") : (idleLabel || originalLabel);
+    label.textContent = isBusy ? (busyLabel || originalLabel) : (idleLabel || originalLabel);
   }
   return () => {
     triggerButton.disabled = false;
+    triggerButton.classList.remove("is-loading");
+    if (icon) {
+      icon.hidden = false;
+    }
+    if (loader) {
+      loader.classList.add("is-hidden");
+    }
     if (label) {
       label.textContent = idleLabel || originalLabel;
     }
@@ -9222,10 +9263,13 @@ function blobToBase64(blob) {
 
 async function downloadReceiptPdfFile() {
   if (!accountActiveRecord) return;
-  const restoreButton = setReceiptActionBusy(
+  const restoreButton = setPdfActionBusy(
     receiptDownloadPdf,
     true,
-    tr("Download Receipt PDF")
+    {
+      idleLabel: tr("Download Receipt PDF"),
+      busyLabel: tr("Preparing receipt PDF..."),
+    }
   );
   try {
     const exportData = await buildReceiptPdfExport();
@@ -9245,7 +9289,10 @@ async function downloadReceiptPdfFile() {
 
 async function openReceiptPdfFile() {
   if (!accountActiveRecord) return;
-  const restoreButton = setReceiptActionBusy(openReceiptModalButton, true, tr("View Receipt"));
+  const restoreButton = setPdfActionBusy(openReceiptModalButton, true, {
+    idleLabel: tr("View Receipt"),
+    busyLabel: tr("Preparing receipt PDF..."),
+  });
 
   try {
     const exportData = await buildReceiptPdfExport();
@@ -9263,10 +9310,13 @@ async function openReceiptPdfFile() {
 
 async function downloadInvoicePdfFile() {
   if (!accountActiveRecord) return;
-  const restoreButton = setReceiptActionBusy(
+  const restoreButton = setPdfActionBusy(
     accountDownloadInvoice,
     true,
-    tr("Download Invoice")
+    {
+      idleLabel: tr("Download Invoice"),
+      busyLabel: tr("Preparing invoice PDF..."),
+    }
   );
   try {
     const exportData = await buildInvoicePdfExport();
@@ -10812,11 +10862,36 @@ function setAuthRegisterStep(step = 1, options = {}) {
   }, AUTH_REGISTER_STEP_OUT_MS + AUTH_REGISTER_STEP_RESIZE_MS + AUTH_REGISTER_STEP_IN_MS);
 }
 
-function setAuthAgreementPlaceholder(message, { isError = false } = {}) {
+function setAuthAgreementPlaceholder(message, { isError = false, isLoading = false } = {}) {
   if (!authAgreementPages) return;
   const placeholder = document.createElement("div");
-  placeholder.className = `auth-agreement-placeholder${isError ? " is-error" : ""}`;
-  placeholder.textContent = String(message || "").trim();
+  placeholder.className = `auth-agreement-placeholder${isError ? " is-error" : ""}${isLoading ? " is-loading" : ""}`;
+  if (isLoading) {
+    const loader = document.createElement("span");
+    loader.className = "auth-agreement-loader";
+    loader.setAttribute("aria-hidden", "true");
+    for (let index = 0; index < 3; index += 1) {
+      const bar = document.createElement("span");
+      bar.className = "auth-agreement-loader-bar";
+      loader.appendChild(bar);
+    }
+
+    const copy = document.createElement("div");
+    copy.className = "auth-agreement-placeholder-copy";
+
+    const title = document.createElement("strong");
+    title.className = "auth-agreement-placeholder-title";
+    title.textContent = String(message || "").trim();
+
+    const sub = document.createElement("span");
+    sub.className = "auth-agreement-placeholder-sub";
+    sub.textContent = tr("Loading your contract preview...");
+
+    copy.append(title, sub);
+    placeholder.append(loader, copy);
+  } else {
+    placeholder.textContent = String(message || "").trim();
+  }
   authAgreementPages.replaceChildren(placeholder);
 }
 
@@ -10998,7 +11073,7 @@ async function renderAuthAgreementPdf(contract, renderToken) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = AUTH_AGREEMENT_PDF_WORKER_URL;
   }
 
-  setAuthAgreementPlaceholder(tr("Loading agreement..."));
+  setAuthAgreementPlaceholder(tr("Loading agreement..."), { isLoading: true });
 
   try {
     const loadingTask = pdfjsLib.getDocument({
@@ -11107,7 +11182,7 @@ function resetAuthAgreementState({ clearContract = false } = {}) {
   }
   if (authAgreementPages) {
     if (clearContract) {
-      setAuthAgreementPlaceholder(tr("Loading agreement..."));
+      setAuthAgreementPlaceholder(tr("Loading agreement..."), { isLoading: true });
     } else {
       authAgreementPages.replaceChildren();
     }
@@ -11142,7 +11217,7 @@ function renderAuthAgreementContract(contract) {
     });
   }
   updateAuthAgreementDownload(normalized);
-  setAuthAgreementPlaceholder(tr("Loading agreement..."));
+  setAuthAgreementPlaceholder(tr("Loading agreement..."), { isLoading: true });
   setAuthAgreementStatus("");
   const renderToken = ++authAgreementPdfRenderToken;
   authAgreementRendering = true;
@@ -12534,6 +12609,28 @@ function getIbanInstructionsFromOverview() {
     iban: String(fromOverview.iban || fallback.iban).trim() || fallback.iban,
     bic: String(fromOverview.bic || fallback.bic).trim() || fallback.bic,
     note: String(fromOverview.note || fallback.note).trim() || fallback.note,
+  };
+}
+
+function getReusableIbanTopupFromOverview() {
+  const topups = Array.isArray(billingOverview?.recent_topups) ? billingOverview.recent_topups : [];
+  const topup = topups.find((entry) => String(entry?.status || "").trim().toLowerCase() === "pending");
+  if (!topup) return null;
+  const requestedAt = Date.parse(String(topup?.requested_at || ""));
+  if (Number.isFinite(requestedAt) && Date.now() - requestedAt > IBAN_TOPUP_REFERENCE_REUSE_MAX_AGE_MS) {
+    return null;
+  }
+  const reference = String(topup?.reference || "").trim();
+  if (!reference) return null;
+  const instructions = getIbanInstructionsFromOverview();
+  return {
+    topup,
+    instructions: {
+      ...instructions,
+      reference,
+      amount_eur: Number.isFinite(Number(topup?.amount_eur)) ? Number(topup.amount_eur) : null,
+      currency: String(topup?.currency || "EUR").trim() || "EUR",
+    },
   };
 }
 

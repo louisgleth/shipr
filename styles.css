@@ -714,8 +714,80 @@ body {
   padding: 2px 0;
 }
 
+.auth-agreement-placeholder.is-loading {
+  min-height: 280px;
+  padding: 28px 12px;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.auth-agreement-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.auth-agreement-loader-bar {
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(119, 71, 227, 0.08);
+  transform-origin: center center;
+  animation: authAgreementLoaderPulse 0.98s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.auth-agreement-loader-bar:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.auth-agreement-loader-bar:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.auth-agreement-placeholder-copy {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.auth-agreement-placeholder-title {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.auth-agreement-placeholder-sub {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .auth-agreement-placeholder.is-error {
   color: #d9a5a5;
+}
+
+@keyframes authAgreementLoaderPulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: translateY(1px) scale(0.82);
+  }
+
+  35% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  60% {
+    opacity: 0.62;
+    transform: translateY(0.5px) scale(0.9);
+  }
 }
 
 .auth-agreement-text-fallback {
@@ -6547,6 +6619,54 @@ input.is-invalid {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.btn.is-loading svg {
+  display: none;
+}
+
+.btn-inline-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 10px;
+}
+
+.btn-inline-loader-bar {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background: var(--accent);
+  opacity: 0.4;
+  transform: translateY(1px) scale(0.84);
+  animation: buttonLoaderPulse 0.98s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.btn-inline-loader-bar:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.btn-inline-loader-bar:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+@keyframes buttonLoaderPulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: translateY(1px) scale(0.82);
+  }
+
+  35% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  60% {
+    opacity: 0.62;
+    transform: translateY(0.5px) scale(0.9);
+  }
 }
 
 .receipt-actions {

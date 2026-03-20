@@ -76,6 +76,7 @@ const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
 const APPROVED_INVOICE_RENDERER_VERSION = "native-html-v1";
+const BILLING_TOPUP_REFERENCE_REUSE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
@@ -3960,6 +3961,28 @@ function buildTopupReference(userId = "") {
   return `SHIP-${userChunk}-${timeChunk}-${randChunk}`;
 }
 
+function buildTopupInstructions(ibanConfig, row, amountCents = null) {
+  const rowAmountCents = Number(row?.amount_cents);
+  const safeAmountCents = Number.isFinite(rowAmountCents)
+    ? Math.max(0, rowAmountCents)
+    : Math.max(0, Number(amountCents) || 0);
+  return {
+    ...ibanConfig,
+    amount_eur: safeAmountCents > 0 ? fromCents(safeAmountCents) : null,
+    currency: String(row?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    reference: String(row?.reference || "").trim(),
+  };
+}
+
+function isReusablePendingTopup(row) {
+  if (normalizeTopupStatus(row?.status) !== "pending") return false;
+  const reference = String(row?.reference || "").trim();
+  if (!reference) return false;
+  const requestedAt = Date.parse(String(row?.requested_at || row?.created_at || ""));
+  if (!Number.isFinite(requestedAt)) return true;
+  return Date.now() - requestedAt <= BILLING_TOPUP_REFERENCE_REUSE_MAX_AGE_MS;
+}
+
 function resolveWalletAccessIssue(details, tableName) {
   const raw = String(details || "");
   const lower = raw.toLowerCase();
@@ -4172,45 +4195,65 @@ async function createBillingTopupRequest(user, amountEur = null) {
     Number.isFinite(numericAmount) && numericAmount > 0 ? Math.max(0, toCents(numericAmount)) : 0;
   await getOrCreateBillingWallet(userId);
   const ibanConfig = getBillingIbanConfig();
-  const reference = buildTopupReference(userId);
-  const payload = {
-    user_id: userId,
-    amount_cents: amountCents,
-    currency: DEFAULT_BILLING_CURRENCY,
-    status: "pending",
-    reference,
-    requested_at: new Date().toISOString(),
-    metadata: {
-      requested_by: normalizeEmail(user?.email || "") || userId,
-      iban_beneficiary: ibanConfig.beneficiary,
-      iban: ibanConfig.iban,
-      bic: ibanConfig.bic,
-    },
-  };
-  const response = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify([payload]),
+  const recentPending = await listBillingTopups({
+    userId,
+    statuses: ["pending"],
+    limit: 1,
+    allowMissing: true,
   });
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
-    if (walletIssue) throw new Error(walletIssue.message);
-    throw new Error(`Could not create top-up request (${response.status}) ${details}`.trim());
+  const reusable = Array.isArray(recentPending) ? recentPending.find(isReusablePendingTopup) : null;
+  if (reusable) {
+    return {
+      topup: mapBillingTopupRow(reusable),
+      instructions: buildTopupInstructions(ibanConfig, reusable, amountCents),
+    };
   }
-  const rows = await response.json().catch(() => []);
-  const created = Array.isArray(rows) && rows.length ? rows[0] : payload;
+
+  let created = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const reference = buildTopupReference(userId);
+    const payload = {
+      user_id: userId,
+      amount_cents: amountCents,
+      currency: DEFAULT_BILLING_CURRENCY,
+      status: "pending",
+      reference,
+      requested_at: new Date().toISOString(),
+      metadata: {
+        requested_by: normalizeEmail(user?.email || "") || userId,
+        iban_beneficiary: ibanConfig.beneficiary,
+        iban: ibanConfig.iban,
+        bic: ibanConfig.bic,
+      },
+    };
+    const response = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify([payload]),
+    });
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+      if (walletIssue) throw new Error(walletIssue.message);
+      const message = `Could not create top-up request (${response.status}) ${details}`.trim();
+      if (message.includes("23505") || message.includes("duplicate key")) {
+        continue;
+      }
+      throw new Error(message);
+    }
+    const rows = await response.json().catch(() => []);
+    created = Array.isArray(rows) && rows.length ? rows[0] : payload;
+    break;
+  }
+  if (!created) {
+    throw new Error("Could not create top-up request. Please try again.");
+  }
   return {
     topup: mapBillingTopupRow(created),
-    instructions: {
-      ...ibanConfig,
-      amount_eur: amountCents > 0 ? fromCents(amountCents) : null,
-      currency: DEFAULT_BILLING_CURRENCY,
-      reference,
-    },
+    instructions: buildTopupInstructions(ibanConfig, created, amountCents),
   };
 }
 
