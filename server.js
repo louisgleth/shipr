@@ -74,6 +74,7 @@ const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
+const APPROVED_INVOICE_RENDERER_VERSION = "native-html-v1";
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
@@ -1004,6 +1005,7 @@ async function persistBillingInvoicePdfVariant(invoice, reminderStage, pdfBytes,
   }
   return {
     stage: normalizeInvoicePdfVariantStage(reminderStage),
+    rendererVersion: APPROVED_INVOICE_RENDERER_VERSION,
     filename: safeFilename,
     bucket: BILLING_INVOICE_STORAGE_BUCKET,
     objectPath: data?.path || storagePath,
@@ -1027,10 +1029,10 @@ function getBillingInvoicePdfVariantRecord(invoice, reminderStage, options = {})
   const variants = getBillingInvoicePdfVariantMap(invoice);
   const exactKey = normalizeInvoicePdfVariantStage(reminderStage);
   const exact = variants[exactKey] && typeof variants[exactKey] === "object" ? variants[exactKey] : null;
-  if (exact) return exact;
+  if (exact && exact.rendererVersion === APPROVED_INVOICE_RENDERER_VERSION) return exact;
   if (options?.allowFallback === true) {
     const initial = variants["0"] && typeof variants["0"] === "object" ? variants["0"] : null;
-    if (initial) return initial;
+    if (initial && initial.rendererVersion === APPROVED_INVOICE_RENDERER_VERSION) return initial;
   }
   return null;
 }
@@ -1044,6 +1046,9 @@ function mergeBillingInvoicePdfVariantMetadata(invoice, variants = []) {
     const stageKey = normalizeInvoicePdfVariantStage(variant?.stage);
     nextVariants[stageKey] = {
       stage: stageKey,
+      rendererVersion:
+        String(variant?.rendererVersion || APPROVED_INVOICE_RENDERER_VERSION).trim()
+        || APPROVED_INVOICE_RENDERER_VERSION,
       filename: String(variant?.filename || "").trim() || buildInvoiceVariantPdfFilename(invoice, stageKey),
       bucket: String(variant?.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET,
       objectPath: String(variant?.objectPath || variant?.fullPath || "").trim() || null,

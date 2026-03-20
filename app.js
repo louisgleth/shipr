@@ -1553,6 +1553,9 @@ const ibanTopupClose = document.getElementById("ibanTopupClose");
 const ibanTopupCancel = document.getElementById("ibanTopupCancel");
 const ibanTopupRequest = document.getElementById("ibanTopupRequest");
 const ibanTopupStatus = document.getElementById("ibanTopupStatus");
+const ibanTopupLoading = document.getElementById("ibanTopupLoading");
+const ibanTopupLoadingTitle = document.getElementById("ibanTopupLoadingTitle");
+const ibanTopupLoadingSub = document.getElementById("ibanTopupLoadingSub");
 const ibanTopupResult = document.getElementById("ibanTopupResult");
 const ibanResultBeneficiary = document.getElementById("ibanResultBeneficiary");
 const ibanResultIban = document.getElementById("ibanResultIban");
@@ -1741,6 +1744,7 @@ let billingOverview = null;
 let checkoutPaymentMethod = "invoice";
 let ibanTopupDraft = null;
 let ibanTopupRequestInFlight = false;
+let ibanTopupRequestPromise = null;
 let customsGhostVisible = false;
 let providerStatusTimer = 0;
 let shopifyConnection = null;
@@ -6787,10 +6791,49 @@ function setIbanTopupStatus(message = "", options = {}) {
   }
 }
 
-function resetIbanTopupResult() {
-  ibanTopupDraft = null;
+function syncIbanTopupActions() {
+  const ready = Boolean(ibanTopupDraft) && !ibanTopupRequestInFlight;
+  if (ibanCopyReference) {
+    ibanCopyReference.disabled = !ready;
+  }
+  if (ibanCopyIban) {
+    ibanCopyIban.disabled = !ready;
+  }
+  if (ibanTopupRequest) {
+    ibanTopupRequest.disabled = ibanTopupRequestInFlight;
+  }
+}
+
+function setIbanTopupLoading(loading, options = {}) {
+  const isLoading = loading === true;
+  if (ibanTopupLoadingTitle) {
+    ibanTopupLoadingTitle.textContent =
+      (typeof options?.title === "string" && options.title.trim())
+      || tr("Preparing transfer instructions...");
+  }
+  if (ibanTopupLoadingSub) {
+    ibanTopupLoadingSub.textContent =
+      (typeof options?.subtitle === "string" && options.subtitle.trim())
+      || tr("Generating your transfer reference and bank details.");
+  }
+  if (ibanTopupLoading) {
+    ibanTopupLoading.classList.toggle("is-hidden", !isLoading);
+  }
+  if (isLoading && ibanTopupResult) {
+    ibanTopupResult.classList.add("is-hidden");
+    ibanTopupResult.classList.remove("is-revealed");
+  }
+  syncIbanTopupActions();
+}
+
+function resetIbanTopupResult(options = {}) {
+  if (options?.clearDraft !== false) {
+    ibanTopupDraft = null;
+  }
+  setIbanTopupLoading(false);
   if (ibanTopupResult) {
     ibanTopupResult.classList.add("is-hidden");
+    ibanTopupResult.classList.remove("is-revealed");
   }
   if (ibanResultBeneficiary) ibanResultBeneficiary.textContent = "--";
   if (ibanResultIban) ibanResultIban.textContent = "--";
@@ -6800,6 +6843,7 @@ function resetIbanTopupResult() {
   if (ibanResultNote) {
     ibanResultNote.textContent = tr("Transfers are credited once received (typically 1-2 business days).");
   }
+  syncIbanTopupActions();
 }
 
 function setIbanTopupModalOpen(open, options = {}) {
@@ -6814,7 +6858,13 @@ function setIbanTopupModalOpen(open, options = {}) {
     }
     setIbanTopupStatus("");
     resetIbanTopupResult();
+    setIbanTopupLoading(true, {
+      title: tr("Preparing transfer instructions..."),
+      subtitle: tr("Generating your transfer reference and bank details."),
+    });
     void createIbanTopupRequest({ silentToast: true, loadingMessage: tr("Preparing transfer instructions...") });
+  } else {
+    setIbanTopupLoading(false);
   }
 }
 
@@ -6848,45 +6898,64 @@ function populateIbanTopupResult(payload) {
       String(instructions.note || "").trim()
       || tr("Transfers are credited once received (typically 1-2 business days).");
   }
+  setIbanTopupLoading(false);
   if (ibanTopupResult) {
     ibanTopupResult.classList.remove("is-hidden");
+    ibanTopupResult.classList.remove("is-revealed");
+    void ibanTopupResult.offsetWidth;
+    ibanTopupResult.classList.add("is-revealed");
   }
+  syncIbanTopupActions();
 }
 
 async function createIbanTopupRequest(options = {}) {
-  if (ibanTopupRequestInFlight) return;
-  ibanTopupRequestInFlight = true;
-  if (ibanTopupRequest) {
-    ibanTopupRequest.disabled = true;
-  }
   const loadingMessage =
     typeof options?.loadingMessage === "string" && options.loadingMessage.trim()
       ? options.loadingMessage
       : tr("Creating top-up request...");
-  setIbanTopupStatus(loadingMessage, { tone: "info" });
-  try {
-    const payload = await fetchApiWithAuth("/api/billing/topups/request", {
-      method: "POST",
-      body: JSON.stringify({}),
+  if (ibanTopupRequestInFlight && ibanTopupRequestPromise) {
+    setIbanTopupLoading(true, {
+      title: loadingMessage,
+      subtitle: tr("Generating your transfer reference and bank details."),
     });
-    ibanTopupDraft = payload;
-    populateIbanTopupResult(payload);
-    setIbanTopupStatus(tr("Transfer reference generated. Use it as communication."), {
-      tone: "success",
-      toast: true,
-    });
-    await loadBillingOverview({ quiet: true });
-  } catch (error) {
-    setIbanTopupStatus(error?.message || tr("Could not create top-up request."), {
-      tone: "error",
-      toast: true,
-    });
-  } finally {
-    ibanTopupRequestInFlight = false;
-    if (ibanTopupRequest) {
-      ibanTopupRequest.disabled = false;
-    }
+    return ibanTopupRequestPromise;
   }
+  ibanTopupRequestInFlight = true;
+  syncIbanTopupActions();
+  setIbanTopupLoading(true, {
+    title: loadingMessage,
+    subtitle: tr("Generating your transfer reference and bank details."),
+  });
+  setIbanTopupStatus(loadingMessage, { tone: "info", toast: false });
+  ibanTopupRequestPromise = (async () => {
+    try {
+      const payload = await fetchApiWithAuth("/api/billing/topups/request", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      ibanTopupDraft = payload;
+      populateIbanTopupResult(payload);
+      setIbanTopupStatus(tr("Transfer reference generated. Use it as communication."), {
+        tone: "success",
+        toast: options?.silentToast ? false : true,
+      });
+      await loadBillingOverview({ quiet: true });
+      return payload;
+    } catch (error) {
+      setIbanTopupLoading(false);
+      syncIbanTopupActions();
+      setIbanTopupStatus(error?.message || tr("Could not create top-up request."), {
+        tone: "error",
+        toast: true,
+      });
+      return null;
+    } finally {
+      ibanTopupRequestInFlight = false;
+      ibanTopupRequestPromise = null;
+      syncIbanTopupActions();
+    }
+  })();
+  return ibanTopupRequestPromise;
 }
 
 function loadLocalHistory(userId) {

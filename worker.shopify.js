@@ -38,6 +38,7 @@ const DEFAULT_BROWSER_RENDER_RETRY_ATTEMPTS = 4;
 const DEFAULT_BROWSER_RENDER_RETRY_BASE_MS = 1500;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
+const APPROVED_INVOICE_RENDERER_VERSION = "native-html-v1";
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
@@ -1483,6 +1484,7 @@ async function persistBillingInvoicePdfVariant(env, invoice, reminderStage, pdfB
   const payload = await response.json().catch(() => ({}));
   return {
     stage: normalizeInvoicePdfVariantStage(reminderStage),
+    rendererVersion: APPROVED_INVOICE_RENDERER_VERSION,
     filename: safeFilename,
     bucket: BILLING_INVOICE_STORAGE_BUCKET,
     objectPath: payload?.Key || payload?.path || storagePath,
@@ -1506,10 +1508,10 @@ function getBillingInvoicePdfVariantRecord(invoice, reminderStage, options = {})
   const variants = getBillingInvoicePdfVariantMap(invoice);
   const exactKey = normalizeInvoicePdfVariantStage(reminderStage);
   const exact = variants[exactKey] && typeof variants[exactKey] === "object" ? variants[exactKey] : null;
-  if (exact) return exact;
+  if (exact && exact.rendererVersion === APPROVED_INVOICE_RENDERER_VERSION) return exact;
   if (options?.allowFallback === true) {
     const initial = variants["0"] && typeof variants["0"] === "object" ? variants["0"] : null;
-    if (initial) return initial;
+    if (initial && initial.rendererVersion === APPROVED_INVOICE_RENDERER_VERSION) return initial;
   }
   return null;
 }
@@ -1523,6 +1525,9 @@ function mergeBillingInvoicePdfVariantMetadata(invoice, variants = []) {
     const stageKey = normalizeInvoicePdfVariantStage(variant?.stage);
     nextVariants[stageKey] = {
       stage: stageKey,
+      rendererVersion:
+        String(variant?.rendererVersion || APPROVED_INVOICE_RENDERER_VERSION).trim()
+        || APPROVED_INVOICE_RENDERER_VERSION,
       filename: String(variant?.filename || "").trim() || buildInvoiceVariantPdfFilename(invoice, stageKey),
       bucket: String(variant?.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET,
       objectPath: String(variant?.objectPath || variant?.fullPath || "").trim() || null,
@@ -5430,7 +5435,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     paid_at: effectivePaidAt,
   };
   const desiredStage = isReminder ? reminderStage : 0;
-  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
+  const providedVariants = [];
   let persistedPdfVariants = [];
   if (providedVariants.length) {
     persistedPdfVariants = await Promise.all(
@@ -6181,10 +6186,8 @@ async function handleAdminInvoiceSend(request, env) {
     return jsonResponse({ error: "Invoice id is required." }, 400);
   }
   try {
-    const providedVariants = normalizeProvidedInvoicePdfVariantsFromBody(body);
     const result = await sendBillingInvoiceById(env, invoiceId, {
       isReminder: false,
-      pdfVariants: providedVariants,
       requireApprovedPdf: true,
     });
     return jsonResponse({
@@ -6262,7 +6265,7 @@ function normalizeProvidedInvoicePdfVariantsFromBody(body = {}) {
 
 async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
   const { invoice, items } = buildAdminBillingTestInvoice(env, toEmail);
-  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
+  const providedVariants = [];
   const steps = [
     { reminderStage: 0, isReminder: false, key: "initial" },
     { reminderStage: 1, isReminder: true, key: "due_15_days" },
@@ -6431,9 +6434,7 @@ async function handleAdminInvoiceSendTest(request, env) {
   }
   try {
     const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(env, toEmail);
-    const providedPdfBase64 = String(body?.pdfBase64 || "").trim();
-    const providedFilename = String(body?.filename || "").trim();
-    const renderedVariant = providedPdfBase64 || !env?.BROWSER
+    const renderedVariant = !env?.BROWSER
       ? null
       : await renderSelectableInvoicePdf(
           env,
@@ -6450,10 +6451,7 @@ async function handleAdminInvoiceSendTest(request, env) {
         ).catch((error) => {
           throw new Error(error?.message || "Could not render the approved invoice PDF for the test email.");
         });
-    const pdfBytes = providedPdfBase64
-      ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
-      : renderedVariant?.bytes
-        || null;
+    const pdfBytes = renderedVariant?.bytes || null;
     if (!pdfBytes) {
       throw new Error("Approved invoice PDF is unavailable for the test email.");
     }
@@ -6469,7 +6467,7 @@ async function handleAdminInvoiceSendTest(request, env) {
       }),
       attachments: [
         {
-          filename: providedFilename || renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
+          filename: renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
           content: pdfBytes,
           contentType: "application/pdf",
         },
@@ -6505,7 +6503,6 @@ async function handleAdminInvoiceSendTestSequence(request, env) {
   }
   try {
     const sequence = await sendAdminBillingTestSequenceEmails(env, toEmail, {
-      pdfVariants: normalizeProvidedInvoicePdfVariantsFromBody(body),
       request,
     });
     return jsonResponse({
