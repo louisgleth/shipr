@@ -1015,18 +1015,17 @@ body {
   font-size: var(--fs-2xs);
   max-width: 220px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   margin-left: 24px;
 }
 
 .account-chip::before {
   content: "";
   position: absolute;
-  left: -12px;
+  left: -26px;
   top: 50%;
   width: 1px;
-  height: 18px;
+  height: 10px;
   background: var(--stroke);
   transform: translateY(-50%);
 }
@@ -1034,7 +1033,7 @@ body {
 .account-chip-dot {
   width: 7px;
   height: 7px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--accent);
   flex-shrink: 0;
 }
