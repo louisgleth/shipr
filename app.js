@@ -6772,8 +6772,8 @@ function resetIbanTopupResult() {
   if (ibanResultIban) ibanResultIban.textContent = "--";
   if (ibanResultBic) ibanResultBic.textContent = "--";
   if (ibanResultReference) ibanResultReference.textContent = "--";
-  if (ibanResultEta) ibanResultEta.textContent = tr("1-2 business days");
-  if (ibanResultNote) ibanResultNote.textContent = "--";
+  if (ibanResultEta) ibanResultEta.textContent = "Instant / Up to 3 days";
+  if (ibanResultNote) ibanResultNote.textContent = "";
 }
 
 function setIbanTopupModalOpen(open, options = {}) {
@@ -6815,7 +6815,7 @@ function populateIbanTopupResult(payload) {
     ibanResultReference.textContent = String(instructions.reference || topup?.reference || "--");
   }
   if (ibanResultEta) {
-    ibanResultEta.textContent = tr("1-2 business days");
+    ibanResultEta.textContent = "Instant / Up to 3 days";
   }
   if (ibanResultNote) {
     ibanResultNote.textContent = String(instructions.note || "");
@@ -12413,11 +12413,6 @@ function updatePayment() {
   if (directPaymentTotal) {
     directPaymentTotal.textContent = formatMoney(total);
   }
-  if (directPaymentHint) {
-    directPaymentHint.textContent = tr(
-      "If your balance is lower than the order total, top up by bank transfer or use card for immediate shipment."
-    );
-  }
   renderCheckoutStepMode();
 }
 
@@ -12434,7 +12429,7 @@ function getIbanInstructionsFromOverview() {
     beneficiary: "Shipide",
     iban: "BE68 5390 0754 7034",
     bic: "KREDBEBB",
-    note: tr("Transfers are credited once received (typically 1-2 business days)."),
+    note: "",
   };
   const fromOverview = billingOverview?.iban_instructions;
   if (!fromOverview || typeof fromOverview !== "object") return fallback;

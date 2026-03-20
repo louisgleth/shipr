@@ -925,6 +925,26 @@ body {
   gap: 10px;
 }
 
+.topbar-actions .topbar-nav-btn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.topbar-actions .topbar-nav-btn:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+  transform: none;
+}
+
+.topbar-actions .topbar-nav-btn:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -1036,7 +1056,8 @@ body {
 .hero p {
   margin: 0;
   color: var(--muted);
-  max-width: 520px;
+  max-width: none;
+  white-space: nowrap;
 }
 
 .hero-card {
@@ -2914,7 +2935,7 @@ body {
 .reports-page-actions {
   display: flex;
   gap: 12px;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -4327,6 +4348,10 @@ body {
 .iban-topup-note {
   font-size: var(--fs-xs);
   color: var(--muted);
+}
+
+.iban-topup-note:empty {
+  display: none;
 }
 
 .iban-topup-actions {
@@ -7093,6 +7118,10 @@ input.is-invalid {
 
   .hero {
     grid-template-columns: 1fr;
+  }
+
+  .hero p {
+    white-space: normal;
   }
 
   .layout {
