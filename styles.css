@@ -4800,11 +4800,9 @@ body {
   aspect-ratio: 210 / 297;
   margin: 0 auto;
   background: var(--primary);
-  padding: 24px;
   box-sizing: border-box;
-  border: 1px solid var(--stroke);
-  border-bottom: none;
-  border-radius: var(--radius-lg);
+  border: none;
+  border-radius: 0;
   user-select: text;
   -webkit-user-select: text;
   display: flex;
@@ -4819,7 +4817,7 @@ body {
 }
 
 .receipt-sheet-body {
-  padding: 16px 0 0;
+  padding: 40px 24px 0;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -5204,19 +5202,21 @@ body {
 
 .invoice-settlement-grid {
   display: grid;
-  grid-template-columns: 1fr 0.9fr;
-  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
   align-items: stretch;
 }
 
 .invoice-settlement-grid.has-transfer {
-  grid-template-columns: 0.72fr 1fr 0.9fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .invoice-payment-block {
   display: grid;
   gap: 10px;
   align-content: start;
+  min-width: 0;
+  padding-right: 18px;
 }
 
 .invoice-payment-badge {
@@ -5264,6 +5264,7 @@ body {
   padding-left: 18px;
   border-left: 1px solid var(--stroke);
   align-self: stretch;
+  min-width: 0;
 }
 
 .invoice-transfer-lines {
@@ -5300,6 +5301,7 @@ body {
   padding-left: 18px;
   border-left: 1px solid var(--stroke);
   align-self: stretch;
+  min-width: 0;
 }
 
 .invoice-summary-row {
@@ -5329,7 +5331,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0 0;
+  padding: 12px 24px 0;
   margin-top: 14px;
   border-top: 1px solid var(--stroke);
 }
