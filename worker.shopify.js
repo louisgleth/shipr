@@ -4113,7 +4113,7 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
         padding: 0;
         width: 1000px;
         min-height: 1400px;
-        background: #00060f;
+        background: #000000;
       }
       body {
         color: #f1f4fb;
@@ -4254,9 +4254,9 @@ async function renderSelectableInvoicePdfOnPage(page, env, payload = {}, options
   };
   const pageWidth = 595.28;
   const pageHeight = 841.89;
-  const margin = 18;
+  const margin = 0;
   const contentWidth = pageWidth - margin * 2;
-  const background = rgb(11 / 255, 16 / 255, 24 / 255);
+  const background = rgb(0, 0, 0);
 
   for (const snapshot of pageSnapshots) {
     const clip = {

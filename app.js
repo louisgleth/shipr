@@ -8883,12 +8883,12 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
       const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 18;
+      const margin = 0;
       const cW = pageWidth - margin * 2;
       const usableH = pageHeight - margin * 2;
 
       const paintBg = () => {
-        pdf.setFillColor(0, 6, 15);
+        pdf.setFillColor(0, 0, 0);
         pdf.rect(0, 0, pageWidth, pageHeight, "F");
       };
       const toPt = (canvasPx) => (canvasPx * cW) / fullCanvas.width;
