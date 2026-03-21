@@ -118,6 +118,7 @@ const ROUTE_SUFFIXES = [
 ];
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
+const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
 const AUTH_SIGNUP_PREVIEW_DATA = {
   inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
   credentials: {
@@ -1283,6 +1284,11 @@ const supabaseClient =
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
 const authPixelCanvas = document.getElementById("authPixelCanvas");
+const authBlastCanvas = document.getElementById("authBlastCanvas");
+const authBgSwitcher = document.getElementById("authBgSwitcher");
+const authBgVariantButtons = authBgSwitcher
+  ? Array.from(authBgSwitcher.querySelectorAll("[data-auth-bg-variant]"))
+  : [];
 const authStack = authGate?.querySelector(".auth-stack") || null;
 const authCard = authGate?.querySelector(".auth-card") || null;
 const authCardFrame = document.getElementById("authCardFrame");
@@ -1710,8 +1716,13 @@ let warehouseSaving = false;
 let warehouseLoadRequestToken = 0;
 let warehouseEnteringIds = new Set();
 let authBackgroundStarted = false;
+let authBackgroundVariant = "matrix";
+let authBlastBackground = null;
+let authBlastBackgroundLoading = null;
 let currentMainView = "builder";
 let adminAccessAllowed = false;
+let adminAccessStatusPromise = null;
+let adminAccessStatusRequestId = 0;
 let adminDashboardLoading = false;
 let adminDashboardLoaded = false;
 let adminDashboardState = null;
@@ -4054,31 +4065,73 @@ async function updateAdminClientBilling(userId, method) {
 
 async function loadAdminAccessStatus(options = {}) {
   const { quiet = false } = options;
-  if (!currentUser) {
+  const activeUserId = String(currentUser?.id || "").trim();
+  if (!activeUserId) {
+    adminAccessStatusRequestId += 1;
+    adminAccessStatusPromise = null;
     adminAccessAllowed = false;
     if (openAdminPageButton) {
+      openAdminPageButton.disabled = false;
       openAdminPageButton.classList.add("is-hidden");
+      openAdminPageButton.removeAttribute("aria-busy");
     }
     refreshAdminOnlyTestTools();
     return false;
   }
-  try {
-    const payload = await fetchApiWithAuth("/api/admin/status", { timeoutMs: 8000 });
-    adminAccessAllowed = Boolean(payload?.allowed);
-  } catch (error) {
-    adminAccessAllowed = false;
-    if (!quiet) {
-      showToast(error?.message || tr("Could not verify admin access."), { tone: "error" });
-    }
+  if (adminAccessStatusPromise) {
+    return adminAccessStatusPromise;
   }
+  const requestId = ++adminAccessStatusRequestId;
   if (openAdminPageButton) {
-    openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
+    openAdminPageButton.disabled = true;
+    openAdminPageButton.setAttribute("aria-busy", "true");
   }
-  refreshAdminOnlyTestTools();
-  if (!adminAccessAllowed && currentMainView === "admin") {
-    setAdminPageVisible(false, { replace: true });
-  }
-  return adminAccessAllowed;
+  const requestPromise = (async () => {
+    let allowed = false;
+    try {
+      const payload = await fetchApiWithAuth("/api/admin/status", { timeoutMs: 8000 });
+      allowed = Boolean(payload?.allowed);
+    } catch (error) {
+      if (requestId === adminAccessStatusRequestId && String(currentUser?.id || "").trim() === activeUserId) {
+        adminAccessAllowed = false;
+        if (!quiet) {
+          showToast(error?.message || tr("Could not verify admin access."), { tone: "error" });
+        }
+      }
+    }
+
+    const stillSameUser = String(currentUser?.id || "").trim() === activeUserId;
+    const isLatestRequest = requestId === adminAccessStatusRequestId;
+    if (stillSameUser && isLatestRequest) {
+      adminAccessAllowed = allowed;
+      if (openAdminPageButton) {
+        openAdminPageButton.disabled = false;
+        openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
+        openAdminPageButton.removeAttribute("aria-busy");
+      }
+      refreshAdminOnlyTestTools();
+      if (!adminAccessAllowed && currentMainView === "admin") {
+        setAdminPageVisible(false, { replace: true });
+      }
+      return adminAccessAllowed;
+    }
+
+    return Boolean(stillSameUser && adminAccessAllowed);
+  })();
+
+  let inFlightPromise = null;
+  inFlightPromise = requestPromise.finally(() => {
+    if (adminAccessStatusPromise === inFlightPromise) {
+      adminAccessStatusPromise = null;
+    }
+    if (openAdminPageButton) {
+      openAdminPageButton.disabled = false;
+      openAdminPageButton.removeAttribute("aria-busy");
+    }
+  });
+  adminAccessStatusPromise = inFlightPromise;
+
+  return inFlightPromise;
 }
 
 async function loadAdminDashboard(options = {}) {
@@ -11739,11 +11792,19 @@ function setAuthView(session, options = {}) {
   const route = parseRouteFromLocation();
   renderAccountProfile(currentUser);
   if (isAuthed) {
+    adminAccessAllowed = false;
+    adminAccessStatusRequestId += 1;
+    adminAccessStatusPromise = null;
     startAuthKeepAlive();
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     refreshAdminOnlyTestTools();
-    loadAdminAccessStatus({ quiet: true });
+    if (openAdminPageButton) {
+      openAdminPageButton.disabled = true;
+      openAdminPageButton.classList.add("is-hidden");
+      openAdminPageButton.setAttribute("aria-busy", "true");
+    }
+    void loadAdminAccessStatus({ quiet: true });
     loadBillingOverview({ quiet: true });
     if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
       const localPref = getStoredLanguagePreference();
@@ -11755,6 +11816,8 @@ function setAuthView(session, options = {}) {
       adminBillingTestEmailInput.value = currentUser?.email || "";
     }
   } else {
+    adminAccessStatusRequestId += 1;
+    adminAccessStatusPromise = null;
     stopAuthKeepAlive();
     resetWarehouseState();
     shopifyConnection = null;
@@ -11805,6 +11868,13 @@ function setAuthView(session, options = {}) {
     openBuilderPageButton.classList.toggle("is-hidden", !isAuthed);
   }
   if (openAdminPageButton) {
+    const adminAccessLoading = Boolean(isAuthed && adminAccessStatusPromise);
+    openAdminPageButton.disabled = adminAccessLoading;
+    if (adminAccessLoading) {
+      openAdminPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openAdminPageButton.removeAttribute("aria-busy");
+    }
     openAdminPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
   }
   refreshAdminOnlyTestTools();
@@ -12404,6 +12474,7 @@ class PixelCanvasElement extends HTMLElement {
     this.timePrevious = performance.now();
     this.interactionTarget = this.parentElement || this;
     this.startTimer = null;
+    this.isPaused = false;
 
     this.init();
 
@@ -12457,6 +12528,30 @@ class PixelCanvasElement extends HTMLElement {
     if (typeof handler === "function") {
       handler.call(this, event);
     }
+  }
+
+  setPaused(paused) {
+    const nextPaused = Boolean(paused);
+    if (this.isPaused === nextPaused) return;
+    this.isPaused = nextPaused;
+    if (nextPaused) {
+      cancelAnimationFrame(this.animation);
+      if (this.startTimer) {
+        window.clearTimeout(this.startTimer);
+        this.startTimer = null;
+      }
+      return;
+    }
+    this.timePrevious = performance.now();
+    if (this.reducedMotion) {
+      this.renderStatic();
+      return;
+    }
+    if (this.autoStart) {
+      this.scheduleAutoStart();
+      return;
+    }
+    this.handleAnimation("appear");
   }
 
   onmouseenter() {
@@ -12634,6 +12729,7 @@ class PixelCanvasElement extends HTMLElement {
   }
 
   animate(fnName) {
+    if (this.isPaused) return;
     this.animation = requestAnimationFrame(() => this.animate(fnName));
     const timeNow = performance.now();
     const timePassed = timeNow - this.timePrevious;
@@ -12658,12 +12754,127 @@ class PixelCanvasElement extends HTMLElement {
   }
 }
 
+function normalizeAuthBackgroundVariant(value) {
+  return String(value || "").trim().toLowerCase() === "blast" ? "blast" : "matrix";
+}
+
+function readStoredAuthBackgroundVariant() {
+  try {
+    return normalizeAuthBackgroundVariant(window.localStorage.getItem(AUTH_BACKGROUND_VARIANT_STORAGE_KEY));
+  } catch (error) {
+    return "matrix";
+  }
+}
+
+function storeAuthBackgroundVariant(variant) {
+  try {
+    window.localStorage.setItem(
+      AUTH_BACKGROUND_VARIANT_STORAGE_KEY,
+      normalizeAuthBackgroundVariant(variant)
+    );
+  } catch (error) {
+    // Ignore storage issues.
+  }
+}
+
+function updateAuthBackgroundVariantUi(variant) {
+  const normalized = normalizeAuthBackgroundVariant(variant);
+  if (authGate) {
+    authGate.dataset.authBgVariant = normalized;
+  }
+  authBgVariantButtons.forEach((button) => {
+    const isActive = normalizeAuthBackgroundVariant(button.dataset.authBgVariant) === normalized;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+async function ensureAuthBlastBackground() {
+  if (authBlastBackground) return authBlastBackground;
+  if (!authBlastCanvas) return null;
+  if (authBlastBackgroundLoading) return authBlastBackgroundLoading;
+  authBlastBackgroundLoading = import("./auth-pixel-blast.js")
+    .then((mod) => mod.createAuthPixelBlastBackground(authBlastCanvas, {
+      color: "#7747e3",
+      interactionTarget: authGate || document.body,
+      variant: "square",
+      pixelSize: 2,
+      patternScale: 1,
+      patternDensity: 1.4,
+      pixelSizeJitter: 1.6,
+      enableRipples: true,
+      rippleSpeed: 0.4,
+      rippleThickness: 0.12,
+      rippleIntensityScale: 1.5,
+      speed: 0.95,
+      edgeFade: 0.31,
+      transparent: true,
+    }))
+    .then((instance) => {
+      authBlastBackground = instance;
+      return instance;
+    })
+    .catch((error) => {
+      authBlastBackgroundLoading = null;
+      throw error;
+    });
+  return authBlastBackgroundLoading;
+}
+
+async function setAuthBackgroundVariant(variant, options = {}) {
+  const normalized = normalizeAuthBackgroundVariant(variant);
+  const { persist = true } = options;
+  authBackgroundVariant = normalized;
+  updateAuthBackgroundVariantUi(normalized);
+  if (persist) {
+    storeAuthBackgroundVariant(normalized);
+  }
+  if (normalized === "blast") {
+    try {
+      const blast = await ensureAuthBlastBackground();
+      blast?.setPaused(false);
+      if (authPixelCanvas?.setPaused) {
+        authPixelCanvas.setPaused(true);
+      }
+    } catch (error) {
+      authBackgroundVariant = "matrix";
+      updateAuthBackgroundVariantUi("matrix");
+      if (persist) {
+        storeAuthBackgroundVariant("matrix");
+      }
+      showToast("Could not load the Blast background.", { tone: "error" });
+      if (authPixelCanvas?.setPaused) {
+        authPixelCanvas.setPaused(false);
+      }
+    }
+    return;
+  }
+  authBlastBackground?.setPaused(true);
+  if (authPixelCanvas?.setPaused) {
+    authPixelCanvas.setPaused(false);
+  }
+}
+
 function initializeAuthBackground() {
   if (authBackgroundStarted || !authGate || !authPixelCanvas) return;
   authBackgroundStarted = true;
   PixelCanvasElement.register();
+  authBackgroundVariant = readStoredAuthBackgroundVariant();
+  updateAuthBackgroundVariantUi(authBackgroundVariant);
+  if (authBackgroundVariant === "blast" && authPixelCanvas?.setPaused) {
+    authPixelCanvas.setPaused(true);
+  }
+  authBgSwitcher?.addEventListener("click", (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest("[data-auth-bg-variant]")
+      : null;
+    if (!(button instanceof HTMLElement)) return;
+    const nextVariant = normalizeAuthBackgroundVariant(button.dataset.authBgVariant);
+    void setAuthBackgroundVariant(nextVariant);
+  });
   requestAnimationFrame(() => {
     authGate.classList.add("is-ready");
+    void setAuthBackgroundVariant(authBackgroundVariant, { persist: false });
   });
 }
 

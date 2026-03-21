@@ -146,6 +146,26 @@ body {
   pointer-events: none;
   z-index: 0;
   opacity: 1;
+  transition: opacity 0.42s var(--ease-out-expo);
+}
+
+.auth-blast-canvas {
+  position: absolute;
+  inset: -8%;
+  width: 116%;
+  height: 116%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.42s var(--ease-out-expo);
+}
+
+.auth-gate[data-auth-bg-variant="blast"] .auth-pixel-canvas {
+  opacity: 0;
+}
+
+.auth-gate[data-auth-bg-variant="blast"] .auth-blast-canvas {
+  opacity: 1;
 }
 
 .auth-stack {
@@ -160,6 +180,50 @@ body {
 
 .auth-gate.is-register-mode .auth-stack {
   width: min(760px, 100%);
+}
+
+.auth-bg-switcher {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 12, 20, 0.72);
+  border-radius: 999px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.auth-bg-switcher-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+
+.auth-bg-switcher-btn:hover {
+  color: var(--text);
+}
+
+.auth-bg-switcher-btn.is-active {
+  background: #141233;
+  color: var(--text);
+}
+
+.auth-bg-switcher-btn:focus-visible {
+  outline: 2px solid rgba(119, 71, 227, 0.8);
+  outline-offset: 2px;
 }
 
 .auth-card-mask {
