@@ -1283,6 +1283,7 @@ const supabaseClient =
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
 const authPixelCanvas = document.getElementById("authPixelCanvas");
+const authStack = authGate?.querySelector(".auth-stack") || null;
 const authCard = authGate?.querySelector(".auth-card") || null;
 const authCardFrame = document.getElementById("authCardFrame");
 const authForm = document.getElementById("authForm");
@@ -12502,6 +12503,7 @@ class PixelCanvasElement extends HTMLElement {
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
     this.pixels = [];
+    this.updateWaveOrigin();
     this.createPixels();
   }
 
@@ -12511,12 +12513,50 @@ class PixelCanvasElement extends HTMLElement {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  updateWaveOrigin() {
+    const fallback = {
+      x: this.canvas.width / 2,
+      y: this.canvas.height / 2,
+    };
+    const anchorElement = authStack || authCard;
+    if (!anchorElement) {
+      this.waveOrigin = fallback;
+      this.waveMaxDistance = Math.hypot(this.canvas.width / 2, this.canvas.height / 2);
+      return;
+    }
+
+    const hostRect = this.getBoundingClientRect();
+    const anchorRect = anchorElement.getBoundingClientRect();
+    const hasAnchorBox = anchorRect.width > 0 && anchorRect.height > 0;
+    const origin = hasAnchorBox
+      ? {
+          x: anchorRect.left - hostRect.left + anchorRect.width / 2,
+          y: anchorRect.top - hostRect.top + anchorRect.height / 2,
+        }
+      : fallback;
+
+    this.waveOrigin = origin;
+    this.waveMaxDistance = Math.max(
+      1,
+      Math.hypot(origin.x, origin.y),
+      Math.hypot(this.canvas.width - origin.x, origin.y),
+      Math.hypot(origin.x, this.canvas.height - origin.y),
+      Math.hypot(this.canvas.width - origin.x, this.canvas.height - origin.y)
+    );
+  }
+
   getPixelDelay(x, y, gap) {
     if (this.reducedMotion) return 0;
 
     if (this.wave === "radial") {
-      const distance = this.getDistanceToCanvasCenter(x, y);
-      return 18 + distance * 1.35 + Math.random() * gap * 2.4;
+      const origin = this.waveOrigin || { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+      const dx = x - origin.x;
+      const dy = y - origin.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const maxDistance = Math.max(1, this.waveMaxDistance || Math.hypot(this.canvas.width / 2, this.canvas.height / 2));
+      const normalized = clamp01(distance / maxDistance);
+      const curved = normalized * normalized * (0.35 + normalized * 0.65);
+      return 18 + curved * maxDistance * 1.55 + Math.random() * gap * 1.8;
     }
 
     if (this.wave === "sweep") {
@@ -12543,6 +12583,7 @@ class PixelCanvasElement extends HTMLElement {
 
   createPixels() {
     const gap = this.getEffectiveGap();
+    this.pixelGap = gap;
     for (let x = 0; x < this.canvas.width; x += gap) {
       for (let y = 0; y < this.canvas.height; y += gap) {
         const color = this.colors[Math.floor(Math.random() * this.colors.length)];
@@ -12569,6 +12610,12 @@ class PixelCanvasElement extends HTMLElement {
     cancelAnimationFrame(this.animation);
     this.timePrevious = performance.now();
     if (this.autoStart && name === "appear") {
+      this.updateWaveOrigin();
+      if (this.wave === "radial" && this.pixelGap) {
+        for (let i = 0; i < this.pixels.length; i += 1) {
+          this.pixels[i].delay = this.getPixelDelay(this.pixels[i].x, this.pixels[i].y, this.pixelGap);
+        }
+      }
       this.waveStartAt = this.timePrevious;
     }
     this.animation = requestAnimationFrame(() => this.animate(name));
