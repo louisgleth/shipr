@@ -84,7 +84,6 @@ const AUTH_REGISTER_STEP_RESIZE_MS = 520;
 const AUTH_REGISTER_STEP_IN_MS = 260;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
 const CSV_TABLE_PAGE_SIZE = 10;
-const AUTH_PARTICLES_WARMUP_STEPS = 42;
 const VAT_RATE = 0;
 const TOTAL_STEPS = 4;
 const CUSTOMS_MAX_ITEMS = 12;
@@ -118,6 +117,7 @@ const ROUTE_SUFFIXES = [
   ...Object.values(STEP_ROUTE_PATHS),
 ];
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
+const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_SIGNUP_PREVIEW_DATA = {
   inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
   credentials: {
@@ -1282,6 +1282,7 @@ const supabaseClient =
 
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
+const authPixelCanvas = document.getElementById("authPixelCanvas");
 const authCard = authGate?.querySelector(".auth-card") || null;
 const authCardFrame = document.getElementById("authCardFrame");
 const authForm = document.getElementById("authForm");
@@ -1329,6 +1330,13 @@ const authBrand = document.getElementById("authBrand");
 const authBrandOriginal = document.getElementById("authBrandOriginal");
 const authBrandInlineLogo = document.getElementById("authBrandInlineLogo");
 const appLogoLottie = document.getElementById("appLogoLottie");
+const flowLogoAnimationDataPromise =
+  typeof window !== "undefined" && typeof window.fetch === "function"
+    ? window
+        .fetch(FLOW_LOGO_JSON_URL, { cache: "force-cache" })
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null)
+    : Promise.resolve(null);
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
@@ -1700,7 +1708,7 @@ let warehouseDirty = false;
 let warehouseSaving = false;
 let warehouseLoadRequestToken = 0;
 let warehouseEnteringIds = new Set();
-let authParticlesStarted = false;
+let authBackgroundStarted = false;
 let currentMainView = "builder";
 let adminAccessAllowed = false;
 let adminDashboardLoading = false;
@@ -10662,16 +10670,59 @@ function getRegistrationStepOneValidationError() {
   if (!confirmPassword) {
     return tr("Confirm your password to continue.");
   }
-  if (password !== confirmPassword) {
-    return tr("Passwords do not match.");
-  }
-  if (password.length < 10) {
-    return tr("Password must be at least {min} characters.", { min: 10 });
+  const passwordValidationError = getRegistrationPasswordValidationError({
+    password,
+    confirmPassword,
+  });
+  if (passwordValidationError) {
+    return passwordValidationError;
   }
   if (!validateRegistrationProfile(profile)) {
     return tr("All registration fields are required.");
   }
   return "";
+}
+
+function getRegistrationPasswordValidationError(options = {}) {
+  const password = String(options?.password ?? authPassword?.value ?? "");
+  const confirmPassword = String(options?.confirmPassword ?? authPasswordConfirm?.value ?? "");
+  if (password.length < 10) {
+    return tr("Password must be at least {min} characters.", { min: 10 });
+  }
+  if (confirmPassword && password !== confirmPassword) {
+    return tr("Passwords do not match.");
+  }
+  return "";
+}
+
+function maybeShowRegistrationPasswordToast(input) {
+  if (authMode !== "register") return;
+  if (!input) return;
+  const password = String(authPassword?.value || "");
+  const confirmPassword = String(authPasswordConfirm?.value || "");
+
+  if (input === authPassword) {
+    if (!password) return;
+    const validationError = getRegistrationPasswordValidationError({
+      password,
+      confirmPassword: "",
+    });
+    if (validationError) {
+      setAuthMessage(validationError);
+    }
+    return;
+  }
+
+  if (input === authPasswordConfirm) {
+    if (!confirmPassword) return;
+    const validationError = getRegistrationPasswordValidationError({
+      password,
+      confirmPassword,
+    });
+    if (validationError) {
+      setAuthMessage(validationError);
+    }
+  }
 }
 
 function updateAuthRegisterProgressState(step = authRegisterStep) {
@@ -12079,174 +12130,494 @@ function initializeAuthLogo() {
   const target = layout === "inline" ? authBrandInlineLogo : authLogoLottie;
   if (!target) return;
   target.style.pointerEvents = "none";
-  const anim = window.lottie.loadAnimation({
-    container: target,
-    renderer: "svg",
-    loop: false,
-    autoplay: true,
-    path: "assets/flow-logo.json",
-  });
-  anim.addEventListener("DOMLoaded", () => {
-    const svg = target.querySelector("svg");
-    if (svg) svg.style.pointerEvents = "none";
-  });
+  void mountFlowLogoAnimation(target);
 }
 
 function initializeAppLogo() {
   if (!window.lottie || !appLogoLottie) return;
-  window.lottie.loadAnimation({
-    container: appLogoLottie,
+  void mountFlowLogoAnimation(appLogoLottie);
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function parseHexColorToRgb(value) {
+  const hex = String(value || "").trim().replace(/^#/, "");
+  if (!hex) return { r: 119, g: 71, b: 227 };
+  if (hex.length === 3 || hex.length === 4) {
+    return {
+      r: Number.parseInt(hex[0] + hex[0], 16) || 119,
+      g: Number.parseInt(hex[1] + hex[1], 16) || 71,
+      b: Number.parseInt(hex[2] + hex[2], 16) || 227,
+    };
+  }
+  if (hex.length === 6 || hex.length === 8) {
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16) || 119,
+      g: Number.parseInt(hex.slice(2, 4), 16) || 71,
+      b: Number.parseInt(hex.slice(4, 6), 16) || 227,
+    };
+  }
+  return { r: 119, g: 71, b: 227 };
+}
+
+function mixRgbColors(source, target, amount) {
+  const t = clamp01(amount);
+  return {
+    r: Math.round(source.r + (target.r - source.r) * t),
+    g: Math.round(source.g + (target.g - source.g) * t),
+    b: Math.round(source.b + (target.b - source.b) * t),
+  };
+}
+
+function cloneAnimationData(data) {
+  if (!data) return null;
+  if (typeof structuredClone === "function") {
+    return structuredClone(data);
+  }
+  return JSON.parse(JSON.stringify(data));
+}
+
+async function mountFlowLogoAnimation(target) {
+  if (!window.lottie || !target) return null;
+  target.style.pointerEvents = "none";
+  target.textContent = "";
+  target.classList.remove("is-ready");
+  const animationData = cloneAnimationData(await flowLogoAnimationDataPromise);
+  const config = {
+    container: target,
     renderer: "svg",
     loop: false,
     autoplay: true,
-    path: "assets/flow-logo.json",
+    rendererSettings: {
+      progressiveLoad: true,
+    },
+  };
+  if (animationData) {
+    config.animationData = animationData;
+  } else {
+    config.path = FLOW_LOGO_JSON_URL;
+  }
+  const anim = window.lottie.loadAnimation(config);
+  anim.addEventListener("DOMLoaded", () => {
+    const svg = target.querySelector("svg");
+    if (svg) svg.style.pointerEvents = "none";
+    target.classList.add("is-ready");
   });
+  return anim;
 }
 
-function initializeAuthParticles() {
-  if (authParticlesStarted || !authGate || !window.THREE) return;
-  authParticlesStarted = true;
-
-  const movementSpeed = 15;
-  const totalObjects = 1100;
-  const objectSize = 8;
-  const dampingFactor = 0.992;
-  const minAlpha = 0.2;
-  const maxAlpha = 0.8;
-  const alphaShimmerSpeed = 0.005;
-  const targetSpreadForFullOpacity = 400;
-  const minSceneOpacity = 0;
-  const baseColors = [
-    new THREE.Color(0x7747e3),
-    new THREE.Color(0x8f66ed),
-    new THREE.Color(0x6b2fcc),
-    new THREE.Color(0xa18af0),
-    new THREE.Color(0x5c29b8),
-  ];
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
-  renderer.domElement.className = "auth-particles-canvas";
-  renderer.domElement.style.opacity = "0";
-  renderer.domElement.style.pointerEvents = "none";
-  authGate.prepend(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, 1, 1, 10000);
-  camera.position.z = 800;
-
-  const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(totalObjects * 3);
-  const colors = new Float32Array(totalObjects * 4);
-  const directions = [];
-  const startX = 0;
-  const startY = 0;
-
-  for (let i = 0; i < totalObjects; i += 1) {
-    const pIndex = i * 3;
-    const cIndex = i * 4;
-    positions[pIndex] = startX;
-    positions[pIndex + 1] = startY;
-    positions[pIndex + 2] = 0;
-
-    directions.push({
-      x: Math.random() * movementSpeed - movementSpeed / 2,
-      y: Math.random() * movementSpeed - movementSpeed / 2,
-      z: Math.random() * movementSpeed - movementSpeed / 2,
-      alphaDir: (Math.random() > 0.5 ? 1 : -1) * alphaShimmerSpeed,
-    });
-
-    const baseColor = baseColors[Math.floor(Math.random() * baseColors.length)];
-    const initialAlpha = Math.random() * (maxAlpha - minAlpha) + minAlpha;
-    colors[cIndex] = baseColor.r;
-    colors[cIndex + 1] = baseColor.g;
-    colors[cIndex + 2] = baseColor.b;
-    colors[cIndex + 3] = initialAlpha;
+class PixelCanvasPixel {
+  constructor(canvas, context, x, y, color, speed, delay) {
+    this.width = canvas.width;
+    this.height = canvas.height;
+    this.ctx = context;
+    this.x = x;
+    this.y = y;
+    this.color = color;
+    this.colorRgb = parseHexColorToRgb(color);
+    this.speed = Math.random() * 0.8 * speed + speed * 0.1;
+    this.size = 0;
+    this.sizeStep = Math.random() * 0.4 + 0.08;
+    this.minSize = 0.45;
+    this.maxSizeInteger = 2;
+    this.maxSize = Math.random() * (this.maxSizeInteger - this.minSize) + this.minSize;
+    this.delay = delay;
+    this.counter = 0;
+    this.counterStep = Math.random() * 4 + (this.width + this.height) * 0.01;
+    this.isIdle = false;
+    this.isReverse = false;
+    this.isShimmer = false;
+    this.phase = Math.random() * Math.PI * 2;
   }
 
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 4));
-
-  const material = new THREE.PointsMaterial({
-    size: objectSize,
-    vertexColors: true,
-    transparent: true,
-    sizeAttenuation: true,
-    depthWrite: false,
-  });
-  const points = new THREE.Points(geometry, material);
-  scene.add(points);
-
-  const updateParticles = () => {
-    let currentMaxDistanceSq = 0;
-    for (let i = 0; i < totalObjects; i += 1) {
-      const pIndex = i * 3;
-      const cIndex = i * 4;
-      const vector = directions[i];
-
-      vector.x *= dampingFactor;
-      vector.y *= dampingFactor;
-      vector.z *= dampingFactor;
-
-      positions[pIndex] += vector.x;
-      positions[pIndex + 1] += vector.y;
-      positions[pIndex + 2] += vector.z;
-
-      const dx = positions[pIndex] - startX;
-      const dy = positions[pIndex + 1] - startY;
-      const distanceSq = dx * dx + dy * dy;
-      if (distanceSq > currentMaxDistanceSq) {
-        currentMaxDistanceSq = distanceSq;
-      }
-
-      let alpha = colors[cIndex + 3] + vector.alphaDir;
-      if (alpha > maxAlpha || alpha < minAlpha) {
-        vector.alphaDir *= -1;
-        alpha = Math.max(minAlpha, Math.min(maxAlpha, alpha));
-      }
-      colors[cIndex + 3] = alpha;
-    }
-
-    geometry.attributes.position.needsUpdate = true;
-    geometry.attributes.color.needsUpdate = true;
-    return Math.sqrt(currentMaxDistanceSq);
-  };
-
-  for (let i = 0; i < AUTH_PARTICLES_WARMUP_STEPS; i += 1) {
-    updateParticles();
+  draw(size = this.size, alpha = 1, color = this.color) {
+    if (size <= 0 || alpha <= 0) return;
+    const centerOffset = this.maxSizeInteger * 0.5 - size * 0.5;
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(
+      this.x + centerOffset,
+      this.y + centerOffset,
+      size,
+      size
+    );
+    this.ctx.restore();
   }
 
-  const onResize = () => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    renderer.setSize(width, height);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-  };
-
-  onResize();
-  window.addEventListener("resize", onResize);
-  let particlesVisible = false;
-  requestAnimationFrame(() => {
-    particlesVisible = true;
-    authGate.classList.add("is-ready");
-  });
-
-  const animate = () => {
-    requestAnimationFrame(animate);
-    if (authGate.classList.contains("is-hidden")) {
+  appear() {
+    this.isIdle = false;
+    if (this.counter <= this.delay) {
+      this.counter += this.counterStep;
       return;
     }
-    const maxSpread = updateParticles();
-    const sceneOpacity = Math.min(
-      1,
-      Math.max(minSceneOpacity, maxSpread / targetSpreadForFullOpacity)
-    );
-    renderer.domElement.style.opacity = particlesVisible ? sceneOpacity.toFixed(2) : "0";
-    renderer.render(scene, camera);
-  };
+    if (this.size >= this.maxSize) {
+      this.isShimmer = true;
+    }
+    if (this.isShimmer) {
+      this.shimmer();
+    } else {
+      this.size = Math.min(this.maxSize, this.size + this.sizeStep);
+    }
+    this.draw();
+  }
 
-  animate();
+  disappear() {
+    this.isShimmer = false;
+    this.counter = 0;
+    if (this.size <= 0) {
+      this.isIdle = true;
+      return;
+    }
+    this.size = Math.max(0, this.size - 0.12);
+    this.draw();
+  }
+
+  shimmer() {
+    if (this.speed <= 0) {
+      this.size = this.maxSize;
+      return;
+    }
+    if (this.size >= this.maxSize) {
+      this.isReverse = true;
+    } else if (this.size <= this.minSize) {
+      this.isReverse = false;
+    }
+    if (this.isReverse) {
+      this.size = Math.max(this.minSize, this.size - this.speed);
+    } else {
+      this.size = Math.min(this.maxSize, this.size + this.speed);
+    }
+  }
+
+  renderWave(elapsed, options = {}) {
+    const sinceReveal = elapsed - this.delay;
+    if (sinceReveal <= 0) return;
+
+    const revealDuration = Number(options.revealDuration) || 170;
+    const frontWidth = Number(options.frontWidth) || 120;
+    const reducedMotion = Boolean(options.reducedMotion);
+    const progress = Math.min(1, sinceReveal / revealDuration);
+    const eased = progress * progress * (3 - 2 * progress);
+    const localIntro = reducedMotion ? 1 : Math.min(1, sinceReveal / 110);
+    const localEase = localIntro * localIntro * (3 - 2 * localIntro);
+    const frontBoost = Math.max(0, 1 - sinceReveal / frontWidth);
+    const introOpacity = reducedMotion ? 1 : Math.min(1, elapsed / 520);
+    const shimmer =
+      progress >= 1 && !reducedMotion
+        ? 0.96 + Math.sin(elapsed * 0.011 + this.phase) * 0.08
+        : 1;
+    const settledAlpha = reducedMotion ? 1 : 0.88;
+    const rimGlow = Math.pow(frontBoost, 1.15);
+    const highlightAmount = reducedMotion ? 0 : rimGlow * 0.72;
+    const waveColor =
+      highlightAmount > 0
+        ? (() => {
+            const mixed = mixRgbColors(this.colorRgb, { r: 244, g: 236, b: 255 }, highlightAmount);
+            return `rgb(${mixed.r} ${mixed.g} ${mixed.b})`;
+          })()
+        : this.color;
+    const size = Math.min(
+      this.maxSizeInteger * 1.45,
+      this.maxSize * (0.03 + eased * 0.97) * (1 + frontBoost * 0.16) * shimmer * introOpacity * localEase
+    );
+    const alpha = Math.min(1, (0.02 + eased * settledAlpha + frontBoost * 0.16) * introOpacity * localEase);
+    this.draw(size, alpha, waveColor);
+  }
+}
+
+class PixelCanvasElement extends HTMLElement {
+  static register(tag = "pixel-canvas") {
+    if (!("customElements" in window) || customElements.get(tag)) return;
+    customElements.define(tag, this);
+  }
+
+  get colors() {
+    const raw = String(this.dataset.colors || "").trim();
+    const colors = raw
+      ? raw
+          .split(raw.includes("|") ? "|" : ",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [];
+    return colors.length
+      ? colors
+      : ["#7747e38c", "#7747e3ad", "#7747e3d1", "#7747e3"];
+  }
+
+  get gap() {
+    const value = Number(this.dataset.gap || 6);
+    return Math.max(4, Math.min(48, Number.isFinite(value) ? value : 6));
+  }
+
+  get speed() {
+    const value = Number(this.dataset.speed || 20);
+    if (!Number.isFinite(value) || value <= 0 || this.reducedMotion) return 0;
+    return Math.min(100, value) * 0.001;
+  }
+
+  get noFocus() {
+    return this.hasAttribute("data-no-focus");
+  }
+
+  get autoStart() {
+    return this.hasAttribute("data-auto-start");
+  }
+
+  get startDelay() {
+    const value = Number(this.dataset.startDelay || 0);
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+
+  get wave() {
+    return String(this.dataset.wave || "").trim().toLowerCase();
+  }
+
+  connectedCallback() {
+    if (this.shadowRoot) return;
+
+    const root = this.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = `
+      :host {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+      }
+    `;
+    this.canvas = document.createElement("canvas");
+    root.append(style, this.canvas);
+    this.ctx = this.canvas.getContext("2d", { alpha: true });
+    if (!this.ctx) return;
+
+    this.reducedMotion = prefersReducedMotion();
+    this.timeInterval = 1000 / 60;
+    this.timePrevious = performance.now();
+    this.interactionTarget = this.parentElement || this;
+    this.startTimer = null;
+
+    this.init();
+
+    this.resizeObserver = new ResizeObserver(() => {
+      this.init();
+      if (this.reducedMotion) {
+        this.renderStatic();
+      } else if (this.autoStart) {
+        this.scheduleAutoStart();
+      }
+    });
+    this.resizeObserver.observe(this);
+
+    if (!this.autoStart) {
+      this.interactionTarget.addEventListener("mouseenter", this);
+      this.interactionTarget.addEventListener("mouseleave", this);
+      if (!this.noFocus) {
+        this.interactionTarget.addEventListener("focusin", this);
+        this.interactionTarget.addEventListener("focusout", this);
+      }
+    }
+
+    if (this.reducedMotion) {
+      this.renderStatic();
+    } else if (this.autoStart) {
+      this.scheduleAutoStart();
+    }
+  }
+
+  disconnectedCallback() {
+    cancelAnimationFrame(this.animation);
+    if (this.startTimer) {
+      window.clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
+    if (this.interactionTarget && !this.autoStart) {
+      this.interactionTarget.removeEventListener("mouseenter", this);
+      this.interactionTarget.removeEventListener("mouseleave", this);
+      if (!this.noFocus) {
+        this.interactionTarget.removeEventListener("focusin", this);
+        this.interactionTarget.removeEventListener("focusout", this);
+      }
+    }
+  }
+
+  handleEvent(event) {
+    const handler = this[`on${event.type}`];
+    if (typeof handler === "function") {
+      handler.call(this, event);
+    }
+  }
+
+  onmouseenter() {
+    this.handleAnimation("appear");
+  }
+
+  onmouseleave() {
+    this.handleAnimation("disappear");
+  }
+
+  onfocusin(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    this.handleAnimation("appear");
+  }
+
+  onfocusout(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    this.handleAnimation("disappear");
+  }
+
+  scheduleAutoStart() {
+    if (this.startTimer) {
+      window.clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
+    const delay = this.startDelay;
+    if (!delay) {
+      this.handleAnimation("appear");
+      return;
+    }
+    this.startTimer = window.setTimeout(() => {
+      this.startTimer = null;
+      this.handleAnimation("appear");
+    }, delay);
+  }
+
+  init() {
+    if (!this.ctx) return;
+    const rect = this.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const height = Math.max(1, Math.floor(rect.height));
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    this.pixels = [];
+    this.createPixels();
+  }
+
+  getDistanceToCanvasCenter(x, y) {
+    const dx = x - this.canvas.width / 2;
+    const dy = y - this.canvas.height / 2;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  getPixelDelay(x, y, gap) {
+    if (this.reducedMotion) return 0;
+
+    if (this.wave === "radial") {
+      const distance = this.getDistanceToCanvasCenter(x, y);
+      return 18 + distance * 1.35 + Math.random() * gap * 2.4;
+    }
+
+    if (this.wave === "sweep") {
+      const width = Math.max(1, this.canvas.width);
+      const height = Math.max(1, this.canvas.height);
+      const normalizedX = x / width;
+      const normalizedY = y / height;
+      const waveBand =
+        Math.sin(normalizedY * Math.PI * 2.4 - normalizedX * Math.PI * 0.9) * gap * 5.5;
+      const verticalDrift = normalizedY * gap * 3.2;
+      const horizontalTravel = normalizedX * width * 0.9;
+      return Math.max(0, horizontalTravel + waveBand + verticalDrift);
+    }
+
+    return this.getDistanceToCanvasCenter(x, y);
+  }
+
+  getEffectiveGap() {
+    const area = Math.max(1, this.canvas.width * this.canvas.height);
+    const maxPixels = 42000;
+    const dynamicGap = Math.ceil(Math.sqrt(area / maxPixels));
+    return Math.max(this.gap, Number.isFinite(dynamicGap) ? dynamicGap : this.gap);
+  }
+
+  createPixels() {
+    const gap = this.getEffectiveGap();
+    for (let x = 0; x < this.canvas.width; x += gap) {
+      for (let y = 0; y < this.canvas.height; y += gap) {
+        const color = this.colors[Math.floor(Math.random() * this.colors.length)];
+        const delay = this.getPixelDelay(x, y, gap);
+        this.pixels.push(
+          new PixelCanvasPixel(this.canvas, this.ctx, x, y, color, this.speed, delay)
+        );
+      }
+    }
+  }
+
+  renderStatic() {
+    if (!this.ctx) return;
+    cancelAnimationFrame(this.animation);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.pixels.forEach((pixel) => {
+      pixel.counter = pixel.delay + 1;
+      pixel.size = pixel.maxSize;
+      pixel.draw();
+    });
+  }
+
+  handleAnimation(name) {
+    cancelAnimationFrame(this.animation);
+    this.timePrevious = performance.now();
+    if (this.autoStart && name === "appear") {
+      this.waveStartAt = this.timePrevious;
+    }
+    this.animation = requestAnimationFrame(() => this.animate(name));
+  }
+
+  renderWaveFrame(timeNow) {
+    const elapsed = Math.max(0, timeNow - (this.waveStartAt || timeNow));
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    for (let i = 0; i < this.pixels.length; i += 1) {
+      this.pixels[i].renderWave(elapsed, {
+        revealDuration: 235,
+        frontWidth: 240,
+        reducedMotion: this.reducedMotion,
+      });
+    }
+  }
+
+  animate(fnName) {
+    this.animation = requestAnimationFrame(() => this.animate(fnName));
+    const timeNow = performance.now();
+    const timePassed = timeNow - this.timePrevious;
+    if (timePassed < this.timeInterval) return;
+
+    this.timePrevious = timeNow - (timePassed % this.timeInterval);
+
+    if (this.autoStart && fnName === "appear") {
+      this.renderWaveFrame(timeNow);
+      return;
+    }
+
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    for (let i = 0; i < this.pixels.length; i += 1) {
+      this.pixels[i][fnName]();
+    }
+
+    if (this.pixels.every((pixel) => pixel.isIdle)) {
+      cancelAnimationFrame(this.animation);
+    }
+  }
+}
+
+function initializeAuthBackground() {
+  if (authBackgroundStarted || !authGate || !authPixelCanvas) return;
+  authBackgroundStarted = true;
+  PixelCanvasElement.register();
+  requestAnimationFrame(() => {
+    authGate.classList.add("is-ready");
+  });
 }
 
 function getCountryIcon(country) {
@@ -13497,6 +13868,11 @@ if (authForm) {
     }
     updateAuthRegisterSubmitState();
   });
+  if (input === authPassword || input === authPasswordConfirm) {
+    input.addEventListener("blur", () => {
+      maybeShowRegistrationPasswordToast(input);
+    });
+  }
 });
 
 if (authRegisterBack) {
@@ -16117,7 +16493,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   resetWarehouseState();
   initializeAuthLogo();
   initializeAppLogo();
-  initializeAuthParticles();
+  initializeAuthBackground();
   void setLanguage(resolvePreferredLanguage(null), { persist: false });
   initializeAuth();
 }

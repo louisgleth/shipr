@@ -5,11 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shipide Portal</title>
     <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="preload" href="assets/flow-logo.json" as="fetch" crossorigin="anonymous" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="auth-gate" id="authGate">
+      <div class="auth-background" aria-hidden="true">
+        <pixel-canvas
+          class="auth-pixel-canvas"
+          id="authPixelCanvas"
+          data-gap="5"
+          data-speed="20"
+          data-colors="#7747e38c|#7747e3ad|#7747e3d1|#7747e3"
+          data-wave="radial"
+          data-start-delay="300"
+          data-no-focus
+          data-auto-start
+        ></pixel-canvas>
+      </div>
       <div class="auth-stack">
+        <div class="auth-card-mask" aria-hidden="true"></div>
         <div class="auth-card">
           <div class="auth-card-frame" id="authCardFrame">
             <div class="auth-portal-head">
@@ -1802,7 +1817,6 @@
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
