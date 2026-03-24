@@ -4185,7 +4185,7 @@ body {
 }
 
 .provider-option.is-disabled .provider-icon {
-  background: rgba(241, 244, 251, 0.08);
+  background: transparent;
   color: rgba(241, 244, 251, 0.52);
 }
 
