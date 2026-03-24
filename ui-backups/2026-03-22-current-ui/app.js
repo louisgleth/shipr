@@ -765,14 +765,6 @@ const TRANSLATIONS = {
   "Download Labels (.PDF)": { fr: "Télécharger les étiquettes (.PDF)", nl: "Labels downloaden (.PDF)" },
   "View Receipt": { fr: "Voir le reçu", nl: "Bon bekijken" },
   "Download Invoice": { fr: "Télécharger la facture", nl: "Factuur downloaden" },
-  "WooCommerce": { fr: "WooCommerce", nl: "WooCommerce" },
-  "Wix eCommerce": { fr: "Wix eCommerce", nl: "Wix eCommerce" },
-  "Coming soon": { fr: "Bientôt", nl: "Binnenkort" },
-  "{provider} Settings": { fr: "Paramètres {provider}", nl: "{provider}-instellingen" },
-  "{provider} import and settings are coming soon.": {
-    fr: "L’import et les paramètres {provider} arrivent bientôt.",
-    nl: "{provider}-import en instellingen komen binnenkort.",
-  },
   "No label PDF selected yet. Choose a generation to preview.": { fr: "Aucun PDF d’étiquette sélectionné. Choisissez une génération pour prévisualiser.", nl: "Nog geen label-PDF geselecteerd. Kies een generatie om te bekijken." },
   "Shipping Reports": { fr: "Rapports d’expédition", nl: "Verzendrapporten" },
   "Interactive visibility into savings, payments, shipment volume, services, and destinations.": { fr: "Vue interactive des économies, paiements, volumes, services et destinations.", nl: "Interactief inzicht in besparingen, betalingen, volume, services en bestemmingen." },
@@ -1368,8 +1360,6 @@ const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
-const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
-const accountPreviewPanel = historyPageSection?.querySelector(".account-preview-panel") || null;
 const accountCompanyName = document.getElementById("accountCompanyName");
 const accountContactName = document.getElementById("accountContactName");
 const accountContactEmail = document.getElementById("accountContactEmail");
@@ -1601,15 +1591,7 @@ const providerTrigger = document.getElementById("providerTrigger");
 const providerMenu = document.getElementById("providerMenu");
 const providerStatus = document.getElementById("providerStatus");
 const shopifyProviderOption = document.querySelector('.provider-option[data-provider="shopify"]');
-const woocommerceSettingsTrigger = document.getElementById("woocommerceSettingsTrigger");
-const wixSettingsTrigger = document.getElementById("wixSettingsTrigger");
 const shopifySettingsTrigger = document.getElementById("shopifySettingsTrigger");
-const providerSettingsModal = document.getElementById("providerSettingsModal");
-const providerSettingsTitle = document.getElementById("providerSettingsTitle");
-const providerSettingsName = document.getElementById("providerSettingsName");
-const providerSettingsNote = document.getElementById("providerSettingsNote");
-const providerSettingsClose = document.getElementById("providerSettingsClose");
-const providerSettingsCancel = document.getElementById("providerSettingsCancel");
 const shopifySettingsModal = document.getElementById("shopifySettingsModal");
 const shopifySettingsClose = document.getElementById("shopifySettingsClose");
 const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
@@ -1764,7 +1746,6 @@ let adminMockModeEnabled = false;
 let adminMockSnapshot = null;
 let authShellTransitionToken = 0;
 let mainViewTransitionToken = 0;
-let historyPanelSyncFrame = 0;
 let csvMappingDraft = null;
 let csvModalStepState = "upload";
 let csvModalStepTransitionToken = 0;
@@ -2610,27 +2591,6 @@ function setShopifySettingsModalOpen(open) {
   shopifySettingsModal.classList.toggle("is-closed", !open);
 }
 
-function setGenericProviderSettingsModalOpen(open) {
-  if (!providerSettingsModal) return;
-  providerSettingsModal.classList.toggle("is-closed", !open);
-}
-
-function openGenericProviderSettings(providerLabel) {
-  const label = String(providerLabel || "").trim() || "Provider";
-  if (providerSettingsTitle) {
-    providerSettingsTitle.textContent = tr("{provider} Settings", { provider: label });
-  }
-  if (providerSettingsName) {
-    providerSettingsName.textContent = label;
-  }
-  if (providerSettingsNote) {
-    providerSettingsNote.textContent = tr("{provider} import and settings are coming soon.", {
-      provider: label,
-    });
-  }
-  setGenericProviderSettingsModalOpen(true);
-}
-
 function setShopifySettingsStatus(message = "", options = {}) {
   const { kind = "info", toast = Boolean(message) } = options;
   const text = String(message || "").trim();
@@ -2905,10 +2865,6 @@ async function openShopifySettingsModal() {
 function closeShopifySettingsModal() {
   if (shopifySettingsBusy) return;
   setShopifySettingsModalOpen(false);
-}
-
-function closeGenericProviderSettingsModal() {
-  setGenericProviderSettingsModalOpen(false);
 }
 
 async function saveShopifySettings() {
@@ -6872,35 +6828,11 @@ function setReportsPageVisible(visible, options = {}) {
 
 function setHistoryPageVisible(visible, options = {}) {
   setMainView(visible ? "history" : "builder", options);
-  queueHistoryPanelSync();
 }
 
 function setReceiptModalOpen(open) {
   if (!receiptModal) return;
   receiptModal.classList.toggle("is-closed", !open);
-}
-
-function syncHistoryPanelHeights() {
-  if (!accountHistoryPanel || !accountPreviewPanel) return;
-  if (historyPageSection?.classList.contains("is-hidden") || window.innerWidth <= 1120) {
-    accountHistoryPanel.style.height = "";
-    return;
-  }
-  accountHistoryPanel.style.height = "";
-  const previewHeight = Math.round(accountPreviewPanel.getBoundingClientRect().height);
-  if (previewHeight > 0) {
-    accountHistoryPanel.style.height = `${previewHeight}px`;
-  }
-}
-
-function queueHistoryPanelSync() {
-  if (historyPanelSyncFrame) {
-    window.cancelAnimationFrame(historyPanelSyncFrame);
-  }
-  historyPanelSyncFrame = window.requestAnimationFrame(() => {
-    historyPanelSyncFrame = 0;
-    syncHistoryPanelHeights();
-  });
 }
 
 function setRestrictedGoodsModalOpen(open) {
@@ -7234,7 +7166,6 @@ function resetAccountPreview() {
   if (receiptDocument) {
     receiptDocument.innerHTML = "";
   }
-  queueHistoryPanelSync();
 }
 
 function renderAccountHistoryList() {
@@ -7298,7 +7229,6 @@ function renderAccountHistoryList() {
     item.appendChild(meta);
     accountHistoryList.appendChild(item);
   });
-  queueHistoryPanelSync();
 }
 
 function syncAccountHistorySelection() {
@@ -7528,7 +7458,6 @@ function renderAccountBatchList() {
     if (accountBatchPreview) {
       accountBatchPreview.classList.add("is-single");
     }
-    queueHistoryPanelSync();
     return;
   }
 
@@ -7550,7 +7479,6 @@ function renderAccountBatchList() {
     `;
     accountBatchList.appendChild(button);
   });
-  queueHistoryPanelSync();
 }
 
 function selectAccountLabel(index) {
@@ -9523,7 +9451,6 @@ function selectAccountRecord(index) {
   renderAccountBatchList();
   selectAccountLabel(0);
   renderReceiptDetails(record);
-  queueHistoryPanelSync();
 }
 
 function toDayKey(date) {
@@ -15747,7 +15674,6 @@ document.addEventListener("click", (e) => {
 
 document.querySelectorAll(".provider-option").forEach((opt) => {
   opt.addEventListener("click", async () => {
-    if (opt.disabled || opt.classList.contains("is-disabled")) return;
     const provider = opt.dataset.provider;
     const optionLabel =
       opt.querySelector(".provider-option-main > span:last-child")?.textContent?.trim() ||
@@ -15755,10 +15681,6 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
     providerDropdown.classList.remove("is-open");
     if (provider === "shopify") {
       await handleShopifyProviderAction();
-      return;
-    }
-    if (provider === "woocommerce" || provider === "wix") {
-      openGenericProviderSettings(optionLabel);
       return;
     }
 
@@ -15773,21 +15695,6 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
   });
 });
 
-[
-  [woocommerceSettingsTrigger, tr("WooCommerce")],
-  [wixSettingsTrigger, tr("Wix eCommerce")],
-].forEach(([trigger, providerLabel]) => {
-  if (!trigger) return;
-  trigger.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (providerDropdown) {
-      providerDropdown.classList.remove("is-open");
-    }
-    openGenericProviderSettings(providerLabel);
-  });
-});
-
 if (shopifySettingsTrigger) {
   shopifySettingsTrigger.addEventListener("click", async (event) => {
     event.preventDefault();
@@ -15796,28 +15703,6 @@ if (shopifySettingsTrigger) {
       providerDropdown.classList.remove("is-open");
     }
     await openShopifySettingsModal();
-  });
-}
-
-if (providerSettingsClose) {
-  providerSettingsClose.addEventListener("click", (event) => {
-    event.preventDefault();
-    closeGenericProviderSettingsModal();
-  });
-}
-
-if (providerSettingsCancel) {
-  providerSettingsCancel.addEventListener("click", (event) => {
-    event.preventDefault();
-    closeGenericProviderSettingsModal();
-  });
-}
-
-if (providerSettingsModal) {
-  providerSettingsModal.addEventListener("click", (event) => {
-    if (event.target === providerSettingsModal) {
-      closeGenericProviderSettingsModal();
-    }
   });
 }
 

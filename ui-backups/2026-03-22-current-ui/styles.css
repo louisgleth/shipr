@@ -1562,25 +1562,15 @@ body {
 
 .account-info-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  min-height: 40px;
-}
-
-.account-info-head > .preview-title,
-.account-billing-head > .preview-title,
-.warehouse-head > .preview-title {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
 }
 
 .language-control {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
 }
 
 .language-control-label {
@@ -1812,7 +1802,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 40px;
 }
 
 .account-billing-head .panel-sub {
@@ -2598,11 +2587,10 @@ body {
 
 .warehouse-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  min-height: 40px;
 }
 
 .warehouse-toolbar-actions {
@@ -2610,7 +2598,6 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  min-height: 40px;
 }
 
 .warehouse-status {
@@ -2966,7 +2953,7 @@ body {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .account-history-panel,
@@ -2978,23 +2965,11 @@ body {
   display: grid;
   gap: 12px;
   min-height: 0;
-  height: auto;
+  height: 100%;
 }
 
 .account-history-panel {
   grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.account-history-panel > .preview-title {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-}
-
-.account-preview-panel {
-  position: relative;
-  grid-template-rows: auto auto;
-  align-content: start;
 }
 
 .account-history-status {
@@ -3138,19 +3113,10 @@ body {
 }
 
 .account-preview-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  min-height: 40px;
-}
-
-.account-preview-head > :first-child {
-  min-width: 0;
-  min-height: 34px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .account-preview-meta {
@@ -3159,16 +3125,10 @@ body {
   color: var(--muted);
 }
 
-.account-preview-meta:empty {
-  display: none;
-}
-
 .account-preview-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  align-self: center;
 }
 
 .account-preview-empty {
@@ -3236,7 +3196,6 @@ body {
 .reports-range-btn {
   height: 34px;
   padding: 0 12px;
-  min-width: 78px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--panel-bg);
@@ -3245,17 +3204,11 @@ body {
   font-family: var(--font-primary);
   letter-spacing: var(--letter-tight);
   cursor: pointer;
-  white-space: nowrap;
   transition:
     background 0.28s var(--ease-out-expo),
     border-color 0.28s var(--ease-out-expo),
     color 0.24s ease,
     transform 0.28s var(--ease-out-quart);
-}
-
-#reportsApplyCustom {
-  min-width: 132px;
-  white-space: nowrap;
 }
 
 .reports-range-btn:hover {
@@ -4019,7 +3972,7 @@ body {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 238px;
+  min-width: 200px;
   background: var(--secondary);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -4047,10 +4000,9 @@ body {
 
 .provider-option-row .provider-option {
   flex: 1;
-  padding-right: 6px;
 }
 
-.provider-option-row:hover {
+.provider-option-row-shopify:hover {
   background: var(--panel-active);
 }
 
@@ -4076,10 +4028,6 @@ body {
   background: var(--panel-active);
 }
 
-.provider-option-row .provider-option:hover {
-  background: transparent;
-}
-
 .provider-option-main {
   display: inline-flex;
   align-items: center;
@@ -4092,13 +4040,12 @@ body {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 0;
-  background: transparent;
-  color: inherit;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
   font-size: var(--fs-2xs);
   font-weight: 600;
   flex-shrink: 0;
-  overflow: hidden;
 }
 
 .provider-icon-shopify {
@@ -4106,32 +4053,10 @@ body {
   color: inherit;
 }
 
-.provider-icon-woocommerce {
-  background: transparent;
-  color: inherit;
-}
-
-.provider-icon-wix {
-  background: transparent;
-  color: inherit;
-}
-
-.provider-icon-amazon,
-.provider-icon-squarespace {
-  background: transparent;
-  color: inherit;
-}
-
 .provider-icon-img {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   display: block;
-  object-fit: contain;
-}
-
-.provider-icon-img-woocommerce {
-  width: 22px;
-  height: 22px;
 }
 
 .provider-connected-pill {
@@ -4157,38 +4082,6 @@ body {
   display: inline-flex;
 }
 
-.provider-coming-soon-pill {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(241, 244, 251, 0.1);
-  background: rgba(241, 244, 251, 0.03);
-  color: rgba(241, 244, 251, 0.42);
-  font-size: var(--fs-2xs);
-  letter-spacing: var(--letter-tight);
-  white-space: nowrap;
-}
-
-.provider-option.is-disabled {
-  color: rgba(241, 244, 251, 0.56);
-  cursor: not-allowed;
-}
-
-.provider-option.is-disabled:hover {
-  background: transparent;
-}
-
-.provider-option.is-disabled .provider-option-main {
-  opacity: 0.62;
-}
-
-.provider-option.is-disabled .provider-icon {
-  background: rgba(241, 244, 251, 0.08);
-  color: rgba(241, 244, 251, 0.52);
-}
-
 .provider-settings-trigger {
   width: 24px;
   height: 24px;
@@ -4208,38 +4101,25 @@ body {
   height: 13px;
 }
 
-.provider-option-row .provider-settings-trigger {
-  flex-shrink: 0;
-  margin-right: 6px;
-}
-
 .provider-settings-trigger:hover {
   color: var(--text);
   background: transparent;
 }
 
-.provider-option-row:hover .provider-settings-trigger {
-  color: var(--text);
+.provider-option-row-shopify .provider-settings-trigger {
+  flex-shrink: 0;
+  margin-right: 6px;
 }
 
-.provider-settings-modal {
-  max-width: 440px;
+.provider-option-row-shopify .provider-option {
+  padding-right: 6px;
 }
 
-.provider-settings-body {
-  display: grid;
-  gap: 18px;
+.provider-option-row-shopify .provider-option:hover {
+  background: transparent;
 }
 
-.provider-settings-copy {
-  display: grid;
-  gap: 8px;
-}
-
-.provider-settings-copy h3 {
-  margin: 0;
-  font-size: var(--fs-md);
-  font-weight: 300;
+.provider-option-row-shopify:hover .provider-settings-trigger {
   color: var(--text);
 }
 
@@ -7291,7 +7171,6 @@ input.is-invalid {
   gap: 14px;
   align-items: start;
   width: 100%;
-  min-height: 0;
 }
 
 .batch-preview.is-single {
@@ -7930,19 +7809,11 @@ input.is-invalid {
   }
 
   .account-preview-head {
-    display: flex;
     flex-direction: column;
   }
 
-  .account-preview-head > :first-child {
-    padding-right: 0;
-  }
-
   .account-preview-actions {
-    position: static;
     width: 100%;
-    max-width: none;
-    justify-content: flex-start;
   }
 
   .receipt-modal {
