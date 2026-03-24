@@ -1065,12 +1065,12 @@ body {
   padding: 40px 28px 60px;
   background: var(--primary);
   opacity: 1;
-  transform: translateY(0);
-  filter: blur(0);
+  transform: none;
+  filter: none;
   transition: opacity 0.36s var(--ease-out-expo),
     transform 0.42s var(--ease-out-expo),
     filter 0.36s ease;
-  will-change: opacity, transform, filter;
+  will-change: auto;
 }
 
 .auth-gate.is-shell-enter-start,
@@ -1078,13 +1078,15 @@ body {
   opacity: 0;
   transform: translateY(10px);
   filter: blur(1.4px);
+  will-change: opacity, transform, filter;
 }
 
 .auth-gate.is-shell-enter-active,
 .page.is-shell-enter-active {
   opacity: 1;
-  transform: translateY(0);
-  filter: blur(0);
+  transform: none;
+  filter: none;
+  will-change: opacity, transform, filter;
 }
 
 .auth-gate.is-shell-exit,
@@ -1093,12 +1095,14 @@ body {
   opacity: 0;
   transform: translateY(8px);
   filter: blur(1.2px);
+  will-change: opacity, transform, filter;
 }
 
 .page.is-app-transition-in {
   opacity: 1;
-  transform: translateY(0);
-  filter: blur(0);
+  transform: none;
+  filter: none;
+  will-change: opacity, transform, filter;
 }
 
 .topbar {
