@@ -731,7 +731,13 @@ const TRANSLATIONS = {
   "Save Origins": { fr: "Enregistrer les origines", nl: "Origines opslaan" },
   "Sign in to manage shipping origins.": { fr: "Connectez-vous pour gérer les origines d’expédition.", nl: "Log in om verzendorigines te beheren." },
   "Client Invitations": { fr: "Invitations client", nl: "Klantuitnodigingen" },
+  "Commercial Settings": { fr: "Paramètres commerciaux", nl: "Commerciële instellingen" },
+  "Commercial Discount Settings": {
+    fr: "Paramètres de remise commerciale",
+    nl: "Commerciële kortingsinstellingen",
+  },
   "Create Client": { fr: "Créer client", nl: "Klant aanmaken" },
+  "Client Email": { fr: "E-mail client", nl: "Klant-e-mail" },
   "Client Email (optional)": { fr: "E-mail client (optionnel)", nl: "Klant-e-mail (optioneel)" },
   "Link Expiry": { fr: "Expiration du lien", nl: "Linkverval" },
   "7 days": { fr: "7 jours", nl: "7 dagen" },
@@ -745,6 +751,15 @@ const TRANSLATIONS = {
   "Invalid client email format.": { fr: "Format d’e-mail client invalide.", nl: "Ongeldig formaat voor klant-e-mail." },
   "You are not allowed to create client invites.": { fr: "Vous n’êtes pas autorisé à créer des invitations client.", nl: "Je bent niet gemachtigd om klantuitnodigingen te maken." },
   "Recent links": { fr: "Liens récents", nl: "Recente links" },
+  "Recent Links": { fr: "Liens récents", nl: "Recente links" },
+  "Create controlled registration links and share them instantly.": {
+    fr: "Créez des liens d’inscription contrôlés et partagez-les instantanément.",
+    nl: "Maak gecontroleerde registratielinks en deel ze meteen.",
+  },
+  "Define the carrier discount you receive and the share you pass through to clients.": {
+    fr: "Définissez la remise transporteur reçue et la part répercutée aux clients.",
+    nl: "Bepaal de vervoerderskorting die je ontvangt en welk deel je aan klanten doorgeeft.",
+  },
   "No invites yet.": { fr: "Aucune invitation pour l’instant.", nl: "Nog geen uitnodigingen." },
   "Loading invites...": { fr: "Chargement des invitations...", nl: "Uitnodigingen laden..." },
   "No email lock": { fr: "Sans e-mail verrouillé", nl: "Zonder e-mailvergrendeling" },
@@ -1363,6 +1378,7 @@ const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeHistoryPageButton = document.getElementById("closeHistoryPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
+const openAdminSettingsModalButton = document.getElementById("openAdminSettingsModal");
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
@@ -1395,12 +1411,19 @@ const clientInviteHistoryEmpty = document.getElementById("clientInviteHistoryEmp
 const clientInviteHistoryList = document.getElementById("clientInviteHistoryList");
 const clientInviteResultEmail = document.getElementById("clientInviteResultEmail");
 const clientInviteResultExpiry = document.getElementById("clientInviteResultExpiry");
+const openClientInviteHistoryModalButton = document.getElementById("openClientInviteHistoryModal");
+const clientInviteHistoryModal = document.getElementById("clientInviteHistoryModal");
+const clientInviteHistoryClose = document.getElementById("clientInviteHistoryClose");
+const clientInviteHistoryCancel = document.getElementById("clientInviteHistoryCancel");
 const adminSummaryClients = document.getElementById("adminSummaryClients");
 const adminSummaryActiveClients = document.getElementById("adminSummaryActiveClients");
 const adminSummaryInvites = document.getElementById("adminSummaryInvites");
 const adminSummaryRevenue = document.getElementById("adminSummaryRevenue");
 const adminSummaryProfit = document.getElementById("adminSummaryProfit");
 const adminSummaryProfitMeta = document.getElementById("adminSummaryProfitMeta");
+const adminSettingsModal = document.getElementById("adminSettingsModal");
+const adminSettingsClose = document.getElementById("adminSettingsClose");
+const adminSettingsCancel = document.getElementById("adminSettingsCancel");
 const adminCarrierDiscountInput = document.getElementById("adminCarrierDiscount");
 const adminClientDiscountInput = document.getElementById("adminClientDiscount");
 const adminSettingsPreview = document.getElementById("adminSettingsPreview");
@@ -6798,6 +6821,10 @@ function setMainView(view, options = {}) {
     if (nextView !== "builder" && nextView !== "account") {
       setIbanTopupModalOpen(false);
     }
+    if (nextView !== "admin") {
+      setClientInviteHistoryModalOpen(false);
+      setAdminSettingsModalOpen(false);
+    }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
       renderReportsDashboard();
@@ -6878,6 +6905,16 @@ function setHistoryPageVisible(visible, options = {}) {
 function setReceiptModalOpen(open) {
   if (!receiptModal) return;
   receiptModal.classList.toggle("is-closed", !open);
+}
+
+function setClientInviteHistoryModalOpen(open) {
+  if (!clientInviteHistoryModal) return;
+  clientInviteHistoryModal.classList.toggle("is-closed", !open);
+}
+
+function setAdminSettingsModalOpen(open) {
+  if (!adminSettingsModal) return;
+  adminSettingsModal.classList.toggle("is-closed", !open);
 }
 
 function syncHistoryPanelHeights() {
@@ -11961,6 +11998,8 @@ function setAuthView(session, options = {}) {
     setReceiptModalOpen(false);
     setShopifySettingsModalOpen(false);
     setIbanTopupModalOpen(false);
+    setClientInviteHistoryModalOpen(false);
+    setAdminSettingsModalOpen(false);
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedLocationSelection = [];
@@ -14352,6 +14391,33 @@ if (clientInviteCopyButton) {
   });
 }
 
+if (openClientInviteHistoryModalButton) {
+  openClientInviteHistoryModalButton.addEventListener("click", () => {
+    setClientInviteHistoryModalOpen(true);
+    void loadClientInviteHistory({ quiet: clientInviteHistory.length > 0 });
+  });
+}
+
+if (clientInviteHistoryClose) {
+  clientInviteHistoryClose.addEventListener("click", () => {
+    setClientInviteHistoryModalOpen(false);
+  });
+}
+
+if (clientInviteHistoryCancel) {
+  clientInviteHistoryCancel.addEventListener("click", () => {
+    setClientInviteHistoryModalOpen(false);
+  });
+}
+
+if (clientInviteHistoryModal) {
+  clientInviteHistoryModal.addEventListener("click", (event) => {
+    if (event.target === clientInviteHistoryModal) {
+      setClientInviteHistoryModalOpen(false);
+    }
+  });
+}
+
 if (clientInviteEmailInput) {
   clientInviteEmailInput.addEventListener("input", () => {
     setClientInviteStatus("");
@@ -14395,6 +14461,33 @@ if (adminClientDiscountInput) {
 if (adminSettingsSaveButton) {
   adminSettingsSaveButton.addEventListener("click", async () => {
     await saveAdminSettings();
+  });
+}
+
+if (openAdminSettingsModalButton) {
+  openAdminSettingsModalButton.addEventListener("click", () => {
+    renderAdminSettingsPreview();
+    setAdminSettingsModalOpen(true);
+  });
+}
+
+if (adminSettingsClose) {
+  adminSettingsClose.addEventListener("click", () => {
+    setAdminSettingsModalOpen(false);
+  });
+}
+
+if (adminSettingsCancel) {
+  adminSettingsCancel.addEventListener("click", () => {
+    setAdminSettingsModalOpen(false);
+  });
+}
+
+if (adminSettingsModal) {
+  adminSettingsModal.addEventListener("click", (event) => {
+    if (event.target === adminSettingsModal) {
+      setAdminSettingsModalOpen(false);
+    }
   });
 }
 
@@ -15061,6 +15154,8 @@ document.addEventListener("keydown", (event) => {
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) return;
   if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
+  if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) return;
+  if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isHistoryOpen = historyPageSection && !historyPageSection.classList.contains("is-hidden");
@@ -15089,6 +15184,14 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) {
+    setClientInviteHistoryModalOpen(false);
+    return;
+  }
+  if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
+    setAdminSettingsModalOpen(false);
+    return;
+  }
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) {
     setIbanTopupModalOpen(false);
     return;
