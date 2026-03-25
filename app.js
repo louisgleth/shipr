@@ -5536,6 +5536,19 @@ function wait(ms) {
   });
 }
 
+function raceWarehouseSupabaseRequest(promise, timeoutMs = 12000) {
+  const safeTimeout = Math.max(3000, Number(timeoutMs) || 12000);
+  let timeoutId = 0;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(tr("Request timed out. Please try again.")));
+    }, safeTimeout);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    window.clearTimeout(timeoutId);
+  });
+}
+
 async function fetchSupabaseHistoryRows(userId) {
   if (!supabaseClient || !userId) {
     return { data: [], error: new Error(tr("Supabase unavailable")) };
@@ -6521,17 +6534,26 @@ async function fetchSupabaseWarehouseOrigins(userId) {
   if (!supabaseClient || !userId) {
     return { origins: [], error: new Error(tr("Supabase unavailable")) };
   }
-  const { data, error } = await supabaseClient
-    .from(ACCOUNT_SETTINGS_TABLE)
-    .select("warehouse_origins")
-    .eq("user_id", userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await raceWarehouseSupabaseRequest(
+      supabaseClient
+        .from(ACCOUNT_SETTINGS_TABLE)
+        .select("warehouse_origins")
+        .eq("user_id", userId)
+        .maybeSingle()
+    );
 
-  if (error) {
-    return { origins: [], error };
+    if (error) {
+      return { origins: [], error };
+    }
+    const origins = Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : [];
+    return { origins, error: null };
+  } catch (error) {
+    return {
+      origins: [],
+      error: error instanceof Error ? error : new Error(tr("unknown error")),
+    };
   }
-  const origins = Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : [];
-  return { origins, error: null };
 }
 
 async function saveSupabaseWarehouseOrigins(userId, origins) {
@@ -6539,25 +6561,34 @@ async function saveSupabaseWarehouseOrigins(userId, origins) {
     return { origins: [], error: new Error(tr("Supabase unavailable")) };
   }
   const payload = toWarehouseOriginsPayload(origins);
-  const { data, error } = await supabaseClient
-    .from(ACCOUNT_SETTINGS_TABLE)
-    .upsert(
-      {
-        user_id: userId,
-        warehouse_origins: payload,
-      },
-      { onConflict: "user_id" }
-    )
-    .select("warehouse_origins")
-    .single();
+  try {
+    const { data, error } = await raceWarehouseSupabaseRequest(
+      supabaseClient
+        .from(ACCOUNT_SETTINGS_TABLE)
+        .upsert(
+          {
+            user_id: userId,
+            warehouse_origins: payload,
+          },
+          { onConflict: "user_id" }
+        )
+        .select("warehouse_origins")
+        .single()
+    );
 
-  if (error) {
-    return { origins: [], error };
+    if (error) {
+      return { origins: [], error };
+    }
+    return {
+      origins: Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : payload,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      origins: [],
+      error: error instanceof Error ? error : new Error(tr("unknown error")),
+    };
   }
-  return {
-    origins: Array.isArray(data?.warehouse_origins) ? data.warehouse_origins : payload,
-    error: null,
-  };
 }
 
 async function loadWarehouseSettings(options = {}) {
@@ -6646,42 +6677,37 @@ async function saveWarehouseSettings() {
 
   const userId = currentUser.id;
   let savedOrigins = toWarehouseOriginsPayload(warehouseRecords);
-  if (!supabaseClient) {
-    warehouseSaving = false;
-    renderWarehouseList();
-    setWarehouseStatus(tr("Could not sync to account. Supabase client is unavailable."), {
-      tone: "error",
-    });
-    setWarehouseDirty(true, { announce: false });
-    return;
-  }
+  try {
+    if (!supabaseClient) {
+      throw new Error(tr("Could not sync to account. Supabase client is unavailable."));
+    }
 
-  const { origins, error } = await saveSupabaseWarehouseOrigins(userId, savedOrigins);
-  if (error) {
-    warehouseSaving = false;
-    renderWarehouseList();
+    const { origins, error } = await saveSupabaseWarehouseOrigins(userId, savedOrigins);
+    if (error) {
+      throw error;
+    }
+    savedOrigins = Array.isArray(origins) && origins.length ? origins : savedOrigins;
+
+    warehouseRecords = normalizeWarehouseRecords(savedOrigins);
+    saveLocalWarehouses(userId, warehouseRecords);
+    warehouseDirty = false;
+    warehouseEnteringIds.clear();
+    setWarehouseStatus(tr("Shipping origins saved to your account."), { tone: "success" });
+    maybeApplyDefaultWarehouseToSender();
+  } catch (error) {
     setWarehouseStatus(
       tr("Could not sync shipping origins: {error}", {
-        error: error.message || tr("unknown error"),
+        error: error instanceof Error ? error.message || tr("unknown error") : tr("unknown error"),
       }),
       {
         tone: "error",
       }
     );
     setWarehouseDirty(true, { announce: false });
-    return;
+  } finally {
+    warehouseSaving = false;
+    renderWarehouseList();
   }
-  savedOrigins = Array.isArray(origins) && origins.length ? origins : savedOrigins;
-
-  warehouseRecords = normalizeWarehouseRecords(savedOrigins);
-  saveLocalWarehouses(userId, warehouseRecords);
-  warehouseSaving = false;
-  warehouseDirty = false;
-  warehouseEnteringIds.clear();
-  renderWarehouseList();
-
-  setWarehouseStatus(tr("Shipping origins saved to your account."), { tone: "success" });
-  maybeApplyDefaultWarehouseToSender();
 }
 
 function resetWarehouseState() {
