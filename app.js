@@ -729,6 +729,7 @@ const TRANSLATIONS = {
   "Shipping Origins": { fr: "Origines d’expédition", nl: "Verzendorigines" },
   "Add Warehouse": { fr: "Ajouter un entrepôt", nl: "Magazijn toevoegen" },
   "Save Origins": { fr: "Enregistrer les origines", nl: "Origines opslaan" },
+  "Save": { fr: "Enregistrer", nl: "Opslaan" },
   "Sign in to manage shipping origins.": { fr: "Connectez-vous pour gérer les origines d’expédition.", nl: "Log in om verzendorigines te beheren." },
   "Client Invitations": { fr: "Invitations client", nl: "Klantuitnodigingen" },
   "Commercial Settings": { fr: "Paramètres commerciaux", nl: "Commerciële instellingen" },
@@ -1108,8 +1109,8 @@ const TRANSLATIONS = {
   "At least one warehouse origin is required.": { fr: "Au moins une origine d’entrepôt est requise.", nl: "Minstens één magazijnoorsprong is vereist." },
   "Loading shipping origins...": { fr: "Chargement des origines d’expédition...", nl: "Verzendorigines laden..." },
   "Shipping origins synced from your account.": { fr: "Origines d’expédition synchronisées depuis votre compte.", nl: "Verzendorigines gesynchroniseerd vanuit je account." },
-  "Showing browser-saved origins. Click Save Origins to sync.": { fr: "Origines locales affichées. Cliquez sur Enregistrer les origines pour synchroniser.", nl: "Browser-opgeslagen origines getoond. Klik op Origines opslaan om te synchroniseren." },
-  "Add your shipping origin and click Save Origins.": { fr: "Ajoutez votre origine d’expédition puis cliquez sur Enregistrer les origines.", nl: "Voeg je verzendorigine toe en klik op Origines opslaan." },
+  "Showing browser-saved origins. Click Save to sync.": { fr: "Origines locales affichées. Cliquez sur Enregistrer pour synchroniser.", nl: "Browser-opgeslagen origines getoond. Klik op Opslaan om te synchroniseren." },
+  "Add your shipping origin and click Save.": { fr: "Ajoutez votre origine d’expédition puis cliquez sur Enregistrer.", nl: "Voeg je verzendorigine toe en klik op Opslaan." },
   "Saving shipping origins...": { fr: "Enregistrement des origines d’expédition...", nl: "Verzendorigines opslaan..." },
   "Could not sync to account. Supabase client is unavailable.": { fr: "Impossible de synchroniser au compte. Client Supabase indisponible.", nl: "Kan niet met account synchroniseren. Supabase-client is niet beschikbaar." },
   "Could not sync shipping origins: {error}": { fr: "Impossible de synchroniser les origines d’expédition : {error}", nl: "Kan verzendorigines niet synchroniseren: {error}" },
@@ -6108,7 +6109,7 @@ function updateWarehouseControls() {
       disabledBase || !warehouseDirty || warehouseRecords.length === 0;
     const label = warehouseSaveButton.querySelector("span");
     if (label) {
-      label.textContent = warehouseSaving ? tr("Saving...") : tr("Save Origins");
+      label.textContent = warehouseSaving ? tr("Saving...") : tr("Save");
     }
   }
 }
@@ -6291,12 +6292,12 @@ function renderWarehouseList() {
     const controlGroup = document.createElement("div");
     controlGroup.className = "warehouse-card-controls";
 
-    const applyButton = document.createElement("button");
-    applyButton.type = "button";
-    applyButton.className = "btn btn-secondary btn-sm";
-    applyButton.dataset.warehouseAction = "apply";
-    applyButton.textContent = tr("Apply");
-    applyButton.disabled = warehouseSaving;
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "btn btn-primary btn-sm";
+    saveButton.dataset.warehouseAction = "save";
+    saveButton.textContent = warehouseSaving ? tr("Saving...") : tr("Save");
+    saveButton.disabled = warehouseSaving;
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -6305,7 +6306,7 @@ function renderWarehouseList() {
     removeButton.textContent = tr("Remove");
     removeButton.disabled = warehouseSaving || warehouseRecords.length <= 1;
 
-    controlGroup.appendChild(applyButton);
+    controlGroup.appendChild(saveButton);
     controlGroup.appendChild(removeButton);
     controls.appendChild(controlGroup);
 
@@ -6621,9 +6622,9 @@ async function loadWarehouseSettings(options = {}) {
   if (source === "supabase") {
     setWarehouseStatus(tr("Shipping origins synced from your account."));
   } else if (source === "local") {
-    setWarehouseStatus(tr("Showing browser-saved origins. Click Save Origins to sync."));
+    setWarehouseStatus(tr("Showing browser-saved origins. Click Save to sync."));
   } else {
-    setWarehouseStatus(tr("Add your shipping origin and click Save Origins."));
+    setWarehouseStatus(tr("Add your shipping origin and click Save."));
   }
 
   maybeApplyDefaultWarehouseToSender();
@@ -14673,7 +14674,7 @@ if (warehouseList) {
     renderCsvShipFromSelector();
   });
 
-  warehouseList.addEventListener("click", (event) => {
+  warehouseList.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("[data-warehouse-action]");
     if (!actionButton) return;
     const card = actionButton.closest("[data-warehouse-id]");
@@ -14683,16 +14684,9 @@ if (warehouseList) {
     const index = findWarehouseIndexById(warehouseId);
     if (index === -1) return;
 
-    if (action === "apply") {
+    if (action === "save") {
       setSelectedWarehouseOrigin(warehouseId, { syncCsv: true });
-      setWarehouseStatus(
-        tr("Applied {name} to sender details.", {
-          name: warehouseRecords[index].name || tr("warehouse"),
-        }),
-        {
-          tone: "success",
-        }
-      );
+      await saveWarehouseSettings();
       return;
     }
 
