@@ -12,6 +12,7 @@ const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
 const INVOICE_PREVIEW_FILE = path.join(ROOT, "invoice-preview.html");
 const IBAN_TOPUP_PREVIEW_FILE = path.join(ROOT, "iban-topup-preview.html");
+const LANDING_PLATFORM_MOCK_FILE = path.join(ROOT, "landing-platform-mock.html");
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -7340,6 +7341,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/iban-topup-preview" || pathname === "/iban-topup-preview/") {
     sendFile(res, IBAN_TOPUP_PREVIEW_FILE);
+    return;
+  }
+
+  if (pathname === "/landing-platform-mock" || pathname === "/landing-platform-mock/") {
+    sendFile(res, LANDING_PLATFORM_MOCK_FILE);
     return;
   }
 

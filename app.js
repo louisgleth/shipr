@@ -2289,6 +2289,98 @@ function normalizeLanguageCode(value) {
   return "en";
 }
 
+function setTextInputCompositionState(target, composing) {
+  if (!(target instanceof HTMLElement)) return;
+  if (composing) {
+    target.dataset.composing = "true";
+  } else {
+    delete target.dataset.composing;
+  }
+}
+
+function isTextInputComposing(event, target = event?.target) {
+  return Boolean(
+    event?.isComposing ||
+      (target instanceof HTMLElement && target.dataset.composing === "true")
+  );
+}
+
+function bindCompositionAwareInput(input, handler) {
+  if (!input || typeof handler !== "function") return;
+
+  let skipNextInput = false;
+
+  input.addEventListener("compositionstart", () => {
+    setTextInputCompositionState(input, true);
+  });
+
+  input.addEventListener("compositionend", (event) => {
+    setTextInputCompositionState(input, false);
+    skipNextInput = true;
+    handler(event);
+    window.setTimeout(() => {
+      skipNextInput = false;
+    }, 0);
+  });
+
+  input.addEventListener("input", (event) => {
+    if (skipNextInput) {
+      skipNextInput = false;
+      return;
+    }
+    if (isTextInputComposing(event, input)) {
+      return;
+    }
+    handler(event);
+  });
+}
+
+function bindDelegatedCompositionAwareInput(container, selector, handler) {
+  if (!container || !selector || typeof handler !== "function") return;
+
+  const skipNextInputs = new WeakSet();
+
+  const resolveTarget = (event) => {
+    const rawTarget = event.target;
+    if (!(rawTarget instanceof Element)) return null;
+    const target = rawTarget.closest(selector);
+    if (!(target instanceof HTMLElement) || !container.contains(target)) {
+      return null;
+    }
+    return target;
+  };
+
+  container.addEventListener("compositionstart", (event) => {
+    const target = resolveTarget(event);
+    if (!target) return;
+    setTextInputCompositionState(target, true);
+  });
+
+  container.addEventListener("compositionend", (event) => {
+    const target = resolveTarget(event);
+    if (!target) return;
+    setTextInputCompositionState(target, false);
+    skipNextInputs.add(target);
+    handler(target, event);
+    window.setTimeout(() => {
+      skipNextInputs.delete(target);
+    }, 0);
+  });
+
+  container.addEventListener("input", (event) => {
+    const target = resolveTarget(event);
+    if (!target) return;
+    if (skipNextInputs.has(target)) {
+      skipNextInputs.delete(target);
+      return;
+    }
+    if (isTextInputComposing(event, target)) {
+      return;
+    }
+    handler(target, event);
+  });
+}
+
 function getUiLocale() {
   return LANGUAGE_LOCALE[activeLanguage] || LANGUAGE_LOCALE.en;
 }
@@ -13162,7 +13254,7 @@ function renderCsvTable() {
       if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(column.key)) {
         input.classList.toggle("is-invalid", String(row[column.key] ?? "").trim() === "");
       }
-      input.addEventListener("input", handleCsvInput);
+      bindCompositionAwareInput(input, handleCsvInput);
 
       if (column.key === "recipientCountry") {
         const wrapper = document.createElement("div");
@@ -14217,7 +14309,7 @@ function validateLabelInfo() {
 
 if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
 Object.entries(inputMap).forEach(([_, input]) => {
-  input.addEventListener("input", () => {
+  bindCompositionAwareInput(input, () => {
     syncInfoState();
     input.classList.remove("is-invalid");
     setInlineFormErrorToast(labelError, "");
@@ -14256,7 +14348,7 @@ if (authForm) {
   authCustomerId,
 ].forEach((input) => {
   if (!input) return;
-  input.addEventListener("input", () => {
+  bindCompositionAwareInput(input, () => {
     if (input === authBillingCountry) {
       updateAuthBillingCountryFlag(input.value);
     }
@@ -14519,7 +14611,7 @@ if (adminSettingsModal) {
 }
 
 if (adminClientSearchInput) {
-  adminClientSearchInput.addEventListener("input", (event) => {
+  bindCompositionAwareInput(adminClientSearchInput, (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     adminClientSearch = target.value || "";
@@ -14656,8 +14748,7 @@ if (warehouseSaveButton) {
 }
 
 if (warehouseList) {
-  warehouseList.addEventListener("input", (event) => {
-    const target = event.target;
+  const handleWarehouseFieldInput = (target) => {
     if (!(target instanceof HTMLInputElement)) return;
     const field = target.dataset.warehouseField;
     if (!field) return;
@@ -14698,7 +14789,13 @@ if (warehouseList) {
     setWarehouseDirty(true);
     renderSenderOriginSelector();
     renderCsvShipFromSelector();
-  });
+  };
+
+  bindDelegatedCompositionAwareInput(
+    warehouseList,
+    "input[data-warehouse-field]",
+    handleWarehouseFieldInput
+  );
 
   warehouseList.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("[data-warehouse-action]");
@@ -14816,16 +14913,20 @@ if (csvShipFromNote) {
 ].forEach((input) => {
   if (!input) return;
   const eventName = input.tagName === "SELECT" ? "change" : "input";
-  input.addEventListener(eventName, () => {
+  const handler = () => {
     syncCustomsStateFromInputs();
     setCustomsFieldInvalid(input, false);
     setCustomsError("");
-  });
+  };
+  if (eventName === "input") {
+    bindCompositionAwareInput(input, handler);
+  } else {
+    input.addEventListener(eventName, handler);
+  }
 });
 
 if (customsItemsList) {
-  customsItemsList.addEventListener("input", (event) => {
-    const target = event.target;
+  const handleCustomsItemInput = (target) => {
     if (!(target instanceof HTMLInputElement)) return;
     const card = target.closest("[data-customs-item-index]");
     if (!card) return;
@@ -14842,7 +14943,13 @@ if (customsItemsList) {
       }
     }
     setCustomsError("");
-  });
+  };
+
+  bindDelegatedCompositionAwareInput(
+    customsItemsList,
+    "input[data-customs-item-field]",
+    handleCustomsItemInput
+  );
 
   customsItemsList.addEventListener("click", (event) => {
     const removeButton = event.target.closest("[data-customs-item-action='remove']");

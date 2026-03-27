@@ -3077,9 +3077,10 @@ body {
 }
 
 .account-history-panel > .preview-title {
-  min-height: 40px;
+  min-height: 48px;
   display: flex;
   align-items: center;
+  padding-bottom: 10px;
 }
 
 .account-preview-panel {
@@ -3233,7 +3234,8 @@ body {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  min-height: 40px;
+  min-height: 48px;
+  padding-bottom: 10px;
 }
 
 .account-preview-head > :first-child {
