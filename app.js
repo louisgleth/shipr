@@ -121,6 +121,7 @@ const ROUTE_SUFFIXES = [
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
+const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
 const LEAD_STACK_META = {
   shopify: {
     label: "Shopify",
@@ -2012,6 +2013,7 @@ let currentMainView = "builder";
 let adminAccessAllowed = false;
 let adminAccessStatusPromise = null;
 let adminAccessStatusRequestId = 0;
+let adminAccessLoading = false;
 let adminDashboardLoading = false;
 let adminDashboardLoaded = false;
 let adminDashboardState = null;
@@ -4497,17 +4499,9 @@ async function loadAdminAccessStatus(options = {}) {
   if (!activeUserId) {
     adminAccessStatusRequestId += 1;
     adminAccessStatusPromise = null;
+    adminAccessLoading = false;
     adminAccessAllowed = false;
-    if (openLeadsPageButton) {
-      openLeadsPageButton.disabled = false;
-      openLeadsPageButton.classList.add("is-hidden");
-      openLeadsPageButton.removeAttribute("aria-busy");
-    }
-    if (openAdminPageButton) {
-      openAdminPageButton.disabled = false;
-      openAdminPageButton.classList.add("is-hidden");
-      openAdminPageButton.removeAttribute("aria-busy");
-    }
+    syncAdminAccessButtons();
     refreshAdminOnlyTestTools();
     return false;
   }
@@ -4515,22 +4509,22 @@ async function loadAdminAccessStatus(options = {}) {
     return adminAccessStatusPromise;
   }
   const requestId = ++adminAccessStatusRequestId;
-  if (openLeadsPageButton) {
-    openLeadsPageButton.disabled = true;
-    openLeadsPageButton.setAttribute("aria-busy", "true");
+  const cachedAllowed = getCachedAdminAccess(activeUserId);
+  if (cachedAllowed) {
+    adminAccessAllowed = true;
   }
-  if (openAdminPageButton) {
-    openAdminPageButton.disabled = true;
-    openAdminPageButton.setAttribute("aria-busy", "true");
-  }
+  adminAccessLoading = true;
+  syncAdminAccessButtons();
   const requestPromise = (async () => {
-    let allowed = false;
+    let allowed = adminAccessAllowed;
+    let requestFailed = false;
     try {
       const payload = await fetchApiWithAuth("/api/admin/status", { timeoutMs: 8000 });
       allowed = Boolean(payload?.allowed);
     } catch (error) {
+      requestFailed = true;
       if (requestId === adminAccessStatusRequestId && String(currentUser?.id || "").trim() === activeUserId) {
-        adminAccessAllowed = false;
+        adminAccessAllowed = cachedAllowed;
         if (!quiet) {
           showToast(error?.message || tr("Could not verify admin access."), { tone: "error" });
         }
@@ -4541,16 +4535,11 @@ async function loadAdminAccessStatus(options = {}) {
     const isLatestRequest = requestId === adminAccessStatusRequestId;
     if (stillSameUser && isLatestRequest) {
       adminAccessAllowed = allowed;
-      if (openLeadsPageButton) {
-        openLeadsPageButton.disabled = false;
-        openLeadsPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
-        openLeadsPageButton.removeAttribute("aria-busy");
+      if (!requestFailed || adminAccessAllowed) {
+        writeCachedAdminAccess(activeUserId, adminAccessAllowed);
       }
-      if (openAdminPageButton) {
-        openAdminPageButton.disabled = false;
-        openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
-        openAdminPageButton.removeAttribute("aria-busy");
-      }
+      adminAccessLoading = false;
+      syncAdminAccessButtons();
       refreshAdminOnlyTestTools();
       if (!adminAccessAllowed && currentMainView === "admin") {
         setAdminPageVisible(false, { replace: true });
@@ -4569,13 +4558,9 @@ async function loadAdminAccessStatus(options = {}) {
     if (adminAccessStatusPromise === inFlightPromise) {
       adminAccessStatusPromise = null;
     }
-    if (openAdminPageButton) {
-      openAdminPageButton.disabled = false;
-      openAdminPageButton.removeAttribute("aria-busy");
-    }
-    if (openLeadsPageButton) {
-      openLeadsPageButton.disabled = false;
-      openLeadsPageButton.removeAttribute("aria-busy");
+    if (requestId === adminAccessStatusRequestId) {
+      adminAccessLoading = false;
+      syncAdminAccessButtons();
     }
   });
   adminAccessStatusPromise = inFlightPromise;
@@ -5915,6 +5900,62 @@ function wait(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function readAdminAccessCache() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_ACCESS_CACHE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getCachedAdminAccess(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return false;
+  const cache = readAdminAccessCache();
+  return Boolean(cache?.[safeUserId]?.allowed);
+}
+
+function writeCachedAdminAccess(userId, allowed) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return;
+  try {
+    const cache = readAdminAccessCache();
+    cache[safeUserId] = {
+      allowed: Boolean(allowed),
+      updatedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(ADMIN_ACCESS_CACHE_STORAGE_KEY, JSON.stringify(cache));
+  } catch (_) {
+    // Ignore cache write failures and keep runtime state only.
+  }
+}
+
+function syncAdminAccessButtons() {
+  const isAuthed = Boolean(currentUser);
+  const shouldShow = isAuthed && adminAccessAllowed;
+  if (openLeadsPageButton) {
+    openLeadsPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
+    if (adminAccessLoading) {
+      openLeadsPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openLeadsPageButton.removeAttribute("aria-busy");
+    }
+    openLeadsPageButton.classList.toggle("is-hidden", !shouldShow);
+  }
+  if (openAdminPageButton) {
+    openAdminPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
+    if (adminAccessLoading) {
+      openAdminPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openAdminPageButton.removeAttribute("aria-busy");
+    }
+    openAdminPageButton.classList.toggle("is-hidden", !shouldShow);
+  }
 }
 
 function raceWarehouseSupabaseRequest(promise, timeoutMs = 12000) {
@@ -13059,23 +13100,15 @@ function setAuthView(session, options = {}) {
   const route = parseRouteFromLocation();
   renderAccountProfile(currentUser);
   if (isAuthed) {
-    adminAccessAllowed = false;
+    adminAccessAllowed = getCachedAdminAccess(currentUser?.id);
     adminAccessStatusRequestId += 1;
     adminAccessStatusPromise = null;
+    adminAccessLoading = true;
     startAuthKeepAlive();
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     refreshAdminOnlyTestTools();
-    if (openLeadsPageButton) {
-      openLeadsPageButton.disabled = true;
-      openLeadsPageButton.classList.add("is-hidden");
-      openLeadsPageButton.setAttribute("aria-busy", "true");
-    }
-    if (openAdminPageButton) {
-      openAdminPageButton.disabled = true;
-      openAdminPageButton.classList.add("is-hidden");
-      openAdminPageButton.setAttribute("aria-busy", "true");
-    }
+    syncAdminAccessButtons();
     void loadAdminAccessStatus({ quiet: true });
     loadBillingOverview({ quiet: true });
     if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
@@ -13090,6 +13123,7 @@ function setAuthView(session, options = {}) {
   } else {
     adminAccessStatusRequestId += 1;
     adminAccessStatusPromise = null;
+    adminAccessLoading = false;
     stopAuthKeepAlive();
     resetWarehouseState();
     shopifyConnection = null;
@@ -13139,26 +13173,7 @@ function setAuthView(session, options = {}) {
   if (openBuilderPageButton) {
     openBuilderPageButton.classList.toggle("is-hidden", !isAuthed);
   }
-  if (openLeadsPageButton) {
-    const adminAccessLoading = Boolean(isAuthed && adminAccessStatusPromise);
-    openLeadsPageButton.disabled = adminAccessLoading;
-    if (adminAccessLoading) {
-      openLeadsPageButton.setAttribute("aria-busy", "true");
-    } else {
-      openLeadsPageButton.removeAttribute("aria-busy");
-    }
-    openLeadsPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
-  }
-  if (openAdminPageButton) {
-    const adminAccessLoading = Boolean(isAuthed && adminAccessStatusPromise);
-    openAdminPageButton.disabled = adminAccessLoading;
-    if (adminAccessLoading) {
-      openAdminPageButton.setAttribute("aria-busy", "true");
-    } else {
-      openAdminPageButton.removeAttribute("aria-busy");
-    }
-    openAdminPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
-  }
+  syncAdminAccessButtons();
   refreshAdminOnlyTestTools();
   if (openHistoryPageButton) {
     openHistoryPageButton.classList.toggle("is-hidden", !isAuthed);
