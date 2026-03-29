@@ -169,6 +169,12 @@ const LEAD_OUTCOME_META = {
     className: "is-no-pickup",
     listBucket: "to_call",
   },
+  discarded: {
+    label: "Discarded",
+    summaryBucket: "discarded",
+    className: "is-discarded",
+    listBucket: "discarded",
+  },
 };
 const MOCK_LEAD_PROSPECTS = (() => {
   const firstNames = [
@@ -6003,6 +6009,19 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         follow_up_body: String(row?.follow_up_body || ""),
         follow_up_sent_at: String(row?.follow_up_sent_at || ""),
         last_called_at: String(row?.last_called_at || ""),
+        retry_after:
+          String(row?.retry_after || "") ||
+          (row?.disposition === "no_pickup"
+            ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+            : ""),
+        no_pickup_count: Math.max(
+          0,
+          Number(
+            row?.no_pickup_count ??
+              (row?.disposition === "no_pickup" ? 1 : 0)
+          ) || 0
+        ),
+        discarded_at: String(row?.discarded_at || ""),
       }))
     : [];
 
@@ -6035,6 +6054,12 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         follow_up_body: String(patch?.follow_up_body ?? current.follow_up_body ?? ""),
         follow_up_sent_at: String(patch?.follow_up_sent_at ?? current.follow_up_sent_at ?? ""),
         last_called_at: String(patch?.last_called_at ?? current.last_called_at ?? ""),
+        retry_after: String(patch?.retry_after ?? current.retry_after ?? ""),
+        no_pickup_count: Math.max(
+          0,
+          Number(patch?.no_pickup_count ?? current.no_pickup_count ?? 0) || 0
+        ),
+        discarded_at: String(patch?.discarded_at ?? current.discarded_at ?? ""),
       };
       store.set(safeId, next);
       return { ...next };
@@ -6071,6 +6096,59 @@ function formatLeadParcels(value) {
   return count.toLocaleString(getUiLocale());
 }
 
+function parseLeadTimestamp(value) {
+  const timestamp = new Date(value || "").getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function compareLeadProspects(left, right, bucket = leadListBucket) {
+  if (bucket === "discarded") {
+    const rightDiscarded = parseLeadTimestamp(right?.discarded_at || right?.last_called_at);
+    const leftDiscarded = parseLeadTimestamp(left?.discarded_at || left?.last_called_at);
+    if (rightDiscarded !== leftDiscarded) return rightDiscarded - leftDiscarded;
+    return Number(left?.orderIndex || 0) - Number(right?.orderIndex || 0);
+  }
+
+  if (bucket === "called") {
+    const rightCalled = parseLeadTimestamp(right?.last_called_at);
+    const leftCalled = parseLeadTimestamp(left?.last_called_at);
+    if (rightCalled !== leftCalled) return rightCalled - leftCalled;
+    return Number(left?.orderIndex || 0) - Number(right?.orderIndex || 0);
+  }
+
+  const now = Date.now();
+  const leftRetryAt = parseLeadTimestamp(left?.retry_after);
+  const rightRetryAt = parseLeadTimestamp(right?.retry_after);
+  const leftDueRetry = left?.disposition === "no_pickup" && leftRetryAt > 0 && leftRetryAt <= now;
+  const rightDueRetry = right?.disposition === "no_pickup" && rightRetryAt > 0 && rightRetryAt <= now;
+  if (leftDueRetry !== rightDueRetry) {
+    return leftDueRetry ? -1 : 1;
+  }
+  if (leftDueRetry && rightDueRetry && leftRetryAt !== rightRetryAt) {
+    return leftRetryAt - rightRetryAt;
+  }
+  const leftPendingRetry =
+    left?.disposition === "no_pickup" && leftRetryAt > now;
+  const rightPendingRetry =
+    right?.disposition === "no_pickup" && rightRetryAt > now;
+  if (leftPendingRetry !== rightPendingRetry) {
+    return leftPendingRetry ? 1 : -1;
+  }
+  if (leftPendingRetry && rightPendingRetry && leftRetryAt !== rightRetryAt) {
+    return leftRetryAt - rightRetryAt;
+  }
+  return Number(left?.orderIndex || 0) - Number(right?.orderIndex || 0);
+}
+
+function getLeadOutcomeDisplayLabel(lead) {
+  const meta = getLeadOutcomeMeta(lead?.disposition);
+  if (lead?.disposition === "no_pickup") {
+    const attempts = Math.max(1, Number(lead?.no_pickup_count || 1));
+    return tr("Retry call ({count}/5)", { count: attempts });
+  }
+  return meta.label;
+}
+
 function getLeadCallHref(phone) {
   const safePhone = String(phone || "")
     .trim()
@@ -6084,7 +6162,9 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
-  return bucket === "called" ? tr("talked") : tr("not talked");
+  if (bucket === "called") return tr("talked");
+  if (bucket === "discarded") return tr("discarded");
+  return tr("not talked");
 }
 
 function syncLeadListTabs() {
@@ -6098,7 +6178,8 @@ function syncLeadListTabs() {
 }
 
 function setLeadListBucket(nextBucket, options = {}) {
-  const safeBucket = nextBucket === "called" ? "called" : "to_call";
+  const safeBucket =
+    nextBucket === "called" || nextBucket === "discarded" ? nextBucket : "to_call";
   const { rerender = true } = options;
   leadListBucket = safeBucket;
   syncLeadListTabs();
@@ -6121,6 +6202,9 @@ function renderLeadSummaryCards() {
     }
     if (bucket === "notInterested") {
       counts.notInterested += 1;
+      return;
+    }
+    if (bucket === "discarded") {
       return;
     }
     counts.ready += 1;
@@ -6150,7 +6234,7 @@ function getFilteredLeadProspects() {
       .join(" ")
       .toLowerCase();
     return haystack.includes(query);
-  });
+  }).sort((left, right) => compareLeadProspects(left, right, leadListBucket));
 }
 
 function renderLeadProspects() {
@@ -6201,6 +6285,8 @@ function renderLeadProspects() {
   filtered.forEach((lead) => {
     const stack = getLeadStackMeta(lead?.techStack);
     const outcome = getLeadOutcomeMeta(lead?.disposition);
+    const showDiscardAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
+    const showCallAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
     const row = document.createElement("tr");
     row.className = "leads-row";
     row.innerHTML = `
@@ -6224,15 +6310,30 @@ function renderLeadProspects() {
       <td class="mono leads-table-metric">${escapeHtml(formatMoney(lead?.estimatedMonthlyRevenue || 0))}</td>
       <td class="mono leads-table-metric">${escapeHtml(formatLeadParcels(lead?.estimatedParcelsPerMonth || 0))}</td>
       <td>
-        <span class="lead-outcome-pill ${outcome.className}">${escapeHtml(outcome.label)}</span>
+        <span class="lead-outcome-pill ${outcome.className}">${escapeHtml(getLeadOutcomeDisplayLabel(lead))}</span>
       </td>
       <td class="leads-table-actions">
-        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
-          String(lead?.id || "")
-        )}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.4 19.4 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4 1.9h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7 10.3a16 16 0 0 0 6.7 6.7l1.9-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.6 1.9z"/></svg>
-          <span>Call</span>
-        </button>
+        <div class="leads-table-actions-group">
+          ${
+            showCallAction
+              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
+                  String(lead?.id || "")
+                )}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.4 19.4 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4 1.9h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7 10.3a16 16 0 0 0 6.7 6.7l1.9-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.6 1.9z"/></svg>
+            <span>Call</span>
+          </button>`
+              : ""
+          }
+          ${
+            showDiscardAction
+              ? `<button type="button" class="lead-discard-button" data-lead-discard="${escapeHtml(
+                  String(lead?.id || "")
+                )}" aria-label="${escapeHtml(tr("Discard lead"))}" title="${escapeHtml(tr("Discard lead"))}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>`
+              : ""
+          }
+        </div>
       </td>
     `;
     leadsTableBody.appendChild(row);
@@ -6406,6 +6507,21 @@ async function applyLeadOutcomeUpdate(leadId, patch = {}) {
   return updatedLead;
 }
 
+async function discardLeadProspect(leadId, options = {}) {
+  const safeLeadId = String(leadId || "").trim();
+  if (!safeLeadId) return;
+  const { quiet = false } = options;
+  await applyLeadOutcomeUpdate(safeLeadId, {
+    disposition: "discarded",
+    discarded_at: new Date().toISOString(),
+    retry_after: "",
+    last_called_at: new Date().toISOString(),
+  });
+  if (!quiet) {
+    showToast(tr("Lead discarded from the queue."), { tone: "success" });
+  }
+}
+
 function openLeadCallOutcomeForLead(lead) {
   if (!lead) return;
   leadCallOutcomeLeadId = String(lead.id || "");
@@ -6429,15 +6545,30 @@ async function saveLeadCallOutcome(outcome) {
   if (safeOutcome === "no_pickup") {
     setLeadCallOutcomeBusy(true);
     try {
+      const lead = getActiveLeadCallOutcomeLead();
+      if (!lead) {
+        throw new Error(tr("Lead not found."));
+      }
+      const nextNoPickupCount = Math.max(0, Number(lead?.no_pickup_count || 0)) + 1;
+      if (nextNoPickupCount >= 5) {
+        await discardLeadProspect(leadCallOutcomeLeadId, { quiet: true });
+        leadCallOutcomeLeadId = "";
+        resetLeadCallOutcomeComposer();
+        setLeadCallOutcomeModalOpen(false);
+        showToast(tr("Lead discarded after 5 unanswered calls."), { tone: "success" });
+        return;
+      }
       setLeadListBucket("to_call", { rerender: false });
       await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
         disposition: safeOutcome,
         last_called_at: new Date().toISOString(),
+        no_pickup_count: nextNoPickupCount,
+        retry_after: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
       leadCallOutcomeLeadId = "";
       resetLeadCallOutcomeComposer();
       setLeadCallOutcomeModalOpen(false);
-      showToast(tr("Lead moved back into the not-talked queue."), { tone: "success" });
+      showToast(tr("Lead moved back into the not-talked queue for a 24h retry."), { tone: "success" });
     } catch (error) {
       showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
     } finally {
@@ -15531,6 +15662,12 @@ if (reloadLeadsButton) {
 
 if (leadsTableBody) {
   leadsTableBody.addEventListener("click", (event) => {
+    const discardTarget =
+      event.target instanceof Element ? event.target.closest("[data-lead-discard]") : null;
+    if (discardTarget instanceof HTMLButtonElement) {
+      void discardLeadProspect(discardTarget.dataset.leadDiscard);
+      return;
+    }
     const target = event.target instanceof Element ? event.target.closest("[data-lead-call]") : null;
     if (!(target instanceof HTMLButtonElement)) return;
     handleLeadCallAction(target.dataset.leadCall);

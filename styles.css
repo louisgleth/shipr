@@ -2347,14 +2347,51 @@ body {
   background: rgba(119, 71, 227, 0.14);
 }
 
+.lead-outcome-pill.is-discarded {
+  color: rgba(241, 244, 251, 0.52);
+  border-color: rgba(126, 133, 148, 0.28);
+  background: rgba(126, 133, 148, 0.12);
+}
+
 .leads-table-actions-col,
 .leads-table-actions {
   text-align: right;
 }
 
+.leads-table-actions-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .lead-call-button {
   min-width: 90px;
   justify-content: center;
+}
+
+.lead-discard-button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(16, 19, 29, 0.9);
+  color: rgba(241, 244, 251, 0.62);
+  transition: border-color 0.22s ease, color 0.22s ease, background 0.22s ease;
+}
+
+.lead-discard-button:hover {
+  color: #f39a9a;
+  border-color: rgba(210, 108, 108, 0.32);
+  background: rgba(52, 22, 28, 0.92);
+}
+
+.lead-discard-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .lead-callout-modal {
@@ -2367,12 +2404,20 @@ body {
 
 .lead-callout-context {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: rgba(15, 18, 28, 0.6);
+}
+
+.lead-callout-context-item {
+  min-width: 0;
+}
+
+.lead-callout-context-item-email {
+  grid-column: 1 / -1;
 }
 
 .lead-callout-label {
@@ -2386,6 +2431,13 @@ body {
 .lead-callout-value {
   font-size: var(--fs-xs);
   color: var(--text);
+  min-width: 0;
+}
+
+.lead-callout-context-item-email .lead-callout-value {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .lead-callout-actions {
