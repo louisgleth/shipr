@@ -1345,8 +1345,8 @@
           <article class="reports-card admin-summary-card">
             <div class="reports-kpi-title">Ready To Call</div>
             <div class="reports-kpi-value" id="leadsReadyCount">0</div>
-            <div class="reports-kpi-meta mono">Fresh prospects still untouched</div>
-            <div class="reports-kpi-foot">New names currently in the queue</div>
+            <div class="reports-kpi-meta mono">Fresh prospects + retry calls</div>
+            <div class="reports-kpi-foot">Prospects still waiting on a live conversation</div>
           </article>
 
           <article class="reports-card admin-summary-card">
@@ -1371,6 +1371,28 @@
               <p class="panel-sub leads-board-sub">
                 Static leads for now, with a structure ready to swap to a live outbound API.
               </p>
+              <div class="leads-list-tabs" id="leadsListTabs" role="tablist" aria-label="Lead call progress">
+                <button
+                  type="button"
+                  class="leads-list-tab is-active"
+                  id="leadsNotTalkedTab"
+                  data-leads-list="to_call"
+                  role="tab"
+                  aria-selected="true"
+                >
+                  Not Talked
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsTalkedTab"
+                  data-leads-list="called"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Talked
+                </button>
+              </div>
             </div>
             <div class="leads-board-toolbar">
               <label class="field admin-toolbar-field">
@@ -1420,13 +1442,13 @@
       <div class="shopify-settings-overlay is-closed" id="leadCallOutcomeModal">
         <div class="shopify-settings-modal lead-callout-modal">
           <div class="csv-modal-header">
-            <span class="csv-modal-title">Log Call Outcome</span>
+            <span class="csv-modal-title" id="leadCallOutcomeTitle">Log Call Outcome</span>
             <button type="button" class="csv-modal-close" id="leadCallOutcomeClose">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
           <div class="shopify-settings-body lead-callout-modal-body">
-            <p class="shopify-settings-note">
+            <p class="shopify-settings-note" id="leadCallOutcomeNote">
               The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.
             </p>
             <div class="lead-callout-context">
@@ -1442,6 +1464,10 @@
                 <div class="lead-callout-label">Phone</div>
                 <div class="lead-callout-value mono" id="leadCallOutcomeLeadPhone">--</div>
               </div>
+              <div>
+                <div class="lead-callout-label">Email</div>
+                <div class="lead-callout-value mono" id="leadCallOutcomeLeadEmail">--</div>
+              </div>
             </div>
             <div class="lead-callout-actions" id="leadCallOutcomeActions">
               <button type="button" class="lead-callout-option" data-lead-outcome="interested_follow_up">
@@ -1449,13 +1475,47 @@
                 <span class="lead-callout-option-copy">High intent. Queue the next touchpoint.</span>
               </button>
               <button type="button" class="lead-callout-option" data-lead-outcome="mild_follow_up">
-                <span class="lead-callout-option-title">Mildly interested, send follow up</span>
-                <span class="lead-callout-option-copy">Warm lead. Keep them in the follow-up stream.</span>
+                <span class="lead-callout-option-title">Mildly interested / redirected us to email, send follow up</span>
+                <span class="lead-callout-option-copy">Warm lead. Prepare the email and keep them in the follow-up stream.</span>
               </button>
-              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="not_interested">
-                <span class="lead-callout-option-title">Not interested</span>
-                <span class="lead-callout-option-copy">Close the lead and remove it from active follow-up.</span>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="not_interested_follow_up">
+                <span class="lead-callout-option-title">Not interested, send follow up</span>
+                <span class="lead-callout-option-copy">Close the lead out politely, but still send the recap email.</span>
               </button>
+              <button type="button" class="lead-callout-option" data-lead-outcome="no_pickup">
+                <span class="lead-callout-option-title">Phone did not pickup</span>
+                <span class="lead-callout-option-copy">Return the prospect to the active call list for another attempt.</span>
+              </button>
+            </div>
+            <div class="lead-callout-email-step is-hidden" id="leadCallOutcomeEmailStep">
+              <div class="lead-callout-compose-head">
+                <div class="lead-callout-step-pill" id="leadCallOutcomeStepPill">Interested</div>
+                <p class="shopify-settings-note lead-callout-compose-note">
+                  Review the follow-up before it opens in your mail app. You can edit every field first.
+                </p>
+              </div>
+              <div class="lead-callout-email-grid">
+                <label class="field">
+                  <span>Email</span>
+                  <input type="email" id="leadCallOutcomeEmailTo" />
+                </label>
+                <label class="field">
+                  <span>Subject</span>
+                  <input type="text" id="leadCallOutcomeEmailSubject" />
+                </label>
+                <label class="field lead-callout-email-body">
+                  <span>Body</span>
+                  <textarea id="leadCallOutcomeEmailBody" rows="8"></textarea>
+                </label>
+              </div>
+              <div class="panel-actions lead-callout-email-actions">
+                <button type="button" class="btn btn-ghost" id="leadCallOutcomeBack">
+                  <span>Back</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="leadCallOutcomeSend">
+                  <span>Send Follow Up</span>
+                </button>
+              </div>
             </div>
             <div class="panel-actions">
               <button type="button" class="btn btn-ghost" id="leadCallOutcomeCancel">

@@ -140,24 +140,34 @@ const LEAD_STACK_META = {
 };
 const LEAD_OUTCOME_META = {
   new: {
-    label: "New",
+    label: "Not talked",
     summaryBucket: "ready",
     className: "is-new",
+    listBucket: "to_call",
   },
   interested_follow_up: {
     label: "Interested",
     summaryBucket: "followUp",
     className: "is-interested",
+    listBucket: "called",
   },
   mild_follow_up: {
     label: "Mildly interested",
     summaryBucket: "followUp",
     className: "is-mild",
+    listBucket: "called",
   },
-  not_interested: {
+  not_interested_follow_up: {
     label: "Not interested",
     summaryBucket: "notInterested",
     className: "is-not-interested",
+    listBucket: "called",
+  },
+  no_pickup: {
+    label: "Retry call",
+    summaryBucket: "ready",
+    className: "is-no-pickup",
+    listBucket: "to_call",
   },
 };
 const MOCK_LEAD_PROSPECTS = (() => {
@@ -273,7 +283,8 @@ const MOCK_LEAD_PROSPECTS = (() => {
     "interested_follow_up",
     "mild_follow_up",
     "new",
-    "not_interested",
+    "not_interested_follow_up",
+    "no_pickup",
     "new",
   ];
 
@@ -302,6 +313,12 @@ const MOCK_LEAD_PROSPECTS = (() => {
       name: `${first} ${last}`,
       age,
       phone: formatPhone(dialing, index + 1),
+      email: `${first}.${last}`
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, ".")
+        .replace(/^\.+|\.+$/g, "") + `@${companyName.toLowerCase().replace(/[^a-z0-9]+/g, "")}.com`,
       companyName,
       techStack,
       storeOnlineSince: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
@@ -1628,6 +1645,7 @@ const adminSettingsSaveButton = document.getElementById("adminSettingsSaveButton
 const leadsReadyCount = document.getElementById("leadsReadyCount");
 const leadsFollowUpCount = document.getElementById("leadsFollowUpCount");
 const leadsNotInterestedCount = document.getElementById("leadsNotInterestedCount");
+const leadsListTabs = document.getElementById("leadsListTabs");
 const leadsSearchInput = document.getElementById("leadsSearchInput");
 const leadsStackFilter = document.getElementById("leadsStackFilter");
 const reloadLeadsButton = document.getElementById("reloadLeadsButton");
@@ -1638,10 +1656,20 @@ const leadsTableBody = document.getElementById("leadsTableBody");
 const leadCallOutcomeModal = document.getElementById("leadCallOutcomeModal");
 const leadCallOutcomeClose = document.getElementById("leadCallOutcomeClose");
 const leadCallOutcomeCancel = document.getElementById("leadCallOutcomeCancel");
+const leadCallOutcomeTitle = document.getElementById("leadCallOutcomeTitle");
+const leadCallOutcomeNote = document.getElementById("leadCallOutcomeNote");
 const leadCallOutcomeLeadName = document.getElementById("leadCallOutcomeLeadName");
 const leadCallOutcomeLeadCompany = document.getElementById("leadCallOutcomeLeadCompany");
 const leadCallOutcomeLeadPhone = document.getElementById("leadCallOutcomeLeadPhone");
+const leadCallOutcomeLeadEmail = document.getElementById("leadCallOutcomeLeadEmail");
 const leadCallOutcomeActions = document.getElementById("leadCallOutcomeActions");
+const leadCallOutcomeEmailStep = document.getElementById("leadCallOutcomeEmailStep");
+const leadCallOutcomeStepPill = document.getElementById("leadCallOutcomeStepPill");
+const leadCallOutcomeEmailTo = document.getElementById("leadCallOutcomeEmailTo");
+const leadCallOutcomeEmailSubject = document.getElementById("leadCallOutcomeEmailSubject");
+const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBody");
+const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
+const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
 const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
@@ -1987,9 +2015,12 @@ let leadProspectsLoading = false;
 let leadProspectsLoaded = false;
 let leadProspectsLoadPromise = null;
 let leadProspectsLoadRequestToken = 0;
+let leadListBucket = "to_call";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
+let leadCallOutcomeStep = "choose";
+let leadCallOutcomePendingOutcome = "";
 let leadCallOutcomeSaving = false;
 let adminClientSearch = "";
 let adminClientFilter = "all";
@@ -5966,6 +5997,11 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         ...row,
         orderIndex: index,
         disposition: LEAD_OUTCOME_META[row?.disposition] ? row.disposition : "new",
+        email: String(row?.email || ""),
+        follow_up_email: String(row?.follow_up_email || row?.email || ""),
+        follow_up_subject: String(row?.follow_up_subject || ""),
+        follow_up_body: String(row?.follow_up_body || ""),
+        follow_up_sent_at: String(row?.follow_up_sent_at || ""),
         last_called_at: String(row?.last_called_at || ""),
       }))
     : [];
@@ -5979,21 +6015,35 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         .sort((left, right) => Number(left.orderIndex || 0) - Number(right.orderIndex || 0))
         .map((row) => ({ ...row }));
     },
-    async updateDisposition(id, disposition) {
+    async updateLead(id, patch = {}) {
       const safeId = String(id || "").trim();
-      const safeDisposition = LEAD_OUTCOME_META[disposition] ? disposition : "new";
-      await new Promise((resolve) => window.setTimeout(resolve, 90));
       const current = store.get(safeId);
       if (!current) {
         throw new Error(tr("Lead not found."));
       }
+      await new Promise((resolve) => window.setTimeout(resolve, 90));
+      const nextDisposition = LEAD_OUTCOME_META[patch?.disposition]
+        ? patch.disposition
+        : current.disposition;
       const next = {
         ...current,
-        disposition: safeDisposition,
-        last_called_at: new Date().toISOString(),
+        ...patch,
+        disposition: nextDisposition,
+        email: String(patch?.email ?? current.email ?? ""),
+        follow_up_email: String(patch?.follow_up_email ?? current.follow_up_email ?? current.email ?? ""),
+        follow_up_subject: String(patch?.follow_up_subject ?? current.follow_up_subject ?? ""),
+        follow_up_body: String(patch?.follow_up_body ?? current.follow_up_body ?? ""),
+        follow_up_sent_at: String(patch?.follow_up_sent_at ?? current.follow_up_sent_at ?? ""),
+        last_called_at: String(patch?.last_called_at ?? current.last_called_at ?? ""),
       };
       store.set(safeId, next);
       return { ...next };
+    },
+    async updateDisposition(id, disposition) {
+      return this.updateLead(id, {
+        disposition,
+        last_called_at: new Date().toISOString(),
+      });
     },
   };
 }
@@ -6033,6 +6083,30 @@ function findLeadProspectById(leadId) {
   return leadProspects.find((lead) => String(lead?.id || "") === safeId) || null;
 }
 
+function getLeadListBucketLabel(bucket = leadListBucket) {
+  return bucket === "called" ? tr("talked") : tr("not talked");
+}
+
+function syncLeadListTabs() {
+  if (!leadsListTabs) return;
+  leadsListTabs.querySelectorAll("[data-leads-list]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const isActive = String(button.dataset.leadsList || "") === leadListBucket;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function setLeadListBucket(nextBucket, options = {}) {
+  const safeBucket = nextBucket === "called" ? "called" : "to_call";
+  const { rerender = true } = options;
+  leadListBucket = safeBucket;
+  syncLeadListTabs();
+  if (rerender) {
+    renderLeadProspects();
+  }
+}
+
 function renderLeadSummaryCards() {
   const counts = {
     ready: 0,
@@ -6060,12 +6134,15 @@ function getFilteredLeadProspects() {
   const query = String(leadSearchQuery || "").trim().toLowerCase();
   const stack = String(leadStackFilterValue || "all").trim().toLowerCase();
   return leadProspects.filter((lead) => {
+    const matchesBucket = getLeadOutcomeMeta(lead?.disposition).listBucket === leadListBucket;
+    if (!matchesBucket) return false;
     const matchesStack = stack === "all" || String(lead?.techStack || "").trim().toLowerCase() === stack;
     if (!matchesStack) return false;
     if (!query) return true;
     const haystack = [
       lead?.name,
       lead?.phone,
+      lead?.email,
       lead?.companyName,
       getLeadStackMeta(lead?.techStack).label,
       formatLeadStoreSince(lead?.storeOnlineSince),
@@ -6078,11 +6155,15 @@ function getFilteredLeadProspects() {
 
 function renderLeadProspects() {
   renderLeadSummaryCards();
+  syncLeadListTabs();
   if (!leadsTableBody || !leadsEmpty || !leadsTableWrap || !leadsStatus) return;
   if (reloadLeadsButton) {
     reloadLeadsButton.disabled = leadProspectsLoading;
   }
 
+  const bucketRows = leadProspects.filter(
+    (lead) => getLeadOutcomeMeta(lead?.disposition).listBucket === leadListBucket
+  );
   const filtered = getFilteredLeadProspects();
   leadsTableBody.innerHTML = "";
 
@@ -6095,14 +6176,16 @@ function renderLeadProspects() {
     }
   } else if (!leadProspectsLoaded) {
     leadsStatus.textContent = tr("Lead queue unavailable.");
-  } else if (filtered.length !== leadProspects.length) {
-    leadsStatus.textContent = tr("Showing {shown} of {total} leads.", {
+  } else if (filtered.length !== bucketRows.length) {
+    leadsStatus.textContent = tr("Showing {shown} of {total} {bucket} leads.", {
       shown: filtered.length,
-      total: leadProspects.length,
+      total: bucketRows.length,
+      bucket: getLeadListBucketLabel(),
     });
   } else {
-    leadsStatus.textContent = tr("{count} leads ready in the queue.", {
-      count: leadProspects.length,
+    leadsStatus.textContent = tr("{count} {bucket} leads in the queue.", {
+      count: bucketRows.length,
+      bucket: getLeadListBucketLabel(),
     });
   }
 
@@ -6167,6 +6250,16 @@ function setLeadCallOutcomeBusy(isBusy) {
   }
   if (leadCallOutcomeClose) leadCallOutcomeClose.disabled = leadCallOutcomeSaving;
   if (leadCallOutcomeCancel) leadCallOutcomeCancel.disabled = leadCallOutcomeSaving;
+  if (leadCallOutcomeBack) leadCallOutcomeBack.disabled = leadCallOutcomeSaving;
+  if (leadCallOutcomeSend) leadCallOutcomeSend.disabled = leadCallOutcomeSaving;
+  [leadCallOutcomeEmailTo, leadCallOutcomeEmailSubject, leadCallOutcomeEmailBody].forEach((field) => {
+    if (
+      field instanceof HTMLInputElement ||
+      field instanceof HTMLTextAreaElement
+    ) {
+      field.disabled = leadCallOutcomeSaving;
+    }
+  });
 }
 
 function populateLeadCallOutcomeModal(lead) {
@@ -6179,12 +6272,146 @@ function populateLeadCallOutcomeModal(lead) {
   if (leadCallOutcomeLeadPhone) {
     leadCallOutcomeLeadPhone.textContent = String(lead?.phone || "--");
   }
+  if (leadCallOutcomeLeadEmail) {
+    leadCallOutcomeLeadEmail.textContent = String(lead?.email || "--");
+  }
+}
+
+function getActiveLeadCallOutcomeLead() {
+  if (!leadCallOutcomeLeadId) return null;
+  return findLeadProspectById(leadCallOutcomeLeadId);
+}
+
+function resetLeadCallOutcomeComposer() {
+  leadCallOutcomePendingOutcome = "";
+  leadCallOutcomeStep = "choose";
+  if (leadCallOutcomeStepPill) {
+    leadCallOutcomeStepPill.textContent = tr("Follow up");
+  }
+  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
+    leadCallOutcomeEmailTo.value = "";
+  }
+  if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
+    leadCallOutcomeEmailSubject.value = "";
+  }
+  if (leadCallOutcomeEmailBody instanceof HTMLTextAreaElement) {
+    leadCallOutcomeEmailBody.value = "";
+  }
+}
+
+function setLeadCallOutcomeStep(step) {
+  leadCallOutcomeStep = step === "compose" ? "compose" : "choose";
+  const isCompose = leadCallOutcomeStep === "compose";
+  if (leadCallOutcomeActions) {
+    leadCallOutcomeActions.classList.toggle("is-hidden", isCompose);
+  }
+  if (leadCallOutcomeEmailStep) {
+    leadCallOutcomeEmailStep.classList.toggle("is-hidden", !isCompose);
+  }
+  if (leadCallOutcomeTitle) {
+    leadCallOutcomeTitle.textContent = isCompose ? tr("Review Follow Up") : tr("Log Call Outcome");
+  }
+  if (leadCallOutcomeNote) {
+    leadCallOutcomeNote.textContent = isCompose
+      ? tr("Review the follow-up draft below. You can edit the recipient, subject, and body before sending it out.")
+      : tr("The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.");
+  }
+}
+
+function getLeadFirstName(lead) {
+  return String(lead?.name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)[0] || tr("there");
+}
+
+function buildLeadFollowUpDraft(lead, outcome) {
+  const firstName = getLeadFirstName(lead);
+  const companyName = String(lead?.companyName || tr("your store"));
+  const safeEmail = String(lead?.email || "").trim();
+  if (outcome === "interested_follow_up") {
+    return {
+      email: safeEmail,
+      subject: tr("Great speaking today, {name}", { name: firstName }),
+      body: tr(
+        "Hi {name},\n\nThanks again for taking the call today. It was great learning a bit more about {company}.\n\nAs discussed, Shipide helps ecommerce teams centralize label generation, invoice-ready billing, and discounted carrier shipping in one workflow.\n\nIf helpful, I can send over a short overview or walk you through the platform in a quick follow-up.\n\nBest,\nShipide",
+        { name: firstName, company: companyName }
+      ),
+    };
+  }
+  if (outcome === "mild_follow_up") {
+    return {
+      email: safeEmail,
+      subject: tr("Quick follow-up for {company}", { company: companyName }),
+      body: tr(
+        "Hi {name},\n\nThanks for taking the call today and pointing me to email.\n\nHere is the short follow-up I mentioned: Shipide helps stores like {company} streamline shipping operations, keep invoice workflows clean, and access discounted carrier pricing from one place.\n\nHappy to send a brief overview or answer any questions when convenient.\n\nBest,\nShipide",
+        { name: firstName, company: companyName }
+      ),
+    };
+  }
+  return {
+    email: safeEmail,
+    subject: tr("Thanks for your time today, {name}", { name: firstName }),
+    body: tr(
+      "Hi {name},\n\nThanks again for taking the call today.\n\nTotally understood that the timing is not right on your side for {company}. If shipping operations become a bigger priority later on, I would be glad to share a quick overview of Shipide and where it could fit.\n\nBest,\nShipide",
+      { name: firstName, company: companyName }
+    ),
+  };
+}
+
+function openLeadFollowUpComposer(outcome) {
+  const lead = getActiveLeadCallOutcomeLead();
+  if (!lead) return;
+  const draft = buildLeadFollowUpDraft(lead, outcome);
+  leadCallOutcomePendingOutcome = outcome;
+  if (leadCallOutcomeStepPill) {
+    leadCallOutcomeStepPill.textContent = getLeadOutcomeMeta(outcome).label;
+  }
+  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
+    leadCallOutcomeEmailTo.value = draft.email;
+  }
+  if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
+    leadCallOutcomeEmailSubject.value = draft.subject;
+  }
+  if (leadCallOutcomeEmailBody instanceof HTMLTextAreaElement) {
+    leadCallOutcomeEmailBody.value = draft.body;
+  }
+  setLeadCallOutcomeStep("compose");
+}
+
+function openLeadFollowUpMailDraft({ email, subject, body }) {
+  const safeEmail = String(email || "").trim();
+  if (!safeEmail) {
+    throw new Error(tr("No email available for this lead."));
+  }
+  const href = `mailto:${safeEmail}?subject=${encodeURIComponent(
+    String(subject || "")
+  )}&body=${encodeURIComponent(String(body || ""))}`;
+  const link = document.createElement("a");
+  link.href = href;
+  link.setAttribute("aria-hidden", "true");
+  link.style.position = "absolute";
+  link.style.left = "-9999px";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function applyLeadOutcomeUpdate(leadId, patch = {}) {
+  const updatedLead = await leadProspectRepository.updateLead(leadId, patch);
+  leadProspects = leadProspects.map((lead) =>
+    String(lead?.id || "") === String(updatedLead?.id || "") ? updatedLead : lead
+  );
+  renderLeadProspects();
+  return updatedLead;
 }
 
 function openLeadCallOutcomeForLead(lead) {
   if (!lead) return;
   leadCallOutcomeLeadId = String(lead.id || "");
+  resetLeadCallOutcomeComposer();
   populateLeadCallOutcomeModal(lead);
+  setLeadCallOutcomeStep("choose");
   setLeadCallOutcomeBusy(false);
   setLeadCallOutcomeModalOpen(true);
 }
@@ -6192,27 +6419,77 @@ function openLeadCallOutcomeForLead(lead) {
 function closeLeadCallOutcome() {
   if (leadCallOutcomeSaving) return;
   leadCallOutcomeLeadId = "";
+  resetLeadCallOutcomeComposer();
   setLeadCallOutcomeModalOpen(false);
 }
 
 async function saveLeadCallOutcome(outcome) {
   const safeOutcome = String(outcome || "").trim();
   if (!leadCallOutcomeLeadId || !LEAD_OUTCOME_META[safeOutcome]) return;
+  if (safeOutcome === "no_pickup") {
+    setLeadCallOutcomeBusy(true);
+    try {
+      setLeadListBucket("to_call", { rerender: false });
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        disposition: safeOutcome,
+        last_called_at: new Date().toISOString(),
+      });
+      leadCallOutcomeLeadId = "";
+      resetLeadCallOutcomeComposer();
+      setLeadCallOutcomeModalOpen(false);
+      showToast(tr("Lead moved back into the not-talked queue."), { tone: "success" });
+    } catch (error) {
+      showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
+    } finally {
+      setLeadCallOutcomeBusy(false);
+    }
+    return;
+  }
+  openLeadFollowUpComposer(safeOutcome);
+}
+
+async function sendLeadFollowUpForCurrentLead() {
+  const lead = getActiveLeadCallOutcomeLead();
+  if (!lead || !leadCallOutcomePendingOutcome) return;
+  const email =
+    leadCallOutcomeEmailTo instanceof HTMLInputElement
+      ? String(leadCallOutcomeEmailTo.value || "").trim()
+      : "";
+  const subject =
+    leadCallOutcomeEmailSubject instanceof HTMLInputElement
+      ? String(leadCallOutcomeEmailSubject.value || "").trim()
+      : "";
+  const body =
+    leadCallOutcomeEmailBody instanceof HTMLTextAreaElement
+      ? String(leadCallOutcomeEmailBody.value || "").trim()
+      : "";
+  if (!email) {
+    showToast(tr("Add an email before sending the follow-up."), { tone: "error" });
+    return;
+  }
+  if (!subject) {
+    showToast(tr("Add a subject before sending the follow-up."), { tone: "error" });
+    return;
+  }
+  if (!body) {
+    showToast(tr("Add a body before sending the follow-up."), { tone: "error" });
+    return;
+  }
   setLeadCallOutcomeBusy(true);
   try {
-    const updatedLead = await leadProspectRepository.updateDisposition(leadCallOutcomeLeadId, safeOutcome);
-    leadProspects = leadProspects.map((lead) =>
-      String(lead?.id || "") === String(updatedLead?.id || "") ? updatedLead : lead
-    );
-    renderLeadProspects();
+    await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+      disposition: leadCallOutcomePendingOutcome,
+      follow_up_email: email,
+      follow_up_subject: subject,
+      follow_up_body: body,
+      follow_up_sent_at: new Date().toISOString(),
+      last_called_at: new Date().toISOString(),
+    });
+    openLeadFollowUpMailDraft({ email, subject, body });
     leadCallOutcomeLeadId = "";
+    resetLeadCallOutcomeComposer();
     setLeadCallOutcomeModalOpen(false);
-    showToast(
-      safeOutcome === "not_interested"
-        ? tr("Lead marked as not interested.")
-        : tr("Follow-up queued for this lead."),
-      { tone: "success" }
-    );
+    showToast(tr("Follow-up draft opened in your mail app."), { tone: "success" });
   } catch (error) {
     showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
   } finally {
@@ -7658,6 +7935,11 @@ function setAdminSettingsModalOpen(open) {
 
 function setLeadCallOutcomeModalOpen(open) {
   if (!leadCallOutcomeModal) return;
+  if (!open) {
+    leadCallOutcomeLeadId = "";
+    resetLeadCallOutcomeComposer();
+    setLeadCallOutcomeBusy(false);
+  }
   leadCallOutcomeModal.classList.toggle("is-closed", !open);
 }
 
@@ -12771,7 +13053,10 @@ function setAuthView(session, options = {}) {
     leadProspects = [];
     leadProspectsLoaded = false;
     leadProspectsLoading = false;
+    leadListBucket = "to_call";
     leadCallOutcomeLeadId = "";
+    leadCallOutcomePendingOutcome = "";
+    leadCallOutcomeStep = "choose";
     renderLeadProspects();
     if (adminCarrierDiscountInput) {
       adminCarrierDiscountInput.value = "";
@@ -15220,6 +15505,15 @@ if (leadsSearchInput) {
   });
 }
 
+if (leadsListTabs) {
+  leadsListTabs.addEventListener("click", (event) => {
+    const target =
+      event.target instanceof Element ? event.target.closest("[data-leads-list]") : null;
+    if (!(target instanceof HTMLButtonElement)) return;
+    setLeadListBucket(target.dataset.leadsList);
+  });
+}
+
 if (leadsStackFilter) {
   leadsStackFilter.addEventListener("change", (event) => {
     const target = event.target;
@@ -15249,6 +15543,20 @@ if (leadCallOutcomeActions) {
       event.target instanceof Element ? event.target.closest("[data-lead-outcome]") : null;
     if (!(target instanceof HTMLButtonElement)) return;
     await saveLeadCallOutcome(target.dataset.leadOutcome);
+  });
+}
+
+if (leadCallOutcomeBack) {
+  leadCallOutcomeBack.addEventListener("click", () => {
+    if (leadCallOutcomeSaving) return;
+    leadCallOutcomePendingOutcome = "";
+    setLeadCallOutcomeStep("choose");
+  });
+}
+
+if (leadCallOutcomeSend) {
+  leadCallOutcomeSend.addEventListener("click", async () => {
+    await sendLeadFollowUpForCurrentLead();
   });
 }
 
