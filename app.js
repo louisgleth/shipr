@@ -96,6 +96,7 @@ const ROUTE_PATHS = {
   signupPreview: "/signup-preview",
   account: "/account",
   admin: "/admin",
+  leads: "/leads",
   history: "/history",
   reports: "/reports",
 };
@@ -112,6 +113,7 @@ const ROUTE_SUFFIXES = [
   ROUTE_PATHS.signupPreview,
   ROUTE_PATHS.account,
   ROUTE_PATHS.admin,
+  ROUTE_PATHS.leads,
   ROUTE_PATHS.history,
   ROUTE_PATHS.reports,
   ...Object.values(STEP_ROUTE_PATHS),
@@ -119,6 +121,197 @@ const ROUTE_SUFFIXES = [
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
+const LEAD_STACK_META = {
+  shopify: {
+    label: "Shopify",
+    icon: "assets/shopify.svg",
+    className: "is-shopify",
+  },
+  woocommerce: {
+    label: "WooCommerce",
+    icon: "woocommerce-logo.png",
+    className: "is-woocommerce",
+  },
+  wix: {
+    label: "Wix eCommerce",
+    icon: "Wix-icon.svg",
+    className: "is-wix",
+  },
+};
+const LEAD_OUTCOME_META = {
+  new: {
+    label: "New",
+    summaryBucket: "ready",
+    className: "is-new",
+  },
+  interested_follow_up: {
+    label: "Interested",
+    summaryBucket: "followUp",
+    className: "is-interested",
+  },
+  mild_follow_up: {
+    label: "Mildly interested",
+    summaryBucket: "followUp",
+    className: "is-mild",
+  },
+  not_interested: {
+    label: "Not interested",
+    summaryBucket: "notInterested",
+    className: "is-not-interested",
+  },
+};
+const MOCK_LEAD_PROSPECTS = (() => {
+  const firstNames = [
+    "Claire",
+    "Pieter",
+    "Amandine",
+    "Mateo",
+    "Sanne",
+    "Marta",
+    "Elias",
+    "Juliette",
+    "Tom",
+    "Elena",
+    "Noah",
+    "Camille",
+    "Arthur",
+    "Sofia",
+    "Luca",
+    "Ines",
+    "Jonas",
+    "Leonie",
+    "Nils",
+    "Eva",
+    "Thiago",
+    "Marina",
+    "Anton",
+    "Lucie",
+    "Ruben",
+  ];
+  const lastNames = [
+    "Dupont",
+    "de Vries",
+    "Leroy",
+    "Esposito",
+    "Jansen",
+    "Henriques",
+    "Nordin",
+    "Bernard",
+    "Verbruggen",
+    "Rossi",
+    "Moreau",
+    "van den Berg",
+    "Costa",
+    "Lefevre",
+    "Svensson",
+    "Dubois",
+    "Silva",
+    "Ribeiro",
+    "Schmidt",
+    "Martens",
+    "Fontaine",
+    "Peeters",
+    "Lindholm",
+    "Navarro",
+    "Ferreira",
+  ];
+  const companyPrefixes = [
+    "Atelier",
+    "North Harbor",
+    "Lune",
+    "Verde",
+    "Noordline",
+    "Rivage",
+    "Serein",
+    "Fjord",
+    "Meridian",
+    "Maison",
+    "Studio",
+    "Nova",
+    "Forme",
+    "Collective",
+    "Harbor",
+    "Foundry",
+    "Works",
+    "Supply",
+    "Market",
+    "Commerce",
+  ];
+  const companySuffixes = [
+    "Goods",
+    "Home",
+    "Cycle",
+    "Atelier",
+    "Collective",
+    "Works",
+    "Supply",
+    "Studio",
+    "Living",
+    "Essentials",
+    "Store",
+    "Line",
+    "Market",
+    "Lab",
+    "Partners",
+    "Merch",
+  ];
+  const stacks = ["shopify", "woocommerce", "wix"];
+  const countryDialing = [
+    { code: "+32", base: "470000000" },
+    { code: "+31", base: "610000000" },
+    { code: "+33", base: "640000000" },
+    { code: "+39", base: "330000000" },
+    { code: "+351", base: "910000000" },
+    { code: "+46", base: "700000000" },
+  ];
+  const dispositions = [
+    "new",
+    "new",
+    "new",
+    "new",
+    "new",
+    "interested_follow_up",
+    "mild_follow_up",
+    "new",
+    "not_interested",
+    "new",
+  ];
+
+  const formatPhone = (dialing, index) => {
+    const digits = String(Number(dialing.base) + index * 173).padStart(9, "0");
+    return `${dialing.code} ${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5, 7)} ${digits.slice(7, 9)}`;
+  };
+
+  return Array.from({ length: 100 }, (_, index) => {
+    const first = firstNames[index % firstNames.length];
+    const last = lastNames[(index * 3) % lastNames.length];
+    const companyPrefix = companyPrefixes[index % companyPrefixes.length];
+    const companySuffix = companySuffixes[(index * 5) % companySuffixes.length];
+    const techStack = stacks[index % stacks.length];
+    const dialing = countryDialing[index % countryDialing.length];
+    const month = ((index * 5) % 12) + 1;
+    const day = ((index * 7) % 27) + 1;
+    const year = 2016 + (index % 9);
+    const age = 27 + ((index * 7) % 23);
+    const estimatedMonthlyRevenue = 18000 + ((index * 9300) % 162000);
+    const estimatedParcelsPerMonth = 140 + ((index * 81) % 1480);
+    const companyName = `${companyPrefix} ${companySuffix}`;
+
+    return {
+      id: `lead-${index + 1}`,
+      name: `${first} ${last}`,
+      age,
+      phone: formatPhone(dialing, index + 1),
+      companyName,
+      techStack,
+      storeOnlineSince: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      estimatedMonthlyRevenue,
+      estimatedParcelsPerMonth,
+      disposition: dispositions[index % dispositions.length],
+    };
+  });
+})();
+const leadProspectRepository = createLeadProspectRepository();
 const AUTH_SIGNUP_PREVIEW_DATA = {
   inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
   credentials: {
@@ -1373,16 +1566,19 @@ const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
 const openBuilderPageButton = document.getElementById("openBuilderPage");
 const openAdminPageButton = document.getElementById("openAdminPage");
+const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
+const closeLeadsPageButton = document.getElementById("closeLeadsPage");
 const closeHistoryPageButton = document.getElementById("closeHistoryPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
 const openAdminSettingsModalButton = document.getElementById("openAdminSettingsModal");
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
+const leadsPageSection = document.getElementById("leadsPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
@@ -1429,6 +1625,23 @@ const adminCarrierDiscountInput = document.getElementById("adminCarrierDiscount"
 const adminClientDiscountInput = document.getElementById("adminClientDiscount");
 const adminSettingsPreview = document.getElementById("adminSettingsPreview");
 const adminSettingsSaveButton = document.getElementById("adminSettingsSaveButton");
+const leadsReadyCount = document.getElementById("leadsReadyCount");
+const leadsFollowUpCount = document.getElementById("leadsFollowUpCount");
+const leadsNotInterestedCount = document.getElementById("leadsNotInterestedCount");
+const leadsSearchInput = document.getElementById("leadsSearchInput");
+const leadsStackFilter = document.getElementById("leadsStackFilter");
+const reloadLeadsButton = document.getElementById("reloadLeadsButton");
+const leadsStatus = document.getElementById("leadsStatus");
+const leadsEmpty = document.getElementById("leadsEmpty");
+const leadsTableWrap = document.getElementById("leadsTableWrap");
+const leadsTableBody = document.getElementById("leadsTableBody");
+const leadCallOutcomeModal = document.getElementById("leadCallOutcomeModal");
+const leadCallOutcomeClose = document.getElementById("leadCallOutcomeClose");
+const leadCallOutcomeCancel = document.getElementById("leadCallOutcomeCancel");
+const leadCallOutcomeLeadName = document.getElementById("leadCallOutcomeLeadName");
+const leadCallOutcomeLeadCompany = document.getElementById("leadCallOutcomeLeadCompany");
+const leadCallOutcomeLeadPhone = document.getElementById("leadCallOutcomeLeadPhone");
+const leadCallOutcomeActions = document.getElementById("leadCallOutcomeActions");
 const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
@@ -1769,6 +1982,15 @@ let adminDashboardLoading = false;
 let adminDashboardLoaded = false;
 let adminDashboardState = null;
 let adminClients = [];
+let leadProspects = [];
+let leadProspectsLoading = false;
+let leadProspectsLoaded = false;
+let leadProspectsLoadPromise = null;
+let leadProspectsLoadRequestToken = 0;
+let leadSearchQuery = "";
+let leadStackFilterValue = "all";
+let leadCallOutcomeLeadId = "";
+let leadCallOutcomeSaving = false;
 let adminClientSearch = "";
 let adminClientFilter = "all";
 let adminClientSort = "recent";
@@ -2120,6 +2342,9 @@ function parseRouteFromLocation() {
   if (path === ROUTE_PATHS.admin) {
     return { view: "admin" };
   }
+  if (path === ROUTE_PATHS.leads) {
+    return { view: "leads" };
+  }
   if (path === ROUTE_PATHS.history) {
     return { view: "history" };
   }
@@ -2140,6 +2365,9 @@ function parseRouteFromLocation() {
   }
   if (hash === "#admin") {
     return { view: "admin" };
+  }
+  if (hash === "#leads") {
+    return { view: "leads" };
   }
   if (hash === "#history") {
     return { view: "history" };
@@ -2176,6 +2404,9 @@ function routeToPath(route) {
   }
   if (route.view === "admin") {
     return buildRoutePath(ROUTE_PATHS.admin);
+  }
+  if (route.view === "leads") {
+    return buildRoutePath(ROUTE_PATHS.leads);
   }
   if (route.view === "history") {
     return buildRoutePath(ROUTE_PATHS.history);
@@ -4230,6 +4461,11 @@ async function loadAdminAccessStatus(options = {}) {
     adminAccessStatusRequestId += 1;
     adminAccessStatusPromise = null;
     adminAccessAllowed = false;
+    if (openLeadsPageButton) {
+      openLeadsPageButton.disabled = false;
+      openLeadsPageButton.classList.add("is-hidden");
+      openLeadsPageButton.removeAttribute("aria-busy");
+    }
     if (openAdminPageButton) {
       openAdminPageButton.disabled = false;
       openAdminPageButton.classList.add("is-hidden");
@@ -4242,6 +4478,10 @@ async function loadAdminAccessStatus(options = {}) {
     return adminAccessStatusPromise;
   }
   const requestId = ++adminAccessStatusRequestId;
+  if (openLeadsPageButton) {
+    openLeadsPageButton.disabled = true;
+    openLeadsPageButton.setAttribute("aria-busy", "true");
+  }
   if (openAdminPageButton) {
     openAdminPageButton.disabled = true;
     openAdminPageButton.setAttribute("aria-busy", "true");
@@ -4264,6 +4504,11 @@ async function loadAdminAccessStatus(options = {}) {
     const isLatestRequest = requestId === adminAccessStatusRequestId;
     if (stillSameUser && isLatestRequest) {
       adminAccessAllowed = allowed;
+      if (openLeadsPageButton) {
+        openLeadsPageButton.disabled = false;
+        openLeadsPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
+        openLeadsPageButton.removeAttribute("aria-busy");
+      }
       if (openAdminPageButton) {
         openAdminPageButton.disabled = false;
         openAdminPageButton.classList.toggle("is-hidden", !adminAccessAllowed);
@@ -4272,6 +4517,9 @@ async function loadAdminAccessStatus(options = {}) {
       refreshAdminOnlyTestTools();
       if (!adminAccessAllowed && currentMainView === "admin") {
         setAdminPageVisible(false, { replace: true });
+      }
+      if (!adminAccessAllowed && currentMainView === "leads") {
+        setLeadsPageVisible(false, { replace: true });
       }
       return adminAccessAllowed;
     }
@@ -4287,6 +4535,10 @@ async function loadAdminAccessStatus(options = {}) {
     if (openAdminPageButton) {
       openAdminPageButton.disabled = false;
       openAdminPageButton.removeAttribute("aria-busy");
+    }
+    if (openLeadsPageButton) {
+      openLeadsPageButton.disabled = false;
+      openLeadsPageButton.removeAttribute("aria-busy");
     }
   });
   adminAccessStatusPromise = inFlightPromise;
@@ -5708,6 +5960,357 @@ function formatMoney(value) {
   return `€${Number(value || 0).toFixed(2)}`;
 }
 
+function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
+  const records = Array.isArray(seedRows)
+    ? seedRows.map((row, index) => ({
+        ...row,
+        orderIndex: index,
+        disposition: LEAD_OUTCOME_META[row?.disposition] ? row.disposition : "new",
+        last_called_at: String(row?.last_called_at || ""),
+      }))
+    : [];
+
+  const store = new Map(records.map((row) => [String(row.id || ""), row]));
+
+  return {
+    async list() {
+      await new Promise((resolve) => window.setTimeout(resolve, 110));
+      return Array.from(store.values())
+        .sort((left, right) => Number(left.orderIndex || 0) - Number(right.orderIndex || 0))
+        .map((row) => ({ ...row }));
+    },
+    async updateDisposition(id, disposition) {
+      const safeId = String(id || "").trim();
+      const safeDisposition = LEAD_OUTCOME_META[disposition] ? disposition : "new";
+      await new Promise((resolve) => window.setTimeout(resolve, 90));
+      const current = store.get(safeId);
+      if (!current) {
+        throw new Error(tr("Lead not found."));
+      }
+      const next = {
+        ...current,
+        disposition: safeDisposition,
+        last_called_at: new Date().toISOString(),
+      };
+      store.set(safeId, next);
+      return { ...next };
+    },
+  };
+}
+
+function getLeadStackMeta(stack) {
+  return LEAD_STACK_META[String(stack || "").trim().toLowerCase()] || LEAD_STACK_META.shopify;
+}
+
+function getLeadOutcomeMeta(outcome) {
+  return LEAD_OUTCOME_META[String(outcome || "").trim().toLowerCase()] || LEAD_OUTCOME_META.new;
+}
+
+function formatLeadStoreSince(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString(getUiLocale(), {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatLeadParcels(value) {
+  const count = Math.max(0, Number(value || 0));
+  return count.toLocaleString(getUiLocale());
+}
+
+function getLeadCallHref(phone) {
+  const safePhone = String(phone || "")
+    .trim()
+    .replace(/[^\d+]/g, "");
+  return safePhone ? `tel:${safePhone}` : "";
+}
+
+function findLeadProspectById(leadId) {
+  const safeId = String(leadId || "").trim();
+  return leadProspects.find((lead) => String(lead?.id || "") === safeId) || null;
+}
+
+function renderLeadSummaryCards() {
+  const counts = {
+    ready: 0,
+    followUp: 0,
+    notInterested: 0,
+  };
+  leadProspects.forEach((lead) => {
+    const bucket = getLeadOutcomeMeta(lead?.disposition).summaryBucket;
+    if (bucket === "followUp") {
+      counts.followUp += 1;
+      return;
+    }
+    if (bucket === "notInterested") {
+      counts.notInterested += 1;
+      return;
+    }
+    counts.ready += 1;
+  });
+  if (leadsReadyCount) leadsReadyCount.textContent = String(counts.ready);
+  if (leadsFollowUpCount) leadsFollowUpCount.textContent = String(counts.followUp);
+  if (leadsNotInterestedCount) leadsNotInterestedCount.textContent = String(counts.notInterested);
+}
+
+function getFilteredLeadProspects() {
+  const query = String(leadSearchQuery || "").trim().toLowerCase();
+  const stack = String(leadStackFilterValue || "all").trim().toLowerCase();
+  return leadProspects.filter((lead) => {
+    const matchesStack = stack === "all" || String(lead?.techStack || "").trim().toLowerCase() === stack;
+    if (!matchesStack) return false;
+    if (!query) return true;
+    const haystack = [
+      lead?.name,
+      lead?.phone,
+      lead?.companyName,
+      getLeadStackMeta(lead?.techStack).label,
+      formatLeadStoreSince(lead?.storeOnlineSince),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function renderLeadProspects() {
+  renderLeadSummaryCards();
+  if (!leadsTableBody || !leadsEmpty || !leadsTableWrap || !leadsStatus) return;
+  if (reloadLeadsButton) {
+    reloadLeadsButton.disabled = leadProspectsLoading;
+  }
+
+  const filtered = getFilteredLeadProspects();
+  leadsTableBody.innerHTML = "";
+
+  if (leadProspectsLoading) {
+    leadsStatus.textContent = tr("Loading leads...");
+    if (!leadProspects.length) {
+      leadsEmpty.classList.add("is-hidden");
+      leadsTableWrap.classList.add("is-hidden");
+      return;
+    }
+  } else if (!leadProspectsLoaded) {
+    leadsStatus.textContent = tr("Lead queue unavailable.");
+  } else if (filtered.length !== leadProspects.length) {
+    leadsStatus.textContent = tr("Showing {shown} of {total} leads.", {
+      shown: filtered.length,
+      total: leadProspects.length,
+    });
+  } else {
+    leadsStatus.textContent = tr("{count} leads ready in the queue.", {
+      count: leadProspects.length,
+    });
+  }
+
+  if (!filtered.length) {
+    leadsEmpty.classList.remove("is-hidden");
+    leadsTableWrap.classList.add("is-hidden");
+    return;
+  }
+
+  leadsEmpty.classList.add("is-hidden");
+  leadsTableWrap.classList.remove("is-hidden");
+
+  filtered.forEach((lead) => {
+    const stack = getLeadStackMeta(lead?.techStack);
+    const outcome = getLeadOutcomeMeta(lead?.disposition);
+    const row = document.createElement("tr");
+    row.className = "leads-row";
+    row.innerHTML = `
+      <td>
+        <div class="lead-prospect">
+          <div class="lead-prospect-name">${escapeHtml(String(lead?.name || "--"))}</div>
+          <div class="lead-prospect-phone mono">${escapeHtml(String(lead?.phone || "--"))}</div>
+        </div>
+      </td>
+      <td class="mono leads-table-center">${escapeHtml(String(lead?.age || "--"))}</td>
+      <td>
+        <div class="lead-company">${escapeHtml(String(lead?.companyName || "--"))}</div>
+      </td>
+      <td>
+        <span class="lead-stack-pill ${stack.className}">
+          <img src="${escapeHtml(stack.icon)}" alt="" class="lead-stack-pill-logo" />
+          <span>${escapeHtml(stack.label)}</span>
+        </span>
+      </td>
+      <td class="mono">${escapeHtml(formatLeadStoreSince(lead?.storeOnlineSince))}</td>
+      <td class="mono leads-table-metric">${escapeHtml(formatMoney(lead?.estimatedMonthlyRevenue || 0))}</td>
+      <td class="mono leads-table-metric">${escapeHtml(formatLeadParcels(lead?.estimatedParcelsPerMonth || 0))}</td>
+      <td>
+        <span class="lead-outcome-pill ${outcome.className}">${escapeHtml(outcome.label)}</span>
+      </td>
+      <td class="leads-table-actions">
+        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
+          String(lead?.id || "")
+        )}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.4 19.4 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4 1.9h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7 10.3a16 16 0 0 0 6.7 6.7l1.9-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.6 1.9z"/></svg>
+          <span>Call</span>
+        </button>
+      </td>
+    `;
+    leadsTableBody.appendChild(row);
+  });
+}
+
+function setLeadCallOutcomeBusy(isBusy) {
+  leadCallOutcomeSaving = Boolean(isBusy);
+  if (leadCallOutcomeActions) {
+    leadCallOutcomeActions.querySelectorAll("[data-lead-outcome]").forEach((button) => {
+      if (button instanceof HTMLButtonElement) {
+        button.disabled = leadCallOutcomeSaving;
+      }
+    });
+  }
+  if (leadCallOutcomeClose) leadCallOutcomeClose.disabled = leadCallOutcomeSaving;
+  if (leadCallOutcomeCancel) leadCallOutcomeCancel.disabled = leadCallOutcomeSaving;
+}
+
+function populateLeadCallOutcomeModal(lead) {
+  if (leadCallOutcomeLeadName) {
+    leadCallOutcomeLeadName.textContent = String(lead?.name || "--");
+  }
+  if (leadCallOutcomeLeadCompany) {
+    leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || "--");
+  }
+  if (leadCallOutcomeLeadPhone) {
+    leadCallOutcomeLeadPhone.textContent = String(lead?.phone || "--");
+  }
+}
+
+function openLeadCallOutcomeForLead(lead) {
+  if (!lead) return;
+  leadCallOutcomeLeadId = String(lead.id || "");
+  populateLeadCallOutcomeModal(lead);
+  setLeadCallOutcomeBusy(false);
+  setLeadCallOutcomeModalOpen(true);
+}
+
+function closeLeadCallOutcome() {
+  if (leadCallOutcomeSaving) return;
+  leadCallOutcomeLeadId = "";
+  setLeadCallOutcomeModalOpen(false);
+}
+
+async function saveLeadCallOutcome(outcome) {
+  const safeOutcome = String(outcome || "").trim();
+  if (!leadCallOutcomeLeadId || !LEAD_OUTCOME_META[safeOutcome]) return;
+  setLeadCallOutcomeBusy(true);
+  try {
+    const updatedLead = await leadProspectRepository.updateDisposition(leadCallOutcomeLeadId, safeOutcome);
+    leadProspects = leadProspects.map((lead) =>
+      String(lead?.id || "") === String(updatedLead?.id || "") ? updatedLead : lead
+    );
+    renderLeadProspects();
+    leadCallOutcomeLeadId = "";
+    setLeadCallOutcomeModalOpen(false);
+    showToast(
+      safeOutcome === "not_interested"
+        ? tr("Lead marked as not interested.")
+        : tr("Follow-up queued for this lead."),
+      { tone: "success" }
+    );
+  } catch (error) {
+    showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
+  } finally {
+    setLeadCallOutcomeBusy(false);
+  }
+}
+
+function launchLeadCall(lead) {
+  const href = getLeadCallHref(lead?.phone);
+  if (!href) {
+    showToast(tr("Phone number unavailable for this lead."), { tone: "error" });
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = href;
+  link.setAttribute("aria-hidden", "true");
+  link.style.position = "absolute";
+  link.style.left = "-9999px";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function handleLeadCallAction(leadId) {
+  const lead = findLeadProspectById(leadId);
+  if (!lead) return;
+  launchLeadCall(lead);
+  window.setTimeout(() => {
+    openLeadCallOutcomeForLead(lead);
+  }, 120);
+}
+
+async function loadLeadProspects(options = {}) {
+  const { quiet = false, force = false } = options;
+  if (!currentUser) {
+    leadProspects = [];
+    leadProspectsLoaded = false;
+    leadProspectsLoading = false;
+    renderLeadProspects();
+    return [];
+  }
+  const hasAccess = adminAccessAllowed || (await loadAdminAccessStatus({ quiet: true }));
+  if (!hasAccess) {
+    leadProspects = [];
+    leadProspectsLoaded = false;
+    leadProspectsLoading = false;
+    renderLeadProspects();
+    if (currentMainView === "leads") {
+      setLeadsPageVisible(false, { replace: true });
+    }
+    if (!quiet) {
+      showToast(tr("You are not allowed to access the leads dashboard."), { tone: "error" });
+    }
+    return [];
+  }
+  if (!force && leadProspectsLoadPromise) {
+    return leadProspectsLoadPromise;
+  }
+
+  const requestToken = ++leadProspectsLoadRequestToken;
+  leadProspectsLoading = true;
+  renderLeadProspects();
+
+  let requestPromise = null;
+  requestPromise = (async () => {
+    try {
+      const rows = await leadProspectRepository.list();
+      if (requestToken !== leadProspectsLoadRequestToken) {
+        return leadProspects;
+      }
+      leadProspects = Array.isArray(rows) ? rows : [];
+      leadProspectsLoaded = true;
+      renderLeadProspects();
+      return leadProspects;
+    } catch (error) {
+      if (requestToken === leadProspectsLoadRequestToken) {
+        leadProspects = [];
+        leadProspectsLoaded = false;
+        renderLeadProspects();
+        if (!quiet) {
+          showToast(error?.message || tr("Could not load leads."), { tone: "error" });
+        }
+      }
+      return [];
+    } finally {
+      if (requestToken === leadProspectsLoadRequestToken) {
+        leadProspectsLoading = false;
+        renderLeadProspects();
+      }
+      if (leadProspectsLoadPromise === requestPromise) {
+        leadProspectsLoadPromise = null;
+      }
+    }
+  })();
+  leadProspectsLoadPromise = requestPromise;
+  return requestPromise;
+}
+
 function hashString(value) {
   const text = String(value || "");
   let hash = 2166136261;
@@ -6906,6 +7509,7 @@ function setMainView(view, options = {}) {
   const nextView =
     view === "account" ||
     view === "admin" ||
+    view === "leads" ||
     view === "history" ||
     view === "reports" ||
     view === "builder"
@@ -6925,6 +7529,9 @@ function setMainView(view, options = {}) {
     if (adminPageSection) {
       adminPageSection.classList.toggle("is-hidden", nextView !== "admin");
     }
+    if (leadsPageSection) {
+      leadsPageSection.classList.toggle("is-hidden", nextView !== "leads");
+    }
     if (historyPageSection) {
       historyPageSection.classList.toggle("is-hidden", nextView !== "history");
     }
@@ -6943,6 +7550,9 @@ function setMainView(view, options = {}) {
     if (nextView !== "admin") {
       setClientInviteHistoryModalOpen(false);
       setAdminSettingsModalOpen(false);
+    }
+    if (nextView !== "leads") {
+      setLeadCallOutcomeModalOpen(false);
     }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
@@ -6966,6 +7576,10 @@ function setMainView(view, options = {}) {
       updateRoute({ view: "admin" }, { replace });
       return;
     }
+    if (nextView === "leads") {
+      updateRoute({ view: "leads" }, { replace });
+      return;
+    }
     if (nextView === "history") {
       updateRoute({ view: "history" }, { replace });
       return;
@@ -6986,6 +7600,7 @@ function syncTopbarNavState(view = currentMainView) {
   const nextView =
     view === "account" ||
     view === "admin" ||
+    view === "leads" ||
     view === "history" ||
     view === "reports" ||
     view === "builder"
@@ -6994,6 +7609,7 @@ function syncTopbarNavState(view = currentMainView) {
   const navButtons = [
     [openBuilderPageButton, "builder"],
     [openAccountPageButton, "account"],
+    [openLeadsPageButton, "leads"],
     [openAdminPageButton, "admin"],
     [openHistoryPageButton, "history"],
     [openReportsPageButton, "reports"],
@@ -7010,6 +7626,10 @@ function setAccountPageVisible(visible, options = {}) {
 
 function setAdminPageVisible(visible, options = {}) {
   setMainView(visible ? "admin" : "builder", options);
+}
+
+function setLeadsPageVisible(visible, options = {}) {
+  setMainView(visible ? "leads" : "builder", options);
 }
 
 function setReportsPageVisible(visible, options = {}) {
@@ -7034,6 +7654,11 @@ function setClientInviteHistoryModalOpen(open) {
 function setAdminSettingsModalOpen(open) {
   if (!adminSettingsModal) return;
   adminSettingsModal.classList.toggle("is-closed", !open);
+}
+
+function setLeadCallOutcomeModalOpen(open) {
+  if (!leadCallOutcomeModal) return;
+  leadCallOutcomeModal.classList.toggle("is-closed", !open);
 }
 
 function syncHistoryPanelHeights() {
@@ -12028,6 +12653,11 @@ function setAuthView(session, options = {}) {
     loadWarehouseSettings({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     refreshAdminOnlyTestTools();
+    if (openLeadsPageButton) {
+      openLeadsPageButton.disabled = true;
+      openLeadsPageButton.classList.add("is-hidden");
+      openLeadsPageButton.setAttribute("aria-busy", "true");
+    }
     if (openAdminPageButton) {
       openAdminPageButton.disabled = true;
       openAdminPageButton.classList.add("is-hidden");
@@ -12096,6 +12726,16 @@ function setAuthView(session, options = {}) {
   if (openBuilderPageButton) {
     openBuilderPageButton.classList.toggle("is-hidden", !isAuthed);
   }
+  if (openLeadsPageButton) {
+    const adminAccessLoading = Boolean(isAuthed && adminAccessStatusPromise);
+    openLeadsPageButton.disabled = adminAccessLoading;
+    if (adminAccessLoading) {
+      openLeadsPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openLeadsPageButton.removeAttribute("aria-busy");
+    }
+    openLeadsPageButton.classList.toggle("is-hidden", !isAuthed || !adminAccessAllowed);
+  }
   if (openAdminPageButton) {
     const adminAccessLoading = Boolean(isAuthed && adminAccessStatusPromise);
     openAdminPageButton.disabled = adminAccessLoading;
@@ -12119,6 +12759,7 @@ function setAuthView(session, options = {}) {
     setIbanTopupModalOpen(false);
     setClientInviteHistoryModalOpen(false);
     setAdminSettingsModalOpen(false);
+    setLeadCallOutcomeModalOpen(false);
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedLocationSelection = [];
@@ -12127,6 +12768,11 @@ function setAuthView(session, options = {}) {
     if (clientInviteEmailInput) {
       clientInviteEmailInput.value = "";
     }
+    leadProspects = [];
+    leadProspectsLoaded = false;
+    leadProspectsLoading = false;
+    leadCallOutcomeLeadId = "";
+    renderLeadProspects();
     if (adminCarrierDiscountInput) {
       adminCarrierDiscountInput.value = "";
     }
@@ -12337,6 +12983,8 @@ async function initializeAuth() {
     setMainView("account", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "admin") {
     setMainView("admin", { push: false, animate: false });
+  } else if (isAuthed && initialRoute.view === "leads") {
+    setMainView("leads", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
   } else if (isAuthed && initialRoute.view === "reports") {
@@ -12359,11 +13007,15 @@ async function initializeAuth() {
       isAuthed &&
       (initialRoute.view === "account" ||
         initialRoute.view === "admin" ||
+        initialRoute.view === "leads" ||
         initialRoute.view === "history" ||
         initialRoute.view === "reports"),
   });
   if (isAuthed && initialRoute.view === "admin") {
     await loadAdminDashboard({ quiet: true });
+  }
+  if (isAuthed && initialRoute.view === "leads") {
+    await loadLeadProspects({ quiet: true });
   }
   supabaseClient.auth.onAuthStateChange(async (_event, updatedSession) => {
     setAuthMessage("");
@@ -12383,6 +13035,9 @@ async function initializeAuth() {
     } else if (route.view === "admin") {
       setMainView("admin", { push: false, animate: false });
       await loadAdminDashboard({ quiet: true });
+    } else if (route.view === "leads") {
+      setMainView("leads", { push: false, animate: false });
+      await loadLeadProspects({ quiet: true });
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
@@ -12403,6 +13058,7 @@ async function initializeAuth() {
       preferLatest:
         route.view === "account" ||
         route.view === "admin" ||
+        route.view === "leads" ||
         route.view === "history" ||
         route.view === "reports",
     });
@@ -14451,6 +15107,18 @@ if (openAdminPageButton) {
   });
 }
 
+if (openLeadsPageButton) {
+  openLeadsPageButton.addEventListener("click", async () => {
+    const hasAccess = await loadAdminAccessStatus({ quiet: true });
+    if (!hasAccess) {
+      showToast(tr("You are not allowed to access the leads dashboard."), { tone: "error" });
+      return;
+    }
+    setLeadsPageVisible(true);
+    await loadLeadProspects({ quiet: true });
+  });
+}
+
 if (openHistoryPageButton) {
   openHistoryPageButton.addEventListener("click", async () => {
     setHistoryPageVisible(true);
@@ -14475,6 +15143,12 @@ if (closeAccountPageButton) {
 if (closeAdminPageButton) {
   closeAdminPageButton.addEventListener("click", () => {
     setAdminPageVisible(false);
+  });
+}
+
+if (closeLeadsPageButton) {
+  closeLeadsPageButton.addEventListener("click", () => {
+    setLeadsPageVisible(false);
   });
 }
 
@@ -14533,6 +15207,67 @@ if (clientInviteHistoryModal) {
   clientInviteHistoryModal.addEventListener("click", (event) => {
     if (event.target === clientInviteHistoryModal) {
       setClientInviteHistoryModalOpen(false);
+    }
+  });
+}
+
+if (leadsSearchInput) {
+  bindCompositionAwareInput(leadsSearchInput, (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    leadSearchQuery = target.value || "";
+    renderLeadProspects();
+  });
+}
+
+if (leadsStackFilter) {
+  leadsStackFilter.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    leadStackFilterValue = String(target.value || "all");
+    renderLeadProspects();
+  });
+}
+
+if (reloadLeadsButton) {
+  reloadLeadsButton.addEventListener("click", async () => {
+    await loadLeadProspects({ quiet: true, force: true });
+  });
+}
+
+if (leadsTableBody) {
+  leadsTableBody.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-lead-call]") : null;
+    if (!(target instanceof HTMLButtonElement)) return;
+    handleLeadCallAction(target.dataset.leadCall);
+  });
+}
+
+if (leadCallOutcomeActions) {
+  leadCallOutcomeActions.addEventListener("click", async (event) => {
+    const target =
+      event.target instanceof Element ? event.target.closest("[data-lead-outcome]") : null;
+    if (!(target instanceof HTMLButtonElement)) return;
+    await saveLeadCallOutcome(target.dataset.leadOutcome);
+  });
+}
+
+if (leadCallOutcomeClose) {
+  leadCallOutcomeClose.addEventListener("click", () => {
+    closeLeadCallOutcome();
+  });
+}
+
+if (leadCallOutcomeCancel) {
+  leadCallOutcomeCancel.addEventListener("click", () => {
+    closeLeadCallOutcome();
+  });
+}
+
+if (leadCallOutcomeModal) {
+  leadCallOutcomeModal.addEventListener("click", (event) => {
+    if (event.target === leadCallOutcomeModal) {
+      closeLeadCallOutcome();
     }
   });
 }
@@ -15283,6 +16018,7 @@ document.addEventListener("keydown", (event) => {
   if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) return;
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) return;
+  if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const isHistoryOpen = historyPageSection && !historyPageSection.classList.contains("is-hidden");
@@ -15317,6 +16053,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
     setAdminSettingsModalOpen(false);
+    return;
+  }
+  if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) {
+    closeLeadCallOutcome();
     return;
   }
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) {
@@ -17000,6 +17740,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   updateSummary();
   updatePayment();
   updatePreview();
+  renderLeadProspects();
   const initialRoute = parseRouteFromLocation();
   const initialStep =
     initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
@@ -17049,6 +17790,12 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     if (route.view === "admin") {
       setMainView("admin", { push: false });
       loadAdminDashboard({ quiet: true });
+      return;
+    }
+
+    if (route.view === "leads") {
+      setMainView("leads", { push: false });
+      loadLeadProspects({ quiet: true });
       return;
     }
 

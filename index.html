@@ -197,6 +197,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="4" y1="19" x2="20" y2="19"/><rect x="6" y="10" width="3" height="6"/><rect x="11" y="7" width="3" height="9"/><rect x="16" y="4" width="3" height="12"/></svg>
               <span>Reports</span>
             </button>
+            <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn is-hidden" id="openLeadsPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 5h10"/><path d="M7 9h10"/><path d="M7 13h6"/><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M15.5 16.5c0 1.1-.9 2-2 2a2 2 0 0 1-2-2c0-1.9 2-2.9 4-4 .8.8 1.5 1.4 2.5 1.9-.6.8-1 1.4-1.5 2.1z"/></svg>
+              <span>Leads</span>
+            </button>
             <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn is-hidden" id="openAdminPage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 4v5c0 4.3-2.6 7.8-7 9-4.4-1.2-7-4.7-7-9V7l7-4z"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
               <span>Admin Panel</span>
@@ -1320,6 +1324,147 @@
           <div class="admin-clients-list" id="adminClientsList"></div>
         </div>
       </section>
+
+      <section class="account-page is-hidden" id="leadsPageSection">
+        <div class="account-page-head">
+          <div>
+            <h2>Cold Call Dashboard</h2>
+            <p class="panel-sub">
+              Work through the outbound queue, place the call, and classify each prospect right after the conversation.
+            </p>
+          </div>
+          <div class="account-page-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="closeLeadsPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Back to Builder</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="admin-summary-grid leads-summary-grid">
+          <article class="reports-card admin-summary-card">
+            <div class="reports-kpi-title">Ready To Call</div>
+            <div class="reports-kpi-value" id="leadsReadyCount">0</div>
+            <div class="reports-kpi-meta mono">Fresh prospects still untouched</div>
+            <div class="reports-kpi-foot">New names currently in the queue</div>
+          </article>
+
+          <article class="reports-card admin-summary-card">
+            <div class="reports-kpi-title">Follow-Ups Queued</div>
+            <div class="reports-kpi-value" id="leadsFollowUpCount">0</div>
+            <div class="reports-kpi-meta mono">Interested + mildly interested</div>
+            <div class="reports-kpi-foot">Warm leads ready for a next touch</div>
+          </article>
+
+          <article class="reports-card admin-summary-card">
+            <div class="reports-kpi-title">Not Interested</div>
+            <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
+            <div class="reports-kpi-meta mono">Logged after completed calls</div>
+            <div class="reports-kpi-foot">Removed from the active follow-up flow</div>
+          </article>
+        </div>
+
+        <div class="leads-board-card">
+          <div class="leads-board-head">
+            <div>
+              <div class="preview-title">Lead Queue</div>
+              <p class="panel-sub leads-board-sub">
+                Static leads for now, with a structure ready to swap to a live outbound API.
+              </p>
+            </div>
+            <div class="leads-board-toolbar">
+              <label class="field admin-toolbar-field">
+                <span>Search</span>
+                <input type="text" id="leadsSearchInput" placeholder="Name, company, phone" />
+              </label>
+              <label class="field admin-toolbar-field admin-toolbar-field-compact">
+                <span>Stack</span>
+                <select id="leadsStackFilter" class="invite-select">
+                  <option value="all">All stacks</option>
+                  <option value="shopify">Shopify</option>
+                  <option value="woocommerce">WooCommerce</option>
+                  <option value="wix">Wix eCommerce</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="reloadLeadsButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0 2.3 5.7"/><polyline points="20 4 20 11 13 11"/></svg>
+                <span>Refresh Queue</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="leads-status" id="leadsStatus">Loading leads...</div>
+          <div class="leads-empty is-hidden" id="leadsEmpty">No leads match the current filters.</div>
+
+          <div class="leads-table-wrap" id="leadsTableWrap">
+            <table class="leads-table" aria-label="Cold call lead queue">
+              <thead>
+                <tr>
+                  <th scope="col">Prospect</th>
+                  <th scope="col">Age</th>
+                  <th scope="col">Company</th>
+                  <th scope="col">Tech Stack</th>
+                  <th scope="col">Online Since</th>
+                  <th scope="col">Est. Revenue</th>
+                  <th scope="col">Parcels / Mo</th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col" class="leads-table-actions-col">Action</th>
+                </tr>
+              </thead>
+              <tbody id="leadsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <div class="shopify-settings-overlay is-closed" id="leadCallOutcomeModal">
+        <div class="shopify-settings-modal lead-callout-modal">
+          <div class="csv-modal-header">
+            <span class="csv-modal-title">Log Call Outcome</span>
+            <button type="button" class="csv-modal-close" id="leadCallOutcomeClose">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="shopify-settings-body lead-callout-modal-body">
+            <p class="shopify-settings-note">
+              The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.
+            </p>
+            <div class="lead-callout-context">
+              <div>
+                <div class="lead-callout-label">Prospect</div>
+                <div class="lead-callout-value" id="leadCallOutcomeLeadName">--</div>
+              </div>
+              <div>
+                <div class="lead-callout-label">Company</div>
+                <div class="lead-callout-value" id="leadCallOutcomeLeadCompany">--</div>
+              </div>
+              <div>
+                <div class="lead-callout-label">Phone</div>
+                <div class="lead-callout-value mono" id="leadCallOutcomeLeadPhone">--</div>
+              </div>
+            </div>
+            <div class="lead-callout-actions" id="leadCallOutcomeActions">
+              <button type="button" class="lead-callout-option" data-lead-outcome="interested_follow_up">
+                <span class="lead-callout-option-title">Interested, send follow up</span>
+                <span class="lead-callout-option-copy">High intent. Queue the next touchpoint.</span>
+              </button>
+              <button type="button" class="lead-callout-option" data-lead-outcome="mild_follow_up">
+                <span class="lead-callout-option-title">Mildly interested, send follow up</span>
+                <span class="lead-callout-option-copy">Warm lead. Keep them in the follow-up stream.</span>
+              </button>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="not_interested">
+                <span class="lead-callout-option-title">Not interested</span>
+                <span class="lead-callout-option-copy">Close the lead and remove it from active follow-up.</span>
+              </button>
+            </div>
+            <div class="panel-actions">
+              <button type="button" class="btn btn-ghost" id="leadCallOutcomeCancel">
+                <span>Close</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <section class="account-page is-hidden" id="historyPageSection">
         <div class="account-page-head">
