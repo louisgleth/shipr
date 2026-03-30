@@ -1979,6 +1979,12 @@ const previewFrom = document.getElementById("previewFrom");
 const previewTo = document.getElementById("previewTo");
 const previewWeight = document.getElementById("previewWeight");
 const previewDims = document.getElementById("previewDims");
+const accountPreviewService = document.getElementById("accountPreviewService");
+const accountPreviewTracking = document.getElementById("accountPreviewTracking");
+const accountPreviewFrom = document.getElementById("accountPreviewFrom");
+const accountPreviewTo = document.getElementById("accountPreviewTo");
+const accountPreviewWeight = document.getElementById("accountPreviewWeight");
+const accountPreviewDims = document.getElementById("accountPreviewDims");
 
 let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
@@ -8499,6 +8505,24 @@ function resetAccountPreview() {
   if (accountPdfFrame) {
     accountPdfFrame.src = "";
   }
+  if (accountPreviewService) {
+    accountPreviewService.textContent = "--";
+  }
+  if (accountPreviewTracking) {
+    accountPreviewTracking.textContent = "TRACKING";
+  }
+  if (accountPreviewFrom) {
+    accountPreviewFrom.textContent = "--";
+  }
+  if (accountPreviewTo) {
+    accountPreviewTo.textContent = "--";
+  }
+  if (accountPreviewWeight) {
+    accountPreviewWeight.textContent = "--";
+  }
+  if (accountPreviewDims) {
+    accountPreviewDims.textContent = "--";
+  }
   if (accountPreviewMeta) {
     accountPreviewMeta.textContent = tr(
       "Select a generation to preview labels and receipt details."
@@ -8517,6 +8541,45 @@ function resetAccountPreview() {
     receiptDocument.innerHTML = "";
   }
   queueHistoryPanelSync();
+}
+
+function updateAccountPreviewSummary(label, serviceType = "") {
+  const activeLabel = label && typeof label === "object" ? label : null;
+  const activeData = activeLabel?.data || {};
+  if (accountPreviewService) {
+    accountPreviewService.textContent = serviceType || "--";
+  }
+  if (accountPreviewTracking) {
+    accountPreviewTracking.textContent = activeLabel?.trackingId || "TRACKING";
+  }
+  if (accountPreviewFrom) {
+    accountPreviewFrom.textContent = formatAddress(
+      activeData.senderName,
+      activeData.senderStreet,
+      activeData.senderCity,
+      activeData.senderState,
+      activeData.senderZip,
+      ""
+    );
+  }
+  if (accountPreviewTo) {
+    accountPreviewTo.textContent = formatAddress(
+      activeData.recipientName,
+      activeData.recipientStreet,
+      activeData.recipientCity,
+      activeData.recipientState,
+      activeData.recipientZip,
+      activeData.recipientCountry
+    );
+  }
+  if (accountPreviewWeight) {
+    accountPreviewWeight.textContent = activeData.packageWeight
+      ? `${activeData.packageWeight} kg`
+      : "--";
+  }
+  if (accountPreviewDims) {
+    accountPreviewDims.textContent = activeData.packageDims || "--";
+  }
 }
 
 function renderAccountHistoryList() {
@@ -8839,9 +8902,13 @@ function selectAccountLabel(index) {
   if (!accountLabels[index]) return;
   accountActiveLabelIndex = index;
   const activeLabel = accountLabels[index];
+  const serviceType = translateServiceName(
+    accountActiveRecord?.payload?.selection?.type || accountActiveRecord?.service_type || "Label"
+  );
   if (accountPdfFrame) {
     accountPdfFrame.src = buildPdfViewerUrl(activeLabel.pdfUrl, activeLabel.pdfPage || index + 1);
   }
+  updateAccountPreviewSummary(activeLabel, serviceType);
 
   if (accountBatchList) {
     Array.from(accountBatchList.children).forEach((child, idx) => {

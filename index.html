@@ -767,9 +767,6 @@
               <div class="direct-payment-wrap is-hidden" id="directPaymentWrap">
                 <div class="form-section payment-methods-card payment-methods-card--single">
                   <div class="section-title">Choose payment method</div>
-                  <p class="panel-sub payment-methods-sub">
-                    Card and wallet are instant. Bank transfer top-up is credited after receipt.
-                  </p>
                   <div class="payment-method-list" id="paymentMethodList">
                     <div class="payment-method-card" data-payment-method="wallet" id="paymentMethodWallet" role="button" tabindex="0" aria-pressed="false">
                       <div class="payment-method-main">
@@ -1611,17 +1608,53 @@
               </div>
             </div>
 
-            <div class="batch-preview is-single" id="accountBatchPreview">
-              <div class="account-preview-empty" id="accountPreviewEmpty">
-                No label PDF selected yet. Choose a generation to preview.
-              </div>
-              <div class="batch-panel is-hidden" id="accountBatchPanel">
-                <div class="batch-title">Batch Queue</div>
-                <div class="batch-list-wrap scroll-fade-wrap scroll-fade-wrap--card scroll-fade-wrap--strong">
-                  <div class="batch-list" id="accountBatchList"></div>
+            <div class="preview-grid account-preview-grid">
+              <div class="pdf-preview">
+                <div class="preview-title">PDF Preview</div>
+                <div class="batch-preview is-single" id="accountBatchPreview">
+                  <div class="account-preview-empty" id="accountPreviewEmpty">
+                    No label PDF selected yet. Choose a generation to preview.
+                  </div>
+                  <div class="batch-panel is-hidden" id="accountBatchPanel">
+                    <div class="batch-title">Batch Queue</div>
+                    <div class="batch-list-wrap scroll-fade-wrap scroll-fade-wrap--card scroll-fade-wrap--strong">
+                      <div class="batch-list" id="accountBatchList"></div>
+                    </div>
+                  </div>
+                  <iframe id="accountPdfFrame" title="Account label PDF preview"></iframe>
                 </div>
               </div>
-              <iframe id="accountPdfFrame" title="Account label PDF preview"></iframe>
+
+              <div class="label-preview">
+                <div class="preview-title">Label Summary</div>
+                <div class="label-sheet" id="accountLabelSheet">
+                  <div class="label-top">
+                    <div>
+                      <div class="label-brand">Shipr Label Co.</div>
+                      <div class="label-service" id="accountPreviewService">--</div>
+                    </div>
+                    <div class="label-tracking mono" id="accountPreviewTracking">TRACKING</div>
+                  </div>
+                  <div class="label-block">
+                    <div class="label-caption mono">FROM</div>
+                    <div class="label-text" id="accountPreviewFrom">--</div>
+                  </div>
+                  <div class="label-block">
+                    <div class="label-caption mono">TO</div>
+                    <div class="label-text" id="accountPreviewTo">--</div>
+                  </div>
+                  <div class="label-footer">
+                    <div>
+                      <div class="label-caption mono">WEIGHT</div>
+                      <div class="label-text" id="accountPreviewWeight">--</div>
+                    </div>
+                    <div>
+                      <div class="label-caption mono">DIMENSIONS</div>
+                      <div class="label-text" id="accountPreviewDims">--</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
