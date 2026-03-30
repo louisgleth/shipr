@@ -533,6 +533,14 @@ body {
   grid-column: auto;
 }
 
+.auth-form.is-recovery-mode .auth-register-grid--credentials {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-form.is-recovery-mode .auth-register-grid--credentials .auth-credentials-password {
+  grid-column: auto;
+}
+
 .auth-register-progress {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

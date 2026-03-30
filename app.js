@@ -93,6 +93,7 @@ const AUTH_AGREEMENT_PDF_WORKER_URL =
 const ROUTE_PATHS = {
   login: "/login",
   register: "/register",
+  resetPassword: "/reset-password",
   signupPreview: "/signup-preview",
   account: "/account",
   admin: "/admin",
@@ -110,6 +111,7 @@ const ROUTE_SUFFIXES = [
   "/index.html",
   ROUTE_PATHS.login,
   ROUTE_PATHS.register,
+  ROUTE_PATHS.resetPassword,
   ROUTE_PATHS.signupPreview,
   ROUTE_PATHS.account,
   ROUTE_PATHS.admin,
@@ -1539,7 +1541,11 @@ const authTitle = document.getElementById("authTitle");
 const authSubtitle = document.getElementById("authSubtitle");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
+const authPasswordLabel = document.getElementById("authPasswordLabel");
 const authPasswordConfirm = document.getElementById("authPasswordConfirm");
+const authPasswordConfirmLabel = document.getElementById("authPasswordConfirmLabel");
+const authPasswordConfirmField =
+  authPasswordConfirm?.closest(".auth-password-confirm-field") || authPasswordConfirm?.closest("label") || null;
 const authRegisterOnlyFields = document.querySelectorAll(".auth-register-field");
 const authRegisterProgress = document.getElementById("authRegisterProgress");
 const authRegisterProgressItems = authRegisterProgress
@@ -1977,6 +1983,8 @@ let currentUser = null;
 let cachedAuthAccessToken = "";
 let activeLanguage = "en";
 let authMode = "login";
+let authRecoveryPrefillEmail = "";
+let pendingAuthRecoveryToast = "";
 let authInviteToken = "";
 let authInviteData = null;
 let authInviteValidationToken = 0;
@@ -2337,6 +2345,25 @@ function getSignupPreviewStepFromLocation(location = window.location) {
   return Number(params.get("previewStep") || params.get("step") || "") === 2 ? 2 : 1;
 }
 
+function getHashQueryParams(location = window.location) {
+  const hash = String(location.hash || "");
+  if (!hash || !hash.includes("=")) {
+    return new URLSearchParams();
+  }
+  return new URLSearchParams(hash.replace(/^#/, ""));
+}
+
+function getAuthFlowTypeFromLocation(location = window.location) {
+  const searchParams = new URLSearchParams(location.search || "");
+  const hashParams = getHashQueryParams(location);
+  return String(searchParams.get("type") || hashParams.get("type") || "").trim().toLowerCase();
+}
+
+function isPasswordRecoveryRoute(location = window.location) {
+  const path = getRelativeRoutePath(location.pathname || "/");
+  return path === ROUTE_PATHS.resetPassword || getAuthFlowTypeFromLocation(location) === "recovery";
+}
+
 function getReportRangeFromLocation(location = window.location) {
   const params = new URLSearchParams(location.search || "");
   return String(params.get("range") || params.get("reportRange") || "")
@@ -2368,6 +2395,9 @@ function parseRouteFromLocation() {
       previewRegistration: true,
       previewStep: getSignupPreviewStepFromLocation(window.location),
     };
+  }
+  if (isPasswordRecoveryRoute(window.location)) {
+    return { view: "recovery" };
   }
   if (path === ROUTE_PATHS.login) {
     return { view: "login" };
@@ -2437,6 +2467,9 @@ function routeToPath(route) {
       return previewStep === 2 ? `${previewPath}?step=2` : previewPath;
     }
     return buildRoutePath(ROUTE_PATHS.register);
+  }
+  if (route.view === "recovery") {
+    return buildRoutePath(ROUTE_PATHS.resetPassword);
   }
   if (route.view === "account") {
     return buildRoutePath(ROUTE_PATHS.account);
@@ -11982,7 +12015,9 @@ function setAuthAgreementStatus(message = "", options = {}) {
 function updateAuthRegisterSubmitState() {
   const primaryLabel = authMode === "register"
     ? (authRegisterStep === 1 ? tr("Continue") : tr("Register Account"))
-    : tr("Sign In");
+    : authMode === "recovery"
+      ? tr("Update Password")
+      : tr("Sign In");
 
   if (authSignIn) {
     const label = authSignIn.querySelector("span");
@@ -11993,9 +12028,32 @@ function updateAuthRegisterSubmitState() {
     }
   }
 
-  if (authMode !== "register") {
+  if (authMode === "login") {
     if (authSignIn) {
       authSignIn.disabled = authIsBusy;
+    }
+    if (authRegisterBack) {
+      authRegisterBack.classList.add("is-hidden");
+      authRegisterBack.disabled = true;
+    }
+    return;
+  }
+
+  if (authMode === "recovery") {
+    const password = String(authPassword?.value || "");
+    const confirmPassword = String(authPasswordConfirm?.value || "");
+    const recoveryEmail = String(currentUser?.email || authRecoveryPrefillEmail || authEmail?.value || "")
+      .trim()
+      .toLowerCase();
+    const validationError = getRegistrationPasswordValidationError({
+      password,
+      confirmPassword,
+      requireConfirm: true,
+    });
+    const canSubmit = Boolean(currentUser && recoveryEmail && password && confirmPassword && !validationError);
+
+    if (authSignIn) {
+      authSignIn.disabled = authIsBusy || !canSubmit;
     }
     if (authRegisterBack) {
       authRegisterBack.classList.add("is-hidden");
@@ -12029,12 +12087,10 @@ function getRegistrationStepOneValidationError() {
   if (!email || !password) {
     return tr("Email and password are required.");
   }
-  if (!confirmPassword) {
-    return tr("Confirm your password to continue.");
-  }
   const passwordValidationError = getRegistrationPasswordValidationError({
     password,
     confirmPassword,
+    requireConfirm: true,
   });
   if (passwordValidationError) {
     return passwordValidationError;
@@ -12048,8 +12104,12 @@ function getRegistrationStepOneValidationError() {
 function getRegistrationPasswordValidationError(options = {}) {
   const password = String(options?.password ?? authPassword?.value ?? "");
   const confirmPassword = String(options?.confirmPassword ?? authPasswordConfirm?.value ?? "");
+  const requireConfirm = Boolean(options?.requireConfirm);
   if (password.length < 10) {
     return tr("Password must be at least {min} characters.", { min: 10 });
+  }
+  if (requireConfirm && !confirmPassword) {
+    return tr("Confirm your password to continue.");
   }
   if (confirmPassword && password !== confirmPassword) {
     return tr("Passwords do not match.");
@@ -12058,16 +12118,18 @@ function getRegistrationPasswordValidationError(options = {}) {
 }
 
 function maybeShowRegistrationPasswordToast(input) {
-  if (authMode !== "register") return;
+  if (authMode !== "register" && authMode !== "recovery") return;
   if (!input) return;
   const password = String(authPassword?.value || "");
   const confirmPassword = String(authPasswordConfirm?.value || "");
+  const requireConfirm = authMode === "register" || authMode === "recovery";
 
   if (input === authPassword) {
     if (!password) return;
     const validationError = getRegistrationPasswordValidationError({
       password,
       confirmPassword: "",
+      requireConfirm: false,
     });
     if (validationError) {
       setAuthMessage(validationError);
@@ -12080,6 +12142,7 @@ function maybeShowRegistrationPasswordToast(input) {
     const validationError = getRegistrationPasswordValidationError({
       password,
       confirmPassword,
+      requireConfirm,
     });
     if (validationError) {
       setAuthMessage(validationError);
@@ -12690,49 +12753,76 @@ function buildRegistrationAgreementPayload() {
 
 function setAuthMode(mode, options = {}) {
   const { inviteToken = "" } = options;
-  authMode = mode === "register" ? "register" : "login";
+  authMode = mode === "register" ? "register" : mode === "recovery" ? "recovery" : "login";
   const isRegister = authMode === "register";
+  const isRecovery = authMode === "recovery";
   authInviteIsValid = false;
   authInviteToken = String(inviteToken || "").trim();
 
   if (authGate) {
     authGate.classList.toggle("is-register-mode", isRegister);
+    authGate.classList.toggle("is-recovery-mode", isRecovery);
   }
   if (authForm) {
     authForm.classList.toggle("is-register-mode", isRegister);
+    authForm.classList.toggle("is-recovery-mode", isRecovery);
   }
   if (authRegisterOnlyFields?.length) {
     authRegisterOnlyFields.forEach((field) => {
       field.classList.toggle("is-hidden", !isRegister);
     });
   }
+  if (authPasswordConfirmField) {
+    authPasswordConfirmField.classList.toggle("is-hidden", !(isRegister || isRecovery));
+  }
   if (authForgotPassword) {
-    authForgotPassword.classList.toggle("is-hidden", isRegister);
+    authForgotPassword.classList.toggle("is-hidden", isRegister || isRecovery);
   }
   if (authTitle) {
     authTitle.textContent = isRegister
       ? tr("Complete your account registration")
-      : tr("Sign in to continue");
+      : isRecovery
+        ? tr("Reset your password")
+        : tr("Sign in to continue");
   }
   if (authSubtitle) {
     authSubtitle.textContent = isRegister
       ? tr("Use your invite link to create your secure account and billing profile.")
-      : tr("Use your email and password.");
+      : isRecovery
+        ? tr("Enter a new password for your Shipide account.")
+        : tr("Use your email and password.");
   }
   if (authRegisterProgress) {
     authRegisterProgress.classList.toggle("is-hidden", !isRegister);
   }
   if (authPassword) {
-    authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
+    authPassword.setAttribute(
+      "autocomplete",
+      isRegister || isRecovery ? "new-password" : "current-password"
+    );
+  }
+  if (authPasswordLabel) {
+    authPasswordLabel.textContent = isRecovery ? tr("New Password") : tr("Password");
+  }
+  if (authPasswordConfirmLabel) {
+    authPasswordConfirmLabel.textContent = isRecovery
+      ? tr("Confirm New Password")
+      : tr("Confirm Password");
   }
   if (authPasswordConfirm) {
-    authPasswordConfirm.required = isRegister;
-    if (!isRegister) {
+    authPasswordConfirm.required = isRegister || isRecovery;
+    if (!isRegister && !isRecovery) {
       authPasswordConfirm.value = "";
     }
   }
   if (authEmail) {
-    authEmail.readOnly = false;
+    const recoveryEmail = String(currentUser?.email || authRecoveryPrefillEmail || authEmail.value || "")
+      .trim()
+      .toLowerCase();
+    authEmail.readOnly = isRecovery;
+    if (isRecovery && recoveryEmail) {
+      authEmail.value = recoveryEmail;
+    }
   }
   const requiredFields = [
     authCompanyName,
@@ -13096,10 +13186,11 @@ function setAuthView(session, options = {}) {
   cachedAuthAccessToken = String(session?.access_token || "");
   setClientInviteBusy(false);
   void setLanguage(resolvePreferredLanguage(currentUser), { persist: false });
-  const isAuthed = Boolean(currentUser);
   const route = parseRouteFromLocation();
+  const isRecoveryRoute = route.view === "recovery";
+  const isAppAuthed = Boolean(currentUser) && !isRecoveryRoute;
   renderAccountProfile(currentUser);
-  if (isAuthed) {
+  if (isAppAuthed) {
     adminAccessAllowed = getCachedAdminAccess(currentUser?.id);
     adminAccessStatusRequestId += 1;
     adminAccessStatusPromise = null;
@@ -13150,11 +13241,11 @@ function setAuthView(session, options = {}) {
     renderCheckoutStepMode();
     renderAccountBillingOverview();
   }
-  transitionShellVisibility(isAuthed, { animate });
+  transitionShellVisibility(isAppAuthed, { animate });
   if (accountChip) {
-    accountChip.classList.toggle("is-hidden", !isAuthed);
+    accountChip.classList.toggle("is-hidden", !isAppAuthed);
     accountChip.innerHTML = "";
-    if (isAuthed) {
+    if (isAppAuthed) {
       const dot = document.createElement("span");
       dot.className = "account-chip-dot";
       const text = document.createElement("span");
@@ -13165,23 +13256,23 @@ function setAuthView(session, options = {}) {
     }
   }
   if (signOutButton) {
-    signOutButton.classList.toggle("is-hidden", !isAuthed);
+    signOutButton.classList.toggle("is-hidden", !isAppAuthed);
   }
   if (openAccountPageButton) {
-    openAccountPageButton.classList.toggle("is-hidden", !isAuthed);
+    openAccountPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
   if (openBuilderPageButton) {
-    openBuilderPageButton.classList.toggle("is-hidden", !isAuthed);
+    openBuilderPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
   syncAdminAccessButtons();
   refreshAdminOnlyTestTools();
   if (openHistoryPageButton) {
-    openHistoryPageButton.classList.toggle("is-hidden", !isAuthed);
+    openHistoryPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
   if (openReportsPageButton) {
-    openReportsPageButton.classList.toggle("is-hidden", !isAuthed);
+    openReportsPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
-  if (!isAuthed) {
+  if (!isAppAuthed) {
     setReceiptModalOpen(false);
     setShopifySettingsModalOpen(false);
     setIbanTopupModalOpen(false);
@@ -13221,15 +13312,38 @@ function setAuthView(session, options = {}) {
         preview: Boolean(route.previewRegistration),
         previewStep: route.previewStep,
       });
+    } else if (route.view === "recovery") {
+      setAuthMode("recovery");
+      if (authEmail) {
+        const recoveryEmail = String(currentUser?.email || authRecoveryPrefillEmail || authEmail.value || "")
+          .trim()
+          .toLowerCase();
+        if (recoveryEmail) {
+          authEmail.value = recoveryEmail;
+        }
+      }
+      if (!currentUser) {
+        setAuthMessage(tr("Open the password reset link from your email to set a new password."), {
+          isError: false,
+          tone: "info",
+        });
+      }
     } else {
       setAuthMode("login");
       updateRoute({ view: "login" }, { replace: true });
+    }
+    if (pendingAuthRecoveryToast) {
+      const nextToast = pendingAuthRecoveryToast;
+      pendingAuthRecoveryToast = "";
+      window.setTimeout(() => {
+        showAuthToast(nextToast, "success");
+      }, 0);
     }
     return;
   }
 
   setAuthMode("login");
-  if (route.view === "login" || route.view === "register") {
+  if (route.view === "login" || route.view === "register" || route.view === "recovery") {
     updateRoute({ view: "builder", step: state.step }, { replace: true });
   }
 }
@@ -13362,8 +13476,12 @@ async function resetPassword() {
   }
   setAuthMessage("");
   setAuthBusy(true, tr("Sign In"), "");
+  const redirectTo = new URL(
+    buildRoutePath(ROUTE_PATHS.resetPassword),
+    window.location.origin
+  ).toString();
   const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
+    redirectTo,
   });
   setAuthBusy(false, tr("Sign In"), "");
   if (error) {
@@ -13374,6 +13492,62 @@ async function resetPassword() {
     isError: false,
     tone: "success",
   });
+}
+
+async function completePasswordRecovery() {
+  if (!supabaseClient) {
+    setAuthMessage(tr("Supabase auth is not configured."));
+    return;
+  }
+  const recoveryEmail = String(currentUser?.email || authRecoveryPrefillEmail || authEmail?.value || "")
+    .trim()
+    .toLowerCase();
+  if (!currentUser || !recoveryEmail) {
+    setAuthMessage(tr("Open the password reset link from your email to set a new password."));
+    return;
+  }
+
+  const password = String(authPassword?.value || "");
+  const confirmPassword = String(authPasswordConfirm?.value || "");
+  const validationError = getRegistrationPasswordValidationError({
+    password,
+    confirmPassword,
+    requireConfirm: true,
+  });
+  if (validationError) {
+    setAuthMessage(validationError);
+    return;
+  }
+
+  setAuthMessage("");
+  setAuthBusy(true, tr("Updating Password"), "");
+  try {
+    const { error } = await supabaseClient.auth.updateUser({
+      password,
+    });
+    if (error) {
+      throw error;
+    }
+
+    authRecoveryPrefillEmail = recoveryEmail;
+    pendingAuthRecoveryToast = tr("Password updated. Sign in with your new password.");
+    if (authEmail) {
+      authEmail.value = recoveryEmail;
+    }
+    if (authPassword) {
+      authPassword.value = "";
+    }
+    if (authPasswordConfirm) {
+      authPasswordConfirm.value = "";
+    }
+    updateRoute({ view: "login" }, { replace: true });
+    await supabaseClient.auth.signOut();
+  } catch (error) {
+    setAuthMessage(error?.message || tr("Could not update password."));
+  } finally {
+    setAuthBusy(false, tr("Update Password"), "");
+    updateAuthRegisterSubmitState();
+  }
 }
 
 async function initializeAuth() {
@@ -13409,16 +13583,26 @@ async function initializeAuth() {
     consumeShopifyCallbackParams();
   }
   const initialRoute = parseRouteFromLocation();
-  const isAuthed = Boolean(session);
-  if (isAuthed && initialRoute.view === "account") {
+  const isAuthed = Boolean(session?.user);
+  const isRecoveryRoute = initialRoute.view === "recovery";
+  const isAppAuthed = isAuthed && !isRecoveryRoute;
+
+  if (isRecoveryRoute) {
+    if (session?.user) {
+      updateRoute({ view: "recovery" }, { replace: true });
+    }
+    return;
+  }
+
+  if (isAppAuthed && initialRoute.view === "account") {
     setMainView("account", { push: false, animate: false });
-  } else if (isAuthed && initialRoute.view === "admin") {
+  } else if (isAppAuthed && initialRoute.view === "admin") {
     setMainView("admin", { push: false, animate: false });
-  } else if (isAuthed && initialRoute.view === "leads") {
+  } else if (isAppAuthed && initialRoute.view === "leads") {
     setMainView("leads", { push: false, animate: false });
-  } else if (isAuthed && initialRoute.view === "history") {
+  } else if (isAppAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
-  } else if (isAuthed && initialRoute.view === "reports") {
+  } else if (isAppAuthed && initialRoute.view === "reports") {
     setMainView("reports", {
       push: false,
       animate: false,
@@ -13426,30 +13610,35 @@ async function initializeAuth() {
     });
   } else {
     setMainView("builder", { push: false, animate: false });
-    if (isAuthed && initialRoute.view === "builder") {
+    if (isAppAuthed && initialRoute.view === "builder") {
       goToStep(clampStep(initialRoute.step), { push: false, regenerate: false });
-    } else if (isAuthed && initialRoute.view !== "builder") {
+    } else if (isAppAuthed && initialRoute.view !== "builder") {
       updateRoute({ view: "builder", step: state.step }, { replace: true });
     }
   }
 
   await loadGenerationHistory({
     preferLatest:
-      isAuthed &&
+      isAppAuthed &&
       (initialRoute.view === "account" ||
         initialRoute.view === "admin" ||
         initialRoute.view === "leads" ||
         initialRoute.view === "history" ||
         initialRoute.view === "reports"),
   });
-  if (isAuthed && initialRoute.view === "admin") {
+  if (isAppAuthed && initialRoute.view === "admin") {
     await loadAdminDashboard({ quiet: true });
   }
-  if (isAuthed && initialRoute.view === "leads") {
+  if (isAppAuthed && initialRoute.view === "leads") {
     await loadLeadProspects({ quiet: true });
   }
-  supabaseClient.auth.onAuthStateChange(async (_event, updatedSession) => {
+  supabaseClient.auth.onAuthStateChange(async (event, updatedSession) => {
     setAuthMessage("");
+    if (event === "PASSWORD_RECOVERY") {
+      updateRoute({ view: "recovery" }, { replace: true });
+      setAuthView(updatedSession, { animate: true });
+      return;
+    }
     setAuthView(updatedSession, { animate: true });
     if (!updatedSession) {
       resetAll();
@@ -13461,6 +13650,10 @@ async function initializeAuth() {
     }
 
     const route = parseRouteFromLocation();
+    if (route.view === "recovery") {
+      updateRoute({ view: "recovery" }, { replace: true });
+      return;
+    }
     if (route.view === "account") {
       setMainView("account", { push: false, animate: false });
     } else if (route.view === "admin") {
@@ -15406,6 +15599,10 @@ Object.entries(inputMap).forEach(([_, input]) => {
 if (authForm) {
   authForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (authMode === "recovery") {
+      await completePasswordRecovery();
+      return;
+    }
     if (authMode === "register") {
       if (authRegisterStep === 1) {
         await prepareRegistrationAgreementPreview({ animate: true });
@@ -18212,6 +18409,12 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
       "",
       `${window.location.pathname}${window.location.search || ""}`
     );
+  } else if (initialRoute.view === "recovery") {
+    history.replaceState(
+      routeToState(initialRoute),
+      "",
+      `${window.location.pathname}${window.location.search || ""}${window.location.hash || ""}`
+    );
   } else {
     updateRoute(
       initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
@@ -18224,6 +18427,27 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
       event.state && typeof event.state.view === "string"
         ? event.state
         : parseRouteFromLocation();
+
+    if (route.view === "recovery") {
+      setMainView("builder", { push: false });
+      setAuthMode("recovery");
+      if (authEmail) {
+        const recoveryEmail = String(currentUser?.email || authRecoveryPrefillEmail || authEmail.value || "")
+          .trim()
+          .toLowerCase();
+        if (recoveryEmail) {
+          authEmail.value = recoveryEmail;
+        }
+      }
+      transitionShellVisibility(false, { animate: false });
+      if (!currentUser) {
+        setAuthMessage(tr("Open the password reset link from your email to set a new password."), {
+          isError: false,
+          tone: "info",
+        });
+      }
+      return;
+    }
 
     if (!currentUser) {
       setMainView("builder", { push: false });
