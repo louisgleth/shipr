@@ -1683,6 +1683,22 @@ const leadCallOutcomeEmailSubject = document.getElementById("leadCallOutcomeEmai
 const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBody");
 const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
 const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
+const labelConfirmModal = document.getElementById("labelConfirmModal");
+const labelConfirmClose = document.getElementById("labelConfirmClose");
+const labelConfirmCancel = document.getElementById("labelConfirmCancel");
+const labelConfirmApprove = document.getElementById("labelConfirmApprove");
+const labelConfirmServiceChip = document.getElementById("labelConfirmServiceChip");
+const labelConfirmTotal = document.getElementById("labelConfirmTotal");
+const labelConfirmRecipientLabel = document.getElementById("labelConfirmRecipientLabel");
+const labelConfirmSenderTitle = document.getElementById("labelConfirmSenderTitle");
+const labelConfirmSenderMeta = document.getElementById("labelConfirmSenderMeta");
+const labelConfirmRecipientTitle = document.getElementById("labelConfirmRecipientTitle");
+const labelConfirmRecipientMeta = document.getElementById("labelConfirmRecipientMeta");
+const labelConfirmParcelTitle = document.getElementById("labelConfirmParcelTitle");
+const labelConfirmIdentifiers = document.getElementById("labelConfirmIdentifiers");
+const labelConfirmServiceTitle = document.getElementById("labelConfirmServiceTitle");
+const labelConfirmServiceSpeed = document.getElementById("labelConfirmServiceSpeed");
+const labelConfirmQuantity = document.getElementById("labelConfirmQuantity");
 const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
@@ -8025,6 +8041,7 @@ function setMainView(view, options = {}) {
     }
     if (nextView !== "builder") {
       setRestrictedGoodsModalOpen(false);
+      setLabelConfirmModalOpen(false);
     }
     if (nextView !== "builder" && nextView !== "account") {
       setIbanTopupModalOpen(false);
@@ -8136,6 +8153,16 @@ function setClientInviteHistoryModalOpen(open) {
 function setAdminSettingsModalOpen(open) {
   if (!adminSettingsModal) return;
   adminSettingsModal.classList.toggle("is-closed", !open);
+}
+
+function setLabelConfirmModalOpen(open) {
+  if (!labelConfirmModal) return;
+  labelConfirmModal.classList.toggle("is-closed", !open);
+  if (open && labelConfirmApprove) {
+    window.requestAnimationFrame(() => {
+      labelConfirmApprove.focus();
+    });
+  }
 }
 
 function setLeadCallOutcomeModalOpen(open) {
@@ -13278,6 +13305,7 @@ function setAuthView(session, options = {}) {
     setReceiptModalOpen(false);
     setShopifySettingsModalOpen(false);
     setIbanTopupModalOpen(false);
+    setLabelConfirmModalOpen(false);
     setClientInviteHistoryModalOpen(false);
     setAdminSettingsModalOpen(false);
     setLeadCallOutcomeModalOpen(false);
@@ -15462,6 +15490,132 @@ function formatAddress(name, street, city, stateCode, zip, country) {
   return [line1, line2, line3, line4].filter(Boolean).join("\n");
 }
 
+function formatLabelConfirmAddress(street, city, stateCode, zip, country) {
+  return [street, formatCityRegionPostal(city, stateCode, zip), country]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function renderLabelConfirmSummary() {
+  syncInfoState();
+  const quantity = getQuantity();
+  const quantityLabel = `${quantity} ${quantity === 1 ? tr("label") : tr("labels")}`;
+  const { total } = getOrderTotals();
+  const selectedOrigin = ensureSelectedWarehouseOrigin();
+  const serviceChip = [state.selection.type, state.selection.speed].filter(Boolean).join(" · ");
+  const serviceTitle = state.selection.type || "--";
+  const serviceSpeed = state.selection.speed || "--";
+  const senderTitle = String(state.info.senderName || selectedOrigin?.senderName || selectedOrigin?.name || "--").trim() || "--";
+  const senderMetaLines = [
+    formatLabelConfirmAddress(
+      state.info.senderStreet,
+      state.info.senderCity,
+      state.info.senderState,
+      state.info.senderZip,
+      selectedOrigin?.country || ""
+    ),
+    selectedOrigin?.name && selectedOrigin.name !== senderTitle
+      ? tr("Using saved origin: {name}", { name: String(selectedOrigin.name) })
+      : "",
+  ].filter(Boolean);
+  const senderMeta = senderMetaLines.join("\n") || "--";
+
+  let recipientLabel = tr("Ship to");
+  let recipientTitle = state.info.recipientName || "--";
+  let recipientMeta =
+    formatLabelConfirmAddress(
+      state.info.recipientStreet,
+      state.info.recipientCity,
+      state.info.recipientState,
+      state.info.recipientZip,
+      state.info.recipientCountry
+    ) || "--";
+
+  if (state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length) {
+    const firstRow = state.csvRows[0] || {};
+    const remainingCount = Math.max(0, quantity - 1);
+    recipientLabel = quantity > 1 ? tr("Recipients") : tr("Ship to");
+    recipientTitle =
+      quantity > 1
+        ? tr("{count} labels in batch", { count: String(quantity) })
+        : String(firstRow.recipientName || "--");
+    recipientMeta = [
+      firstRow.recipientName ? tr("First recipient: {name}", { name: String(firstRow.recipientName) }) : "",
+      formatLabelConfirmAddress(
+        String(firstRow.recipientStreet || ""),
+        String(firstRow.recipientCity || ""),
+        String(firstRow.recipientState || ""),
+        String(firstRow.recipientZip || ""),
+        String(firstRow.recipientCountry || "")
+      ),
+      remainingCount > 0
+        ? tr("+{count} more recipients queued", { count: String(remainingCount) })
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const firstBatchRow = state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length
+    ? state.csvRows[0]
+    : null;
+  const parcelWeight = String(state.info.packageWeight || firstBatchRow?.packageWeight || "").trim();
+  const parcelDims = String(state.info.packageDims || firstBatchRow?.packageDims || "").trim();
+  const parcelTitle =
+    [parcelWeight ? `${parcelWeight} kg` : "", parcelDims ? `${parcelDims} cm` : ""]
+      .filter(Boolean)
+      .join(" · ") || "--";
+  const identifiers = [
+    state.csvMode ? tr("Batch ready for confirmation") : tr("Single label ready for confirmation"),
+    state.info.trackingId ? `Tracking ${state.info.trackingId}` : "",
+    state.info.labelId ? `Label ${state.info.labelId}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  if (labelConfirmServiceChip) {
+    labelConfirmServiceChip.textContent = serviceChip || serviceTitle;
+  }
+  if (labelConfirmTotal) {
+    labelConfirmTotal.textContent = formatMoney(total);
+  }
+  if (labelConfirmRecipientLabel) {
+    labelConfirmRecipientLabel.textContent = recipientLabel;
+  }
+  if (labelConfirmSenderTitle) {
+    labelConfirmSenderTitle.textContent = senderTitle;
+  }
+  if (labelConfirmSenderMeta) {
+    labelConfirmSenderMeta.textContent = senderMeta;
+  }
+  if (labelConfirmRecipientTitle) {
+    labelConfirmRecipientTitle.textContent = recipientTitle;
+  }
+  if (labelConfirmRecipientMeta) {
+    labelConfirmRecipientMeta.textContent = recipientMeta || "--";
+  }
+  if (labelConfirmParcelTitle) {
+    labelConfirmParcelTitle.textContent = parcelTitle;
+  }
+  if (labelConfirmIdentifiers) {
+    labelConfirmIdentifiers.textContent = identifiers || "--";
+  }
+  if (labelConfirmServiceTitle) {
+    labelConfirmServiceTitle.textContent = serviceTitle;
+  }
+  if (labelConfirmServiceSpeed) {
+    labelConfirmServiceSpeed.textContent = serviceSpeed;
+  }
+  if (labelConfirmQuantity) {
+    labelConfirmQuantity.textContent = quantityLabel;
+  }
+}
+
+function openLabelConfirmModal() {
+  renderLabelConfirmSummary();
+  setLabelConfirmModalOpen(true);
+}
+
 function goToStep(step, options = {}) {
   const { push = true, regenerate = true, replace = false } = options;
   if (step === state.step && push) return;
@@ -15932,6 +16086,33 @@ if (leadCallOutcomeModal) {
   leadCallOutcomeModal.addEventListener("click", (event) => {
     if (event.target === leadCallOutcomeModal) {
       closeLeadCallOutcome();
+    }
+  });
+}
+
+if (labelConfirmClose) {
+  labelConfirmClose.addEventListener("click", () => {
+    setLabelConfirmModalOpen(false);
+  });
+}
+
+if (labelConfirmCancel) {
+  labelConfirmCancel.addEventListener("click", () => {
+    setLabelConfirmModalOpen(false);
+  });
+}
+
+if (labelConfirmApprove) {
+  labelConfirmApprove.addEventListener("click", () => {
+    setLabelConfirmModalOpen(false);
+    goToStep(3);
+  });
+}
+
+if (labelConfirmModal) {
+  labelConfirmModal.addEventListener("click", (event) => {
+    if (event.target === labelConfirmModal) {
+      setLabelConfirmModalOpen(false);
     }
   });
 }
@@ -16719,6 +16900,10 @@ document.addEventListener("keydown", (event) => {
     setAdminSettingsModalOpen(false);
     return;
   }
+  if (labelConfirmModal && !labelConfirmModal.classList.contains("is-closed")) {
+    setLabelConfirmModalOpen(false);
+    return;
+  }
   if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) {
     closeLeadCallOutcome();
     return;
@@ -16840,6 +17025,13 @@ function handleNext(step) {
     return;
   }
   if (step === 2 && maybeOpenCustomsGhostBeforeSelection()) {
+    return;
+  }
+  if (step === 3) {
+    if (!validateLabelInfo()) {
+      return;
+    }
+    openLabelConfirmModal();
     return;
   }
   goToStep(step);

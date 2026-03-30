@@ -1536,6 +1536,89 @@
         </div>
       </div>
 
+      <div class="shopify-settings-overlay is-closed" id="labelConfirmModal">
+        <div class="shopify-settings-modal label-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="labelConfirmTitle">
+          <div class="csv-modal-header">
+            <div class="label-confirm-head-copy">
+              <span class="csv-modal-title" id="labelConfirmTitle">Confirm label details</span>
+              <p class="shopify-settings-note label-confirm-head-note">
+                Take one last look at the shipment details before continuing to payment review.
+              </p>
+            </div>
+            <button type="button" class="csv-modal-close" id="labelConfirmClose" aria-label="Close confirmation dialog">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="shopify-settings-body label-confirm-modal-body">
+            <div class="label-confirm-hero">
+              <div class="label-confirm-hero-copy">
+                <div class="label-confirm-kicker mono">Shipment check</div>
+                <h3>Does everything look correct?</h3>
+                <p class="shopify-settings-note label-confirm-hero-note">
+                  You will still review the invoice details on the next step before any label is generated.
+                </p>
+              </div>
+              <div class="label-confirm-hero-summary">
+                <div class="label-confirm-chip" id="labelConfirmServiceChip">Economy · 2-4 working days</div>
+                <div class="label-confirm-total">
+                  <span>Estimated total</span>
+                  <strong id="labelConfirmTotal">€5.90</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="label-confirm-grid">
+              <article class="label-confirm-card">
+                <span class="label-confirm-card-label">Ship from</span>
+                <strong class="label-confirm-card-title" id="labelConfirmSenderTitle">--</strong>
+                <div class="label-confirm-card-copy" id="labelConfirmSenderMeta">--</div>
+              </article>
+
+              <article class="label-confirm-card">
+                <span class="label-confirm-card-label" id="labelConfirmRecipientLabel">Ship to</span>
+                <strong class="label-confirm-card-title" id="labelConfirmRecipientTitle">--</strong>
+                <div class="label-confirm-card-copy" id="labelConfirmRecipientMeta">--</div>
+              </article>
+
+              <article class="label-confirm-card">
+                <span class="label-confirm-card-label">Parcel</span>
+                <strong class="label-confirm-card-title" id="labelConfirmParcelTitle">--</strong>
+                <div class="label-confirm-card-copy" id="labelConfirmIdentifiers">--</div>
+              </article>
+
+              <article class="label-confirm-card">
+                <span class="label-confirm-card-label">Service</span>
+                <strong class="label-confirm-card-title" id="labelConfirmServiceTitle">--</strong>
+                <div class="label-confirm-card-copy label-confirm-card-copy-meta">
+                  <div class="label-confirm-inline-row">
+                    <span>Delivery</span>
+                    <strong id="labelConfirmServiceSpeed">--</strong>
+                  </div>
+                  <div class="label-confirm-inline-row">
+                    <span>Quantity</span>
+                    <strong id="labelConfirmQuantity">--</strong>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="label-confirm-footer">
+              <p class="shopify-settings-note label-confirm-footer-note">
+                If something looks off, go back and adjust the shipment details before we move into billing review.
+              </p>
+              <div class="panel-actions label-confirm-actions">
+                <button type="button" class="btn btn-ghost" id="labelConfirmCancel">
+                  <span>Review Again</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="labelConfirmApprove">
+                  <span>Looks Correct</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <section class="account-page is-hidden" id="historyPageSection">
         <div class="account-page-head">
           <div>
