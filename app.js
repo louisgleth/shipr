@@ -12820,6 +12820,8 @@ function setAuthMode(mode, options = {}) {
       .trim()
       .toLowerCase();
     authEmail.readOnly = isRecovery;
+    authEmail.disabled = isRecovery;
+    authEmail.tabIndex = isRecovery ? -1 : 0;
     if (isRecovery && recoveryEmail) {
       authEmail.value = recoveryEmail;
     }
@@ -13531,6 +13533,7 @@ async function completePasswordRecovery() {
 
     authRecoveryPrefillEmail = recoveryEmail;
     pendingAuthRecoveryToast = tr("Password updated. Sign in with your new password.");
+    const signOutPromise = supabaseClient.auth.signOut().catch(() => null);
     if (authEmail) {
       authEmail.value = recoveryEmail;
     }
@@ -13541,7 +13544,9 @@ async function completePasswordRecovery() {
       authPasswordConfirm.value = "";
     }
     updateRoute({ view: "login" }, { replace: true });
-    await supabaseClient.auth.signOut();
+    setAuthView(null, { animate: true });
+    setAuthMode("login");
+    await signOutPromise;
   } catch (error) {
     setAuthMessage(error?.message || tr("Could not update password."));
   } finally {
