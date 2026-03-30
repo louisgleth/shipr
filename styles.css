@@ -2576,29 +2576,21 @@ body {
 }
 
 .label-confirm-modal {
-  max-width: 760px;
+  max-width: 520px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .label-confirm-modal-body {
-  gap: 16px;
-}
-
-.label-confirm-head-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.label-confirm-head-note {
-  max-width: 540px;
+  gap: 0;
 }
 
 .label-confirm-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 18px;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
   border: 1px solid rgba(119, 71, 227, 0.22);
   border-radius: var(--radius-lg);
   background:
@@ -2628,122 +2620,13 @@ body {
 }
 
 .label-confirm-hero-note {
-  max-width: 440px;
-}
-
-.label-confirm-hero-summary {
-  display: grid;
-  gap: 10px;
-  justify-items: flex-end;
-  min-width: 220px;
-}
-
-.label-confirm-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(119, 71, 227, 0.34);
-  background: rgba(119, 71, 227, 0.14);
-  color: var(--text);
-  font-size: var(--fs-xs);
-  white-space: nowrap;
-}
-
-.label-confirm-total {
-  display: grid;
-  justify-items: flex-end;
-  gap: 4px;
-}
-
-.label-confirm-total span {
-  color: var(--muted);
-  font-size: var(--fs-2xs);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-tight);
-}
-
-.label-confirm-total strong {
-  font-size: 26px;
-  line-height: 1;
-  font-weight: 300;
-  color: var(--text);
-}
-
-.label-confirm-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.label-confirm-card {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  padding: 15px 16px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(180deg, rgba(16, 19, 29, 0.92) 0%, rgba(13, 17, 26, 0.96) 100%);
-}
-
-.label-confirm-card-label {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.label-confirm-card-title {
-  font-size: var(--fs-md);
-  line-height: 1.16;
-  font-weight: 300;
-  color: var(--text);
-}
-
-.label-confirm-card-copy {
-  color: rgba(241, 244, 251, 0.72);
-  font-size: var(--fs-xs);
-  line-height: 1.52;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.label-confirm-card-copy-meta {
-  display: grid;
-  gap: 8px;
-  white-space: normal;
-}
-
-.label-confirm-inline-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.label-confirm-inline-row span {
-  color: var(--muted);
-}
-
-.label-confirm-inline-row strong {
-  color: var(--text);
-  font-weight: 300;
-  text-align: right;
-}
-
-.label-confirm-footer {
-  display: grid;
-  gap: 12px;
-}
-
-.label-confirm-footer-note {
-  max-width: 520px;
+  max-width: 410px;
 }
 
 .label-confirm-actions {
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
 }
 
 .invite-result-grid {
