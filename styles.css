@@ -2629,7 +2629,7 @@ body {
   background: var(--accent);
 }
 
-.label-confirm-hero-copy h3 {
+.label-confirm-modal-body .label-confirm-hero-copy h3 {
   margin: 0;
   font-size: var(--fs-lg);
   line-height: 1.15;
@@ -2638,7 +2638,7 @@ body {
   color: var(--text);
 }
 
-.label-confirm-hero-note {
+.label-confirm-modal-body .label-confirm-hero-note {
   max-width: 460px;
   margin: 0;
   font-size: var(--fs-xs);
