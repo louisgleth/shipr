@@ -111,7 +111,7 @@ body {
 .auth-gate.is-register-mode {
   padding: 22px 28px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .auth-background {
@@ -415,6 +415,10 @@ body {
   color: var(--muted);
 }
 
+.auth-gate.is-register-mode .auth-copy p {
+  margin-top: 4px;
+}
+
 .auth-form {
   display: grid;
   gap: 12px;
@@ -423,7 +427,7 @@ body {
 .auth-form.is-register-mode {
   grid-template-columns: 1fr;
   column-gap: 0;
-  row-gap: 8px;
+  row-gap: 10px;
   align-items: start;
   position: relative;
 }
@@ -461,8 +465,8 @@ body {
 
 .auth-step-one-shell {
   display: grid;
-  gap: 12px;
-  padding-top: 4px;
+  gap: 18px;
+  padding-top: 18px;
   opacity: 1;
   transform: translateY(0);
   filter: blur(0);
@@ -490,6 +494,7 @@ body {
 .auth-register-section-head {
   display: grid;
   gap: 4px;
+  margin-bottom: 6px;
 }
 
 .auth-register-section-label {
@@ -514,7 +519,7 @@ body {
 .auth-register-divider {
   height: 1px;
   background: var(--stroke);
-  margin: 4px 0;
+  margin: 12px 0 10px;
 }
 
 .auth-register-grid-span-2 {
@@ -674,8 +679,8 @@ body {
   border-radius: 0;
   background: transparent;
   padding: 0;
-  gap: 12px;
-  padding-top: 2px;
+  gap: 18px;
+  padding-top: 6px;
 }
 
 .auth-address-group {
@@ -700,8 +705,8 @@ body {
 }
 
 #authBillingGroup.auth-register-field {
-  gap: 12px;
-  padding-top: 2px;
+  gap: 18px;
+  padding-top: 6px;
 }
 
 .auth-country-input-wrap {

@@ -13639,7 +13639,7 @@ async function initializeAuth() {
   if (isAppAuthed && initialRoute.view === "leads") {
     await loadLeadProspects({ quiet: true });
   }
-  supabaseClient.auth.onAuthStateChange(async (event, updatedSession) => {
+  supabaseClient.auth.onAuthStateChange((event, updatedSession) => {
     setAuthMessage("");
     if (event === "PASSWORD_RECOVERY") {
       updateRoute({ view: "recovery" }, { replace: true });
@@ -13651,8 +13651,8 @@ async function initializeAuth() {
       resetAll();
       goToStep(1, { push: false, regenerate: false });
       setMainView("builder", { push: false, animate: false });
-      await loadGenerationHistory({ preferLatest: false });
       updateRoute({ view: "login" }, { replace: true });
+      void loadGenerationHistory({ preferLatest: false });
       return;
     }
 
@@ -13665,10 +13665,10 @@ async function initializeAuth() {
       setMainView("account", { push: false, animate: false });
     } else if (route.view === "admin") {
       setMainView("admin", { push: false, animate: false });
-      await loadAdminDashboard({ quiet: true });
+      void loadAdminDashboard({ quiet: true });
     } else if (route.view === "leads") {
       setMainView("leads", { push: false, animate: false });
-      await loadLeadProspects({ quiet: true });
+      void loadLeadProspects({ quiet: true });
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
@@ -13685,7 +13685,7 @@ async function initializeAuth() {
         updateRoute({ view: "builder", step: state.step }, { replace: true });
       }
     }
-    await loadGenerationHistory({
+    void loadGenerationHistory({
       preferLatest:
         route.view === "account" ||
         route.view === "admin" ||
