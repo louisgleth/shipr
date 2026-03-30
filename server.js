@@ -115,6 +115,9 @@ const WELCOME_PORTAL_URL = String(
 const REPORTS_PORTAL_URL = String(
   process.env.REPORTS_PORTAL_URL || "https://portal.shipide.com/reports?range=monthly"
 ).trim();
+const PUBLIC_APP_URL = String(process.env.PUBLIC_APP_URL || "").trim();
+const DEFAULT_PUBLIC_APP_URL = "https://portal.shipide.com";
+const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 400 * 24 * 60 * 60 * 1000;
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -328,6 +331,82 @@ function buildPublicBaseUrl(req) {
   const protocol = forwardedProto || (req.socket.encrypted ? "https" : "http");
   const host = forwardedHost || req.headers.host || `localhost:${PORT}`;
   return `${protocol}://${host}`;
+}
+
+function getPublicAppUrl(req = null) {
+  const explicit = PUBLIC_APP_URL.replace(/\/+$/, "");
+  if (explicit) return explicit;
+  if (req) {
+    return buildPublicBaseUrl(req).replace(/\/+$/, "");
+  }
+  return DEFAULT_PUBLIC_APP_URL;
+}
+
+function getInvoiceViewLinkSecret() {
+  const secret = String(
+    process.env.INVOICE_VIEW_LINK_SECRET
+      || SHOPIFY_TOKEN_ENCRYPTION_KEY
+      || SHOPIFY_API_SECRET
+      || SUPABASE_SERVICE_ROLE_KEY
+      || ""
+  ).trim();
+  if (!secret) {
+    throw new Error("Invoice view link secret is not configured.");
+  }
+  return secret;
+}
+
+function hmacSha256Hex(secret, value) {
+  return crypto.createHmac("sha256", secret).update(String(value || ""), "utf8").digest("hex");
+}
+
+function makeInvoiceViewToken(payload, ttlMs = DEFAULT_INVOICE_VIEW_LINK_TTL_MS) {
+  const tokenPayload = {
+    ...payload,
+    nonce: crypto.randomBytes(12).toString("base64url"),
+    exp: Date.now() + Math.max(60 * 1000, Number(ttlMs) || DEFAULT_INVOICE_VIEW_LINK_TTL_MS),
+  };
+  const encoded = Buffer.from(JSON.stringify(tokenPayload), "utf8").toString("base64url");
+  const signature = hmacSha256Hex(getInvoiceViewLinkSecret(), encoded);
+  return `${encoded}.${signature}`;
+}
+
+function parseInvoiceViewToken(token) {
+  const [encoded = "", signature = ""] = String(token || "").split(".");
+  if (!encoded || !signature) return null;
+  const expected = hmacSha256Hex(getInvoiceViewLinkSecret(), encoded);
+  const receivedBuffer = Buffer.from(signature, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  if (receivedBuffer.length !== expectedBuffer.length) return null;
+  if (!crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!payload || typeof payload !== "object") return null;
+    if (!payload.exp || Date.now() > Number(payload.exp)) return null;
+    return payload;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function buildInvoiceViewUrl(invoice, reminderStage, options = {}) {
+  const invoiceId = String(invoice?.id || "").trim();
+  if (!invoiceId) return "#";
+  const stage = normalizeInvoicePdfVariantStage(reminderStage);
+  const publicAppUrl =
+    String(options?.publicAppUrl || "").trim().replace(/\/+$/, "")
+    || getPublicAppUrl(options?.request || null);
+  const token = makeInvoiceViewToken({
+    type: "invoice_view",
+    invoiceId,
+    stage,
+  });
+  return `${publicAppUrl}/invoice-view?token=${encodeURIComponent(token)}`;
+}
+
+function sanitizeDownloadFilename(filename, fallback) {
+  const sanitized = String(filename || "").replace(/[^A-Za-z0-9._-]+/g, "_").trim();
+  return sanitized || String(fallback || "invoice.pdf").replace(/[^A-Za-z0-9._-]+/g, "_");
 }
 
 function normalizeShopDomain(value) {
@@ -1089,6 +1168,51 @@ async function loadStoredBillingInvoicePdfVariant(invoice, reminderStage, option
     stage: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage),
     exact: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage) === normalizeInvoicePdfVariantStage(reminderStage),
   };
+}
+
+async function handleInvoicePdfView(req, res, requestUrl) {
+  const payload = parseInvoiceViewToken(requestUrl.searchParams.get("token"));
+  if (!payload || payload.type !== "invoice_view") {
+    send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Invoice not found.");
+    return;
+  }
+  const invoiceId = String(payload.invoiceId || "").trim();
+  const reminderStage = normalizeInvoicePdfVariantStage(payload.stage);
+  if (!invoiceId) {
+    send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Invoice not found.");
+    return;
+  }
+  try {
+    const invoice = await getBillingInvoiceById(invoiceId);
+    if (!invoice?.id) {
+      send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Invoice not found.");
+      return;
+    }
+    const variant = await loadStoredBillingInvoicePdfVariant(invoice, reminderStage, {
+      allowFallback: false,
+    }).catch(() => null);
+    if (!variant?.bytes) {
+      send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Invoice not found.");
+      return;
+    }
+    const filename = sanitizeDownloadFilename(
+      variant.filename,
+      buildInvoiceVariantPdfFilename(invoice, reminderStage)
+    );
+    send(
+      res,
+      200,
+      {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Cache-Control": "private, no-store, max-age=0",
+        "X-Robots-Tag": "noindex, nofollow",
+      },
+      variant.bytes
+    );
+  } catch (_error) {
+    send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Invoice not found.");
+  }
 }
 
 function buildAcceptedAgreementEmailSubject(contract) {
@@ -3570,6 +3694,7 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
   const viewUrl = String(options?.viewUrl || "#").trim() || "#";
+  const hasViewUrl = viewUrl !== "#";
   const isOverdueReminder = isReminder && reminderStage >= 5;
   const manualSettlement = invoiceRequiresManualSettlement(invoice);
   const logoUrl = "https://portal.shipide.com/shipide_logo.png";
@@ -3580,7 +3705,7 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
       : "Your Monthly Invoice";
   const titleLine2 = isOverdueReminder ? "Is Overdue" : isReminder ? "Invoice Due Soon" : "Is Ready";
   const subtitleLine1 = "Your invoice PDF is attached to this email.";
-  const subtitleLine2 = "You can also view it instantly with the button below.";
+  const subtitleLine2 = hasViewUrl ? "You can also view it instantly with the button below." : "";
 
   let stageLabel = "Due in 30 days";
   let stageBg = "rgba(143, 226, 178, 0.16)";
@@ -3656,11 +3781,13 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
                   ${escapeHtml(titleLine1)}<br/>${escapeHtml(titleLine2)}
                 </div>
                 <div class="shipide-email-hero-sub" style="max-width:700px;margin:18px auto 0;font-size:16px;line-height:1.5;color:#9aa3b2;">
-                  ${escapeHtml(subtitleLine1)}<br/>${escapeHtml(subtitleLine2)}
+                  ${escapeHtml(subtitleLine1)}${subtitleLine2 ? `<br/>${escapeHtml(subtitleLine2)}` : ""}
                 </div>
-                <a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
+                ${hasViewUrl
+                  ? `<a href="${escapeHtml(viewUrl)}" style="display:inline-block;margin-top:24px;padding:12px 20px;border-radius:4px;border:1px solid rgb(46,46,46);background:#1c2026;color:#f3f6ff;text-decoration:none;font-size:14px;line-height:1;">
                   View Invoice
-                </a>
+                </a>`
+                  : ""}
               </td>
             </tr>
             <tr>
@@ -3686,6 +3813,7 @@ function buildInvoiceEmailText(invoice, options = {}) {
     ? new Date(invoice.due_at).toISOString().slice(0, 10)
     : "--";
   const prefix = options?.isReminder ? "Payment reminder" : "Invoice";
+  const viewUrl = String(options?.viewUrl || "").trim();
   const lines = [
     `${prefix}: ${reference}`,
     `Client: ${invoice?.company_name || "Client account"}`,
@@ -3696,6 +3824,9 @@ function buildInvoiceEmailText(invoice, options = {}) {
     lines.splice(2, 0, `Due date: ${dueLabel}`);
   } else {
     lines.splice(2, 0, "Status: Paid automatically");
+  }
+  if (viewUrl && viewUrl !== "#") {
+    lines.push(`View invoice: ${viewUrl}`);
   }
   return lines.join("\n");
 }
@@ -4451,6 +4582,9 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
   const pdfFilename =
     String(providedVariant?.filename || storedVariant?.filename || "").trim()
     || buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage);
+  const viewUrl = buildInvoiceViewUrl(invoiceWithItems, desiredStage, {
+    publicAppUrl: options?.publicAppUrl,
+  });
   const subject = buildInvoiceEmailSubject(pdfInvoice, { isReminder, reminderStage });
   const emailPayload = await sendResendEmail({
     to: toEmail,
@@ -4459,8 +4593,9 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
       isReminder,
       reminderTitle,
       reminderStage,
+      viewUrl,
     }),
-    text: buildInvoiceEmailText(pdfInvoice, { isReminder }),
+    text: buildInvoiceEmailText(pdfInvoice, { isReminder, viewUrl }),
     attachments: [
       {
         filename: pdfFilename,
@@ -4540,6 +4675,7 @@ async function runInvoiceReminders(options = {}) {
         reminderStage: desiredStage,
         reminderTitle,
         requireApprovedPdf: true,
+        publicAppUrl: options?.publicAppUrl,
       });
       out.push({
         invoice_id: invoice.id,
@@ -4795,6 +4931,7 @@ async function buildInvoicesFromLabelHistory(options = {}) {
         const sendResult = await sendBillingInvoiceById(persisted.id, {
           isReminder: false,
           requireApprovedPdf: true,
+          publicAppUrl: options?.publicAppUrl,
         });
         if (!sendResult?.skipped) {
           result.invoices_sent += 1;
@@ -5789,10 +5926,14 @@ async function handleAdminInvoicesRun(req, res) {
   }
   const runRequest = normalizeInvoiceRunRequest(body || {});
   try {
-    const result = await buildInvoicesFromLabelHistory(runRequest);
+    const publicAppUrl = getPublicAppUrl(req);
+    const result = await buildInvoicesFromLabelHistory({
+      ...runRequest,
+      publicAppUrl,
+    });
     let reminders = [];
     if (runRequest.mode !== "preview" && runRequest.includeReminders) {
-      reminders = await runInvoiceReminders({ limit: 300 });
+      reminders = await runInvoiceReminders({ limit: 300, publicAppUrl });
     }
     sendJson(res, 200, {
       ok: true,
@@ -5832,6 +5973,7 @@ async function handleAdminInvoiceSend(req, res) {
       isReminder: false,
       pdfVariants: providedVariants,
       requireApprovedPdf: true,
+      publicAppUrl: getPublicAppUrl(req),
     });
     sendJson(res, 200, {
       ok: true,
@@ -7331,6 +7473,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/__preview-version") {
     sendJson(res, 200, buildPreviewVersionPayload());
+    return;
+  }
+
+  if (pathname === "/invoice-view" || pathname === "/invoice-view/") {
+    await handleInvoicePdfView(req, res, requestUrl);
     return;
   }
 
