@@ -2629,21 +2629,17 @@ body {
   background: var(--accent);
 }
 
-.label-confirm-modal-body .label-confirm-hero-copy h3 {
+.label-confirm-modal-body .label-confirm-hero-copy h2 {
   margin: 0;
   font-size: var(--fs-lg);
-  line-height: 1.15;
+  line-height: normal;
   font-weight: 400;
-  letter-spacing: var(--letter-tight);
+  letter-spacing: normal;
   color: var(--text);
 }
 
 .label-confirm-modal-body .label-confirm-hero-note {
   max-width: 460px;
-  margin: 0;
-  font-size: var(--fs-xs);
-  line-height: 1.45;
-  color: var(--muted);
 }
 
 .shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .panel-actions.label-confirm-actions {
@@ -2673,17 +2669,6 @@ body {
 .label-confirm-review-link:focus-visible {
   color: var(--text);
   outline: none;
-}
-
-.shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .label-confirm-actions .btn {
-  height: 42px;
-  padding: 0 18px;
-  font-size: var(--fs-xs);
-}
-
-.shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .label-confirm-actions .btn svg {
-  width: 14px;
-  height: 14px;
 }
 
 .invite-result-grid {
