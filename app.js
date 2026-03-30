@@ -13533,7 +13533,10 @@ async function completePasswordRecovery() {
 
     authRecoveryPrefillEmail = recoveryEmail;
     pendingAuthRecoveryToast = tr("Password updated. Sign in with your new password.");
-    const signOutPromise = supabaseClient.auth.signOut().catch(() => null);
+    const { error: signOutError } = await supabaseClient.auth.signOut();
+    if (signOutError) {
+      throw signOutError;
+    }
     if (authEmail) {
       authEmail.value = recoveryEmail;
     }
@@ -13546,7 +13549,6 @@ async function completePasswordRecovery() {
     updateRoute({ view: "login" }, { replace: true });
     setAuthView(null, { animate: true });
     setAuthMode("login");
-    await signOutPromise;
   } catch (error) {
     setAuthMessage(error?.message || tr("Could not update password."));
   } finally {
