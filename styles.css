@@ -2594,7 +2594,7 @@ body {
 
 .label-confirm-hero {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   padding: 24px;
   border: 1px solid rgba(119, 71, 227, 0.22);
   border-radius: var(--radius-lg);
@@ -2606,33 +2606,34 @@ body {
 
 .label-confirm-hero-copy {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 
 .label-confirm-kicker {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: fit-content;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   letter-spacing: 0;
   line-height: 1;
   color: rgba(241, 244, 251, 0.74);
+  margin-bottom: 2px;
 }
 
 .label-confirm-kicker-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
   background: var(--accent);
 }
 
 .label-confirm-modal-body .label-confirm-hero-copy h2 {
   margin: 0;
   font-size: var(--fs-lg);
-  line-height: normal;
+  line-height: 1.08;
   font-weight: 400;
   letter-spacing: normal;
   color: var(--text);
@@ -2640,6 +2641,7 @@ body {
 
 .label-confirm-modal-body .label-confirm-hero-note {
   max-width: 460px;
+  margin-top: 2px;
 }
 
 .shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .panel-actions.label-confirm-actions {
@@ -2647,7 +2649,7 @@ body {
   margin-top: 0;
   justify-content: flex-start;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding-top: 2px;
 }
 
@@ -2669,6 +2671,10 @@ body {
 .label-confirm-review-link:focus-visible {
   color: var(--text);
   outline: none;
+}
+
+.shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .label-confirm-actions .btn {
+  padding-inline: 14px;
 }
 
 .invite-result-grid {
