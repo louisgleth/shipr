@@ -2576,7 +2576,8 @@ body {
 }
 
 .label-confirm-modal {
-  max-width: 520px;
+  width: min(680px, calc(100vw - 48px));
+  max-width: 680px;
   padding: 0;
   border: none;
   background: transparent;
@@ -2589,8 +2590,8 @@ body {
 
 .label-confirm-hero {
   display: grid;
-  gap: 18px;
-  padding: 22px;
+  gap: 24px;
+  padding: 34px 36px 30px;
   border: 1px solid rgba(119, 71, 227, 0.22);
   border-radius: var(--radius-lg);
   background:
@@ -2601,32 +2602,78 @@ body {
 
 .label-confirm-hero-copy {
   display: grid;
-  gap: 7px;
+  gap: 12px;
   min-width: 0;
 }
 
 .label-confirm-kicker {
-  color: rgba(241, 244, 251, 0.72);
-  font-size: var(--fs-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(241, 244, 251, 0.86);
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  width: fit-content;
+}
+
+.label-confirm-kicker-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  background: var(--accent);
 }
 
 .label-confirm-hero-copy h3 {
   margin: 0;
-  font-size: 28px;
-  line-height: 1.02;
+  font-size: 42px;
+  line-height: 0.98;
   font-weight: 300;
+  letter-spacing: -0.03em;
 }
 
 .label-confirm-hero-note {
-  max-width: 410px;
+  max-width: 560px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(241, 244, 251, 0.7);
 }
 
 .label-confirm-actions {
-  justify-content: flex-end;
-  gap: 10px;
-  padding-top: 2px;
+  justify-content: flex-start;
+  gap: 18px;
+  padding-top: 6px;
+}
+
+.label-confirm-review-link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.label-confirm-review-link:hover {
+  color: var(--text);
+}
+
+.label-confirm-review-link:focus-visible {
+  outline: none;
+  color: var(--text);
+}
+
+.label-confirm-actions .btn {
+  min-height: 44px;
+  padding-inline: 16px 18px;
+}
+
+.label-confirm-actions .btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .invite-result-grid {

@@ -1684,21 +1684,8 @@ const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBo
 const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
 const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
 const labelConfirmModal = document.getElementById("labelConfirmModal");
-const labelConfirmClose = document.getElementById("labelConfirmClose");
 const labelConfirmCancel = document.getElementById("labelConfirmCancel");
 const labelConfirmApprove = document.getElementById("labelConfirmApprove");
-const labelConfirmServiceChip = document.getElementById("labelConfirmServiceChip");
-const labelConfirmTotal = document.getElementById("labelConfirmTotal");
-const labelConfirmRecipientLabel = document.getElementById("labelConfirmRecipientLabel");
-const labelConfirmSenderTitle = document.getElementById("labelConfirmSenderTitle");
-const labelConfirmSenderMeta = document.getElementById("labelConfirmSenderMeta");
-const labelConfirmRecipientTitle = document.getElementById("labelConfirmRecipientTitle");
-const labelConfirmRecipientMeta = document.getElementById("labelConfirmRecipientMeta");
-const labelConfirmParcelTitle = document.getElementById("labelConfirmParcelTitle");
-const labelConfirmIdentifiers = document.getElementById("labelConfirmIdentifiers");
-const labelConfirmServiceTitle = document.getElementById("labelConfirmServiceTitle");
-const labelConfirmServiceSpeed = document.getElementById("labelConfirmServiceSpeed");
-const labelConfirmQuantity = document.getElementById("labelConfirmQuantity");
 const adminClientSearchInput = document.getElementById("adminClientSearch");
 const adminClientFilterSelect = document.getElementById("adminClientFilter");
 const adminClientSortSelect = document.getElementById("adminClientSort");
@@ -15966,12 +15953,6 @@ if (leadCallOutcomeModal) {
     if (event.target === leadCallOutcomeModal) {
       closeLeadCallOutcome();
     }
-  });
-}
-
-if (labelConfirmClose) {
-  labelConfirmClose.addEventListener("click", () => {
-    setLabelConfirmModalOpen(false);
   });
 }
 

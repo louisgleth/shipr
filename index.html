@@ -1541,17 +1541,21 @@
           <div class="shopify-settings-body label-confirm-modal-body">
             <div class="label-confirm-hero">
               <div class="label-confirm-hero-copy">
-                <div class="label-confirm-kicker mono">Shipment check</div>
-                <h3>Does everything look correct?</h3>
+                <div class="label-confirm-kicker">
+                  <span class="label-confirm-kicker-dot" aria-hidden="true"></span>
+                  <span>Shipment Check</span>
+                </div>
+                <h3 id="labelConfirmTitle">Does everything look correct?</h3>
                 <p class="shopify-settings-note label-confirm-hero-note">
                   You will still review the invoice details on the next step before any label is generated.
                 </p>
               </div>
               <div class="panel-actions label-confirm-actions">
-                <button type="button" class="btn btn-ghost" id="labelConfirmCancel">
+                <button type="button" class="label-confirm-review-link" id="labelConfirmCancel">
                   <span>Review Again</span>
                 </button>
                 <button type="button" class="btn btn-primary" id="labelConfirmApprove">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5l4.2 4.2L19 7.4"/></svg>
                   <span>Looks Correct</span>
                 </button>
               </div>
