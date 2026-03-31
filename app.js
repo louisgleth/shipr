@@ -1600,6 +1600,8 @@ const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const portalFooterLogoLottie = document.getElementById("portalFooterLogoLottie");
+const portalFooterForm = document.getElementById("portalFooterForm");
+const portalFooterEmail = document.getElementById("portalFooterEmail");
 const portalFooterSubmitButton = document.getElementById("portalFooterSubmit");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
@@ -18529,19 +18531,41 @@ function initializePortalFooter() {
     void mountFlowLogoAnimation(portalFooterLogoLottie);
   }
 
-  if (!portalFooterSubmitButton || portalFooterSubmitButton.dataset.bound === "true") {
+  if (portalFooterEmail && !portalFooterEmail.value && currentUser?.email) {
+    portalFooterEmail.value = String(currentUser.email).trim().toLowerCase();
+  }
+
+  if (
+    !portalFooterForm ||
+    !portalFooterEmail ||
+    !portalFooterSubmitButton ||
+    portalFooterForm.dataset.bound === "true"
+  ) {
     return;
   }
 
-  portalFooterSubmitButton.dataset.bound = "true";
-  portalFooterSubmitButton.addEventListener("click", () => {
-    const email = String(currentUser?.email || "")
+  portalFooterForm.dataset.bound = "true";
+  portalFooterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const email = String(portalFooterEmail.value || currentUser?.email || "")
       .trim()
       .toLowerCase();
 
+    if (!email) {
+      showToast("Add your email and we’ll open a draft.", { tone: "error" });
+      portalFooterEmail.focus();
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast("Please enter a valid email address.", { tone: "error" });
+      portalFooterEmail.focus();
+      return;
+    }
+
     const subject = encodeURIComponent("Shipide portal inquiry");
     const body = encodeURIComponent(
-      `Hello Shipide,\n\nI’d like to get in touch.\n${email ? `\nMy email: ${email}\n` : "\n"}`
+      `Hello Shipide,\n\nI’d like to get in touch.\n\nMy email: ${email}\n`
     );
 
     window.location.href = `mailto:hello@shipide.com?subject=${subject}&body=${body}`;

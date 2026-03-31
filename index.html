@@ -1936,7 +1936,19 @@
               <h3 class="portal-footer-title">Contact us</h3>
               <p class="portal-footer-copy">Leave us your email and we'll reach out asap.</p>
             </div>
-            <button type="button" class="portal-footer-submit" id="portalFooterSubmit">Submit</button>
+            <form class="portal-footer-form" id="portalFooterForm">
+              <label class="portal-footer-field" for="portalFooterEmail">
+                <span class="portal-footer-field-label">Your Email</span>
+                <input
+                  type="email"
+                  id="portalFooterEmail"
+                  class="portal-footer-input"
+                  autocomplete="email"
+                  placeholder=""
+                />
+              </label>
+              <button type="submit" class="portal-footer-submit" id="portalFooterSubmit">Submit</button>
+            </form>
           </div>
 
           <div class="portal-footer-side">

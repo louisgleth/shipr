@@ -1580,6 +1580,7 @@ body {
 
 .portal-footer {
   margin-top: 56px;
+  border-top: 1px solid var(--stroke);
   padding: 32px 32px 32px 32px;
   background: var(--primary);
   display: grid;
@@ -1622,7 +1623,7 @@ body {
   width: 100%;
   max-width: 400px;
   display: grid;
-  gap: 20px;
+  gap: 32px;
   align-content: start;
   justify-items: start;
 }
@@ -1652,6 +1653,55 @@ body {
   line-height: 1.4;
   letter-spacing: -0.02em;
   color: var(--text);
+}
+
+.portal-footer-form {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  justify-items: start;
+}
+
+.portal-footer-field {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.portal-footer-field-label {
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  color: rgba(243, 246, 255, 0.7);
+}
+
+.portal-footer-input {
+  width: 100%;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--stroke);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  outline: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.portal-footer-input::placeholder {
+  color: rgba(243, 246, 255, 0.36);
+}
+
+.portal-footer-input:focus {
+  border-bottom-color: rgba(119, 71, 227, 0.8);
 }
 
 .portal-footer-submit {
@@ -8405,6 +8455,10 @@ input.is-invalid {
     max-width: none;
   }
 
+  .portal-footer-form {
+    max-width: 400px;
+  }
+
   .account-overview-bento {
     grid-template-columns: 1fr;
   }
@@ -8620,6 +8674,10 @@ input.is-invalid {
 
   .portal-footer-title {
     font-size: 28px;
+  }
+
+  .portal-footer-form {
+    max-width: none;
   }
 
   .portal-footer-links {
