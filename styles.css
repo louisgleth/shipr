@@ -5149,6 +5149,29 @@ body {
   color: var(--text);
 }
 
+.provider-credentials-modal {
+  max-width: 520px;
+}
+
+.provider-credentials-body {
+  gap: 14px;
+}
+
+.provider-connection-summary {
+  padding: 11px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.5;
+}
+
+.provider-credentials-grid {
+  display: grid;
+  gap: 12px;
+}
+
 /* CSV upload trigger */
 
 .csv-upload-trigger {

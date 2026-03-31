@@ -1886,6 +1886,7 @@ const providerTrigger = document.getElementById("providerTrigger");
 const providerMenu = document.getElementById("providerMenu");
 const providerStatus = document.getElementById("providerStatus");
 const shopifyProviderOption = document.querySelector('.provider-option[data-provider="shopify"]');
+const woocommerceProviderOption = document.querySelector('.provider-option[data-provider="woocommerce"]');
 const woocommerceSettingsTrigger = document.getElementById("woocommerceSettingsTrigger");
 const wixSettingsTrigger = document.getElementById("wixSettingsTrigger");
 const shopifySettingsTrigger = document.getElementById("shopifySettingsTrigger");
@@ -1895,6 +1896,15 @@ const providerSettingsName = document.getElementById("providerSettingsName");
 const providerSettingsNote = document.getElementById("providerSettingsNote");
 const providerSettingsClose = document.getElementById("providerSettingsClose");
 const providerSettingsCancel = document.getElementById("providerSettingsCancel");
+const woocommerceSettingsModal = document.getElementById("woocommerceSettingsModal");
+const woocommerceSettingsClose = document.getElementById("woocommerceSettingsClose");
+const woocommerceSettingsCancel = document.getElementById("woocommerceSettingsCancel");
+const woocommerceSettingsSave = document.getElementById("woocommerceSettingsSave");
+const woocommerceSettingsStatus = document.getElementById("woocommerceSettingsStatus");
+const woocommerceConnectionSummary = document.getElementById("woocommerceConnectionSummary");
+const woocommerceStoreUrlInput = document.getElementById("woocommerceStoreUrl");
+const woocommerceConsumerKeyInput = document.getElementById("woocommerceConsumerKey");
+const woocommerceConsumerSecretInput = document.getElementById("woocommerceConsumerSecret");
 const shopifySettingsModal = document.getElementById("shopifySettingsModal");
 const shopifySettingsClose = document.getElementById("shopifySettingsClose");
 const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
@@ -1933,6 +1943,7 @@ const defaultPaymentMethodErrorMessage = String(paymentMethodError?.textContent 
   clientInviteStatus,
   adminBillingRunStatus,
   accountHistoryStatus,
+  woocommerceSettingsStatus,
   shopifySettingsStatus,
   ibanTopupStatus,
   csvMapError,
@@ -2098,6 +2109,8 @@ let shopifyLocationsCache = [];
 let shopifyLocationDraftSelection = new Set();
 let shopifySavedLocationSelection = [];
 let shopifySettingsBusy = false;
+let woocommerceConnection = null;
+let woocommerceSettingsBusy = false;
 let clientInviteBusy = false;
 let clientInviteHistory = [];
 let authKeepAliveTimer = 0;
@@ -3037,9 +3050,19 @@ function setShopifyProviderConnectedState(isConnected) {
   shopifyProviderOption.classList.toggle("is-connected", Boolean(isConnected));
 }
 
+function setWooCommerceProviderConnectedState(isConnected) {
+  if (!woocommerceProviderOption) return;
+  woocommerceProviderOption.classList.toggle("is-connected", Boolean(isConnected));
+}
+
 function setShopifySettingsModalOpen(open) {
   if (!shopifySettingsModal) return;
   shopifySettingsModal.classList.toggle("is-closed", !open);
+}
+
+function setWooCommerceSettingsModalOpen(open) {
+  if (!woocommerceSettingsModal) return;
+  woocommerceSettingsModal.classList.toggle("is-closed", !open);
 }
 
 function setGenericProviderSettingsModalOpen(open) {
@@ -3061,6 +3084,19 @@ function openGenericProviderSettings(providerLabel) {
     });
   }
   setGenericProviderSettingsModalOpen(true);
+}
+
+function setWooCommerceSettingsStatus(message = "", options = {}) {
+  const { kind = "info", toast = Boolean(message) } = options;
+  const text = String(message || "").trim();
+  if (woocommerceSettingsStatus) {
+    woocommerceSettingsStatus.hidden = true;
+    woocommerceSettingsStatus.textContent = "";
+    woocommerceSettingsStatus.classList.remove("is-success", "is-error");
+  }
+  if (toast && text) {
+    showStatusToast(text, { tone: kind });
+  }
 }
 
 function setShopifySettingsStatus(message = "", options = {}) {
@@ -3157,6 +3193,46 @@ function getShopifySelectedLocationSummary(locations, selectedIds) {
     return tr("{count} selected (all)", { count: selected.length });
   }
   return tr("{count} selected", { count: selected.length });
+}
+
+function getWooCommerceSaveButtonText() {
+  return woocommerceConnection ? tr("Update Connection") : tr("Connect Store");
+}
+
+function renderWooCommerceConnectionSummary() {
+  if (!woocommerceConnectionSummary) return;
+  if (woocommerceConnection?.storeUrl) {
+    woocommerceConnectionSummary.textContent = tr(
+      "Connected to {store}. Enter a new store URL and credentials below if you want to replace this connection.",
+      { store: woocommerceConnection.storeUrl }
+    );
+    return;
+  }
+  woocommerceConnectionSummary.textContent = tr("Not connected yet.");
+}
+
+function setWooCommerceSettingsBusy(isBusy) {
+  woocommerceSettingsBusy = Boolean(isBusy);
+  if (woocommerceSettingsSave) {
+    woocommerceSettingsSave.disabled = woocommerceSettingsBusy;
+    const label = woocommerceSettingsSave.querySelector("span");
+    if (label) {
+      label.textContent = woocommerceSettingsBusy ? tr("Saving...") : getWooCommerceSaveButtonText();
+    }
+  }
+  if (woocommerceSettingsCancel) {
+    woocommerceSettingsCancel.disabled = woocommerceSettingsBusy;
+  }
+  if (woocommerceSettingsClose) {
+    woocommerceSettingsClose.disabled = woocommerceSettingsBusy;
+  }
+  [woocommerceStoreUrlInput, woocommerceConsumerKeyInput, woocommerceConsumerSecretInput].forEach(
+    (input) => {
+      if (input) {
+        input.disabled = woocommerceSettingsBusy;
+      }
+    }
+  );
 }
 
 function setShopifySettingsBusy(isBusy) {
@@ -3334,6 +3410,11 @@ async function openShopifySettingsModal() {
   }
 }
 
+function closeWooCommerceSettingsModal() {
+  if (woocommerceSettingsBusy) return;
+  setWooCommerceSettingsModalOpen(false);
+}
+
 function closeShopifySettingsModal() {
   if (shopifySettingsBusy) return;
   setShopifySettingsModalOpen(false);
@@ -3370,6 +3451,23 @@ async function saveShopifySettings() {
   } finally {
     setShopifySettingsBusy(false);
   }
+}
+
+function normalizeWooCommerceStoreUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw || /\s/.test(raw)) return "";
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch (_error) {
+    return "";
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) return "";
+  if (!parsed.hostname || parsed.username || parsed.password) return "";
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  const storePath = pathname.replace(/\/wp-json(?:\/wc\/v3)?$/i, "");
+  return `${parsed.origin}${storePath === "/" ? "" : storePath}`;
 }
 
 function normalizeShopDomain(value) {
@@ -5137,6 +5235,69 @@ async function markAdminInvoicePaid(invoiceId) {
   }
 }
 
+function normalizeWooCommerceConnection(connection) {
+  if (!connection || typeof connection !== "object") return null;
+  const storeUrl = normalizeWooCommerceStoreUrl(
+    connection.storeUrl || connection.shop || connection.shop_domain
+  );
+  if (!storeUrl) return null;
+  return {
+    storeUrl,
+    connectedAt: String(connection.connectedAt || connection.connected_at || "").trim(),
+    updatedAt: String(connection.updatedAt || connection.updated_at || "").trim(),
+  };
+}
+
+function populateWooCommerceSettingsForm() {
+  if (woocommerceStoreUrlInput) {
+    woocommerceStoreUrlInput.value = woocommerceConnection?.storeUrl || "";
+  }
+  if (woocommerceConsumerKeyInput) {
+    woocommerceConsumerKeyInput.value = "";
+  }
+  if (woocommerceConsumerSecretInput) {
+    woocommerceConsumerSecretInput.value = "";
+  }
+  renderWooCommerceConnectionSummary();
+  if (!woocommerceSettingsBusy) {
+    setWooCommerceSettingsBusy(false);
+  }
+}
+
+function updateWooCommerceProviderStatus() {
+  setWooCommerceProviderConnectedState(Boolean(currentUser && woocommerceConnection));
+  renderWooCommerceConnectionSummary();
+  if (!currentUser) {
+    setProviderStatus("", { persist: true });
+    return;
+  }
+  setProviderStatus("", { persist: true });
+}
+
+async function loadWooCommerceConnectionStatus(options = {}) {
+  const { quiet = false } = options;
+  if (!currentUser) {
+    woocommerceConnection = null;
+    updateWooCommerceProviderStatus();
+    return null;
+  }
+  try {
+    const data = await fetchApiWithAuth("/api/woocommerce/connection");
+    woocommerceConnection = normalizeWooCommerceConnection(data?.connection);
+    updateWooCommerceProviderStatus();
+    return woocommerceConnection;
+  } catch (error) {
+    woocommerceConnection = null;
+    updateWooCommerceProviderStatus();
+    if (!quiet) {
+      setProviderStatus(error.message || tr("Could not load WooCommerce connection."), {
+        kind: "error",
+      });
+    }
+    return null;
+  }
+}
+
 function updateShopifyProviderStatus() {
   setShopifyProviderConnectedState(Boolean(currentUser && shopifyConnection));
   if (!currentUser) {
@@ -5228,6 +5389,30 @@ function mapShopifyImportRows(rows) {
     .filter(Boolean);
 }
 
+function mapWooCommerceImportRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      return {
+        senderName: String(row.senderName || "").trim(),
+        senderStreet: String(row.senderStreet || "").trim(),
+        senderCity: String(row.senderCity || "").trim(),
+        senderState: String(row.senderState || "").trim(),
+        senderZip: String(row.senderZip || "").trim(),
+        recipientName: String(row.recipientName || "").trim(),
+        recipientStreet: String(row.recipientStreet || "").trim(),
+        recipientCity: String(row.recipientCity || "").trim(),
+        recipientState: String(row.recipientState || "").trim(),
+        recipientZip: String(row.recipientZip || "").trim(),
+        recipientCountry: String(row.recipientCountry || "").trim(),
+        packageWeight: String(row.packageWeight || "").trim(),
+        packageDims: String(row.packageDims || "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
 function applyImportedRows(rows, sourceLabel, options = {}) {
   const { source = "provider" } = options;
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -5247,6 +5432,80 @@ function applyImportedRows(rows, sourceLabel, options = {}) {
   updatePreview();
   updateSummary();
   updatePayment();
+}
+
+async function openWooCommerceSettingsModal() {
+  if (!currentUser?.id) {
+    setProviderStatus(tr("Sign in before configuring WooCommerce."), { kind: "error" });
+    return;
+  }
+  setWooCommerceSettingsStatus("");
+  populateWooCommerceSettingsForm();
+  setWooCommerceSettingsModalOpen(true);
+}
+
+async function saveWooCommerceSettings() {
+  if (!currentUser?.id) {
+    setWooCommerceSettingsStatus(tr("Sign in before saving WooCommerce settings."), {
+      kind: "error",
+    });
+    return;
+  }
+
+  const storeUrl = normalizeWooCommerceStoreUrl(woocommerceStoreUrlInput?.value);
+  const consumerKey = String(woocommerceConsumerKeyInput?.value || "").trim();
+  const consumerSecret = String(woocommerceConsumerSecretInput?.value || "").trim();
+
+  if (!storeUrl) {
+    setWooCommerceSettingsStatus(tr("Enter a valid WooCommerce store URL."), {
+      kind: "error",
+    });
+    return;
+  }
+  if (!consumerKey) {
+    setWooCommerceSettingsStatus(tr("Enter your WooCommerce consumer key."), {
+      kind: "error",
+    });
+    return;
+  }
+  if (!consumerSecret) {
+    setWooCommerceSettingsStatus(tr("Enter your WooCommerce consumer secret."), {
+      kind: "error",
+    });
+    return;
+  }
+
+  setWooCommerceSettingsBusy(true);
+  setWooCommerceSettingsStatus(tr("Validating WooCommerce credentials..."));
+  try {
+    const data = await fetchApiWithAuth("/api/woocommerce/connect", {
+      method: "POST",
+      body: JSON.stringify({
+        storeUrl,
+        consumerKey,
+        consumerSecret,
+      }),
+    });
+    woocommerceConnection = normalizeWooCommerceConnection(data?.connection);
+    updateWooCommerceProviderStatus();
+    populateWooCommerceSettingsForm();
+    setProviderStatus(
+      tr("WooCommerce connected: {store}.", {
+        store: woocommerceConnection?.storeUrl || storeUrl,
+      }),
+      { kind: "success" }
+    );
+    setWooCommerceSettingsStatus(tr("Connection saved."), { kind: "success" });
+    window.setTimeout(() => {
+      closeWooCommerceSettingsModal();
+    }, 150);
+  } catch (error) {
+    setWooCommerceSettingsStatus(error?.message || tr("Could not save WooCommerce settings."), {
+      kind: "error",
+    });
+  } finally {
+    setWooCommerceSettingsBusy(false);
+  }
 }
 
 async function beginShopifyInstall() {
@@ -5340,6 +5599,69 @@ async function importShopifyOrders(shop) {
   }
 }
 
+function isWooCommerceReconnectError(message = "") {
+  return /reconnect woocommerce|woocommerce credentials|stored woocommerce connection could not be decrypted|consumer key|consumer secret|unauthorized|forbidden/i.test(
+    String(message || "")
+  );
+}
+
+async function importWooCommerceOrders(storeUrl = woocommerceConnection?.storeUrl) {
+  const normalizedStoreUrl = normalizeWooCommerceStoreUrl(storeUrl);
+  if (!normalizedStoreUrl) {
+    setProviderStatus(tr("Connect WooCommerce before importing."), { kind: "error" });
+    return;
+  }
+
+  try {
+    setProviderStatus(
+      tr("Importing orders from {store}...", {
+        store: normalizedStoreUrl,
+      }),
+      { persist: true }
+    );
+    const data = await fetchApiWithAuth("/api/woocommerce/import-orders", {
+      method: "POST",
+      body: JSON.stringify({
+        storeUrl: normalizedStoreUrl,
+        limit: 50,
+      }),
+    });
+    const rows = mapWooCommerceImportRows(data?.rows);
+    applyImportedRows(rows, "WooCommerce", { source: "provider-woocommerce" });
+    setProviderStatus(
+      tr("Imported {count} orders from {store}.", {
+        count: rows.length,
+        store: normalizedStoreUrl,
+      }),
+      { kind: "success" }
+    );
+    const triggerText = providerTrigger?.querySelector("span");
+    if (triggerText) {
+      triggerText.textContent = tr("Imported {count} WooCommerce orders", {
+        count: rows.length,
+      });
+      window.setTimeout(() => {
+        triggerText.textContent = tr("Import from provider");
+      }, 2200);
+    }
+  } catch (error) {
+    const message = String(error?.message || tr("WooCommerce import failed."));
+    if (isWooCommerceReconnectError(message)) {
+      woocommerceConnection = null;
+      updateWooCommerceProviderStatus();
+      setProviderStatus(
+        tr("WooCommerce credentials expired or were rejected. Open WooCommerce settings to reconnect."),
+        {
+          kind: "error",
+          persist: true,
+        }
+      );
+      return;
+    }
+    setProviderStatus(message, { kind: "error" });
+  }
+}
+
 async function seedShopifyDevOrders(count = 10, shop = shopifyConnection?.shop) {
   const normalizedShop = normalizeShopDomain(shop);
   if (!normalizedShop) {
@@ -5388,6 +5710,18 @@ async function handleShopifyProviderAction() {
     return;
   }
   await importShopifyOrders(shopifyConnection.shop);
+}
+
+async function handleWooCommerceProviderAction() {
+  if (!currentUser) {
+    setProviderStatus(tr("Sign in before importing from WooCommerce."), { kind: "error" });
+    return;
+  }
+  if (!woocommerceConnection?.storeUrl) {
+    await openWooCommerceSettingsModal();
+    return;
+  }
+  await importWooCommerceOrders(woocommerceConnection.storeUrl);
 }
 
 function getFeaturePolygons(geometry) {
@@ -13323,6 +13657,7 @@ function setAuthView(session, options = {}) {
     adminAccessLoading = true;
     startAuthKeepAlive();
     loadWarehouseSettings({ quiet: true });
+    loadWooCommerceConnectionStatus({ quiet: true });
     loadShopifyConnectionStatus({ quiet: true });
     refreshAdminOnlyTestTools();
     syncAdminAccessButtons();
@@ -13343,6 +13678,8 @@ function setAuthView(session, options = {}) {
     adminAccessLoading = false;
     stopAuthKeepAlive();
     resetWarehouseState();
+    woocommerceConnection = null;
+    updateWooCommerceProviderStatus();
     shopifyConnection = null;
     updateShopifyProviderStatus();
     adminAccessAllowed = false;
@@ -17553,7 +17890,11 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
       await handleShopifyProviderAction();
       return;
     }
-    if (provider === "woocommerce" || provider === "wix") {
+    if (provider === "woocommerce") {
+      await handleWooCommerceProviderAction();
+      return;
+    }
+    if (provider === "wix") {
       openGenericProviderSettings(optionLabel);
       return;
     }
@@ -17570,7 +17911,6 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
 });
 
 [
-  [woocommerceSettingsTrigger, tr("WooCommerce")],
   [wixSettingsTrigger, tr("Wix eCommerce")],
 ].forEach(([trigger, providerLabel]) => {
   if (!trigger) return;
@@ -17583,6 +17923,17 @@ document.querySelectorAll(".provider-option").forEach((opt) => {
     openGenericProviderSettings(providerLabel);
   });
 });
+
+if (woocommerceSettingsTrigger) {
+  woocommerceSettingsTrigger.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (providerDropdown) {
+      providerDropdown.classList.remove("is-open");
+    }
+    await openWooCommerceSettingsModal();
+  });
+}
 
 if (shopifySettingsTrigger) {
   shopifySettingsTrigger.addEventListener("click", async (event) => {
@@ -17613,6 +17964,35 @@ if (providerSettingsModal) {
   providerSettingsModal.addEventListener("click", (event) => {
     if (event.target === providerSettingsModal) {
       closeGenericProviderSettingsModal();
+    }
+  });
+}
+
+if (woocommerceSettingsSave) {
+  woocommerceSettingsSave.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await saveWooCommerceSettings();
+  });
+}
+
+if (woocommerceSettingsClose) {
+  woocommerceSettingsClose.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeWooCommerceSettingsModal();
+  });
+}
+
+if (woocommerceSettingsCancel) {
+  woocommerceSettingsCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeWooCommerceSettingsModal();
+  });
+}
+
+if (woocommerceSettingsModal) {
+  woocommerceSettingsModal.addEventListener("click", (event) => {
+    if (event.target === woocommerceSettingsModal) {
+      closeWooCommerceSettingsModal();
     }
   });
 }
