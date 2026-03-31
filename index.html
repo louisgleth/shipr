@@ -2013,18 +2013,49 @@
       </div>
     </div>
 
-    <div class="shopify-settings-overlay is-closed" id="woocommerceSettingsModal">
+    <div class="shopify-settings-overlay is-closed" id="wixSettingsModal">
       <div class="shopify-settings-modal provider-credentials-modal">
         <div class="csv-modal-header">
-          <span class="csv-modal-title">WooCommerce Connection</span>
-          <button type="button" class="csv-modal-close" id="woocommerceSettingsClose">
+          <span class="csv-modal-title">Wix Settings</span>
+          <button type="button" class="csv-modal-close" id="wixSettingsClose">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div class="shopify-settings-body provider-credentials-body">
+          <h3>Connect Wix</h3>
+          <p class="shopify-settings-note">
+            Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking.
+          </p>
+          <div class="provider-connection-summary" id="wixConnectionSummary">
+            Not connected yet.
+          </div>
+          <div class="provider-status shopify-settings-status" id="wixSettingsStatus"></div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="wixSettingsCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Close</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="wixSettingsSave">
+              <span>Continue to Wix</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shopify-settings-overlay is-closed" id="woocommerceSettingsModal">
+      <div class="shopify-settings-modal provider-credentials-modal">
+        <div class="csv-modal-header">
+          <span class="csv-modal-title">WooCommerce Settings</span>
+          <button type="button" class="csv-modal-close" id="woocommerceSettingsClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="shopify-settings-body provider-credentials-body woocommerce-settings-body">
           <h3>Connect WooCommerce</h3>
           <p class="shopify-settings-note">
-            Enter your store URL and we’ll redirect you to WordPress/WooCommerce so you can approve access there.
+            Connect your store and choose which WooCommerce orders Shipide should import.
           </p>
           <div class="provider-connection-summary" id="woocommerceConnectionSummary">
             Not connected yet.
@@ -2041,6 +2072,23 @@
               />
             </label>
           </div>
+          <div class="shopify-locations-picker woocommerce-statuses-picker">
+            <div class="shopify-locations-head">
+              <span>Select statuses to import</span>
+              <span class="mono" id="woocommerceStatusesSummary">3 selected</span>
+            </div>
+            <div class="shopify-locations-list woocommerce-statuses-list" id="woocommerceStatusesList"></div>
+          </div>
+          <label class="woocommerce-settings-toggle" for="woocommerceAutoRefresh">
+            <input type="checkbox" id="woocommerceAutoRefresh" />
+            <span class="woocommerce-settings-toggle-box" aria-hidden="true">
+              <span class="woocommerce-settings-toggle-box-fill"></span>
+            </span>
+            <span class="woocommerce-settings-toggle-copy">
+              <strong>Enable Automatic Refresh</strong>
+              <span>When enabled, Shipide refreshes WooCommerce-imported batches automatically while this batch is open.</span>
+            </span>
+          </label>
           <div class="provider-status shopify-settings-status" id="woocommerceSettingsStatus"></div>
           <div class="panel-actions">
             <button type="button" class="btn btn-ghost" id="woocommerceSettingsCancel">
@@ -2065,6 +2113,15 @@
           </button>
         </div>
         <div class="shopify-settings-body">
+          <h3>Select Status to Import</h3>
+          <p class="shopify-settings-note">
+            Choose which Shopify payment status Shipide should import.
+          </p>
+          <label class="shopify-settings-select-field" for="shopifyFinancialStatus">
+            <span class="shopify-settings-select-label">Order Status</span>
+            <select id="shopifyFinancialStatus" class="shopify-settings-select" autocomplete="off"></select>
+          </label>
+
           <h3>Select Fulfillment Locations</h3>
           <p class="shopify-settings-note">
             Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.
@@ -2077,6 +2134,20 @@
             </div>
             <div class="shopify-locations-list" id="shopifyLocationsList"></div>
           </div>
+
+          <label class="woocommerce-settings-toggle">
+            <input type="checkbox" id="shopifyAutoRefresh" />
+            <span class="woocommerce-settings-toggle-box" aria-hidden="true">
+              <span class="woocommerce-settings-toggle-box-fill"></span>
+            </span>
+            <span class="woocommerce-settings-toggle-copy">
+              <strong>Enable Automatic Refresh</strong>
+              <span>
+                When enabled, Shipide refreshes Shopify-imported batches automatically while this batch is open.
+              </span>
+            </span>
+          </label>
+
           <div class="provider-status shopify-settings-status" id="shopifySettingsStatus"></div>
           <div class="panel-actions">
             <button type="button" class="btn btn-ghost" id="shopifySettingsCancel">

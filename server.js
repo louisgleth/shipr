@@ -25,7 +25,32 @@ const SHOPIFY_SCOPES = String(
   .split(",")
   .map((scope) => scope.trim())
   .filter(Boolean);
+const WIX_APP_ID = String(process.env.WIX_APP_ID || "").trim();
+const WIX_APP_SECRET = String(process.env.WIX_APP_SECRET || "").trim();
+const WIX_APP_INSTALL_URL = String(process.env.WIX_APP_INSTALL_URL || "").trim();
+const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
+  "paid",
+  "pending",
+  "authorized",
+  "partially_paid",
+  "partially_refunded",
+  "refunded",
+  "voided",
+  "unpaid",
+  "any",
+]);
+const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
 const WOOCOMMERCE_APP_NAME = String(process.env.WOOCOMMERCE_APP_NAME || "Shipide").trim() || "Shipide";
+const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
+  "pending",
+  "processing",
+  "on-hold",
+  "completed",
+  "cancelled",
+  "refunded",
+  "failed",
+]);
+const DEFAULT_WOOCOMMERCE_IMPORT_STATUSES = Object.freeze(["pending", "processing", "on-hold"]);
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL || "https://pxcqxubehvnyaubqjcrf.supabase.co"
 ).replace(/\/+$/, "");
@@ -5548,9 +5573,15 @@ async function upsertWooCommerceConnection(userId, storeUrl, consumerKey, consum
   }
 }
 
-async function getWooCommerceConnection(userId, requestedStoreUrl) {
+async function getWooCommerceConnection(userId, requestedStoreUrl, options = {}) {
+  const { includeSettings = false } = options;
   const params = new URLSearchParams();
-  params.set("select", "shop_domain,status,connected_at,updated_at,access_token");
+  params.set(
+    "select",
+    includeSettings
+      ? "shop_domain,status,connected_at,updated_at,access_token,import_settings"
+      : "shop_domain,status,connected_at,updated_at,access_token"
+  );
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.woocommerce");
   params.set("status", "eq.connected");
@@ -5568,6 +5599,17 @@ async function getWooCommerceConnection(userId, requestedStoreUrl) {
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
+    if (
+      includeSettings &&
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "WooCommerce settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
     throw new Error(`Failed reading WooCommerce connection (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
@@ -5575,6 +5617,203 @@ async function getWooCommerceConnection(userId, requestedStoreUrl) {
     return null;
   }
   return rows[0];
+}
+
+async function upsertWixConnection(userId, instanceId, payload = {}) {
+  const encryptedToken = encryptToken(
+    JSON.stringify({
+      instanceId: String(payload.instanceId || instanceId || "").trim(),
+      siteId: String(payload.siteId || "").trim(),
+      siteUrl: String(payload.siteUrl || "").trim(),
+      permissions: Array.isArray(payload.permissions) ? payload.permissions : [],
+      raw: payload.raw && typeof payload.raw === "object" ? payload.raw : null,
+    })
+  );
+  const permissions = Array.isArray(payload.permissions)
+    ? payload.permissions.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const nowIso = new Date().toISOString();
+  const response = await supabaseServiceRequest(
+    "/rest/v1/provider_connections?on_conflict=user_id,provider,shop_domain",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify([
+        {
+          user_id: userId,
+          provider: "wix",
+          shop_domain: String(instanceId || "").trim(),
+          status: "connected",
+          scopes: permissions.join(","),
+          access_token: encryptedToken,
+          updated_at: nowIso,
+          connected_at: nowIso,
+        },
+      ]),
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed saving Wix connection (${response.status}) ${details}`.trim());
+  }
+}
+
+async function getWixConnection(userId, requestedInstanceId, options = {}) {
+  const { includeAccessToken = false } = options;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    includeAccessToken
+      ? "shop_domain,status,scopes,connected_at,updated_at,access_token"
+      : "shop_domain,status,scopes,connected_at,updated_at"
+  );
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.wix");
+  params.set("status", "eq.connected");
+  if (requestedInstanceId) {
+    params.set("shop_domain", `eq.${requestedInstanceId}`);
+  }
+  params.set("order", "updated_at.desc");
+  params.set("limit", "1");
+
+  const response = await supabaseServiceRequest(`/rest/v1/provider_connections?${params.toString()}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed reading Wix connection (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) {
+    return null;
+  }
+  return rows[0];
+}
+
+function normalizeWixInstallUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/i.test(parsed.protocol)) return "";
+    return parsed.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function normalizeWixPermissions(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function decodeWixBase64Url(value) {
+  return Buffer.from(String(value || ""), "base64url").toString("utf8");
+}
+
+function verifyWixInstanceSignature(signature, encodedData) {
+  const secret = String(WIX_APP_SECRET || "").trim();
+  if (!secret || !signature || !encodedData) return false;
+  const digestBuffer = crypto
+    .createHmac("sha256", secret)
+    .update(String(encodedData), "utf8")
+    .digest();
+  const expectedCandidates = [
+    digestBuffer.toString("hex"),
+    digestBuffer.toString("base64"),
+    digestBuffer.toString("base64url"),
+  ];
+  return expectedCandidates.some((candidate) => {
+    const receivedBuffer = Buffer.from(String(signature), "utf8");
+    const expectedBuffer = Buffer.from(String(candidate), "utf8");
+    return (
+      receivedBuffer.length === expectedBuffer.length
+      && crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+    );
+  });
+}
+
+function parseWixInstanceToken(instanceToken) {
+  const parts = String(instanceToken || "").trim().split(".");
+  if (parts.length !== 2) return null;
+  const [signature, encodedData] = parts;
+  if (!verifyWixInstanceSignature(signature, encodedData)) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(decodeWixBase64Url(encodedData));
+    return payload && typeof payload === "object" ? payload : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getWixInstanceConnectionPayload(instancePayload) {
+  const instanceId = String(
+    instancePayload?.instanceId
+      || instancePayload?.instance_id
+      || instancePayload?.instance?.id
+      || ""
+  ).trim();
+  const siteId = String(
+    instancePayload?.siteId
+      || instancePayload?.site_id
+      || instancePayload?.metaSiteId
+      || instancePayload?.meta_site_id
+      || instancePayload?.site?.id
+      || ""
+  ).trim();
+  const siteUrl = String(
+    instancePayload?.siteUrl
+      || instancePayload?.site_url
+      || instancePayload?.site?.url
+      || instancePayload?.site?.siteUrl
+      || instancePayload?.externalBaseUrl
+      || ""
+  ).trim();
+  const permissions = normalizeWixPermissions(
+    instancePayload?.permissions || instancePayload?.permission || instancePayload?.scope
+  );
+  if (!instanceId) {
+    return null;
+  }
+  return {
+    instanceId,
+    siteId,
+    siteUrl,
+    permissions,
+    raw: instancePayload,
+  };
+}
+
+function parseStoredWixConnection(token) {
+  let decrypted = "";
+  try {
+    decrypted = decryptToken(token);
+  } catch (error) {
+    if (error?.code === "token_decrypt_failed") {
+      return null;
+    }
+    throw error;
+  }
+  try {
+    const payload = JSON.parse(decrypted);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 function getSelectedLocationIdsFromImportSettings(importSettings) {
@@ -5587,7 +5826,90 @@ function getSelectedLocationIdsFromImportSettings(importSettings) {
   return sanitizeSelectedLocationIds(selectedRaw);
 }
 
-async function saveShopifyImportSettings(userId, shop, selectedLocationIds) {
+function normalizeShopifyFinancialStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return SHOPIFY_FINANCIAL_STATUS_OPTIONS.includes(normalized) ? normalized : "";
+}
+
+function getShopifyImportSettings(importSettings) {
+  if (!importSettings || typeof importSettings !== "object") {
+    return {
+      selectedLocationIds: [],
+      financialStatus: DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+      autoRefreshEnabled: false,
+    };
+  }
+
+  return {
+    selectedLocationIds: getSelectedLocationIdsFromImportSettings(importSettings),
+    financialStatus:
+      normalizeShopifyFinancialStatus(
+        importSettings.financial_status ?? importSettings.financialStatus
+      ) || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+    autoRefreshEnabled: normalizeWooCommerceAutoRefreshEnabled(
+      importSettings.auto_refresh_enabled ?? importSettings.autoRefreshEnabled
+    ),
+  };
+}
+
+function normalizeWooCommerceImportStatuses(values) {
+  const allowed = new Set(WOOCOMMERCE_IMPORT_STATUS_OPTIONS);
+  const seen = new Set();
+
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  values.forEach((value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized || !allowed.has(normalized) || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+  });
+
+  return Array.from(seen);
+}
+
+function normalizeWooCommerceAutoRefreshEnabled(value) {
+  if (value === true || value === 1) return true;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+function getWooCommerceImportSettings(importSettings) {
+  if (!importSettings || typeof importSettings !== "object") {
+    return {
+      selectedStatuses: [...DEFAULT_WOOCOMMERCE_IMPORT_STATUSES],
+      autoRefreshEnabled: false,
+    };
+  }
+
+  const selectedStatuses = normalizeWooCommerceImportStatuses(
+    Array.isArray(importSettings.selected_statuses)
+      ? importSettings.selected_statuses
+      : Array.isArray(importSettings.selectedStatuses)
+        ? importSettings.selectedStatuses
+        : []
+  );
+
+  return {
+    selectedStatuses: selectedStatuses.length
+      ? selectedStatuses
+      : [...DEFAULT_WOOCOMMERCE_IMPORT_STATUSES],
+    autoRefreshEnabled: normalizeWooCommerceAutoRefreshEnabled(
+      importSettings.auto_refresh_enabled ?? importSettings.autoRefreshEnabled
+    ),
+  };
+}
+
+async function saveShopifyImportSettings(
+  userId,
+  shop,
+  selectedLocationIds,
+  financialStatus,
+  autoRefreshEnabled
+) {
   const params = new URLSearchParams();
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
@@ -5605,6 +5927,9 @@ async function saveShopifyImportSettings(userId, shop, selectedLocationIds) {
       body: JSON.stringify({
         import_settings: {
           selected_location_ids: sanitizeSelectedLocationIds(selectedLocationIds),
+          financial_status:
+            normalizeShopifyFinancialStatus(financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+          auto_refresh_enabled: normalizeWooCommerceAutoRefreshEnabled(autoRefreshEnabled),
         },
         updated_at: new Date().toISOString(),
       }),
@@ -5624,6 +5949,52 @@ async function saveShopifyImportSettings(userId, shop, selectedLocationIds) {
       throw error;
     }
     throw new Error(`Failed saving Shopify settings (${response.status}) ${details}`.trim());
+  }
+}
+
+async function saveWooCommerceImportSettings(
+  userId,
+  storeUrl,
+  selectedStatuses,
+  autoRefreshEnabled
+) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.woocommerce");
+  params.set("shop_domain", `eq.${storeUrl}`);
+  params.set("status", "eq.connected");
+
+  const response = await supabaseServiceRequest(
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        import_settings: {
+          selected_statuses: normalizeWooCommerceImportStatuses(selectedStatuses),
+          auto_refresh_enabled: Boolean(autoRefreshEnabled),
+        },
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "WooCommerce settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
+    throw new Error(`Failed saving WooCommerce settings (${response.status}) ${details}`.trim());
   }
 }
 
@@ -5846,14 +6217,91 @@ function getWooCommerceOrderAddress(order) {
   return shippingHasAddress ? shipping : billing;
 }
 
-function mapWooCommerceOrdersToCsvRows(orders) {
+function getWooCommerceSettingValue(settings, settingId) {
+  const key = String(settingId || "").trim();
+  if (!key) return "";
+
+  const items = Array.isArray(settings)
+    ? settings
+    : Array.isArray(settings?.settings)
+      ? settings.settings
+      : [];
+
+  for (const item of items) {
+    if (String(item?.id || "").trim() !== key) continue;
+    return String(item?.value || "").trim();
+  }
+
+  if (settings && typeof settings === "object" && !Array.isArray(settings) && settings[key] != null) {
+    return String(settings[key]).trim();
+  }
+
+  return "";
+}
+
+function parseWooCommerceDefaultCountry(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return { country: "", state: "" };
+  }
+
+  const [country = "", state = ""] = normalized.split(":");
+  return {
+    country: String(country || "").trim().toUpperCase(),
+    state: String(state || "").trim(),
+  };
+}
+
+function getWooCommerceStoreLabel(storeUrl) {
+  try {
+    return new URL(String(storeUrl || "")).hostname.replace(/^www\./i, "").trim();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function buildWooCommerceSenderOrigin(settings, storeUrl) {
+  const address1 = getWooCommerceSettingValue(settings, "woocommerce_store_address");
+  const address2 = getWooCommerceSettingValue(settings, "woocommerce_store_address_2");
+  const city = getWooCommerceSettingValue(settings, "woocommerce_store_city");
+  const postcode = getWooCommerceSettingValue(settings, "woocommerce_store_postcode");
+  const { state } = parseWooCommerceDefaultCountry(
+    getWooCommerceSettingValue(settings, "woocommerce_default_country")
+  );
+  const street = [address1, address2].filter(Boolean).join(", ");
+  const hasOrigin = [street, city, state, postcode].some((value) => String(value || "").trim());
+
+  if (!hasOrigin) {
+    return null;
+  }
+
+  return {
+    senderName: getWooCommerceStoreLabel(storeUrl),
+    senderStreet: street,
+    senderCity: city,
+    senderState: state,
+    senderZip: postcode,
+  };
+}
+
+function mapWooCommerceOrdersToCsvRows(orders, senderOrigin = null, selectedStatuses = []) {
   if (!Array.isArray(orders)) return [];
-  const excludedStatuses = new Set(["cancelled", "completed", "failed", "refunded", "trash"]);
+  const normalizedStatuses = normalizeWooCommerceImportStatuses(selectedStatuses);
+  const allowedStatuses = new Set(
+    normalizedStatuses.length ? normalizedStatuses : DEFAULT_WOOCOMMERCE_IMPORT_STATUSES
+  );
+  const sender = {
+    senderName: String(senderOrigin?.senderName || "").trim(),
+    senderStreet: String(senderOrigin?.senderStreet || "").trim(),
+    senderCity: String(senderOrigin?.senderCity || "").trim(),
+    senderState: String(senderOrigin?.senderState || "").trim(),
+    senderZip: String(senderOrigin?.senderZip || "").trim(),
+  };
 
   return orders
     .filter((order) => {
       const status = String(order?.status || "").trim().toLowerCase();
-      return !excludedStatuses.has(status);
+      return allowedStatuses.has(status);
     })
     .map((order) => {
       const address = getWooCommerceOrderAddress(order);
@@ -5870,11 +6318,11 @@ function mapWooCommerceOrdersToCsvRows(orders) {
         .join(", ");
 
       return {
-        senderName: "",
-        senderStreet: "",
-        senderCity: "",
-        senderState: "",
-        senderZip: "",
+        senderName: sender.senderName,
+        senderStreet: sender.senderStreet,
+        senderCity: sender.senderCity,
+        senderState: sender.senderState,
+        senderZip: sender.senderZip,
         recipientName,
         recipientStreet,
         recipientCity: String(address?.city || "").trim(),
@@ -5926,11 +6374,16 @@ async function fetchShopifyLocations(shop, accessToken) {
     .filter((location) => location.id && location.name);
 }
 
-async function fetchShopifyOrders(shop, accessToken, limit) {
+async function fetchShopifyOrders(shop, accessToken, limit, financialStatus) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(250, Math.trunc(limit))) : 50;
+  const resolvedFinancialStatus =
+    normalizeShopifyFinancialStatus(financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
   const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
   url.searchParams.set("status", "open");
   url.searchParams.set("limit", String(safeLimit));
+  if (resolvedFinancialStatus !== "any") {
+    url.searchParams.set("financial_status", resolvedFinancialStatus);
+  }
   url.searchParams.set(
     "fields",
     "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments"
@@ -5953,13 +6406,23 @@ async function fetchShopifyOrders(shop, accessToken, limit) {
   return orders;
 }
 
-async function fetchWooCommerceOrders(storeUrl, consumerKey, consumerSecret, limit) {
+async function fetchWooCommerceOrders(
+  storeUrl,
+  consumerKey,
+  consumerSecret,
+  limit,
+  selectedStatuses = []
+) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 50;
+  const normalizedStatuses = normalizeWooCommerceImportStatuses(selectedStatuses);
   const url = new URL(`${storeUrl.replace(/\/+$/, "")}/wp-json/wc/v3/orders`);
   url.searchParams.set("per_page", String(safeLimit));
   url.searchParams.set("orderby", "date");
   url.searchParams.set("order", "desc");
   url.searchParams.set("_fields", "id,status,billing,shipping,date_created");
+  if (normalizedStatuses.length) {
+    url.searchParams.set("status", normalizedStatuses.join(","));
+  }
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -5984,6 +6447,43 @@ async function fetchWooCommerceOrders(storeUrl, consumerKey, consumerSecret, lim
     throw new Error("WooCommerce order response was invalid.");
   }
   return payload;
+}
+
+async function fetchWooCommerceGeneralSettings(storeUrl, consumerKey, consumerSecret) {
+  const url = new URL(`${storeUrl.replace(/\/+$/, "")}/wp-json/wc/v3/settings/general`);
+  url.searchParams.set("_fields", "id,value");
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${encodeBasicAuth(consumerKey, consumerSecret)}`,
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const error = new Error(
+      `WooCommerce settings fetch failed (${response.status}) ${details}`.trim()
+    );
+    error.status = response.status;
+    if (response.status === 401 || response.status === 403) {
+      error.code = "woocommerce_auth_invalid";
+    } else if (response.status === 404) {
+      error.code = "woocommerce_settings_unavailable";
+    }
+    throw error;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!Array.isArray(payload) && !Array.isArray(payload?.settings)) {
+    throw new Error("WooCommerce settings response was invalid.");
+  }
+  return payload;
+}
+
+async function fetchWooCommerceStoreSenderOrigin(storeUrl, consumerKey, consumerSecret) {
+  const settings = await fetchWooCommerceGeneralSettings(storeUrl, consumerKey, consumerSecret);
+  return buildWooCommerceSenderOrigin(settings, storeUrl);
 }
 
 const DEV_SHOPIFY_ORDER_RECIPIENTS = Object.freeze([
@@ -7662,6 +8162,104 @@ async function handleShopifyConnection(req, res) {
   }
 }
 
+async function handleWixInstallLink(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  const installUrl = normalizeWixInstallUrl(WIX_APP_INSTALL_URL);
+  if (!installUrl) {
+    sendJson(res, 500, {
+      error:
+        "WIX_APP_INSTALL_URL is not configured yet. Add the Wix app install link before connecting a site.",
+    });
+    return;
+  }
+  sendJson(res, 200, { url: installUrl });
+}
+
+async function handleWixConnection(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  try {
+    const row = await getWixConnection(user.id, "", { includeAccessToken: true });
+    if (!row) {
+      sendJson(res, 200, { connected: false, connection: null });
+      return;
+    }
+    const stored = parseStoredWixConnection(row.access_token);
+    sendJson(res, 200, {
+      connected: true,
+      connection: {
+        instanceId: row.shop_domain,
+        siteId: String(stored?.siteId || "").trim(),
+        siteUrl: String(stored?.siteUrl || "").trim(),
+        status: row.status,
+        scopes: row.scopes || "",
+        connectedAt: row.connected_at || "",
+        updatedAt: row.updated_at || "",
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Failed to load Wix connection." });
+  }
+}
+
+async function handleWixLinkInstance(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!WIX_APP_SECRET) {
+    sendJson(res, 500, {
+      error: "WIX_APP_SECRET is not configured yet. Add it before linking Wix app instances.",
+    });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const instanceToken = String(body?.instance || "").trim();
+  if (!instanceToken) {
+    sendJson(res, 400, { error: "Missing Wix instance token." });
+    return;
+  }
+
+  const instancePayload = parseWixInstanceToken(instanceToken);
+  const connectionPayload = getWixInstanceConnectionPayload(instancePayload);
+  if (!connectionPayload?.instanceId) {
+    sendJson(res, 400, {
+      error: "The Wix instance token was invalid or could not be verified.",
+    });
+    return;
+  }
+
+  try {
+    await upsertWixConnection(user.id, connectionPayload.instanceId, connectionPayload);
+    sendJson(res, 200, {
+      connected: true,
+      connection: {
+        instanceId: connectionPayload.instanceId,
+        siteId: connectionPayload.siteId,
+        siteUrl: connectionPayload.siteUrl,
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not link Wix connection." });
+  }
+}
+
 async function handleWooCommerceInstallLink(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -7678,8 +8276,14 @@ async function handleWooCommerceInstallLink(req, res) {
   }
 
   const storeUrl = normalizeWooCommerceStoreUrl(body?.storeUrl);
+  const selectedStatuses = normalizeWooCommerceImportStatuses(body?.selectedStatuses);
+  const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
   if (!storeUrl) {
     sendJson(res, 400, { error: "Enter a valid WooCommerce store URL." });
+    return;
+  }
+  if (!selectedStatuses.length) {
+    sendJson(res, 400, { error: "Select at least one WooCommerce status to import." });
     return;
   }
   const publicBaseUrl = buildPublicBaseUrl(req);
@@ -7696,6 +8300,8 @@ async function handleWooCommerceInstallLink(req, res) {
       type: "woocommerce_auth",
       userId: user.id,
       storeUrl,
+      selectedStatuses,
+      autoRefreshEnabled,
     });
     const installUrl = new URL(`${storeUrl.replace(/\/+$/, "")}/wc-auth/v1/authorize`);
     const callbackUrl = new URL("/api/woocommerce/callback", publicBaseUrl);
@@ -7746,6 +8352,7 @@ async function handleWooCommerceCallback(req, res, requestUrl) {
   const consumerSecret = String(body?.consumer_secret || "").trim();
   const keyPermissions = String(body?.key_permissions || "").trim().toLowerCase();
   const storeUrl = normalizeWooCommerceStoreUrl(statePayload.storeUrl);
+  const importSettings = getWooCommerceImportSettings(statePayload);
 
   if (!consumerKey || !consumerSecret) {
     sendJson(res, 400, { error: "WooCommerce callback did not include API keys." });
@@ -7769,6 +8376,12 @@ async function handleWooCommerceCallback(req, res, requestUrl) {
       storeUrl,
       consumerKey,
       consumerSecret
+    );
+    await saveWooCommerceImportSettings(
+      statePayload.userId,
+      storeUrl,
+      importSettings.selectedStatuses,
+      importSettings.autoRefreshEnabled
     );
     sendJson(res, 200, {
       ok: true,
@@ -7819,6 +8432,91 @@ async function handleWooCommerceConnection(req, res) {
   }
 }
 
+async function handleWooCommerceSettingsGet(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+
+  const requestedStoreUrl = normalizeWooCommerceStoreUrl(requestUrl.searchParams.get("storeUrl"));
+
+  try {
+    const connection = await getWooCommerceConnection(user.id, requestedStoreUrl, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      sendJson(res, 404, { error: "WooCommerce is not connected for this account." });
+      return;
+    }
+    const settings = getWooCommerceImportSettings(connection.import_settings);
+    sendJson(res, 200, {
+      storeUrl: connection.shop_domain,
+      settings,
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error.message || "Failed to load WooCommerce settings." });
+  }
+}
+
+async function handleWooCommerceSettingsPost(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const requestedStoreUrl = normalizeWooCommerceStoreUrl(body?.storeUrl);
+  const selectedStatuses = normalizeWooCommerceImportStatuses(body?.selectedStatuses);
+  const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
+
+  if (!selectedStatuses.length) {
+    sendJson(res, 400, { error: "Select at least one WooCommerce status to import." });
+    return;
+  }
+
+  try {
+    const connection = await getWooCommerceConnection(user.id, requestedStoreUrl, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      sendJson(res, 404, { error: "WooCommerce is not connected for this account." });
+      return;
+    }
+    await saveWooCommerceImportSettings(
+      user.id,
+      connection.shop_domain,
+      selectedStatuses,
+      autoRefreshEnabled
+    );
+    sendJson(res, 200, {
+      storeUrl: connection.shop_domain,
+      settings: {
+        selectedStatuses,
+        autoRefreshEnabled,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error.message || "Failed to save WooCommerce settings." });
+  }
+}
+
 async function handleWooCommerceImportOrders(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -7835,28 +8533,61 @@ async function handleWooCommerceImportOrders(req, res) {
   }
 
   const requestedStoreUrl = normalizeWooCommerceStoreUrl(body?.storeUrl);
+  const requestedStatuses = normalizeWooCommerceImportStatuses(body?.selectedStatuses);
   const limit = Number(body?.limit);
   let resolvedStoreUrl = requestedStoreUrl;
 
   try {
-    const connection = await getWooCommerceConnection(user.id, requestedStoreUrl);
+    let connection = null;
+    let settings = {
+      selectedStatuses: [...DEFAULT_WOOCOMMERCE_IMPORT_STATUSES],
+      autoRefreshEnabled: false,
+    };
+    try {
+      connection = await getWooCommerceConnection(user.id, requestedStoreUrl, {
+        includeSettings: true,
+      });
+      if (connection) {
+        settings = getWooCommerceImportSettings(connection.import_settings);
+      }
+    } catch (error) {
+      if (error?.code !== "missing_import_settings_column") {
+        throw error;
+      }
+      connection = await getWooCommerceConnection(user.id, requestedStoreUrl);
+    }
     if (!connection) {
       sendJson(res, 404, { error: "WooCommerce is not connected for this account." });
       return;
     }
     resolvedStoreUrl = String(connection.shop_domain || requestedStoreUrl || "").trim();
     const credentials = parseWooCommerceCredentials(connection.access_token);
-    const orders = await fetchWooCommerceOrders(
-      connection.shop_domain,
-      credentials.consumerKey,
-      credentials.consumerSecret,
-      limit
-    );
-    const rows = mapWooCommerceOrdersToCsvRows(orders);
+    const selectedStatuses = requestedStatuses.length
+      ? requestedStatuses
+      : settings.selectedStatuses;
+    const [orders, senderOrigin] = await Promise.all([
+      fetchWooCommerceOrders(
+        connection.shop_domain,
+        credentials.consumerKey,
+        credentials.consumerSecret,
+        limit,
+        selectedStatuses
+      ),
+      fetchWooCommerceStoreSenderOrigin(
+        connection.shop_domain,
+        credentials.consumerKey,
+        credentials.consumerSecret
+      ).catch(() => null),
+    ]);
+    const rows = mapWooCommerceOrdersToCsvRows(orders, senderOrigin, selectedStatuses);
     sendJson(res, 200, {
       storeUrl: connection.shop_domain,
       count: rows.length,
       rows,
+      settings: {
+        selectedStatuses,
+        autoRefreshEnabled: settings.autoRefreshEnabled,
+      },
     });
   } catch (error) {
     if (error?.code === "token_decrypt_failed") {
@@ -7877,6 +8608,10 @@ async function handleWooCommerceImportOrders(req, res) {
             ? "WooCommerce API endpoint was not found for this store. Open WooCommerce settings and reconnect with the correct URL."
             : "WooCommerce credentials expired or were rejected. Reconnect WooCommerce and try again.",
       });
+      return;
+    }
+    if (error?.code === "missing_import_settings_column") {
+      sendJson(res, 500, { error: error.message });
       return;
     }
     sendJson(res, 500, { error: error.message || "WooCommerce import failed." });
@@ -7940,14 +8675,10 @@ async function handleShopifySettingsGet(req, res, requestUrl) {
       sendJson(res, 404, { error: "Shopify is not connected for this account." });
       return;
     }
-    const selectedLocationIds = getSelectedLocationIdsFromImportSettings(
-      connection.import_settings
-    );
+    const settings = getShopifyImportSettings(connection.import_settings);
     sendJson(res, 200, {
       shop: connection.shop_domain,
-      settings: {
-        selectedLocationIds,
-      },
+      settings,
     });
   } catch (error) {
     if (error?.code === "missing_import_settings_column") {
@@ -7975,6 +8706,9 @@ async function handleShopifySettingsPost(req, res) {
 
   const requestedShop = normalizeShopDomain(body?.shop);
   const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
+  const financialStatus =
+    normalizeShopifyFinancialStatus(body?.financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
+  const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
   if (!selectedLocationIds.length) {
     sendJson(res, 400, { error: "Select at least one fulfillment location." });
     return;
@@ -7988,11 +8722,19 @@ async function handleShopifySettingsPost(req, res) {
       sendJson(res, 404, { error: "Shopify is not connected for this account." });
       return;
     }
-    await saveShopifyImportSettings(user.id, connection.shop_domain, selectedLocationIds);
+    await saveShopifyImportSettings(
+      user.id,
+      connection.shop_domain,
+      selectedLocationIds,
+      financialStatus,
+      autoRefreshEnabled
+    );
     sendJson(res, 200, {
       shop: connection.shop_domain,
       settings: {
         selectedLocationIds,
+        financialStatus,
+        autoRefreshEnabled,
       },
     });
   } catch (error) {
@@ -8020,6 +8762,7 @@ async function handleShopifyImportOrders(req, res) {
 
   const requestedShop = normalizeShopDomain(body?.shop);
   const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
+  const requestedFinancialStatus = normalizeShopifyFinancialStatus(body?.financialStatus);
   const limit = Number(body?.limit);
   let resolvedShop = requestedShop;
 
@@ -8034,9 +8777,8 @@ async function handleShopifyImportOrders(req, res) {
     resolvedShop = String(connection.shop_domain || resolvedShop || "").trim();
     const accessToken = decryptToken(connection.access_token);
     const locations = await fetchShopifyLocations(connection.shop_domain, accessToken);
-    const savedSelectedLocationIds = getSelectedLocationIdsFromImportSettings(
-      connection.import_settings
-    );
+    const savedSettings = getShopifyImportSettings(connection.import_settings);
+    const savedSelectedLocationIds = savedSettings.selectedLocationIds;
     let resolvedSelectedLocationIds = selectedLocationIds.length
       ? selectedLocationIds
       : savedSelectedLocationIds;
@@ -8044,7 +8786,13 @@ async function handleShopifyImportOrders(req, res) {
       resolvedSelectedLocationIds = locations.map((location) => location.id);
     }
     const locationById = indexLocationsById(locations);
-    const orders = await fetchShopifyOrders(connection.shop_domain, accessToken, limit);
+    const resolvedFinancialStatus = requestedFinancialStatus || savedSettings.financialStatus;
+    const orders = await fetchShopifyOrders(
+      connection.shop_domain,
+      accessToken,
+      limit,
+      resolvedFinancialStatus
+    );
     const rows = mapShopifyOrdersToCsvRows(orders, {
       locationById,
       selectedLocationIds: resolvedSelectedLocationIds,
@@ -8052,6 +8800,11 @@ async function handleShopifyImportOrders(req, res) {
     sendJson(res, 200, {
       shop: connection.shop_domain,
       count: rows.length,
+      settings: {
+        selectedLocationIds: savedSettings.selectedLocationIds,
+        financialStatus: savedSettings.financialStatus,
+        autoRefreshEnabled: savedSettings.autoRefreshEnabled,
+      },
       rows,
     });
   } catch (error) {
@@ -8246,6 +8999,18 @@ async function handleApi(req, res, requestUrl) {
     await handleShopifyConnection(req, res);
     return true;
   }
+  if (pathname === "/api/wix/install-link" && req.method === "POST") {
+    await handleWixInstallLink(req, res);
+    return true;
+  }
+  if (pathname === "/api/wix/connection" && req.method === "GET") {
+    await handleWixConnection(req, res);
+    return true;
+  }
+  if (pathname === "/api/wix/link-instance" && req.method === "POST") {
+    await handleWixLinkInstance(req, res);
+    return true;
+  }
   if (pathname === "/api/woocommerce/install-link" && req.method === "POST") {
     await handleWooCommerceInstallLink(req, res);
     return true;
@@ -8256,6 +9021,20 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/woocommerce/connection" && req.method === "GET") {
     await handleWooCommerceConnection(req, res);
+    return true;
+  }
+  if (
+    (pathname === "/api/woocommerce/settings" || pathname === "/api/woocommerce/setting") &&
+    req.method === "GET"
+  ) {
+    await handleWooCommerceSettingsGet(req, res, requestUrl);
+    return true;
+  }
+  if (
+    (pathname === "/api/woocommerce/settings" || pathname === "/api/woocommerce/setting") &&
+    req.method === "POST"
+  ) {
+    await handleWooCommerceSettingsPost(req, res);
     return true;
   }
   if (pathname === "/api/woocommerce/import-orders" && req.method === "POST") {
