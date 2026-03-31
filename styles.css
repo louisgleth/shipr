@@ -1580,121 +1580,194 @@ body {
 
 .portal-footer {
   margin-top: 56px;
-  padding-top: 28px;
-  border-top: 1px solid var(--stroke);
+  padding: 32px 32px 32px 32px;
+  background: var(--primary);
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(180px, 0.8fr) minmax(220px, 0.95fr);
-  gap: 40px;
-  align-items: start;
+  gap: 64px;
+  overflow: hidden;
 }
 
-.portal-footer-column {
+.portal-footer-main {
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(100px, auto) minmax(280px, 400px) minmax(280px, 400px);
+  justify-content: space-between;
+  align-items: start;
+  gap: 32px;
+  width: 100%;
+}
+
+.portal-footer-logo-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 100px;
+}
+
+.portal-footer-logo-lottie {
+  width: 100px;
+  height: 38px;
+  display: block;
+  overflow: hidden;
+  opacity: 0.98;
+  pointer-events: none;
+  contain: layout paint size;
+}
+
+.portal-footer-logo-lottie svg,
+.portal-footer-logo-lottie * {
+  pointer-events: none;
+}
+
+.portal-footer-contact {
+  width: 100%;
+  max-width: 400px;
+  display: grid;
+  gap: 20px;
   align-content: start;
+  justify-items: start;
+}
+
+.portal-footer-contact-copy {
+  display: grid;
+  gap: 10px;
+  width: 100%;
 }
 
 .portal-footer-title {
   margin: 0;
-  font-family: var(--font-primary);
-  font-weight: 300;
-  font-size: 16px;
-  line-height: 1.15;
-  letter-spacing: var(--letter-tight);
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1.3;
+  letter-spacing: -0.03em;
   color: var(--text);
-}
-
-.portal-footer-copy,
-.portal-footer-links a,
-.portal-footer-meta,
-.portal-footer-meta a,
-.portal-footer-copyright {
-  font-family: var(--font-primary);
-  font-weight: 300;
-  letter-spacing: var(--letter-tight);
 }
 
 .portal-footer-copy {
   margin: 0;
-  max-width: 320px;
-  font-size: var(--fs-xs);
+  max-width: 100%;
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  font-size: 14px;
   line-height: 1.4;
-  color: var(--muted);
-}
-
-.portal-footer-form {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.portal-footer-input-shell {
-  flex: 1 1 260px;
-  min-width: 0;
-}
-
-.portal-footer-input {
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background: transparent;
+  letter-spacing: -0.02em;
   color: var(--text);
-  font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 300;
-  letter-spacing: var(--letter-tight);
-  padding: 0 12px;
-  outline: none;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
-}
-
-.portal-footer-input::placeholder {
-  color: rgba(154, 163, 178, 0.88);
-}
-
-.portal-footer-input:focus {
-  border-color: rgba(119, 71, 227, 0.7);
-  background: rgba(13, 17, 26, 0.44);
 }
 
 .portal-footer-submit {
-  min-width: 96px;
+  appearance: none;
+  min-width: 100px;
+  height: 31px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 3px;
+  background: rgb(51, 51, 51);
+  color: var(--text);
+  font-family: Inter, "Inter", sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
 }
 
-.portal-footer-links {
+.portal-footer-submit:hover {
+  background: rgb(62, 62, 62);
+  transform: translateY(-1px);
+}
+
+.portal-footer-submit:focus-visible {
+  outline: 2px solid rgba(119, 71, 227, 0.85);
+  outline-offset: 2px;
+}
+
+.portal-footer-side {
+  width: 100%;
+  max-width: 400px;
   display: grid;
+  gap: 30px;
+  align-content: start;
+}
+
+.portal-footer-group {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.portal-footer-label {
+  display: inline-flex;
+  align-items: center;
   gap: 10px;
 }
 
+.portal-footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background: var(--accent);
+  flex: 0 0 6px;
+}
+
+.portal-footer-kicker {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.portal-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+}
+
 .portal-footer-links a,
-.portal-footer-meta a {
+.portal-footer-email a {
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  letter-spacing: -0.02em;
   color: var(--text);
   text-decoration: none;
-  font-size: var(--fs-xs);
-  line-height: 1.3;
+  font-size: 14px;
+  line-height: 1.4;
   transition: color 0.18s ease, opacity 0.18s ease;
 }
 
 .portal-footer-links a:hover,
-.portal-footer-meta a:hover {
+.portal-footer-email a:hover {
   color: var(--accent);
 }
 
-.portal-footer-meta {
+.portal-footer-email {
   display: grid;
-  gap: 10px;
-  font-size: var(--fs-xs);
-  line-height: 1.3;
-  color: var(--muted);
+  gap: 16px;
+}
+
+.portal-footer-email a {
+  font-size: 16px;
 }
 
 .portal-footer-copyright {
-  margin-top: 8px;
-  font-size: var(--fs-2xs);
-  line-height: 1.35;
-  color: var(--muted);
+  margin: 0;
+  opacity: 0.15;
+  font-family: "Creato Display Regular", var(--font-primary);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.portal-footer-bottom {
+  display: grid;
+  gap: 4px;
 }
 
 .account-page {
@@ -8319,11 +8392,16 @@ input.is-invalid {
 
 @media (max-width: 980px) {
   .portal-footer {
-    grid-template-columns: 1fr;
-    gap: 26px;
+    gap: 48px;
   }
 
-  .portal-footer-copy {
+  .portal-footer-main {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .portal-footer-contact,
+  .portal-footer-side {
     max-width: none;
   }
 
@@ -8532,19 +8610,22 @@ input.is-invalid {
 @media (max-width: 720px) {
   .portal-footer {
     margin-top: 44px;
-    padding-top: 22px;
+    padding: 32px 16px 16px 16px;
+    gap: 40px;
   }
 
-  .portal-footer-form {
-    align-items: stretch;
+  .portal-footer-main {
+    gap: 28px;
   }
 
-  .portal-footer-input-shell {
-    flex-basis: 100%;
+  .portal-footer-title {
+    font-size: 28px;
   }
 
-  .portal-footer-submit {
-    width: 100%;
+  .portal-footer-links {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
   }
 
   .account-overview-bento {

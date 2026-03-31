@@ -1926,42 +1926,47 @@
       </section>
 
       <footer class="portal-footer" aria-label="Portal footer">
-        <div class="portal-footer-column portal-footer-contact">
-          <h3 class="portal-footer-title">Contact us</h3>
-          <p class="portal-footer-copy">Leave us your email and we'll reach out asap.</p>
-          <form class="portal-footer-form" id="portalFooterForm">
-            <label class="portal-footer-input-shell" for="portalFooterEmail">
-              <span class="sr-only">Contact email</span>
-              <input
-                type="email"
-                id="portalFooterEmail"
-                class="portal-footer-input"
-                autocomplete="email"
-                placeholder="your@email.com"
-              />
-            </label>
-            <button type="submit" class="btn btn-secondary btn-sm portal-footer-submit" id="portalFooterSubmit">
-              <span>Submit</span>
-            </button>
-          </form>
-        </div>
-
-        <div class="portal-footer-column">
-          <h3 class="portal-footer-title">Sitemap</h3>
-          <nav class="portal-footer-links" aria-label="Website footer sitemap">
-            <a href="https://shipide.com/" target="_blank" rel="noreferrer">Home</a>
-            <a href="https://shipide.com/team" target="_blank" rel="noreferrer">The Team</a>
-            <a href="https://www.linkedin.com/company/shipide/" target="_blank" rel="noreferrer">LinkedIn</a>
-          </nav>
-        </div>
-
-        <div class="portal-footer-column portal-footer-info">
-          <h3 class="portal-footer-title">Information</h3>
-          <div class="portal-footer-meta">
-            <a href="mailto:hello@shipide.com">hello@shipide.com</a>
-            <span>38 Rue de l'Ebene, 1000 Bruxelles</span>
+        <div class="portal-footer-main">
+          <div class="portal-footer-logo-wrap">
+            <div class="portal-footer-logo-lottie" id="portalFooterLogoLottie" aria-label="Shipide logo"></div>
           </div>
-          <div class="portal-footer-copyright">©2025 Shipide All Rights Reserved</div>
+
+          <div class="portal-footer-contact">
+            <div class="portal-footer-contact-copy">
+              <h3 class="portal-footer-title">Contact us</h3>
+              <p class="portal-footer-copy">Leave us your email and we'll reach out asap.</p>
+            </div>
+            <button type="button" class="portal-footer-submit" id="portalFooterSubmit">Submit</button>
+          </div>
+
+          <div class="portal-footer-side">
+            <section class="portal-footer-group" aria-label="Sitemap">
+              <div class="portal-footer-label">
+                <span class="portal-footer-dot" aria-hidden="true"></span>
+                <span class="portal-footer-kicker">Sitemap</span>
+              </div>
+              <nav class="portal-footer-links" aria-label="Website footer sitemap">
+                <a href="https://shipide.com/" target="_blank" rel="noreferrer">Home</a>
+                <a href="https://shipide.com/team" target="_blank" rel="noreferrer">The Team</a>
+                <a href="https://shipide.com/privacy-policy" target="_blank" rel="noreferrer">Privacy Policy</a>
+                <a href="https://www.linkedin.com/company/shipide/" target="_blank" rel="noreferrer">LinkedIn</a>
+              </nav>
+            </section>
+
+            <section class="portal-footer-group" aria-label="Email">
+              <div class="portal-footer-label">
+                <span class="portal-footer-dot" aria-hidden="true"></span>
+                <span class="portal-footer-kicker">Email</span>
+              </div>
+              <div class="portal-footer-email">
+                <a href="mailto:hello@shipide.com">hello@shipide.com</a>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="portal-footer-bottom">
+          <div class="portal-footer-copyright">©2026 Shipide All Rights Reserved</div>
         </div>
       </footer>
     </div>

@@ -1599,8 +1599,8 @@ const openAdminPageButton = document.getElementById("openAdminPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
-const portalFooterForm = document.getElementById("portalFooterForm");
-const portalFooterEmail = document.getElementById("portalFooterEmail");
+const portalFooterLogoLottie = document.getElementById("portalFooterLogoLottie");
+const portalFooterSubmitButton = document.getElementById("portalFooterSubmit");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeLeadsPageButton = document.getElementById("closeLeadsPage");
@@ -18520,39 +18520,28 @@ function parseCsvText(text) {
 }
 
 function initializePortalFooter() {
-  if (!portalFooterForm || !portalFooterEmail || portalFooterForm.dataset.bound === "true") {
-    if (portalFooterEmail && !portalFooterEmail.value && currentUser?.email) {
-      portalFooterEmail.value = String(currentUser.email).trim().toLowerCase();
-    }
+  if (
+    portalFooterLogoLottie &&
+    portalFooterLogoLottie.dataset.mounted !== "true" &&
+    window.lottie
+  ) {
+    portalFooterLogoLottie.dataset.mounted = "true";
+    void mountFlowLogoAnimation(portalFooterLogoLottie);
+  }
+
+  if (!portalFooterSubmitButton || portalFooterSubmitButton.dataset.bound === "true") {
     return;
   }
 
-  if (currentUser?.email && !portalFooterEmail.value) {
-    portalFooterEmail.value = String(currentUser.email).trim().toLowerCase();
-  }
-
-  portalFooterForm.dataset.bound = "true";
-  portalFooterForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const email = String(portalFooterEmail.value || currentUser?.email || "")
+  portalFooterSubmitButton.dataset.bound = "true";
+  portalFooterSubmitButton.addEventListener("click", () => {
+    const email = String(currentUser?.email || "")
       .trim()
       .toLowerCase();
 
-    if (!email) {
-      showToast("Add your email and we’ll open a draft.", { tone: "error" });
-      portalFooterEmail.focus();
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showToast("Please enter a valid email address.", { tone: "error" });
-      portalFooterEmail.focus();
-      return;
-    }
-
     const subject = encodeURIComponent("Shipide portal inquiry");
     const body = encodeURIComponent(
-      `Hello Shipide,\n\nI’d like to get in touch.\n\nMy email: ${email}\n`
+      `Hello Shipide,\n\nI’d like to get in touch.\n${email ? `\nMy email: ${email}\n` : "\n"}`
     );
 
     window.location.href = `mailto:hello@shipide.com?subject=${subject}&body=${body}`;
