@@ -1599,6 +1599,8 @@ const openAdminPageButton = document.getElementById("openAdminPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
+const portalFooterForm = document.getElementById("portalFooterForm");
+const portalFooterEmail = document.getElementById("portalFooterEmail");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeLeadsPageButton = document.getElementById("closeLeadsPage");
@@ -13273,6 +13275,7 @@ function setAuthView(session, options = {}) {
   const isRecoveryRoute = route.view === "recovery";
   const isAppAuthed = Boolean(currentUser) && !isRecoveryRoute;
   renderAccountProfile(currentUser);
+  initializePortalFooter();
   if (isAppAuthed) {
     adminAccessAllowed = getCachedAdminAccess(currentUser?.id);
     adminAccessStatusRequestId += 1;
@@ -18516,6 +18519,47 @@ function parseCsvText(text) {
   return buildCsvRowsFromAnalysis(analysis, analysis.autoColumnIndices);
 }
 
+function initializePortalFooter() {
+  if (!portalFooterForm || !portalFooterEmail || portalFooterForm.dataset.bound === "true") {
+    if (portalFooterEmail && !portalFooterEmail.value && currentUser?.email) {
+      portalFooterEmail.value = String(currentUser.email).trim().toLowerCase();
+    }
+    return;
+  }
+
+  if (currentUser?.email && !portalFooterEmail.value) {
+    portalFooterEmail.value = String(currentUser.email).trim().toLowerCase();
+  }
+
+  portalFooterForm.dataset.bound = "true";
+  portalFooterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const email = String(portalFooterEmail.value || currentUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      showToast("Add your email and we’ll open a draft.", { tone: "error" });
+      portalFooterEmail.focus();
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast("Please enter a valid email address.", { tone: "error" });
+      portalFooterEmail.focus();
+      return;
+    }
+
+    const subject = encodeURIComponent("Shipide portal inquiry");
+    const body = encodeURIComponent(
+      `Hello Shipide,\n\nI’d like to get in touch.\n\nMy email: ${email}\n`
+    );
+
+    window.location.href = `mailto:hello@shipide.com?subject=${subject}&body=${body}`;
+    showToast("Opening your mail app.", { tone: "success" });
+  });
+}
+
 if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   ensureIdentifiers();
   state.quantity = Number(quantityInput.value) || 1;
@@ -18653,6 +18697,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   resetWarehouseState();
   initializeAuthLogo();
   initializeAppLogo();
+  initializePortalFooter();
   initializeAuthBackground();
   void setLanguage(resolvePreferredLanguage(null), { persist: false });
   initializeAuth();
