@@ -541,16 +541,37 @@ function consumeOauthState(state, shop) {
   return stored;
 }
 
-function getTokenCipherKey() {
-  const secretSource = SHOPIFY_TOKEN_ENCRYPTION_KEY || SHOPIFY_API_SECRET;
-  if (!secretSource) {
+function getTokenSecretCandidates() {
+  const candidates = [SHOPIFY_TOKEN_ENCRYPTION_KEY, SHOPIFY_API_SECRET]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const unique = [];
+  candidates.forEach((candidate) => {
+    if (!unique.includes(candidate)) {
+      unique.push(candidate);
+    }
+  });
+  if (!unique.length) {
     throw new Error("Token encryption key is not configured.");
   }
-  return crypto.createHash("sha256").update(secretSource).digest();
+  return unique;
+}
+
+function getPrimaryTokenCipherKey() {
+  return crypto.createHash("sha256").update(getTokenSecretCandidates()[0]).digest();
+}
+
+function createTokenDecryptError() {
+  const error = new Error(
+    "Stored Shopify connection could not be decrypted. Reconnect Shopify and try again."
+  );
+  error.code = "token_decrypt_failed";
+  error.status = 409;
+  return error;
 }
 
 function encryptToken(plainToken) {
-  const key = getTokenCipherKey();
+  const key = getPrimaryTokenCipherKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(String(plainToken || ""), "utf8"), cipher.final()]);
@@ -566,18 +587,49 @@ function decryptToken(token) {
     return raw;
   }
   const parts = raw.split(":");
-  if (parts.length !== 4) {
-    throw new Error("Invalid encrypted token format.");
+  const candidateKeys = getTokenSecretCandidates().map((secret) =>
+    crypto.createHash("sha256").update(secret).digest()
+  );
+
+  if (parts.length === 4) {
+    const [, ivEncoded, tagEncoded, payloadEncoded] = parts;
+    const iv = Buffer.from(ivEncoded, "base64url");
+    const tag = Buffer.from(tagEncoded, "base64url");
+    const payload = Buffer.from(payloadEncoded, "base64url");
+
+    for (const key of candidateKeys) {
+      try {
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+        decipher.setAuthTag(tag);
+        const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
+        return decrypted.toString("utf8");
+      } catch {}
+    }
+    throw createTokenDecryptError();
   }
-  const [, ivEncoded, tagEncoded, payloadEncoded] = parts;
-  const key = getTokenCipherKey();
-  const iv = Buffer.from(ivEncoded, "base64url");
-  const tag = Buffer.from(tagEncoded, "base64url");
-  const payload = Buffer.from(payloadEncoded, "base64url");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(tag);
-  const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
-  return decrypted.toString("utf8");
+
+  if (parts.length === 3) {
+    const [, ivEncoded, encryptedEncoded] = parts;
+    const iv = Buffer.from(ivEncoded, "base64url");
+    const encrypted = Buffer.from(encryptedEncoded, "base64url");
+    if (encrypted.length < 17) {
+      throw createTokenDecryptError();
+    }
+    const payload = encrypted.subarray(0, encrypted.length - 16);
+    const tag = encrypted.subarray(encrypted.length - 16);
+
+    for (const key of candidateKeys) {
+      try {
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+        decipher.setAuthTag(tag);
+        const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
+        return decrypted.toString("utf8");
+      } catch {}
+    }
+    throw createTokenDecryptError();
+  }
+
+  throw createTokenDecryptError();
 }
 
 async function supabaseServiceRequest(pathnameWithQuery, options = {}) {
@@ -7345,6 +7397,12 @@ async function handleShopifyLocations(req, res, requestUrl) {
       locations,
     });
   } catch (error) {
+    if (error?.code === "token_decrypt_failed") {
+      sendJson(res, 409, {
+        error: "Stored Shopify connection could not be decrypted. Reconnect Shopify and try again.",
+      });
+      return;
+    }
     if (error?.status === 401 && resolvedShop) {
       await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
       sendJson(res, 409, {
@@ -7487,6 +7545,12 @@ async function handleShopifyImportOrders(req, res) {
       rows,
     });
   } catch (error) {
+    if (error?.code === "token_decrypt_failed") {
+      sendJson(res, 409, {
+        error: "Stored Shopify connection could not be decrypted. Reconnect Shopify and try again.",
+      });
+      return;
+    }
     if (error?.status === 401 && resolvedShop) {
       await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
       sendJson(res, 409, {
@@ -7551,6 +7615,12 @@ async function handleShopifyDevSeedOrders(req, res) {
       orders: createdOrders,
     });
   } catch (error) {
+    if (error?.code === "token_decrypt_failed") {
+      sendJson(res, 409, {
+        error: "Stored Shopify connection could not be decrypted. Reconnect Shopify and try again.",
+      });
+      return;
+    }
     if (error?.status === 401 && resolvedShop) {
       await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
       sendJson(res, 409, {
