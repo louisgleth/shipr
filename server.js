@@ -25,6 +25,7 @@ const SHOPIFY_SCOPES = String(
   .split(",")
   .map((scope) => scope.trim())
   .filter(Boolean);
+const WOOCOMMERCE_APP_NAME = String(process.env.WOOCOMMERCE_APP_NAME || "Shipide").trim() || "Shipide";
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL || "https://pxcqxubehvnyaubqjcrf.supabase.co"
 ).replace(/\/+$/, "");
@@ -438,7 +439,9 @@ function normalizeWooCommerceStoreUrl(value) {
   if (!/^https?:$/i.test(parsed.protocol)) return "";
   if (!parsed.hostname || parsed.username || parsed.password) return "";
   const pathname = parsed.pathname.replace(/\/+$/, "");
-  const storePath = pathname.replace(/\/wp-json(?:\/wc\/v3)?$/i, "");
+  const storePath = pathname
+    .replace(/\/wp-json(?:\/wc\/v3)?$/i, "")
+    .replace(/\/wc-auth\/v1\/authorize$/i, "");
   return `${parsed.origin}${storePath === "/" ? "" : storePath}`;
 }
 
@@ -556,6 +559,53 @@ function consumeOauthState(state, shop) {
   if (Date.now() - stored.createdAt > OAUTH_STATE_TTL_MS) return null;
   if (stored.shop !== shop) return null;
   return stored;
+}
+
+function getOauthStateSecret() {
+  return String(
+    process.env.OAUTH_STATE_SECRET
+      || SHOPIFY_API_SECRET
+      || SHOPIFY_TOKEN_ENCRYPTION_KEY
+      || SUPABASE_SERVICE_ROLE_KEY
+      || ""
+  ).trim();
+}
+
+function makeSignedStateToken(payload, ttlMs = OAUTH_STATE_TTL_MS) {
+  const secret = getOauthStateSecret();
+  if (!secret) {
+    throw new Error("OAUTH_STATE_SECRET is not configured.");
+  }
+  const tokenPayload = {
+    ...payload,
+    nonce: crypto.randomBytes(12).toString("base64url"),
+    exp: Date.now() + Math.max(60 * 1000, Number(ttlMs) || OAUTH_STATE_TTL_MS),
+  };
+  const encoded = Buffer.from(JSON.stringify(tokenPayload), "utf8").toString("base64url");
+  const signature = hmacSha256Hex(secret, encoded);
+  return `${encoded}.${signature}`;
+}
+
+function parseSignedStateToken(token) {
+  const secret = getOauthStateSecret();
+  if (!secret) {
+    throw new Error("OAUTH_STATE_SECRET is not configured.");
+  }
+  const [encoded = "", signature = ""] = String(token || "").split(".");
+  if (!encoded || !signature) return null;
+  const expected = hmacSha256Hex(secret, encoded);
+  const receivedBuffer = Buffer.from(signature, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  if (receivedBuffer.length !== expectedBuffer.length) return null;
+  if (!crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!payload || typeof payload !== "object") return null;
+    if (!payload.exp || Date.now() > Number(payload.exp)) return null;
+    return payload;
+  } catch (_error) {
+    return null;
+  }
 }
 
 function getTokenSecretCandidates() {
@@ -7612,7 +7662,7 @@ async function handleShopifyConnection(req, res) {
   }
 }
 
-async function handleWooCommerceConnect(req, res) {
+async function handleWooCommerceInstallLink(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
     sendJson(res, 401, { error: "Authentication required." });
@@ -7628,38 +7678,107 @@ async function handleWooCommerceConnect(req, res) {
   }
 
   const storeUrl = normalizeWooCommerceStoreUrl(body?.storeUrl);
-  const consumerKey = String(body?.consumerKey || "").trim();
-  const consumerSecret = String(body?.consumerSecret || "").trim();
-
   if (!storeUrl) {
     sendJson(res, 400, { error: "Enter a valid WooCommerce store URL." });
     return;
   }
-  if (!consumerKey) {
-    sendJson(res, 400, { error: "WooCommerce consumer key is required." });
+  const publicBaseUrl = buildPublicBaseUrl(req);
+  if (!/^https:\/\//i.test(publicBaseUrl)) {
+    sendJson(res, 400, {
+      error:
+        "WooCommerce authorization requires Shipide to be served over HTTPS. Use the deployed portal URL for this flow.",
+    });
     return;
   }
-  if (!consumerSecret) {
-    sendJson(res, 400, { error: "WooCommerce consumer secret is required." });
+
+  try {
+    const stateToken = makeSignedStateToken({
+      type: "woocommerce_auth",
+      userId: user.id,
+      storeUrl,
+    });
+    const installUrl = new URL(`${storeUrl.replace(/\/+$/, "")}/wc-auth/v1/authorize`);
+    const callbackUrl = new URL("/api/woocommerce/callback", publicBaseUrl);
+    callbackUrl.searchParams.set("state", stateToken);
+    installUrl.searchParams.set("app_name", WOOCOMMERCE_APP_NAME);
+    installUrl.searchParams.set("scope", "read");
+    installUrl.searchParams.set("user_id", stateToken);
+    installUrl.searchParams.set(
+      "return_url",
+      getCallbackRedirect(req, {
+        provider: "woocommerce",
+        store: storeUrl,
+      })
+    );
+    installUrl.searchParams.set("callback_url", callbackUrl.toString());
+
+    sendJson(res, 200, {
+      url: installUrl.toString(),
+      storeUrl,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not start WooCommerce connect flow." });
+  }
+}
+
+async function handleWooCommerceCallback(req, res, requestUrl) {
+  const stateToken = String(requestUrl.searchParams.get("state") || "").trim();
+  const statePayload = parseSignedStateToken(stateToken);
+  if (
+    !statePayload?.userId ||
+    statePayload.type !== "woocommerce_auth" ||
+    !normalizeWooCommerceStoreUrl(statePayload.storeUrl)
+  ) {
+    sendJson(res, 400, { error: "WooCommerce authorization session expired. Start again." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid WooCommerce callback payload." });
+    return;
+  }
+
+  const callbackUserId = String(body?.user_id || "").trim();
+  const consumerKey = String(body?.consumer_key || "").trim();
+  const consumerSecret = String(body?.consumer_secret || "").trim();
+  const keyPermissions = String(body?.key_permissions || "").trim().toLowerCase();
+  const storeUrl = normalizeWooCommerceStoreUrl(statePayload.storeUrl);
+
+  if (!consumerKey || !consumerSecret) {
+    sendJson(res, 400, { error: "WooCommerce callback did not include API keys." });
+    return;
+  }
+  if (callbackUserId && callbackUserId !== stateToken) {
+    sendJson(res, 400, { error: "WooCommerce callback did not match the authorization request." });
+    return;
+  }
+  if (keyPermissions && !/read/.test(keyPermissions)) {
+    sendJson(res, 400, {
+      error: "WooCommerce granted write-only permissions. Shipide needs read or read_write access.",
+    });
     return;
   }
 
   try {
     await fetchWooCommerceOrders(storeUrl, consumerKey, consumerSecret, 1);
-    await upsertWooCommerceConnection(user.id, storeUrl, consumerKey, consumerSecret);
+    await upsertWooCommerceConnection(
+      statePayload.userId,
+      storeUrl,
+      consumerKey,
+      consumerSecret
+    );
     sendJson(res, 200, {
-      connected: true,
-      connection: {
-        storeUrl,
-        status: "connected",
-        connectedAt: new Date().toISOString(),
-      },
+      ok: true,
+      storeUrl,
     });
   } catch (error) {
     if (error?.code === "woocommerce_auth_invalid") {
       sendJson(res, 400, {
         error:
-          "WooCommerce credentials were rejected. Double-check the consumer key, consumer secret, and store URL.",
+          "WooCommerce credentials were rejected. Double-check the store URL and try authorizing again.",
       });
       return;
     }
@@ -7670,7 +7789,7 @@ async function handleWooCommerceConnect(req, res) {
       });
       return;
     }
-    sendJson(res, 500, { error: error.message || "Could not connect WooCommerce." });
+    sendJson(res, 500, { error: error.message || "Could not finalize WooCommerce connection." });
   }
 }
 
@@ -8127,8 +8246,12 @@ async function handleApi(req, res, requestUrl) {
     await handleShopifyConnection(req, res);
     return true;
   }
-  if (pathname === "/api/woocommerce/connect" && req.method === "POST") {
-    await handleWooCommerceConnect(req, res);
+  if (pathname === "/api/woocommerce/install-link" && req.method === "POST") {
+    await handleWooCommerceInstallLink(req, res);
+    return true;
+  }
+  if (pathname === "/api/woocommerce/callback" && req.method === "POST") {
+    await handleWooCommerceCallback(req, res, requestUrl);
     return true;
   }
   if (pathname === "/api/woocommerce/connection" && req.method === "GET") {

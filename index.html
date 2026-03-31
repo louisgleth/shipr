@@ -2024,7 +2024,7 @@
         <div class="shopify-settings-body provider-credentials-body">
           <h3>Connect WooCommerce</h3>
           <p class="shopify-settings-note">
-            Enter your store URL plus a WooCommerce REST API consumer key and secret. Credentials are stored server-side and used only to import orders.
+            Enter your store URL and we’ll redirect you to WordPress/WooCommerce so you can approve access there.
           </p>
           <div class="provider-connection-summary" id="woocommerceConnectionSummary">
             Not connected yet.
@@ -2040,28 +2040,6 @@
                 spellcheck="false"
               />
             </label>
-            <label class="field">
-              <span>Consumer Key</span>
-              <input
-                type="text"
-                id="woocommerceConsumerKey"
-                placeholder="ck_..."
-                autocomplete="off"
-                autocapitalize="off"
-                spellcheck="false"
-              />
-            </label>
-            <label class="field">
-              <span>Consumer Secret</span>
-              <input
-                type="password"
-                id="woocommerceConsumerSecret"
-                placeholder="cs_..."
-                autocomplete="new-password"
-                autocapitalize="off"
-                spellcheck="false"
-              />
-            </label>
           </div>
           <div class="provider-status shopify-settings-status" id="woocommerceSettingsStatus"></div>
           <div class="panel-actions">
@@ -2070,7 +2048,7 @@
               <span>Close</span>
             </button>
             <button type="button" class="btn btn-primary" id="woocommerceSettingsSave">
-              <span>Connect Store</span>
+              <span>Continue to WooCommerce</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </button>
           </div>

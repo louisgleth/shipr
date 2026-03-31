@@ -1903,8 +1903,6 @@ const woocommerceSettingsSave = document.getElementById("woocommerceSettingsSave
 const woocommerceSettingsStatus = document.getElementById("woocommerceSettingsStatus");
 const woocommerceConnectionSummary = document.getElementById("woocommerceConnectionSummary");
 const woocommerceStoreUrlInput = document.getElementById("woocommerceStoreUrl");
-const woocommerceConsumerKeyInput = document.getElementById("woocommerceConsumerKey");
-const woocommerceConsumerSecretInput = document.getElementById("woocommerceConsumerSecret");
 const shopifySettingsModal = document.getElementById("shopifySettingsModal");
 const shopifySettingsClose = document.getElementById("shopifySettingsClose");
 const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
@@ -3196,19 +3194,21 @@ function getShopifySelectedLocationSummary(locations, selectedIds) {
 }
 
 function getWooCommerceSaveButtonText() {
-  return woocommerceConnection ? tr("Update Connection") : tr("Connect Store");
+  return woocommerceConnection ? tr("Reconnect Store") : tr("Continue to WooCommerce");
 }
 
 function renderWooCommerceConnectionSummary() {
   if (!woocommerceConnectionSummary) return;
   if (woocommerceConnection?.storeUrl) {
     woocommerceConnectionSummary.textContent = tr(
-      "Connected to {store}. Enter a new store URL and credentials below if you want to replace this connection.",
+      "Connected to {store}. Enter a different store URL if you want to reconnect another WooCommerce shop.",
       { store: woocommerceConnection.storeUrl }
     );
     return;
   }
-  woocommerceConnectionSummary.textContent = tr("Not connected yet.");
+  woocommerceConnectionSummary.textContent = tr(
+    "Enter your store URL. We’ll redirect you to WooCommerce so you can approve access there."
+  );
 }
 
 function setWooCommerceSettingsBusy(isBusy) {
@@ -3217,7 +3217,9 @@ function setWooCommerceSettingsBusy(isBusy) {
     woocommerceSettingsSave.disabled = woocommerceSettingsBusy;
     const label = woocommerceSettingsSave.querySelector("span");
     if (label) {
-      label.textContent = woocommerceSettingsBusy ? tr("Saving...") : getWooCommerceSaveButtonText();
+      label.textContent = woocommerceSettingsBusy
+        ? tr("Redirecting...")
+        : getWooCommerceSaveButtonText();
     }
   }
   if (woocommerceSettingsCancel) {
@@ -3226,13 +3228,9 @@ function setWooCommerceSettingsBusy(isBusy) {
   if (woocommerceSettingsClose) {
     woocommerceSettingsClose.disabled = woocommerceSettingsBusy;
   }
-  [woocommerceStoreUrlInput, woocommerceConsumerKeyInput, woocommerceConsumerSecretInput].forEach(
-    (input) => {
-      if (input) {
-        input.disabled = woocommerceSettingsBusy;
-      }
-    }
-  );
+  if (woocommerceStoreUrlInput) {
+    woocommerceStoreUrlInput.disabled = woocommerceSettingsBusy;
+  }
 }
 
 function setShopifySettingsBusy(isBusy) {
@@ -3466,7 +3464,9 @@ function normalizeWooCommerceStoreUrl(value) {
   if (!/^https?:$/i.test(parsed.protocol)) return "";
   if (!parsed.hostname || parsed.username || parsed.password) return "";
   const pathname = parsed.pathname.replace(/\/+$/, "");
-  const storePath = pathname.replace(/\/wp-json(?:\/wc\/v3)?$/i, "");
+  const storePath = pathname
+    .replace(/\/wp-json(?:\/wc\/v3)?$/i, "")
+    .replace(/\/wc-auth\/v1\/authorize$/i, "");
   return `${parsed.origin}${storePath === "/" ? "" : storePath}`;
 }
 
@@ -5252,12 +5252,6 @@ function populateWooCommerceSettingsForm() {
   if (woocommerceStoreUrlInput) {
     woocommerceStoreUrlInput.value = woocommerceConnection?.storeUrl || "";
   }
-  if (woocommerceConsumerKeyInput) {
-    woocommerceConsumerKeyInput.value = "";
-  }
-  if (woocommerceConsumerSecretInput) {
-    woocommerceConsumerSecretInput.value = "";
-  }
   renderWooCommerceConnectionSummary();
   if (!woocommerceSettingsBusy) {
     setWooCommerceSettingsBusy(false);
@@ -5365,6 +5359,58 @@ function consumeShopifyCallbackParams() {
   history.replaceState(history.state, "", cleanUrl);
 }
 
+async function waitForWooCommerceConnection(storeUrl = "", attempts = 6, delayMs = 700) {
+  const normalizedStoreUrl = normalizeWooCommerceStoreUrl(storeUrl);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const connection = await loadWooCommerceConnectionStatus({ quiet: true });
+    if (
+      connection &&
+      (!normalizedStoreUrl || normalizeWooCommerceStoreUrl(connection.storeUrl) === normalizedStoreUrl)
+    ) {
+      return connection;
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
+async function consumeWooCommerceCallbackParams() {
+  const params = new URLSearchParams(window.location.search || "");
+  if (params.get("provider") !== "woocommerce") return;
+
+  const success = String(params.get("success") || "").trim();
+  const storeUrl = normalizeWooCommerceStoreUrl(params.get("store"));
+
+  if (success === "1") {
+    setProviderStatus(tr("WooCommerce authorization complete. Finalizing connection..."), {
+      kind: "success",
+    });
+    const connection = await waitForWooCommerceConnection(storeUrl);
+    if (connection?.storeUrl) {
+      setProviderStatus(
+        tr("WooCommerce connected: {store}.", {
+          store: connection.storeUrl,
+        }),
+        { kind: "success" }
+      );
+    } else {
+      setProviderStatus(
+        tr(
+          "WooCommerce approved the connection, but Shipide has not received the credentials yet. Try again in a few seconds."
+        ),
+        { kind: "error" }
+      );
+    }
+  } else if (success === "0") {
+    setProviderStatus(tr("WooCommerce connection was not approved."), { kind: "error" });
+  }
+
+  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  history.replaceState(history.state, "", cleanUrl);
+}
+
 function mapShopifyImportRows(rows) {
   if (!Array.isArray(rows)) return [];
   return rows
@@ -5444,65 +5490,42 @@ async function openWooCommerceSettingsModal() {
   setWooCommerceSettingsModalOpen(true);
 }
 
-async function saveWooCommerceSettings() {
+async function beginWooCommerceInstall() {
   if (!currentUser?.id) {
-    setWooCommerceSettingsStatus(tr("Sign in before saving WooCommerce settings."), {
+    setWooCommerceSettingsStatus(tr("Sign in before connecting WooCommerce."), {
       kind: "error",
     });
     return;
   }
 
   const storeUrl = normalizeWooCommerceStoreUrl(woocommerceStoreUrlInput?.value);
-  const consumerKey = String(woocommerceConsumerKeyInput?.value || "").trim();
-  const consumerSecret = String(woocommerceConsumerSecretInput?.value || "").trim();
-
   if (!storeUrl) {
     setWooCommerceSettingsStatus(tr("Enter a valid WooCommerce store URL."), {
       kind: "error",
     });
     return;
   }
-  if (!consumerKey) {
-    setWooCommerceSettingsStatus(tr("Enter your WooCommerce consumer key."), {
-      kind: "error",
-    });
-    return;
-  }
-  if (!consumerSecret) {
-    setWooCommerceSettingsStatus(tr("Enter your WooCommerce consumer secret."), {
-      kind: "error",
-    });
-    return;
-  }
 
   setWooCommerceSettingsBusy(true);
-  setWooCommerceSettingsStatus(tr("Validating WooCommerce credentials..."));
+  setWooCommerceSettingsStatus(tr("Preparing WooCommerce authorization..."));
   try {
-    const data = await fetchApiWithAuth("/api/woocommerce/connect", {
+    const data = await fetchApiWithAuth("/api/woocommerce/install-link", {
       method: "POST",
       body: JSON.stringify({
         storeUrl,
-        consumerKey,
-        consumerSecret,
       }),
     });
-    woocommerceConnection = normalizeWooCommerceConnection(data?.connection);
-    updateWooCommerceProviderStatus();
-    populateWooCommerceSettingsForm();
-    setProviderStatus(
-      tr("WooCommerce connected: {store}.", {
-        store: woocommerceConnection?.storeUrl || storeUrl,
-      }),
-      { kind: "success" }
-    );
-    setWooCommerceSettingsStatus(tr("Connection saved."), { kind: "success" });
-    window.setTimeout(() => {
-      closeWooCommerceSettingsModal();
-    }, 150);
+    if (!data || typeof data !== "object" || !data.url) {
+      throw new Error(tr("WooCommerce authorization URL was not returned."));
+    }
+    window.location.assign(String(data.url));
   } catch (error) {
-    setWooCommerceSettingsStatus(error?.message || tr("Could not save WooCommerce settings."), {
-      kind: "error",
-    });
+    setWooCommerceSettingsStatus(
+      error?.message || tr("Could not start WooCommerce connect flow."),
+      {
+        kind: "error",
+      }
+    );
   } finally {
     setWooCommerceSettingsBusy(false);
   }
@@ -5600,7 +5623,7 @@ async function importShopifyOrders(shop) {
 }
 
 function isWooCommerceReconnectError(message = "") {
-  return /reconnect woocommerce|woocommerce credentials|stored woocommerce connection could not be decrypted|consumer key|consumer secret|unauthorized|forbidden/i.test(
+  return /reconnect woocommerce|woocommerce credentials|stored woocommerce connection could not be decrypted|authorization complete|api endpoint was not found|unauthorized|forbidden/i.test(
     String(message || "")
   );
 }
@@ -14050,6 +14073,7 @@ async function initializeAuth() {
   setAuthView(session, { animate: false });
   if (session?.user) {
     consumeShopifyCallbackParams();
+    void consumeWooCommerceCallbackParams();
   }
   const initialRoute = parseRouteFromLocation();
   const isAuthed = Boolean(session?.user);
@@ -17971,7 +17995,7 @@ if (providerSettingsModal) {
 if (woocommerceSettingsSave) {
   woocommerceSettingsSave.addEventListener("click", async (event) => {
     event.preventDefault();
-    await saveWooCommerceSettings();
+    await beginWooCommerceInstall();
   });
 }
 
