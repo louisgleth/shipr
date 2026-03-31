@@ -5340,6 +5340,44 @@ async function importShopifyOrders(shop) {
   }
 }
 
+async function seedShopifyDevOrders(count = 10, shop = shopifyConnection?.shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) {
+    throw new Error(tr("Connect Shopify before importing."));
+  }
+
+  const safeCount = Number.isFinite(Number(count))
+    ? Math.max(1, Math.min(25, Math.trunc(Number(count))))
+    : 10;
+
+  setProviderStatus(`Creating ${safeCount} bogus Shopify orders in ${normalizedShop}...`, {
+    persist: true,
+  });
+  const data = await fetchApiWithAuth("/api/shopify/dev-seed-orders", {
+    method: "POST",
+    body: JSON.stringify({
+      shop: normalizedShop,
+      count: safeCount,
+    }),
+  });
+  setProviderStatus(`Created ${Number(data?.count || 0)} bogus Shopify orders in ${normalizedShop}.`, {
+    kind: "success",
+  });
+  return data;
+}
+
+if (typeof window !== "undefined") {
+  window.__shipideSeedShopifyOrders = async (count = 10) => {
+    try {
+      return await seedShopifyDevOrders(count);
+    } catch (error) {
+      const message = String(error?.message || "Shopify bogus order creation failed.");
+      setProviderStatus(message, { kind: "error" });
+      throw error;
+    }
+  };
+}
+
 async function handleShopifyProviderAction() {
   if (!currentUser) {
     setProviderStatus(tr("Sign in before importing from Shopify."), { kind: "error" });

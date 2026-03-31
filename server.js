@@ -20,7 +20,7 @@ const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
 const SHOPIFY_API_SECRET = String(process.env.SHOPIFY_API_SECRET || "").trim();
 const SHOPIFY_API_VERSION = String(process.env.SHOPIFY_API_VERSION || "2025-10").trim();
 const SHOPIFY_SCOPES = String(
-  process.env.SHOPIFY_SCOPES || "read_orders,read_locations"
+  process.env.SHOPIFY_SCOPES || "read_orders,write_orders,read_locations"
 )
   .split(",")
   .map((scope) => scope.trim())
@@ -5645,6 +5645,198 @@ async function fetchShopifyOrders(shop, accessToken, limit) {
   return orders;
 }
 
+const DEV_SHOPIFY_ORDER_RECIPIENTS = Object.freeze([
+  {
+    firstName: "Elise",
+    lastName: "Vermeulen",
+    company: "Atelier Meridian",
+    address1: "1739 Rue du Port",
+    city: "Antwerp",
+    province: "Antwerp",
+    provinceCode: "VAN",
+    zip: "2000",
+    country: "Belgium",
+    countryCode: "BE",
+    phone: "+32 470 11 22 33",
+  },
+  {
+    firstName: "Marta",
+    lastName: "Dubois",
+    company: "Rivage Essentials",
+    address1: "17 Herengracht",
+    city: "Amsterdam",
+    province: "Noord-Holland",
+    provinceCode: "NH",
+    zip: "1015",
+    country: "Netherlands",
+    countryCode: "NL",
+    phone: "+31 612 34 56 78",
+  },
+  {
+    firstName: "Clara",
+    lastName: "Moreau",
+    company: "Maison Carmin",
+    address1: "44 Rue Sainte-Catherine",
+    city: "Bordeaux",
+    province: "Gironde",
+    provinceCode: "NAQ",
+    zip: "33000",
+    country: "France",
+    countryCode: "FR",
+    phone: "+33 6 45 78 11 92",
+  },
+  {
+    firstName: "Lucia",
+    lastName: "Rossi",
+    company: "Studio Vento",
+    address1: "28 Via Torino",
+    city: "Milan",
+    province: "Lombardy",
+    provinceCode: "MI",
+    zip: "20123",
+    country: "Italy",
+    countryCode: "IT",
+    phone: "+39 347 55 21 908",
+  },
+  {
+    firstName: "Noah",
+    lastName: "Svensson",
+    company: "Nordform Goods",
+    address1: "9 Stora Nygatan",
+    city: "Stockholm",
+    province: "Stockholm County",
+    provinceCode: "AB",
+    zip: "11127",
+    country: "Sweden",
+    countryCode: "SE",
+    phone: "+46 70 000 10 38",
+  },
+]);
+
+const DEV_SHOPIFY_ORDER_PRODUCTS = Object.freeze([
+  { title: "Big Brown Bear Boots", price: 74.99, grams: 820 },
+  { title: "Canvas Utility Tote", price: 39.5, grams: 410 },
+  { title: "Meridian Cotton Hoodie", price: 62.0, grams: 690 },
+  { title: "Studio Glass Water Bottle", price: 28.9, grams: 540 },
+  { title: "Nordform Desk Lamp", price: 91.25, grams: 1180 },
+]);
+
+function buildBogusShopifySeedOrder(seedIndex) {
+  const recipient =
+    DEV_SHOPIFY_ORDER_RECIPIENTS[
+      Math.abs(Number(seedIndex) || 0) % DEV_SHOPIFY_ORDER_RECIPIENTS.length
+    ];
+  const product =
+    DEV_SHOPIFY_ORDER_PRODUCTS[
+      Math.abs(Number(seedIndex) || 0) % DEV_SHOPIFY_ORDER_PRODUCTS.length
+    ];
+  const quantity = (Math.abs(Number(seedIndex) || 0) % 3) + 1;
+  const subtotal = product.price * quantity;
+  const taxRate = 0.21;
+  const total = subtotal * (1 + taxRate);
+  const emailSlug = `${recipient.firstName}.${recipient.lastName}.${seedIndex + 1}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/(^\.|\.$)/g, "");
+  const address = {
+    first_name: recipient.firstName,
+    last_name: recipient.lastName,
+    company: recipient.company,
+    address1: recipient.address1,
+    city: recipient.city,
+    province: recipient.province,
+    province_code: recipient.provinceCode,
+    zip: recipient.zip,
+    country: recipient.country,
+    country_code: recipient.countryCode,
+    phone: recipient.phone,
+  };
+
+  return {
+    email: `${emailSlug}@example.com`,
+    currency: "EUR",
+    financial_status: "paid",
+    send_receipt: false,
+    send_fulfillment_receipt: false,
+    tags: "shipide-dev-seed,shipide-import-test",
+    note: `Shipide dev seed order ${seedIndex + 1}`,
+    line_items: [
+      {
+        title: product.title,
+        price: product.price.toFixed(2),
+        quantity,
+        grams: product.grams,
+        taxable: true,
+        requires_shipping: true,
+      },
+    ],
+    billing_address: address,
+    shipping_address: address,
+    transactions: [
+      {
+        kind: "sale",
+        status: "success",
+        amount: total.toFixed(2),
+        currency: "EUR",
+      },
+    ],
+  };
+}
+
+async function createBogusShopifyOrders(shop, accessToken, count) {
+  const safeCount = Number.isFinite(count) ? Math.max(1, Math.min(25, Math.trunc(count))) : 10;
+  const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`;
+  const createdOrders = [];
+
+  for (let index = 0; index < safeCount; index += 1) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        order: buildBogusShopifySeedOrder(index),
+      }),
+    });
+
+    const payloadText = await response.text().catch(() => "");
+    let payload = null;
+    if (payloadText) {
+      try {
+        payload = JSON.parse(payloadText);
+      } catch {
+        payload = null;
+      }
+    }
+
+    if (!response.ok) {
+      const details =
+        payload?.errors && typeof payload.errors === "object"
+          ? JSON.stringify(payload.errors)
+          : payloadText;
+      const error = new Error(`Shopify bogus order creation failed (${response.status}) ${details}`.trim());
+      error.status = response.status;
+      if (/write_orders|scope|permission|access denied/i.test(String(details || ""))) {
+        error.code = "missing_write_orders";
+      }
+      throw error;
+    }
+
+    const order = payload?.order;
+    if (!order?.id) {
+      throw new Error("Shopify bogus order creation succeeded without returning an order id.");
+    }
+    createdOrders.push({
+      id: order.id,
+      name: String(order.name || "").trim(),
+      email: String(order.email || "").trim(),
+    });
+  }
+
+  return createdOrders;
+}
+
 function getCallbackRedirect(req, params) {
   const url = new URL("/label-info", buildPublicBaseUrl(req));
   Object.entries(params).forEach(([key, value]) => {
@@ -7310,6 +7502,72 @@ async function handleShopifyImportOrders(req, res) {
   }
 }
 
+async function handleShopifyDevSeedOrders(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const requestedShop = normalizeShopDomain(body?.shop);
+  const countRaw = Number(body?.count);
+  const count = Number.isFinite(countRaw) ? Math.max(1, Math.min(25, Math.trunc(countRaw))) : 10;
+  let resolvedShop = requestedShop;
+
+  try {
+    const connection = await getShopifyConnection(user.id, requestedShop, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      sendJson(res, 404, { error: "Shopify is not connected for this account." });
+      return;
+    }
+
+    resolvedShop = String(connection.shop_domain || resolvedShop || "").trim();
+    const scopes = String(connection.scopes || "")
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean);
+    if (!scopes.includes("write_orders")) {
+      sendJson(res, 409, {
+        error: "Shopify connection is missing write_orders. Reconnect Shopify once, then try seeding again.",
+      });
+      return;
+    }
+
+    const accessToken = decryptToken(connection.access_token);
+    const createdOrders = await createBogusShopifyOrders(connection.shop_domain, accessToken, count);
+    sendJson(res, 200, {
+      shop: connection.shop_domain,
+      count: createdOrders.length,
+      orders: createdOrders,
+    });
+  } catch (error) {
+    if (error?.status === 401 && resolvedShop) {
+      await setShopifyConnectionStatus(user.id, resolvedShop, "token_invalid").catch(() => {});
+      sendJson(res, 409, {
+        error: "Shopify connection expired or was revoked. Reconnect Shopify and try again.",
+      });
+      return;
+    }
+    if (error?.code === "missing_write_orders") {
+      sendJson(res, 409, {
+        error: "Shopify connection is missing write_orders. Reconnect Shopify once, then try seeding again.",
+      });
+      return;
+    }
+    sendJson(res, 500, { error: error.message || "Shopify bogus order creation failed." });
+  }
+}
+
 async function handleApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
   if (pathname === "/api/admin/status" && req.method === "GET") {
@@ -7431,6 +7689,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/shopify/import-orders" && req.method === "POST") {
     await handleShopifyImportOrders(req, res);
+    return true;
+  }
+  if (pathname === "/api/shopify/dev-seed-orders" && req.method === "POST") {
+    await handleShopifyDevSeedOrders(req, res);
     return true;
   }
   if (pathname === "/api/billing/overview" && req.method === "GET") {
