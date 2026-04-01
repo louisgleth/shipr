@@ -15122,6 +15122,8 @@ async function initializeAuth() {
       return;
     }
 
+    void consumeWixCallbackParams();
+
     const route = parseRouteFromLocation();
     if (route.view === "recovery") {
       updateRoute({ view: "recovery" }, { replace: true });
