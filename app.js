@@ -1280,6 +1280,7 @@ const TRANSLATIONS = {
   "Supabase client failed to initialize.": { fr: "Échec d’initialisation du client Supabase.", nl: "Supabase-client kon niet worden geïnitialiseerd." },
   "Wix Settings": { fr: "Paramètres Wix", nl: "Wix-instellingen" },
   "Connect Wix": { fr: "Connecter Wix", nl: "Wix verbinden" },
+  "Wix Connected": { fr: "Wix connecté", nl: "Wix verbonden" },
   "Sign in before connecting Wix.": { fr: "Connectez-vous avant de connecter Wix.", nl: "Log in voordat je Wix verbindt." },
   "Sign in before configuring Wix.": { fr: "Connectez-vous avant de configurer Wix.", nl: "Log in voordat je Wix instelt." },
   "Loading Wix connection...": { fr: "Chargement de la connexion Wix...", nl: "Wix-verbinding laden..." },
@@ -1287,6 +1288,10 @@ const TRANSLATIONS = {
   "Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking.": {
     fr: "Installez l’application Wix Shipide pour connecter votre site. Après l’installation, ouvrez l’application une fois dans Wix tout en étant connecté à Shipide pour terminer l’association.",
     nl: "Installeer de Shipide Wix-app om je site te verbinden. Open daarna de app eenmaal in Wix terwijl je bent aangemeld bij Shipide om de koppeling te voltooien.",
+  },
+  "Your Wix site is already linked to Shipide. Open Wix again only if you want to relink this portal account or switch sites.": {
+    fr: "Votre site Wix est déjà lié à Shipide. Rouvrez Wix uniquement si vous voulez relier ce compte portail ou changer de site.",
+    nl: "Je Wix-site is al gekoppeld aan Shipide. Open Wix alleen opnieuw als je deze portalaccount opnieuw wilt koppelen of van site wilt wisselen.",
   },
   "Not connected yet. Install Shipide in Wix to start linking a site.": {
     fr: "Pas encore connecté. Installez Shipide dans Wix pour commencer à lier un site.",
@@ -2085,6 +2090,8 @@ const wixSettingsCancel = document.getElementById("wixSettingsCancel");
 const wixSettingsSave = document.getElementById("wixSettingsSave");
 const wixSettingsStatus = document.getElementById("wixSettingsStatus");
 const wixConnectionSummary = document.getElementById("wixConnectionSummary");
+const wixSettingsHeading = document.getElementById("wixSettingsHeading");
+const wixSettingsNote = document.getElementById("wixSettingsNote");
 const woocommerceSettingsModal = document.getElementById("woocommerceSettingsModal");
 const woocommerceSettingsClose = document.getElementById("woocommerceSettingsClose");
 const woocommerceSettingsCancel = document.getElementById("woocommerceSettingsCancel");
@@ -5765,7 +5772,24 @@ function getWixSettingsButtonText() {
   return wixConnection?.instanceId ? tr("Open Wix Again") : tr("Continue to Wix");
 }
 
+function renderWixSettingsState() {
+  const isConnected = Boolean(wixConnection?.instanceId);
+  if (wixSettingsHeading) {
+    wixSettingsHeading.textContent = isConnected ? tr("Wix Connected") : tr("Connect Wix");
+  }
+  if (wixSettingsNote) {
+    wixSettingsNote.textContent = isConnected
+      ? tr(
+          "Your Wix site is already linked to Shipide. Open Wix again only if you want to relink this portal account or switch sites."
+        )
+      : tr(
+          "Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking."
+        );
+  }
+}
+
 function renderWixConnectionSummary() {
+  renderWixSettingsState();
   if (!wixConnectionSummary) return;
   if (wixConnection?.siteUrl) {
     wixConnectionSummary.textContent = tr("Connected to Wix site {site}.", {
