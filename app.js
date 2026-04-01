@@ -6038,6 +6038,15 @@ async function linkWixInstance(instanceToken) {
   return normalizeWixConnection(data?.connection);
 }
 
+function cachePendingWixInstanceFromLocation() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search || "");
+  const instanceToken = String(params.get("instance") || "").trim();
+  if (!instanceToken) return "";
+  window.sessionStorage.setItem(WIX_PENDING_INSTANCE_STORAGE_KEY, instanceToken);
+  return instanceToken;
+}
+
 async function consumeWixCallbackParams() {
   const params = new URLSearchParams(window.location.search || "");
   const hasWixQuery = params.get("provider") === "wix";
@@ -15049,6 +15058,7 @@ async function initializeAuth() {
   if (sessionError && !session) {
     setAuthMessage(sessionError?.message || tr("Supabase unavailable"));
   }
+  cachePendingWixInstanceFromLocation();
   setAuthView(session, { animate: false });
   if (session?.user) {
     void consumeWixCallbackParams();
@@ -15112,6 +15122,7 @@ async function initializeAuth() {
       setAuthView(updatedSession, { animate: true });
       return;
     }
+    cachePendingWixInstanceFromLocation();
     setAuthView(updatedSession, { animate: true });
     if (!updatedSession) {
       resetAll();
