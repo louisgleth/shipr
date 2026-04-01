@@ -5576,11 +5576,54 @@ async function parseWixInstanceToken(env, instanceToken) {
   }
 }
 
+async function fetchWixTokenInfo(instanceToken) {
+  const token = String(instanceToken || "").trim();
+  if (!token) return null;
+  const response = await fetch("https://www.wixapis.com/oauth2/token-info", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed verifying Wix instance token (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => null);
+  return payload && typeof payload === "object" ? payload : null;
+}
+
+async function resolveWixInstancePayload(env, instanceToken) {
+  const tokenInfo = await fetchWixTokenInfo(instanceToken).catch(() => null);
+  const legacyPayload = await parseWixInstanceToken(env, instanceToken);
+  const tokenInfoActive = Boolean(tokenInfo && tokenInfo.active);
+  const configuredAppId = String(env.WIX_APP_ID || "").trim();
+
+  if (tokenInfoActive && configuredAppId) {
+    const clientId = String(tokenInfo?.clientId || tokenInfo?.client_id || "").trim();
+    if (clientId && clientId !== configuredAppId) {
+      return null;
+    }
+  }
+
+  if (!tokenInfoActive && !legacyPayload) {
+    return null;
+  }
+
+  return {
+    ...(legacyPayload && typeof legacyPayload === "object" ? legacyPayload : {}),
+    ...(tokenInfo && typeof tokenInfo === "object" ? tokenInfo : {}),
+  };
+}
+
 function getWixInstanceConnectionPayload(instancePayload) {
   const instanceId = String(
     instancePayload?.instanceId
       || instancePayload?.instance_id
       || instancePayload?.instance?.id
+      || instancePayload?.subjectId
+      || instancePayload?.subject_id
       || ""
   ).trim();
   const siteId = String(
@@ -5589,6 +5632,8 @@ function getWixInstanceConnectionPayload(instancePayload) {
       || instancePayload?.metaSiteId
       || instancePayload?.meta_site_id
       || instancePayload?.site?.id
+      || instancePayload?.context?.siteId
+      || instancePayload?.context?.site_id
       || ""
   ).trim();
   const siteUrl = String(
@@ -5597,10 +5642,15 @@ function getWixInstanceConnectionPayload(instancePayload) {
       || instancePayload?.site?.url
       || instancePayload?.site?.siteUrl
       || instancePayload?.externalBaseUrl
+      || instancePayload?.context?.siteUrl
+      || instancePayload?.context?.site_url
       || ""
   ).trim();
   const permissions = normalizeWixPermissions(
-    instancePayload?.permissions || instancePayload?.permission || instancePayload?.scope
+    instancePayload?.permissions
+      || instancePayload?.permission
+      || instancePayload?.scope
+      || instancePayload?.scopes
   );
   if (!instanceId) {
     return null;
@@ -8711,14 +8761,6 @@ async function handleWixLinkInstance(request, env) {
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
   }
-  if (!String(env.WIX_APP_SECRET || "").trim()) {
-    return jsonResponse(
-      {
-        error: "WIX_APP_SECRET is not configured yet. Add it before linking Wix app instances.",
-      },
-      500
-    );
-  }
 
   let body = {};
   try {
@@ -8732,7 +8774,7 @@ async function handleWixLinkInstance(request, env) {
     return jsonResponse({ error: "Missing Wix instance token." }, 400);
   }
 
-  const instancePayload = await parseWixInstanceToken(env, instanceToken);
+  const instancePayload = await resolveWixInstancePayload(env, instanceToken);
   const connectionPayload = getWixInstanceConnectionPayload(instancePayload);
   if (!connectionPayload?.instanceId) {
     return jsonResponse(
