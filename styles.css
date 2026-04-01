@@ -4925,7 +4925,7 @@ body {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 238px;
+  min-width: 292px;
   background: var(--secondary);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -4990,6 +4990,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+}
+
+.provider-option-main > span:last-child {
+  white-space: nowrap;
 }
 
 .provider-icon {
@@ -5147,6 +5152,35 @@ body {
   font-size: var(--fs-md);
   font-weight: 300;
   color: var(--text);
+}
+
+.provider-disconnect-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.provider-disconnect-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  letter-spacing: var(--letter-tight);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.provider-disconnect-link:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.provider-disconnect-link:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .provider-credentials-modal {

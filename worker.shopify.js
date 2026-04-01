@@ -20,6 +20,8 @@ const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
   "any",
 ]);
 const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
+const WIX_IMPORT_STATUS_OPTIONS = Object.freeze(["PENDING", "APPROVED", "CANCELED", "REJECTED"]);
+const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["APPROVED"]);
 const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
   "pending",
   "processing",
@@ -234,6 +236,21 @@ export default {
       if (pathname === "/api/wix/link-instance" && request.method === "POST") {
         return handleWixLinkInstance(request, env);
       }
+      if (
+        (pathname === "/api/wix/settings" || pathname === "/api/wix/setting") &&
+        request.method === "GET"
+      ) {
+        return handleWixSettingsGet(request, env, url);
+      }
+      if (
+        (pathname === "/api/wix/settings" || pathname === "/api/wix/setting") &&
+        request.method === "POST"
+      ) {
+        return handleWixSettingsPost(request, env);
+      }
+      if (pathname === "/api/wix/disconnect" && request.method === "POST") {
+        return handleWixDisconnect(request, env);
+      }
       if (pathname === "/api/woocommerce/install-link" && request.method === "POST") {
         return handleWooCommerceInstallLink(request, env);
       }
@@ -258,6 +275,9 @@ export default {
       if (pathname === "/api/woocommerce/import-orders" && request.method === "POST") {
         return handleWooCommerceImportOrders(request, env);
       }
+      if (pathname === "/api/woocommerce/disconnect" && request.method === "POST") {
+        return handleWooCommerceDisconnect(request, env);
+      }
       if (
         (pathname === "/api/shopify/locations" || pathname === "/api/shopify/location") &&
         request.method === "GET"
@@ -278,6 +298,9 @@ export default {
       }
       if (pathname === "/api/shopify/import-orders" && request.method === "POST") {
         return handleImportOrders(request, env);
+      }
+      if (pathname === "/api/shopify/disconnect" && request.method === "POST") {
+        return handleShopifyDisconnect(request, env);
       }
       if (pathname === "/api/shopify/dev-seed-orders" && request.method === "POST") {
         return handleDevSeedOrders(request, env);
@@ -5462,13 +5485,17 @@ async function upsertWixConnection(env, userId, instanceId, payload = {}) {
 }
 
 async function getWixConnection(env, userId, requestedInstanceId, options = {}) {
-  const { includeAccessToken = false } = options;
+  const { includeAccessToken = false, includeSettings = false } = options;
   const params = new URLSearchParams();
   params.set(
     "select",
     includeAccessToken
-      ? "shop_domain,status,scopes,connected_at,updated_at,access_token"
-      : "shop_domain,status,scopes,connected_at,updated_at"
+      ? includeSettings
+        ? "shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
+        : "shop_domain,status,scopes,connected_at,updated_at,access_token"
+      : includeSettings
+        ? "shop_domain,status,scopes,connected_at,updated_at,import_settings"
+        : "shop_domain,status,scopes,connected_at,updated_at"
   );
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.wix");
@@ -5487,6 +5514,17 @@ async function getWixConnection(env, userId, requestedInstanceId, options = {}) 
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
+    if (
+      includeSettings &&
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "Wix settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
     throw new Error(`Failed reading Wix connection (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
@@ -5687,6 +5725,48 @@ function normalizeShopifyFinancialStatus(value) {
   return SHOPIFY_FINANCIAL_STATUS_OPTIONS.includes(normalized) ? normalized : "";
 }
 
+function normalizeWixImportStatuses(values) {
+  const allowed = new Set(WIX_IMPORT_STATUS_OPTIONS);
+  const seen = new Set();
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  values.forEach((value) => {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (!normalized || !allowed.has(normalized) || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+  });
+  return Array.from(seen);
+}
+
+function getWixImportSettings(importSettings) {
+  if (!importSettings || typeof importSettings !== "object") {
+    return {
+      selectedStatuses: [...DEFAULT_WIX_IMPORT_STATUSES],
+      autoRefreshEnabled: false,
+    };
+  }
+
+  const selectedStatuses = normalizeWixImportStatuses(
+    Array.isArray(importSettings.selected_statuses)
+      ? importSettings.selected_statuses
+      : Array.isArray(importSettings.selectedStatuses)
+        ? importSettings.selectedStatuses
+        : []
+  );
+
+  return {
+    selectedStatuses: selectedStatuses.length
+      ? selectedStatuses
+      : [...DEFAULT_WIX_IMPORT_STATUSES],
+    autoRefreshEnabled: normalizeWooCommerceAutoRefreshEnabled(
+      importSettings.auto_refresh_enabled ?? importSettings.autoRefreshEnabled
+    ),
+  };
+}
+
 function getShopifyImportSettings(importSettings) {
   if (!importSettings || typeof importSettings !== "object") {
     return {
@@ -5808,6 +5888,52 @@ async function saveShopifyImportSettings(
   }
 }
 
+async function saveWixImportSettings(
+  env,
+  userId,
+  instanceId,
+  selectedStatuses,
+  autoRefreshEnabled
+) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.wix");
+  params.set("shop_domain", `eq.${instanceId}`);
+  params.set("status", "eq.connected");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        import_settings: {
+          selected_statuses: normalizeWixImportStatuses(selectedStatuses),
+          auto_refresh_enabled: Boolean(autoRefreshEnabled),
+        },
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (
+      /import_settings/.test(String(details || "").toLowerCase()) &&
+      /column/.test(String(details || "").toLowerCase())
+    ) {
+      const error = new Error(
+        "Wix settings storage is not enabled yet. Run the latest supabase_provider_connections.sql migration."
+      );
+      error.code = "missing_import_settings_column";
+      throw error;
+    }
+    throw new Error(`Failed saving Wix settings (${response.status}) ${details}`.trim());
+  }
+}
+
 async function saveWooCommerceImportSettings(
   env,
   userId,
@@ -5877,6 +6003,32 @@ async function setShopifyConnectionStatus(env, userId, shop, status) {
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     throw new Error(`Failed updating Shopify connection (${response.status}) ${details}`.trim());
+  }
+}
+
+async function setWixConnectionStatus(env, userId, instanceId, status) {
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", "eq.wix");
+  params.set("shop_domain", `eq.${instanceId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        status: String(status || "disconnected"),
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed updating Wix connection (${response.status}) ${details}`.trim());
   }
 }
 
@@ -8800,6 +8952,109 @@ async function handleWixLinkInstance(request, env) {
   }
 }
 
+async function handleWixSettingsGet(request, env, requestUrl) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    const requestedInstanceId = String(requestUrl.searchParams.get("instanceId") || "").trim();
+    const connection = await getWixConnection(env, user.id, requestedInstanceId);
+    if (!connection) {
+      return jsonResponse({ error: "Wix is not connected for this account." }, 404);
+    }
+    return jsonResponse({
+      instanceId: connection.shop_domain,
+      settings: getWixImportSettings(connection.import_settings),
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to load Wix settings." }, 500);
+  }
+}
+
+async function handleWixSettingsPost(request, env) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    const body = await readJsonBody(request);
+    const requestedInstanceId = String(body?.instanceId || "").trim();
+    const selectedStatuses = normalizeWixImportStatuses(body?.selectedStatuses);
+    const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
+    if (!selectedStatuses.length) {
+      return jsonResponse({ error: "Select at least one Wix status to import." }, 400);
+    }
+
+    const connection = await getWixConnection(env, user.id, requestedInstanceId, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ error: "Wix is not connected for this account." }, 404);
+    }
+    await saveWixImportSettings(
+      env,
+      user.id,
+      connection.shop_domain,
+      selectedStatuses,
+      autoRefreshEnabled
+    );
+    return jsonResponse({
+      instanceId: connection.shop_domain,
+      settings: {
+        selectedStatuses,
+        autoRefreshEnabled,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to save Wix settings." }, 500);
+  }
+}
+
+async function handleWixDisconnect(request, env) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(request);
+    } catch (_error) {
+      body = {};
+    }
+
+    const requestedInstanceId = String(body?.instanceId || "").trim();
+    const connection = await getWixConnection(env, user.id, requestedInstanceId, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ disconnected: false, connection: null });
+    }
+    await setWixConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    return jsonResponse({
+      disconnected: true,
+      connection: {
+        instanceId: connection.shop_domain,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to disconnect Wix." }, 500);
+  }
+}
+
 async function handleWooCommerceInstallLink(request, env) {
   try {
     const user = await getAuthenticatedUser(request, env);
@@ -8986,9 +9241,7 @@ async function handleWooCommerceSettingsGet(request, env, requestUrl) {
     }
 
     const requestedStoreUrl = normalizeWooCommerceStoreUrl(requestUrl.searchParams.get("storeUrl"));
-    const connection = await getWooCommerceConnection(env, user.id, requestedStoreUrl, {
-      includeSettings: true,
-    });
+    const connection = await getWooCommerceConnection(env, user.id, requestedStoreUrl);
     if (!connection) {
       return jsonResponse({ error: "WooCommerce is not connected for this account." }, 404);
     }
@@ -9045,6 +9298,42 @@ async function handleWooCommerceSettingsPost(request, env) {
       return jsonResponse({ error: error.message }, 500);
     }
     return jsonResponse({ error: error?.message || "Failed to save WooCommerce settings." }, 500);
+  }
+}
+
+async function handleWooCommerceDisconnect(request, env) {
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(request);
+    } catch (_error) {
+      body = {};
+    }
+
+    const requestedStoreUrl = normalizeWooCommerceStoreUrl(body?.storeUrl);
+    const connection = await getWooCommerceConnection(env, user.id, requestedStoreUrl, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ disconnected: false, connection: null });
+    }
+    await setWooCommerceConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    return jsonResponse({
+      disconnected: true,
+      connection: {
+        storeUrl: connection.shop_domain,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to disconnect WooCommerce." }, 500);
   }
 }
 
@@ -9212,9 +9501,7 @@ async function handleSettingsGet(request, env, requestUrl) {
     }
 
     const requestedShop = normalizeShopDomain(requestUrl.searchParams.get("shop"));
-    const connection = await getShopifyConnection(env, user.id, requestedShop, {
-      includeSettings: true,
-    });
+    const connection = await getShopifyConnection(env, user.id, requestedShop);
     if (!connection) {
       return jsonResponse({ error: "Shopify is not connected for this account." }, 404);
     }
@@ -9276,6 +9563,43 @@ async function handleSettingsPost(request, env) {
       return jsonResponse({ error: error.message }, 500);
     }
     return jsonResponse({ error: error?.message || "Failed to save Shopify settings." }, 500);
+  }
+}
+
+async function handleShopifyDisconnect(request, env) {
+  try {
+    assertConfig(env);
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(request);
+    } catch (_error) {
+      body = {};
+    }
+
+    const requestedShop = normalizeShopDomain(body?.shop);
+    const connection = await getShopifyConnection(env, user.id, requestedShop, {
+      includeSettings: true,
+    });
+    if (!connection) {
+      return jsonResponse({ disconnected: false, connection: null });
+    }
+    await setShopifyConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    return jsonResponse({
+      disconnected: true,
+      connection: {
+        shop: connection.shop_domain,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Failed to disconnect Shopify." }, 500);
   }
 }
 

@@ -2035,7 +2035,29 @@
           <div class="provider-connection-summary" id="wixConnectionSummary">
             Not connected yet.
           </div>
+          <div class="shopify-locations-picker woocommerce-statuses-picker">
+            <div class="shopify-locations-head">
+              <span>Select statuses to import</span>
+              <span class="mono" id="wixStatusesSummary">1 selected</span>
+            </div>
+            <div class="shopify-locations-list woocommerce-statuses-list" id="wixStatusesList"></div>
+          </div>
+          <label class="woocommerce-settings-toggle" for="wixAutoRefresh">
+            <input type="checkbox" id="wixAutoRefresh" />
+            <span class="woocommerce-settings-toggle-box" aria-hidden="true">
+              <span class="woocommerce-settings-toggle-box-fill"></span>
+            </span>
+            <span class="woocommerce-settings-toggle-copy">
+              <strong>Enable Automatic Refresh</strong>
+              <span>When enabled, Shipide refreshes Wix-imported batches automatically while this batch is open.</span>
+            </span>
+          </label>
           <div class="provider-status shopify-settings-status" id="wixSettingsStatus"></div>
+          <div class="provider-disconnect-row">
+            <button type="button" class="provider-disconnect-link is-hidden" id="wixDisconnectButton">
+              <span>Disconnect</span>
+            </button>
+          </div>
           <div class="panel-actions">
             <button type="button" class="btn btn-ghost" id="wixSettingsCancel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -2096,6 +2118,11 @@
             </span>
           </label>
           <div class="provider-status shopify-settings-status" id="woocommerceSettingsStatus"></div>
+          <div class="provider-disconnect-row">
+            <button type="button" class="provider-disconnect-link is-hidden" id="woocommerceDisconnectButton">
+              <span>Disconnect</span>
+            </button>
+          </div>
           <div class="panel-actions">
             <button type="button" class="btn btn-ghost" id="woocommerceSettingsCancel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -2155,6 +2182,11 @@
           </label>
 
           <div class="provider-status shopify-settings-status" id="shopifySettingsStatus"></div>
+          <div class="provider-disconnect-row">
+            <button type="button" class="provider-disconnect-link is-hidden" id="shopifyDisconnectButton">
+              <span>Disconnect</span>
+            </button>
+          </div>
           <div class="panel-actions">
             <button type="button" class="btn btn-ghost" id="shopifySettingsCancel">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
