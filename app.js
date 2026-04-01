@@ -6041,15 +6041,15 @@ async function linkWixInstance(instanceToken) {
 async function consumeWixCallbackParams() {
   const params = new URLSearchParams(window.location.search || "");
   const hasWixQuery = params.get("provider") === "wix";
+  const instanceFromQuery = String(params.get("instance") || "").trim();
+  const hasWixInstanceQuery = Boolean(instanceFromQuery);
   const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
   const pendingStoredInstance =
     typeof window !== "undefined"
       ? String(window.sessionStorage.getItem(WIX_PENDING_INSTANCE_STORAGE_KEY) || "").trim()
       : "";
-  const instanceToken = String(
-    (hasWixQuery ? params.get("instance") : "") || pendingStoredInstance || ""
-  ).trim();
-  if (!hasWixQuery && !instanceToken) return;
+  const instanceToken = String(instanceFromQuery || pendingStoredInstance || "").trim();
+  if (!hasWixQuery && !hasWixInstanceQuery && !instanceToken) return;
   if (!instanceToken) {
     const message = String(params.get("message") || "").trim() || tr("Could not connect Wix.");
     setProviderStatus(message, { kind: "error" });
@@ -6063,7 +6063,7 @@ async function consumeWixCallbackParams() {
     setProviderStatus(tr("Sign in to Shipide before finishing Wix connection."), {
       kind: "error",
     });
-    if (hasWixQuery) {
+    if (hasWixQuery || hasWixInstanceQuery) {
       history.replaceState(history.state, "", cleanUrl);
     }
     return;
@@ -6087,7 +6087,7 @@ async function consumeWixCallbackParams() {
   } catch (error) {
     setProviderStatus(error?.message || tr("Could not connect Wix."), { kind: "error" });
   }
-  if (hasWixQuery) {
+  if (hasWixQuery || hasWixInstanceQuery) {
     history.replaceState(history.state, "", cleanUrl);
   }
 }
