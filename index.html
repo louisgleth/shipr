@@ -2146,14 +2146,13 @@
           </button>
         </div>
         <div class="shopify-settings-body">
-          <h3>Select Status to Import</h3>
-          <p class="shopify-settings-note">
-            Choose which Shopify payment status Shipide should import.
-          </p>
-          <label class="shopify-settings-select-field" for="shopifyFinancialStatus">
-            <span class="shopify-settings-select-label">Order Status</span>
-            <select id="shopifyFinancialStatus" class="shopify-settings-select" autocomplete="off"></select>
-          </label>
+          <div class="shopify-locations-picker woocommerce-statuses-picker">
+            <div class="shopify-locations-head">
+              <span>Select statuses to import</span>
+              <span class="mono" id="shopifyStatusesSummary">1 selected</span>
+            </div>
+            <div class="shopify-locations-list woocommerce-statuses-list" id="shopifyStatusesList"></div>
+          </div>
 
           <h3>Select Fulfillment Locations</h3>
           <p class="shopify-settings-note">

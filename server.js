@@ -37,9 +37,9 @@ const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
   "refunded",
   "voided",
   "unpaid",
-  "any",
 ]);
 const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
+const DEFAULT_SHOPIFY_FINANCIAL_STATUSES = Object.freeze([DEFAULT_SHOPIFY_FINANCIAL_STATUS]);
 const WIX_IMPORT_STATUS_OPTIONS = Object.freeze(["PENDING", "APPROVED", "CANCELED", "REJECTED"]);
 const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["APPROVED"]);
 const WOOCOMMERCE_APP_NAME = String(process.env.WOOCOMMERCE_APP_NAME || "Shipide").trim() || "Shipide";
@@ -5897,6 +5897,23 @@ function normalizeShopifyFinancialStatus(value) {
   return SHOPIFY_FINANCIAL_STATUS_OPTIONS.includes(normalized) ? normalized : "";
 }
 
+function normalizeShopifyFinancialStatuses(values) {
+  const rawValues = Array.isArray(values)
+    ? values
+    : values == null || values === ""
+      ? []
+      : [values];
+  const seen = new Set();
+  rawValues.forEach((value) => {
+    const normalized = normalizeShopifyFinancialStatus(value);
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+  });
+  return Array.from(seen);
+}
+
 function normalizeWixImportStatuses(values) {
   const allowed = new Set(WIX_IMPORT_STATUS_OPTIONS);
   const seen = new Set();
@@ -5941,17 +5958,24 @@ function getShopifyImportSettings(importSettings) {
   if (!importSettings || typeof importSettings !== "object") {
     return {
       selectedLocationIds: [],
-      financialStatus: DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+      selectedFinancialStatuses: [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
       autoRefreshEnabled: false,
     };
   }
 
+  const selectedFinancialStatuses = normalizeShopifyFinancialStatuses(
+    Array.isArray(importSettings.selected_financial_statuses)
+      ? importSettings.selected_financial_statuses
+      : Array.isArray(importSettings.selectedFinancialStatuses)
+        ? importSettings.selectedFinancialStatuses
+        : importSettings.financial_status ?? importSettings.financialStatus
+  );
+
   return {
     selectedLocationIds: getSelectedLocationIdsFromImportSettings(importSettings),
-    financialStatus:
-      normalizeShopifyFinancialStatus(
-        importSettings.financial_status ?? importSettings.financialStatus
-      ) || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+    selectedFinancialStatuses: selectedFinancialStatuses.length
+      ? selectedFinancialStatuses
+      : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
     autoRefreshEnabled: normalizeWooCommerceAutoRefreshEnabled(
       importSettings.auto_refresh_enabled ?? importSettings.autoRefreshEnabled
     ),
@@ -6013,9 +6037,13 @@ async function saveShopifyImportSettings(
   userId,
   shop,
   selectedLocationIds,
-  financialStatus,
+  selectedFinancialStatuses,
   autoRefreshEnabled
 ) {
+  const normalizedFinancialStatuses = normalizeShopifyFinancialStatuses(selectedFinancialStatuses);
+  const resolvedFinancialStatuses = normalizedFinancialStatuses.length
+    ? normalizedFinancialStatuses
+    : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES];
   const params = new URLSearchParams();
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
@@ -6033,8 +6061,8 @@ async function saveShopifyImportSettings(
       body: JSON.stringify({
         import_settings: {
           selected_location_ids: sanitizeSelectedLocationIds(selectedLocationIds),
-          financial_status:
-            normalizeShopifyFinancialStatus(financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+          selected_financial_statuses: resolvedFinancialStatuses,
+          financial_status: resolvedFinancialStatuses[0] || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
           auto_refresh_enabled: normalizeWooCommerceAutoRefreshEnabled(autoRefreshEnabled),
         },
         updated_at: new Date().toISOString(),
@@ -6553,36 +6581,56 @@ async function fetchShopifyLocations(shop, accessToken) {
     .filter((location) => location.id && location.name);
 }
 
-async function fetchShopifyOrders(shop, accessToken, limit, financialStatus) {
+async function fetchShopifyOrders(shop, accessToken, limit, selectedFinancialStatuses) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(250, Math.trunc(limit))) : 50;
-  const resolvedFinancialStatus =
-    normalizeShopifyFinancialStatus(financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
-  const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
-  url.searchParams.set("status", "open");
-  url.searchParams.set("limit", String(safeLimit));
-  if (resolvedFinancialStatus !== "any") {
-    url.searchParams.set("financial_status", resolvedFinancialStatus);
-  }
-  url.searchParams.set(
-    "fields",
-    "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments"
+  const normalizedFinancialStatuses = normalizeShopifyFinancialStatuses(selectedFinancialStatuses);
+  const resolvedFinancialStatuses = normalizedFinancialStatuses.length
+    ? normalizedFinancialStatuses
+    : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES];
+  const ordersById = new Map();
+
+  await Promise.all(
+    resolvedFinancialStatuses.map(async (financialStatus) => {
+      const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
+      url.searchParams.set("status", "open");
+      url.searchParams.set("limit", String(safeLimit));
+      url.searchParams.set("financial_status", financialStatus);
+      url.searchParams.set(
+        "fields",
+        "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments"
+      );
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        const details = await response.text().catch(() => "");
+        const error = new Error(`Shopify order import failed (${response.status}) ${details}`.trim());
+        error.status = response.status;
+        throw error;
+      }
+      const payload = await response.json().catch(() => null);
+      const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+      orders.forEach((order) => {
+        const orderId = String(order?.id || "").trim();
+        if (!orderId || ordersById.has(orderId)) {
+          return;
+        }
+        ordersById.set(orderId, order);
+      });
+    })
   );
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "X-Shopify-Access-Token": accessToken,
-      "Content-Type": "application/json",
-    },
-  });
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    const error = new Error(`Shopify order import failed (${response.status}) ${details}`.trim());
-    error.status = response.status;
-    throw error;
-  }
-  const payload = await response.json().catch(() => null);
-  const orders = Array.isArray(payload?.orders) ? payload.orders : [];
-  return orders;
+
+  return Array.from(ordersById.values())
+    .sort((left, right) => {
+      const leftTime = Date.parse(left?.created_at || "") || 0;
+      const rightTime = Date.parse(right?.created_at || "") || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, safeLimit);
 }
 
 async function fetchWooCommerceOrders(
@@ -9031,11 +9079,18 @@ async function handleShopifySettingsPost(req, res) {
 
   const requestedShop = normalizeShopDomain(body?.shop);
   const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
-  const financialStatus =
-    normalizeShopifyFinancialStatus(body?.financialStatus) || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
+  const selectedFinancialStatuses = normalizeShopifyFinancialStatuses(
+    Array.isArray(body?.selectedFinancialStatuses)
+      ? body.selectedFinancialStatuses
+      : body?.financialStatus
+  );
   const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
   if (!selectedLocationIds.length) {
     sendJson(res, 400, { error: "Select at least one fulfillment location." });
+    return;
+  }
+  if (!selectedFinancialStatuses.length) {
+    sendJson(res, 400, { error: "Select at least one Shopify status to import." });
     return;
   }
 
@@ -9051,14 +9106,14 @@ async function handleShopifySettingsPost(req, res) {
       user.id,
       connection.shop_domain,
       selectedLocationIds,
-      financialStatus,
+      selectedFinancialStatuses,
       autoRefreshEnabled
     );
     sendJson(res, 200, {
       shop: connection.shop_domain,
       settings: {
         selectedLocationIds,
-        financialStatus,
+        selectedFinancialStatuses,
         autoRefreshEnabled,
       },
     });
@@ -9124,7 +9179,11 @@ async function handleShopifyImportOrders(req, res) {
 
   const requestedShop = normalizeShopDomain(body?.shop);
   const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
-  const requestedFinancialStatus = normalizeShopifyFinancialStatus(body?.financialStatus);
+  const requestedFinancialStatuses = normalizeShopifyFinancialStatuses(
+    Array.isArray(body?.selectedFinancialStatuses)
+      ? body.selectedFinancialStatuses
+      : body?.financialStatus
+  );
   const limit = Number(body?.limit);
   let resolvedShop = requestedShop;
 
@@ -9148,12 +9207,14 @@ async function handleShopifyImportOrders(req, res) {
       resolvedSelectedLocationIds = locations.map((location) => location.id);
     }
     const locationById = indexLocationsById(locations);
-    const resolvedFinancialStatus = requestedFinancialStatus || savedSettings.financialStatus;
+    const resolvedFinancialStatuses = requestedFinancialStatuses.length
+      ? requestedFinancialStatuses
+      : savedSettings.selectedFinancialStatuses;
     const orders = await fetchShopifyOrders(
       connection.shop_domain,
       accessToken,
       limit,
-      resolvedFinancialStatus
+      resolvedFinancialStatuses
     );
     const rows = mapShopifyOrdersToCsvRows(orders, {
       locationById,
@@ -9164,7 +9225,7 @@ async function handleShopifyImportOrders(req, res) {
       count: rows.length,
       settings: {
         selectedLocationIds: savedSettings.selectedLocationIds,
-        financialStatus: savedSettings.financialStatus,
+        selectedFinancialStatuses: savedSettings.selectedFinancialStatuses,
         autoRefreshEnabled: savedSettings.autoRefreshEnabled,
       },
       rows,

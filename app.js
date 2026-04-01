@@ -97,9 +97,9 @@ const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
   { value: "refunded", label: "Refunded" },
   { value: "voided", label: "Voided" },
   { value: "unpaid", label: "Unpaid" },
-  { value: "any", label: "Any Payment Status" },
 ]);
 const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
+const DEFAULT_SHOPIFY_FINANCIAL_STATUSES = Object.freeze([DEFAULT_SHOPIFY_FINANCIAL_STATUS]);
 const SHOPIFY_AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
 const WIX_IMPORT_STATUS_OPTIONS = Object.freeze([
   { value: "PENDING", label: "Pending" },
@@ -1369,13 +1369,13 @@ const TRANSLATIONS = {
     fr: "Impossible de charger les paramètres Shopify.",
     nl: "Kan Shopify-instellingen niet laden.",
   },
+  "Select at least one Shopify status to import.": {
+    fr: "Sélectionnez au moins un statut Shopify à importer.",
+    nl: "Selecteer minstens één Shopify-status om te importeren.",
+  },
   "Select at least one Shopify fulfillment location.": {
     fr: "Sélectionnez au moins un emplacement de fulfillment Shopify.",
     nl: "Selecteer minstens één Shopify-fulfillmentlocatie.",
-  },
-  "Select Status to Import": {
-    fr: "Sélectionnez le statut à importer",
-    nl: "Selecteer status om te importeren",
   },
   "Approved": { fr: "Approuvée", nl: "Goedgekeurd" },
   "Rejected": { fr: "Rejetée", nl: "Afgewezen" },
@@ -1398,7 +1398,6 @@ const TRANSLATIONS = {
   "Partially Refunded": { fr: "Partiellement remboursé", nl: "Gedeeltelijk terugbetaald" },
   "Voided": { fr: "Annulé", nl: "Nietig" },
   "Unpaid": { fr: "Non payé", nl: "Onbetaald" },
-  "Any Payment Status": { fr: "Tout statut de paiement", nl: "Elke betaalstatus" },
   "Saving...": { fr: "Enregistrement...", nl: "Opslaan..." },
   "{count} selected": { fr: "{count} sélectionné(s)", nl: "{count} geselecteerd" },
   "{count} selected (all)": { fr: "{count} sélectionné(s) (tous)", nl: "{count} geselecteerd (alle)" },
@@ -2143,7 +2142,8 @@ const shopifySettingsClose = document.getElementById("shopifySettingsClose");
 const shopifySettingsCancel = document.getElementById("shopifySettingsCancel");
 const shopifySettingsSave = document.getElementById("shopifySettingsSave");
 const shopifySettingsStatus = document.getElementById("shopifySettingsStatus");
-const shopifyFinancialStatusSelect = document.getElementById("shopifyFinancialStatus");
+const shopifyStatusesSummary = document.getElementById("shopifyStatusesSummary");
+const shopifyStatusesList = document.getElementById("shopifyStatusesList");
 const shopifyAutoRefreshInput = document.getElementById("shopifyAutoRefresh");
 const shopifyLocationsSummary = document.getElementById("shopifyLocationsSummary");
 const shopifyLocationsList = document.getElementById("shopifyLocationsList");
@@ -2354,10 +2354,10 @@ let shopifyLocationsCache = [];
 let shopifyLocationDraftSelection = new Set();
 let shopifySavedImportSettings = {
   selectedLocationIds: [],
-  financialStatus: DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+  selectedFinancialStatuses: [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
   autoRefreshEnabled: false,
 };
-let shopifyFinancialStatusDraft = DEFAULT_SHOPIFY_FINANCIAL_STATUS;
+let shopifyFinancialStatusDraftSelection = new Set(DEFAULT_SHOPIFY_FINANCIAL_STATUSES);
 let shopifyAutoRefreshDraft = false;
 let shopifyAutoRefreshTimer = 0;
 let shopifyAutoRefreshInFlight = false;
@@ -3448,6 +3448,21 @@ function normalizeShopifyFinancialStatus(value) {
     : "";
 }
 
+function normalizeShopifyFinancialStatusList(values) {
+  const rawValues = Array.isArray(values)
+    ? values
+    : values == null || values === ""
+      ? []
+      : [values];
+  const seen = new Set();
+  rawValues.forEach((value) => {
+    const normalized = normalizeShopifyFinancialStatus(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+  });
+  return Array.from(seen);
+}
+
 function normalizeShopifyAutoRefreshEnabled(value) {
   if (value === true || value === 1) return true;
   const normalized = String(value || "").trim().toLowerCase();
@@ -3487,6 +3502,13 @@ function normalizeWixImportSettings(settings) {
 }
 
 function normalizeShopifyImportSettings(settings) {
+  const selectedFinancialStatuses = normalizeShopifyFinancialStatusList(
+    Array.isArray(settings?.selectedFinancialStatuses)
+      ? settings.selectedFinancialStatuses
+      : Array.isArray(settings?.selected_financial_statuses)
+        ? settings.selected_financial_statuses
+        : settings?.financialStatus ?? settings?.financial_status
+  );
   return {
     selectedLocationIds: normalizeShopifyLocationIdList(
       Array.isArray(settings?.selectedLocationIds)
@@ -3495,10 +3517,9 @@ function normalizeShopifyImportSettings(settings) {
           ? settings.selected_location_ids
           : []
     ),
-    financialStatus:
-      normalizeShopifyFinancialStatus(
-        settings?.financialStatus ?? settings?.financial_status
-      ) || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+    selectedFinancialStatuses: selectedFinancialStatuses.length
+      ? selectedFinancialStatuses
+      : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
     autoRefreshEnabled: normalizeShopifyAutoRefreshEnabled(
       settings?.autoRefreshEnabled ?? settings?.auto_refresh_enabled
     ),
@@ -3534,7 +3555,7 @@ async function saveShopifySavedSettings(shopDomain, settings = null) {
   const payload = {
     shop,
     selectedLocationIds: normalizedSettings.selectedLocationIds,
-    financialStatus: normalizedSettings.financialStatus,
+    selectedFinancialStatuses: normalizedSettings.selectedFinancialStatuses,
     autoRefreshEnabled: normalizedSettings.autoRefreshEnabled,
   };
   try {
@@ -3625,6 +3646,12 @@ function getShopifySelectedLocationSummary(locations, selectedIds) {
 function getShopifyFinancialStatusLabel(status) {
   const option = SHOPIFY_FINANCIAL_STATUS_OPTIONS.find((item) => item.value === status);
   return tr(option?.label || status);
+}
+
+function getShopifySelectedStatusesSummary(selectedStatuses) {
+  return tr("{count} selected", {
+    count: normalizeShopifyFinancialStatusList(selectedStatuses).length,
+  });
 }
 
 function normalizeWooCommerceStatusKey(value) {
@@ -3861,14 +3888,39 @@ function setShopifySettingsBusy(isBusy) {
   if (shopifySettingsClose) {
     shopifySettingsClose.disabled = shopifySettingsBusy;
   }
-  if (shopifyFinancialStatusSelect) {
-    shopifyFinancialStatusSelect.disabled = shopifySettingsBusy;
-  }
   if (shopifyAutoRefreshInput) {
     shopifyAutoRefreshInput.disabled = shopifySettingsBusy;
   }
+  renderShopifyFinancialStatusOptions();
   renderShopifySettingsLocations();
   renderShopifyDisconnectAction();
+}
+
+function renderShopifyFinancialStatusOptions() {
+  if (!shopifyStatusesList || !shopifyStatusesSummary) return;
+
+  const selectedStatuses = normalizeShopifyFinancialStatusList(
+    Array.from(shopifyFinancialStatusDraftSelection)
+  );
+  shopifyStatusesSummary.textContent = getShopifySelectedStatusesSummary(selectedStatuses);
+  shopifyStatusesList.innerHTML = "";
+
+  SHOPIFY_FINANCIAL_STATUS_OPTIONS.forEach((option) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `shopify-location-row woocommerce-status-row shopify-status-row${
+      selectedStatuses.includes(option.value) ? " is-selected" : ""
+    }`;
+    row.dataset.status = option.value;
+    row.disabled = shopifySettingsBusy;
+    row.innerHTML = `
+      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
+      <span>
+        <span class="shopify-location-item-title">${escapeHtml(getShopifyFinancialStatusLabel(option.value))}</span>
+      </span>
+    `;
+    shopifyStatusesList.appendChild(row);
+  });
 }
 
 function getShopifyLocationMeta(location) {
@@ -3979,19 +4031,7 @@ async function fetchShopifyLocations(shopDomain) {
 }
 
 function populateShopifySettingsForm() {
-  if (shopifyFinancialStatusSelect) {
-    shopifyFinancialStatusSelect.innerHTML = "";
-    SHOPIFY_FINANCIAL_STATUS_OPTIONS.forEach((option) => {
-      const optionNode = document.createElement("option");
-      optionNode.value = option.value;
-      optionNode.textContent = getShopifyFinancialStatusLabel(option.value);
-      shopifyFinancialStatusSelect.appendChild(optionNode);
-    });
-    shopifyFinancialStatusSelect.value =
-      normalizeShopifyFinancialStatus(shopifyFinancialStatusDraft)
-      || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
-    shopifyFinancialStatusSelect.disabled = shopifySettingsBusy;
-  }
+  renderShopifyFinancialStatusOptions();
   if (shopifyAutoRefreshInput) {
     shopifyAutoRefreshInput.checked = Boolean(shopifyAutoRefreshDraft);
     shopifyAutoRefreshInput.disabled = shopifySettingsBusy;
@@ -4001,13 +4041,13 @@ function populateShopifySettingsForm() {
 }
 
 function getShopifyDraftImportSettings() {
-  return normalizeShopifyImportSettings({
-    selectedLocationIds: Array.from(shopifyLocationDraftSelection),
-    financialStatus:
-      normalizeShopifyFinancialStatus(shopifyFinancialStatusSelect?.value)
-      || shopifyFinancialStatusDraft,
+  return {
+    selectedLocationIds: normalizeShopifyLocationIdList(Array.from(shopifyLocationDraftSelection)),
+    selectedFinancialStatuses: normalizeShopifyFinancialStatusList(
+      Array.from(shopifyFinancialStatusDraftSelection)
+    ),
     autoRefreshEnabled: Boolean(shopifyAutoRefreshInput?.checked ?? shopifyAutoRefreshDraft),
-  });
+  };
 }
 
 async function openShopifySettingsModal() {
@@ -4034,7 +4074,7 @@ async function openShopifySettingsModal() {
     ]);
     shopifyLocationsCache = locations;
     shopifySavedImportSettings = savedSettings;
-    shopifyFinancialStatusDraft = savedSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(savedSettings.selectedFinancialStatuses);
     shopifyAutoRefreshDraft = Boolean(savedSettings.autoRefreshEnabled);
     const savedSet = new Set(savedSettings.selectedLocationIds);
     const validSaved = locations
@@ -4059,7 +4099,9 @@ async function openShopifySettingsModal() {
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     populateShopifySettingsForm();
     setShopifySettingsStatus(message, { kind: "error" });
@@ -4088,6 +4130,12 @@ async function saveShopifySettings() {
     return;
   }
   const draftSettings = getShopifyDraftImportSettings();
+  if (!draftSettings.selectedFinancialStatuses.length) {
+    setShopifySettingsStatus(tr("Select at least one Shopify status to import."), {
+      kind: "error",
+    });
+    return;
+  }
   if (!draftSettings.selectedLocationIds.length) {
     setShopifySettingsStatus(tr("Select at least one Shopify fulfillment location."), {
       kind: "error",
@@ -4099,7 +4147,9 @@ async function saveShopifySettings() {
   try {
     shopifySavedImportSettings = await saveShopifySavedSettings(shopifyConnection.shop, draftSettings);
     shopifyLocationDraftSelection = new Set(shopifySavedImportSettings.selectedLocationIds);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     populateShopifySettingsForm();
     syncShopifyAutoRefreshState();
@@ -4131,7 +4181,9 @@ async function disconnectShopify() {
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
     updateShopifyProviderStatus();
@@ -6312,7 +6364,9 @@ async function loadShopifyConnectionStatus(options = {}) {
   if (!currentUser) {
     shopifyConnection = null;
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
     updateShopifyProviderStatus();
@@ -6337,7 +6391,9 @@ async function loadShopifyConnectionStatus(options = {}) {
   } catch (error) {
     shopifyConnection = null;
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
     updateShopifyProviderStatus();
@@ -6935,7 +6991,9 @@ async function importShopifyOrders(shop, options = {}) {
     });
     shopifySavedImportSettings = normalizeShopifyImportSettings(data?.settings);
     shopifyLocationDraftSelection = new Set(shopifySavedImportSettings.selectedLocationIds);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     const rows = mapShopifyImportRows(data?.rows);
     applyImportedRows(rows, "Shopify", { source: "provider-shopify" });
@@ -6963,7 +7021,9 @@ async function importShopifyOrders(shop, options = {}) {
     if (isShopifyReconnectError(message)) {
       shopifyConnection = null;
       shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-      shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+      shopifyFinancialStatusDraftSelection = new Set(
+        shopifySavedImportSettings.selectedFinancialStatuses
+      );
       shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
       syncShopifyAutoRefreshState();
       updateShopifyProviderStatus();
@@ -15134,7 +15194,9 @@ function setAuthView(session, options = {}) {
     updateWooCommerceProviderStatus();
     shopifyConnection = null;
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
     updateShopifyProviderStatus();
@@ -15207,7 +15269,9 @@ function setAuthView(session, options = {}) {
     shopifyLocationsCache = [];
     shopifyLocationDraftSelection = new Set();
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
-    shopifyFinancialStatusDraft = shopifySavedImportSettings.financialStatus;
+    shopifyFinancialStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFinancialStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
     setClientInviteResult("");
@@ -19577,6 +19641,21 @@ if (woocommerceDisconnectButton) {
   });
 }
 
+if (shopifyStatusesList) {
+  shopifyStatusesList.addEventListener("click", (event) => {
+    const row = event.target?.closest?.(".shopify-status-row");
+    if (!row || !shopifyStatusesList.contains(row) || shopifySettingsBusy) return;
+    const status = normalizeShopifyFinancialStatus(row.dataset.status);
+    if (!status) return;
+    if (shopifyFinancialStatusDraftSelection.has(status)) {
+      shopifyFinancialStatusDraftSelection.delete(status);
+    } else {
+      shopifyFinancialStatusDraftSelection.add(status);
+    }
+    renderShopifyFinancialStatusOptions();
+  });
+}
+
 if (shopifyLocationsList) {
   shopifyLocationsList.addEventListener("click", (event) => {
     const row = event.target?.closest?.(".shopify-location-row");
@@ -19601,14 +19680,6 @@ if (shopifyLocationsList) {
       shopifyLocationDraftSelection.add(locationId);
     }
     renderShopifySettingsLocations();
-  });
-}
-
-if (shopifyFinancialStatusSelect) {
-  shopifyFinancialStatusSelect.addEventListener("change", () => {
-    shopifyFinancialStatusDraft =
-      normalizeShopifyFinancialStatus(shopifyFinancialStatusSelect.value)
-      || DEFAULT_SHOPIFY_FINANCIAL_STATUS;
   });
 }
 
