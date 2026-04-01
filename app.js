@@ -2689,6 +2689,15 @@ function parseRouteFromLocation() {
   return { view: "builder", step: clampStep(state.step) };
 }
 
+function hasPendingProviderCallbackQuery(locationLike = window.location) {
+  const params = new URLSearchParams(locationLike?.search || "");
+  const provider = String(params.get("provider") || "").trim().toLowerCase();
+  if (provider === "shopify" || provider === "woocommerce" || provider === "wix") {
+    return true;
+  }
+  return Boolean(String(params.get("instance") || "").trim());
+}
+
 function routeToPath(route) {
   if (!route || route.view === "builder") {
     const step = clampStep(route?.step || state.step);
@@ -20101,9 +20110,13 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   updatePayment();
   updatePreview();
   renderLeadProspects();
+  cachePendingWixInstanceFromLocation();
   const initialRoute = parseRouteFromLocation();
   const initialStep =
     initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
+  const initialNormalizedRoute =
+    initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute;
+  const preserveInitialSearch = hasPendingProviderCallbackQuery(window.location);
 
   goToStep(initialStep, { push: false, regenerate: false });
   if (initialRoute.view === "register") {
@@ -20119,10 +20132,15 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
       `${window.location.pathname}${window.location.search || ""}${window.location.hash || ""}`
     );
   } else {
-    updateRoute(
-      initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute,
-      { replace: true }
-    );
+    if (preserveInitialSearch) {
+      history.replaceState(
+        routeToState(initialNormalizedRoute),
+        "",
+        `${routeToPath(initialNormalizedRoute)}${window.location.search || ""}${window.location.hash || ""}`
+      );
+    } else {
+      updateRoute(initialNormalizedRoute, { replace: true });
+    }
   }
 
   window.addEventListener("popstate", (event) => {
