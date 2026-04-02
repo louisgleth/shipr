@@ -62,15 +62,15 @@
                     <div class="auth-register-section-label">Account Information</div>
                   </div>
                   <div class="auth-register-grid">
-                    <label class="field auth-register-grid-half">
+                    <label class="field auth-register-grid-span-2">
                       <span>Company Name</span>
                       <input type="text" id="authCompanyName" autocomplete="organization" />
                     </label>
-                    <label class="field auth-register-grid-half">
+                    <label class="field">
                       <span>Point of Contact</span>
                       <input type="text" id="authContactName" autocomplete="name" />
                     </label>
-                    <label class="field auth-register-grid-wide">
+                    <label class="field">
                       <span>Contact Email</span>
                       <input type="email" id="authContactEmail" autocomplete="email" />
                     </label>
@@ -90,7 +90,7 @@
                     <div class="auth-register-section-label">Billing Address</div>
                   </div>
                   <div class="auth-address-grid">
-                    <label class="field auth-address-grid-street">
+                    <label class="field auth-register-grid-span-3">
                       <span>Street</span>
                       <input type="text" id="authBillingStreet" autocomplete="address-line1" />
                     </label>
@@ -113,7 +113,7 @@
                   <input type="hidden" id="authBillingAddress" />
                 </div>
               </div>
-              <div class="auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
+              <div class="auth-register-step auth-register-field auth-full-row is-hidden" id="authAgreementGroup">
                 <div class="auth-agreement-contract">
                   <div class="auth-agreement-contract-head">
                     <div class="auth-agreement-contract-version mono" id="authAgreementVersion">Agreement version --</div>
@@ -1562,7 +1562,7 @@
               <div class="panel-actions label-confirm-actions">
                 <button type="button" class="btn btn-primary" id="labelConfirmApprove">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5l4.2 4.2L19 7.4"/></svg>
-                  <span>I've Checked</span>
+                  <span>I’ve Checked It</span>
                 </button>
                 <button type="button" class="label-confirm-review-link" id="labelConfirmCancel">
                   <span>Review Again</span>
@@ -2010,6 +2010,11 @@
               WooCommerce import and settings are coming soon.
             </p>
           </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-primary" id="providerSettingsCancel">
+              <span>Close</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2023,19 +2028,12 @@
           </button>
         </div>
         <div class="shopify-settings-body provider-credentials-body">
-          <div class="provider-modal-connected-row is-hidden" id="wixConnectedPillRow">
-            <span class="provider-connected-pill provider-connected-pill-modal">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              <span>Connected</span>
-            </span>
-          </div>
-          <div class="provider-settings-copy" id="wixSettingsIntro">
-            <h3 id="wixSettingsHeading">Connect Wix</h3>
-            <p class="shopify-settings-note" id="wixSettingsNote">
-              Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking.
-            </p>
+          <h3 id="wixSettingsHeading">Connect Wix</h3>
+          <p class="shopify-settings-note" id="wixSettingsNote">
+            Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking.
+          </p>
+          <div class="provider-connection-summary" id="wixConnectionSummary">
+            Not connected yet.
           </div>
           <div class="shopify-locations-picker woocommerce-statuses-picker">
             <div class="shopify-locations-head">
@@ -2061,6 +2059,10 @@
             </button>
           </div>
           <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="wixSettingsCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Close</span>
+            </button>
             <button type="button" class="btn btn-primary" id="wixSettingsSave">
               <span>Continue to Wix</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -2079,13 +2081,12 @@
           </button>
         </div>
         <div class="shopify-settings-body provider-credentials-body woocommerce-settings-body">
-          <div class="provider-modal-connected-row is-hidden" id="woocommerceConnectedPillRow">
-            <span class="provider-connected-pill provider-connected-pill-modal">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              <span>Connected</span>
-            </span>
+          <h3>Connect WooCommerce</h3>
+          <p class="shopify-settings-note">
+            Connect your store and choose which WooCommerce orders Shipide should import.
+          </p>
+          <div class="provider-connection-summary" id="woocommerceConnectionSummary">
+            Not connected yet.
           </div>
           <div class="provider-credentials-grid">
             <label class="field">
@@ -2123,6 +2124,10 @@
             </button>
           </div>
           <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="woocommerceSettingsCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Close</span>
+            </button>
             <button type="button" class="btn btn-primary" id="woocommerceSettingsSave">
               <span>Continue to WooCommerce</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -2141,14 +2146,6 @@
           </button>
         </div>
         <div class="shopify-settings-body">
-          <div class="provider-modal-connected-row is-hidden" id="shopifyConnectedPillRow">
-            <span class="provider-connected-pill provider-connected-pill-modal">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              <span>Connected</span>
-            </span>
-          </div>
           <div class="shopify-locations-picker woocommerce-statuses-picker">
             <div class="shopify-locations-head">
               <span>Select statuses to import</span>
@@ -2190,6 +2187,10 @@
             </button>
           </div>
           <div class="panel-actions">
+            <button type="button" class="btn btn-ghost" id="shopifySettingsCancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Cancel</span>
+            </button>
             <button type="button" class="btn btn-primary" id="shopifySettingsSave">
               <span>Save Settings</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>

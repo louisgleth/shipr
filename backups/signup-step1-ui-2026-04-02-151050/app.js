@@ -1774,7 +1774,6 @@ const authAgreementPages = document.getElementById("authAgreementPages");
 const authAgreementLens = document.getElementById("authAgreementLens");
 const authAgreementLensInner = document.getElementById("authAgreementLensInner");
 const authAgreementAccept = document.getElementById("authAgreementAccept");
-const authAgreementCheck = authAgreementAccept?.closest(".auth-agreement-check") || null;
 const authAgreementStatus = document.getElementById("authAgreementStatus");
 const authInviteStatus = document.getElementById("authInviteStatus");
 const authError = document.getElementById("authError");
@@ -9781,8 +9780,6 @@ function clearTransitionFlags(element) {
 function transitionShellVisibility(isAuthed, options = {}) {
   const { animate = true } = options;
   if (!authGate || !appPage) return;
-  document.documentElement.classList.toggle("is-auth-view", !isAuthed);
-  document.body.classList.toggle("is-auth-view", !isAuthed);
 
   const showElement = isAuthed ? appPage : authGate;
   const hideElement = isAuthed ? authGate : appPage;
@@ -17651,16 +17648,6 @@ if (authAgreementPages) {
   });
   authAgreementPages.addEventListener("pointerleave", () => {
     hideAuthAgreementMagnifier();
-  });
-}
-
-if (authAgreementCheck) {
-  authAgreementCheck.addEventListener("click", (event) => {
-    if (authAgreementHasReachedEnd) return;
-    event.preventDefault();
-    setAuthAgreementStatus(tr("Scroll to the end of the agreement to unlock acceptance."), {
-      tone: "error",
-    });
   });
 }
 
