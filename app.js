@@ -166,6 +166,7 @@ const SHOPIFY_APP_BRIDGE_SCRIPT_URL = "https://cdn.shopify.com/shopifycloud/app-
 const SHOPIFY_PENDING_SETTINGS_STORAGE_KEY = "shipide-shopify-settings-pending";
 const WIX_PENDING_INSTANCE_STORAGE_KEY = "shipide-wix-instance-pending";
 const WIX_PENDING_SETTINGS_STORAGE_KEY = "shipide-wix-settings-pending";
+const WIX_AUTH_CONTEXT_STORAGE_KEY = "shipide-wix-auth-context";
 const LEAD_STACK_META = {
   shopify: {
     label: "Shopify",
@@ -6245,6 +6246,11 @@ function clearPendingWixSettings() {
   window.sessionStorage.removeItem(WIX_PENDING_SETTINGS_STORAGE_KEY);
 }
 
+function clearWixAuthContext() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(WIX_AUTH_CONTEXT_STORAGE_KEY);
+}
+
 function getWixSelectedStatusesSummary(selectedStatuses) {
   return tr("{count} selected", {
     count: normalizeWixImportStatusList(selectedStatuses).length,
@@ -6635,6 +6641,25 @@ function cachePendingWixInstanceFromLocation() {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search || "");
   const instanceToken = String(params.get("instance") || "").trim();
+  const provider = String(params.get("provider") || "").trim().toLowerCase();
+  const origin = String(params.get("origin") || document.referrer || "").trim().toLowerCase();
+  const displayMode = String(params.get("displayMode") || "").trim().toLowerCase();
+  const isEmbeddedFrame = (() => {
+    try {
+      return window.self !== window.top;
+    } catch (_error) {
+      return true;
+    }
+  })();
+  const hasWixContext =
+    provider === "wix"
+    || Boolean(instanceToken)
+    || /(?:^https?:\/\/)?(?:manage\.)?wix\.com\b/.test(origin)
+    || (isEmbeddedFrame && /wix/i.test(document.referrer || ""))
+    || displayMode === "main";
+  if (hasWixContext) {
+    window.sessionStorage.setItem(WIX_AUTH_CONTEXT_STORAGE_KEY, "1");
+  }
   if (!instanceToken) return "";
   window.sessionStorage.setItem(WIX_PENDING_INSTANCE_STORAGE_KEY, instanceToken);
   return instanceToken;
@@ -6654,6 +6679,7 @@ async function consumeWixCallbackParams() {
   if (!hasWixQuery && !hasWixInstanceQuery && !instanceToken) return;
   if (!instanceToken) {
     const message = String(params.get("message") || "").trim() || tr("Could not connect Wix.");
+    clearWixAuthContext();
     setProviderStatus(message, { kind: "error" });
     history.replaceState(history.state, "", cleanUrl);
     return;
@@ -6711,6 +6737,7 @@ async function consumeWixCallbackParams() {
   } catch (error) {
     setProviderStatus(error?.message || tr("Could not connect Wix."), { kind: "error" });
   }
+  clearWixAuthContext();
   if (hasWixQuery || hasWixInstanceQuery) {
     history.replaceState(history.state, "", cleanUrl);
   }
@@ -14969,6 +14996,9 @@ function hasPendingWixLinkContext() {
   const params = new URLSearchParams(window.location.search || "");
   if (params.get("provider") === "wix") return true;
   if (String(params.get("instance") || "").trim()) return true;
+  if (String(window.sessionStorage.getItem(WIX_AUTH_CONTEXT_STORAGE_KEY) || "").trim() === "1") {
+    return true;
+  }
   return Boolean(String(window.sessionStorage.getItem(WIX_PENDING_INSTANCE_STORAGE_KEY) || "").trim());
 }
 
