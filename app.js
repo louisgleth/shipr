@@ -418,7 +418,10 @@ const TRANSLATIONS = {
   "Portal": { fr: "Portail", nl: "Portaal" },
   "Shipide logo": { fr: "Logo Shipide", nl: "Shipide-logo" },
   "Sign in to continue": { fr: "Connectez-vous pour continuer", nl: "Log in om verder te gaan" },
-  "Sign in to link Wix": { fr: "Connectez-vous pour lier Wix", nl: "Log in om Wix te koppelen" },
+  "Sign in to connect your Wix store": {
+    fr: "Connectez-vous pour connecter votre boutique Wix",
+    nl: "Log in om je Wix-winkel te verbinden",
+  },
   "Complete your account registration": {
     fr: "Finalisez l’inscription de votre compte",
     nl: "Voltooi je accountregistratie",
@@ -15035,7 +15038,7 @@ function setAuthMode(mode, options = {}) {
       : isRecovery
         ? tr("Reset your password")
         : hasPendingWixLinkContext()
-          ? tr("Sign in to link Wix")
+          ? tr("Sign in to connect your Wix store")
           : tr("Sign in to continue");
   }
   if (authSubtitle) {
