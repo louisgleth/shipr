@@ -8,6 +8,11 @@ const DEFAULT_SHOPIFY_SCOPES = "read_orders,write_orders,read_locations";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
 const DEFAULT_WOOCOMMERCE_APP_NAME = "Shipide";
 const DEFAULT_WIX_APP_INSTALL_URL = "";
+const SHOPIFY_COMPLIANCE_WEBHOOK_TOPICS = Object.freeze([
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact",
+]);
 const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
   "paid",
   "pending",
@@ -224,6 +229,15 @@ export default {
       if (pathname === "/api/shopify/callback" && request.method === "GET") {
         return handleShopifyCallback(request, env, url);
       }
+      if (pathname === "/api/shopify/public-config" && request.method === "GET") {
+        return handleShopifyPublicConfig(request, env);
+      }
+      if (pathname === "/api/shopify/embedded/session" && request.method === "GET") {
+        return handleShopifyEmbeddedSession(request, env, url);
+      }
+      if (pathname === "/api/shopify/webhooks/compliance" && request.method === "POST") {
+        return handleShopifyComplianceWebhook(request, env);
+      }
       if (pathname === "/api/shopify/connection" && request.method === "GET") {
         return handleConnection(request, env);
       }
@@ -407,11 +421,12 @@ async function launchInvoiceBrowserWithRetry(env) {
   throw lastError || new Error("Unable to create browser.");
 }
 
-function jsonResponse(payload, status = 200) {
+function jsonResponse(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: noStoreHeaders({
       "Content-Type": "application/json; charset=utf-8",
+      ...extraHeaders,
     }),
   });
 }
@@ -492,16 +507,21 @@ function getBearerToken(request) {
 }
 
 async function readJsonBody(request) {
-  const text = await request.text();
+  const text = await readTextBody(request);
   if (!text.trim()) return {};
-  if (text.length > MAX_BODY_BYTES) {
-    throw new Error("Request body too large.");
-  }
   try {
     return JSON.parse(text);
   } catch (_error) {
     throw new Error("Invalid JSON request body.");
   }
+}
+
+async function readTextBody(request) {
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) {
+    throw new Error("Request body too large.");
+  }
+  return text;
 }
 
 function getShopifyScopes(env) {
@@ -783,6 +803,89 @@ async function getAuthenticatedUser(request, env) {
   const token = getBearerToken(request);
   if (!token) return null;
   return fetchSupabaseUser(env, token);
+}
+
+function normalizeShopifySessionShop(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return normalizeShopDomain(new URL(raw).hostname);
+    } catch (_error) {
+      return "";
+    }
+  }
+  return normalizeShopDomain(raw.replace(/\/.*$/, ""));
+}
+
+async function verifyShopifyWebhookBodyHmac(env, rawBody, receivedHmac) {
+  const incoming = String(receivedHmac || "").trim();
+  if (!incoming || !env.SHOPIFY_API_SECRET) return false;
+  const digestBytes = await hmacSha256Bytes(env.SHOPIFY_API_SECRET, String(rawBody || ""));
+  return timingSafeEqual(incoming, bytesToBase64(digestBytes));
+}
+
+async function verifyShopifySessionToken(env, token) {
+  if (!env.SHOPIFY_API_SECRET || !env.SHOPIFY_API_KEY) return null;
+  const parts = String(token || "").trim().split(".");
+  if (parts.length !== 3) return null;
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  if (!encodedHeader || !encodedPayload || !encodedSignature) return null;
+
+  let header = null;
+  let payload = null;
+  try {
+    header = JSON.parse(new TextDecoder().decode(fromBase64Url(encodedHeader)));
+    payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encodedPayload)));
+  } catch (_error) {
+    return null;
+  }
+  if (!header || typeof header !== "object" || !payload || typeof payload !== "object") {
+    return null;
+  }
+  if (String(header.alg || "").trim().toUpperCase() !== "HS256") {
+    return null;
+  }
+
+  const expectedSignature = await hmacSha256Bytes(
+    env.SHOPIFY_API_SECRET,
+    `${encodedHeader}.${encodedPayload}`
+  );
+  const receivedSignature = fromBase64Url(encodedSignature);
+  if (
+    receivedSignature.length !== expectedSignature.length
+    || !timingSafeEqual(toBase64Url(receivedSignature), toBase64Url(expectedSignature))
+  ) {
+    return null;
+  }
+
+  const audience = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  const audienceValid = audience.some(
+    (value) => String(value || "").trim() === String(env.SHOPIFY_API_KEY || "").trim()
+  );
+  if (!audienceValid) {
+    return null;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const exp = Number(payload.exp);
+  const nbf = Number(payload.nbf);
+  if (Number.isFinite(exp) && nowSec > exp + 10) {
+    return null;
+  }
+  if (Number.isFinite(nbf) && nowSec + 10 < nbf) {
+    return null;
+  }
+
+  const shop = normalizeShopifySessionShop(payload.dest || payload.destination || payload.iss);
+  if (!shop) {
+    return null;
+  }
+
+  return {
+    ...payload,
+    shop,
+  };
 }
 
 async function supabaseServiceRequest(env, pathnameWithQuery, options = {}) {
@@ -5358,6 +5461,71 @@ async function getShopifyConnection(env, userId, shop, options = {}) {
   return rows[0];
 }
 
+async function getShopifyConnectionByShop(env, shop, options = {}) {
+  const { includeSettings = false } = options;
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    includeSettings
+      ? "user_id,shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
+      : "user_id,shop_domain,status,scopes,connected_at,updated_at,access_token"
+  );
+  params.set("provider", "eq.shopify");
+  params.set("shop_domain", `eq.${normalizedShop}`);
+  params.set("status", "eq.connected");
+  params.set("order", "updated_at.desc");
+  params.set("limit", "1");
+
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/provider_connections?${params.toString()}`,
+    {
+      method: "GET",
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed reading Shopify connection (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) return null;
+  return rows[0];
+}
+
+async function resolveShopifyEmbeddedSessionContext(env, token) {
+  const session = await verifyShopifySessionToken(env, token);
+  if (!session?.shop) {
+    return null;
+  }
+
+  const connection = await getShopifyConnectionByShop(env, session.shop).catch(() => null);
+  if (!connection?.user_id) {
+    return {
+      session,
+      connection: null,
+      portalUser: null,
+    };
+  }
+
+  let portalUser = null;
+  try {
+    portalUser = await getSupabaseUserById(env, connection.user_id);
+  } catch (_error) {
+    portalUser = {
+      id: connection.user_id,
+      email: "",
+    };
+  }
+
+  return {
+    session,
+    connection,
+    portalUser,
+  };
+}
+
 async function upsertWooCommerceConnection(env, userId, storeUrl, consumerKey, consumerSecret) {
   const nowIso = new Date().toISOString();
   const encryptedToken = await encryptToken(
@@ -8908,6 +9076,96 @@ async function handleConnection(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not load Shopify connection." }, 500);
+  }
+}
+
+async function handleShopifyPublicConfig(_request, env) {
+  return jsonResponse({
+    shopifyApiKey: String(env.SHOPIFY_API_KEY || "").trim(),
+    appBridgeCdnUrl: "https://cdn.shopify.com/shopifycloud/app-bridge.js",
+    embedded: true,
+  });
+}
+
+async function handleShopifyEmbeddedSession(request, env, requestUrl) {
+  try {
+    assertConfig(env);
+    const sessionToken = getBearerToken(request);
+    if (!sessionToken) {
+      return jsonResponse(
+        { error: "Shopify session token required." },
+        401,
+        { "X-Shopify-Retry-Invalid-Session-Request": "1" }
+      );
+    }
+
+    const context = await resolveShopifyEmbeddedSessionContext(env, sessionToken);
+    if (!context?.session?.shop) {
+      return jsonResponse(
+        { error: "Shopify session token was invalid or expired." },
+        401,
+        { "X-Shopify-Retry-Invalid-Session-Request": "1" }
+      );
+    }
+
+    const requestedShop = normalizeShopDomain(requestUrl.searchParams.get("shop"));
+    if (requestedShop && requestedShop !== context.session.shop) {
+      return jsonResponse(
+        { error: "Shopify session token did not match the requested shop." },
+        401,
+        { "X-Shopify-Retry-Invalid-Session-Request": "1" }
+      );
+    }
+
+    return jsonResponse({
+      authenticated: true,
+      shop: context.session.shop,
+      connected: Boolean(context.connection?.user_id),
+      connection: context.connection
+        ? {
+            shop: context.connection.shop_domain,
+            scopes: context.connection.scopes || "",
+            connectedAt: context.connection.connected_at || "",
+          }
+        : null,
+      portalUser: context.portalUser
+        ? {
+            id: context.portalUser.id,
+            email: normalizeEmail(context.portalUser.email || ""),
+          }
+        : null,
+      portalUrl: `${getPublicAppUrl(env, request)}/label-info`,
+    });
+  } catch (error) {
+    return jsonResponse(
+      { error: error?.message || "Could not verify Shopify embedded session." },
+      500
+    );
+  }
+}
+
+async function handleShopifyComplianceWebhook(request, env) {
+  try {
+    assertConfig(env);
+    const rawBody = await readTextBody(request);
+    const topic = String(request.headers.get("x-shopify-topic") || "").trim().toLowerCase();
+    const shop = normalizeShopDomain(request.headers.get("x-shopify-shop-domain") || "");
+    const receivedHmac = String(request.headers.get("x-shopify-hmac-sha256") || "").trim();
+
+    if (!SHOPIFY_COMPLIANCE_WEBHOOK_TOPICS.includes(topic)) {
+      return jsonResponse({ error: "Unsupported Shopify compliance webhook topic." }, 400);
+    }
+    if (!(await verifyShopifyWebhookBodyHmac(env, rawBody, receivedHmac))) {
+      return jsonResponse({ error: "Invalid Shopify webhook signature." }, 400);
+    }
+
+    return jsonResponse({
+      ok: true,
+      topic,
+      shop,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Shopify webhook failed." }, 500);
   }
 }
 

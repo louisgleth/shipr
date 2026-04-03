@@ -159,6 +159,10 @@ const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
 const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
+const SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY = "shipide-shopify-embedded-context-v1";
+const SHOPIFY_PUBLIC_CONFIG_ENDPOINT = "/api/shopify/public-config";
+const SHOPIFY_EMBEDDED_SESSION_ENDPOINT = "/api/shopify/embedded/session";
+const SHOPIFY_APP_BRIDGE_SCRIPT_URL = "https://cdn.shopify.com/shopifycloud/app-bridge.js";
 const WIX_PENDING_INSTANCE_STORAGE_KEY = "shipide-wix-instance-pending";
 const WIX_PENDING_SETTINGS_STORAGE_KEY = "shipide-wix-settings-pending";
 const LEAD_STACK_META = {
@@ -2346,6 +2350,11 @@ let shopifyAutoRefreshDraft = false;
 let shopifyAutoRefreshTimer = 0;
 let shopifyAutoRefreshInFlight = false;
 let shopifySettingsBusy = false;
+let shopifyEmbeddedContext = null;
+let shopifyEmbeddedSession = null;
+let shopifyPublicConfigPromise = null;
+let shopifyAppBridgeLoadPromise = null;
+let shopifyEmbeddedBootstrapPromise = null;
 let woocommerceConnection = null;
 let woocommerceSettingsBusy = false;
 let woocommerceSettingsBusyMode = "idle";
@@ -2733,6 +2742,111 @@ function hasPendingProviderCallbackQuery(locationLike = window.location) {
   return Boolean(String(params.get("instance") || "").trim());
 }
 
+function normalizeEmbeddedFlag(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function getShopifyEmbeddedContextFromLocation(locationLike = window.location) {
+  const params = new URLSearchParams(locationLike?.search || "");
+  const shop = normalizeShopDomain(params.get("shop"));
+  const host = String(params.get("host") || "").trim();
+  const embedded = normalizeEmbeddedFlag(params.get("embedded")) || Boolean(shop && host);
+  if (!shop || !host || !embedded) {
+    return null;
+  }
+  return {
+    shop,
+    host,
+    embedded: "1",
+  };
+}
+
+function readStoredShopifyEmbeddedContext() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const shop = normalizeShopDomain(parsed.shop);
+    const host = String(parsed.host || "").trim();
+    const embedded = normalizeEmbeddedFlag(parsed.embedded);
+    if (!shop || !host || !embedded) {
+      return null;
+    }
+    return {
+      shop,
+      host,
+      embedded: "1",
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function cacheShopifyEmbeddedContextFromLocation() {
+  const context = getShopifyEmbeddedContextFromLocation(window.location);
+  if (!context) {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY);
+    }
+    shopifyEmbeddedContext = null;
+    return null;
+  }
+  shopifyEmbeddedContext = context;
+  if (typeof window !== "undefined") {
+    window.sessionStorage.setItem(
+      SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY,
+      JSON.stringify(context)
+    );
+  }
+  return context;
+}
+
+function getShopifyEmbeddedContext() {
+  const liveContext = getShopifyEmbeddedContextFromLocation(window.location);
+  if (liveContext) {
+    shopifyEmbeddedContext = liveContext;
+    return liveContext;
+  }
+  if (shopifyEmbeddedContext?.shop && shopifyEmbeddedContext?.host) {
+    return shopifyEmbeddedContext;
+  }
+  const storedContext = readStoredShopifyEmbeddedContext();
+  if (storedContext) {
+    shopifyEmbeddedContext = storedContext;
+    return storedContext;
+  }
+  return null;
+}
+
+function buildPersistentAppQueryParams() {
+  const params = new URLSearchParams();
+  const embeddedContext = getShopifyEmbeddedContext();
+  if (embeddedContext?.shop && embeddedContext?.host) {
+    params.set("shop", embeddedContext.shop);
+    params.set("host", embeddedContext.host);
+    params.set("embedded", "1");
+  }
+  return params;
+}
+
+function withPersistentAppQuery(path) {
+  const url = new URL(path, window.location.origin);
+  const persistentParams = buildPersistentAppQueryParams();
+  persistentParams.forEach((value, key) => {
+    if (!url.searchParams.has(key)) {
+      url.searchParams.set(key, value);
+    }
+  });
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function buildCleanUrl(pathname = window.location.pathname, hash = window.location.hash || "") {
+  return withPersistentAppQuery(`${pathname}${hash}`);
+}
+
 function routeToPath(route) {
   if (!route || route.view === "builder") {
     const step = clampStep(route?.step || state.step);
@@ -2791,11 +2905,14 @@ function routeToState(route) {
 
 function updateRoute(route, options = {}) {
   const { replace = false } = options;
-  const nextPath = routeToPath(route);
+  const nextPath = withPersistentAppQuery(routeToPath(route));
   const nextState = routeToState(route);
 
-  const currentPath = normalizePathname(window.location.pathname);
-  const samePath = currentPath === normalizePathname(nextPath);
+  const currentUrl = new URL(window.location.href);
+  const nextUrl = new URL(nextPath, window.location.origin);
+  const samePath =
+    normalizePathname(currentUrl.pathname) === normalizePathname(nextUrl.pathname)
+    && currentUrl.search === nextUrl.search;
   const sameState =
     history.state?.view === nextState.view &&
     Number(history.state?.step || 0) === Number(nextState.step || 0) &&
@@ -6399,7 +6516,7 @@ async function consumeWixCallbackParams() {
   const hasWixQuery = params.get("provider") === "wix";
   const instanceFromQuery = String(params.get("instance") || "").trim();
   const hasWixInstanceQuery = Boolean(instanceFromQuery);
-  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  const cleanUrl = buildCleanUrl(window.location.pathname, window.location.hash || "");
   const pendingStoredInstance =
     typeof window !== "undefined"
       ? String(window.sessionStorage.getItem(WIX_PENDING_INSTANCE_STORAGE_KEY) || "").trim()
@@ -6487,7 +6604,7 @@ function consumeShopifyCallbackParams() {
     setProviderStatus(message, { kind: "error" });
   }
 
-  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  const cleanUrl = buildCleanUrl(window.location.pathname, window.location.hash || "");
   history.replaceState(history.state, "", cleanUrl);
 }
 
@@ -6539,7 +6656,7 @@ async function consumeWooCommerceCallbackParams() {
     setProviderStatus(tr("WooCommerce connection was not approved."), { kind: "error" });
   }
 
-  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  const cleanUrl = buildCleanUrl(window.location.pathname, window.location.hash || "");
   history.replaceState(history.state, "", cleanUrl);
 }
 
@@ -14934,6 +15051,135 @@ async function fetchPublicApi(path, options = {}) {
   }
 }
 
+async function fetchShopifyPublicConfig() {
+  if (!shopifyPublicConfigPromise) {
+    shopifyPublicConfigPromise = fetchPublicApi(SHOPIFY_PUBLIC_CONFIG_ENDPOINT).catch((error) => {
+      shopifyPublicConfigPromise = null;
+      throw error;
+    });
+  }
+  return shopifyPublicConfigPromise;
+}
+
+function ensureShopifyApiKeyMetaTag(apiKey) {
+  if (typeof document === "undefined") return;
+  const safeApiKey = String(apiKey || "").trim();
+  let meta = document.querySelector("meta[name='shopify-api-key']");
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "shopify-api-key");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", safeApiKey);
+}
+
+function loadExternalScriptOnce(scriptUrl) {
+  const existing = document.querySelector(`script[src="${scriptUrl}"]`);
+  if (existing && existing.dataset.loaded === "true") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const script = existing || document.createElement("script");
+    script.src = scriptUrl;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = "true";
+      resolve();
+    };
+    script.onerror = () => {
+      reject(new Error(tr("Could not load Shopify App Bridge.")));
+    };
+    if (!existing) {
+      document.head.appendChild(script);
+    }
+  });
+}
+
+async function ensureShopifyAppBridge() {
+  const embeddedContext = getShopifyEmbeddedContext();
+  if (!embeddedContext?.shop || !embeddedContext?.host) {
+    return null;
+  }
+  if (!shopifyAppBridgeLoadPromise) {
+    shopifyAppBridgeLoadPromise = (async () => {
+      const config = await fetchShopifyPublicConfig();
+      const apiKey = String(config?.shopifyApiKey || "").trim();
+      if (!apiKey) {
+        throw new Error(tr("Shopify app key is not configured."));
+      }
+      ensureShopifyApiKeyMetaTag(apiKey);
+      const scriptUrl = String(config?.appBridgeCdnUrl || SHOPIFY_APP_BRIDGE_SCRIPT_URL).trim()
+        || SHOPIFY_APP_BRIDGE_SCRIPT_URL;
+      await loadExternalScriptOnce(scriptUrl);
+      return window.shopify || null;
+    })().catch((error) => {
+      shopifyAppBridgeLoadPromise = null;
+      throw error;
+    });
+  }
+  return shopifyAppBridgeLoadPromise;
+}
+
+async function getShopifyEmbeddedSessionToken() {
+  const appBridge = await ensureShopifyAppBridge();
+  if (typeof appBridge?.idToken === "function") {
+    const token = await appBridge.idToken();
+    if (typeof token === "string" && token.trim()) {
+      return token.trim();
+    }
+  }
+  if (appBridge?.auth && typeof appBridge.auth.idToken === "function") {
+    const token = await appBridge.auth.idToken();
+    if (typeof token === "string" && token.trim()) {
+      return token.trim();
+    }
+  }
+  if (appBridge?.sessionToken && typeof appBridge.sessionToken.get === "function") {
+    const token = await appBridge.sessionToken.get();
+    if (typeof token === "string" && token.trim()) {
+      return token.trim();
+    }
+  }
+  throw new Error(tr("Could not request a Shopify session token."));
+}
+
+async function bootstrapShopifyEmbeddedSession() {
+  const embeddedContext = getShopifyEmbeddedContext();
+  if (!embeddedContext?.shop || !embeddedContext?.host) {
+    shopifyEmbeddedSession = null;
+    return null;
+  }
+  if (!shopifyEmbeddedBootstrapPromise) {
+    shopifyEmbeddedBootstrapPromise = (async () => {
+      const requestPath =
+        `${SHOPIFY_EMBEDDED_SESSION_ENDPOINT}?shop=${encodeURIComponent(embeddedContext.shop)}`;
+      let data = null;
+      try {
+        const sessionToken = await getShopifyEmbeddedSessionToken();
+        data = await fetchPublicApi(requestPath, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+          },
+        });
+      } catch (_tokenError) {
+        data = await fetchPublicApi(requestPath, {
+          method: "GET",
+        });
+      }
+      shopifyEmbeddedSession = data && typeof data === "object" ? data : null;
+      if (typeof window !== "undefined") {
+        window.__SHIPIDE_SHOPIFY_EMBEDDED_SESSION__ = shopifyEmbeddedSession;
+      }
+      return shopifyEmbeddedSession;
+    })().catch((error) => {
+      shopifyEmbeddedBootstrapPromise = null;
+      throw error;
+    });
+  }
+  return shopifyEmbeddedBootstrapPromise;
+}
+
 async function prepareRegistrationAgreementPreview(options = {}) {
   const { animate = true } = options;
   const inviteToken = String(authInviteToken || getInviteTokenFromLocation(window.location)).trim();
@@ -15545,7 +15791,11 @@ async function initializeAuth() {
     setAuthMessage(sessionError?.message || tr("Supabase unavailable"));
   }
   cachePendingWixInstanceFromLocation();
+  cacheShopifyEmbeddedContextFromLocation();
   setAuthView(session, { animate: false });
+  if (getShopifyEmbeddedContext()) {
+    void bootstrapShopifyEmbeddedSession().catch(() => {});
+  }
   if (session?.user) {
     void consumeWixCallbackParams();
     consumeShopifyCallbackParams();
@@ -20623,32 +20873,38 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   updatePreview();
   renderLeadProspects();
   cachePendingWixInstanceFromLocation();
+  cacheShopifyEmbeddedContextFromLocation();
   const initialRoute = parseRouteFromLocation();
   const initialStep =
     initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
   const initialNormalizedRoute =
     initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute;
-  const preserveInitialSearch = hasPendingProviderCallbackQuery(window.location);
+  const preserveInitialSearch =
+    hasPendingProviderCallbackQuery(window.location) || Boolean(getShopifyEmbeddedContext());
 
   goToStep(initialStep, { push: false, regenerate: false });
   if (initialRoute.view === "register") {
     history.replaceState(
       routeToState(initialRoute),
       "",
-      `${window.location.pathname}${window.location.search || ""}`
+      withPersistentAppQuery(`${window.location.pathname}${window.location.search || ""}`)
     );
   } else if (initialRoute.view === "recovery") {
     history.replaceState(
       routeToState(initialRoute),
       "",
-      `${window.location.pathname}${window.location.search || ""}${window.location.hash || ""}`
+      withPersistentAppQuery(
+        `${window.location.pathname}${window.location.search || ""}${window.location.hash || ""}`
+      )
     );
   } else {
     if (preserveInitialSearch) {
       history.replaceState(
         routeToState(initialNormalizedRoute),
         "",
-        `${routeToPath(initialNormalizedRoute)}${window.location.search || ""}${window.location.hash || ""}`
+        withPersistentAppQuery(
+          `${routeToPath(initialNormalizedRoute)}${window.location.search || ""}${window.location.hash || ""}`
+        )
       );
     } else {
       updateRoute(initialNormalizedRoute, { replace: true });
@@ -20746,6 +21002,10 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   });
 
   window.addEventListener("focus", () => {
+    if (getShopifyEmbeddedContext()) {
+      shopifyEmbeddedBootstrapPromise = null;
+      void bootstrapShopifyEmbeddedSession().catch(() => {});
+    }
     if (!currentUser) return;
     void refreshAuthAccessToken();
     if (canAutoRefreshShopifyBatch()) {
