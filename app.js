@@ -6879,22 +6879,26 @@ function closeExternalProviderTab(tab) {
   }
 }
 
-async function beginWixInstall() {
+async function beginWixInstall(installTab = null) {
   if (!currentUser?.id) {
+    closeExternalProviderTab(installTab);
     setWixSettingsStatus(tr("Sign in before connecting Wix."), { kind: "error" });
     return;
   }
   const draftSettings = getWixDraftImportSettings();
   if (!draftSettings.selectedStatuses.length) {
+    closeExternalProviderTab(installTab);
     setWixSettingsStatus(tr("Select at least one Wix status to import."), { kind: "error" });
     return;
   }
   persistPendingWixSettings(draftSettings);
   setWixSettingsBusy(true, { mode: "redirect" });
   setWixSettingsStatus("");
-  let installTab = null;
+  let externalTab = installTab;
   try {
-    installTab = openExternalProviderTab(tr("Wix eCommerce"));
+    if (!externalTab) {
+      externalTab = openExternalProviderTab(tr("Wix eCommerce"));
+    }
     const data = await fetchApiWithAuth("/api/wix/install-link", {
       method: "POST",
     });
@@ -6905,9 +6909,9 @@ async function beginWixInstall() {
       tr("Wix app installation opened. Finish the install in Wix, then open the Shipide app there once to link this site."),
       { persist: true }
     );
-    installTab.location.href = String(data.url);
+    externalTab.location.href = String(data.url);
   } catch (error) {
-    closeExternalProviderTab(installTab);
+    closeExternalProviderTab(externalTab);
     clearPendingWixSettings();
     const message = String(error?.message || tr("Could not start Wix connect flow."));
     setWixSettingsStatus(message, { kind: "error" });
@@ -7082,8 +7086,9 @@ async function openWooCommerceSettingsModal() {
   }
 }
 
-async function beginWooCommerceInstall() {
+async function beginWooCommerceInstall(installTab = null) {
   if (!currentUser?.id) {
+    closeExternalProviderTab(installTab);
     setWooCommerceSettingsStatus(tr("Sign in before connecting WooCommerce."), {
       kind: "error",
     });
@@ -7092,6 +7097,7 @@ async function beginWooCommerceInstall() {
 
   const storeUrl = normalizeWooCommerceStoreUrl(woocommerceStoreUrlInput?.value);
   if (!storeUrl) {
+    closeExternalProviderTab(installTab);
     setWooCommerceSettingsStatus(tr("Enter a valid WooCommerce store URL."), {
       kind: "error",
     });
@@ -7099,6 +7105,7 @@ async function beginWooCommerceInstall() {
   }
   const draftSettings = getWooCommerceDraftImportSettings();
   if (!draftSettings.selectedStatuses.length) {
+    closeExternalProviderTab(installTab);
     setWooCommerceSettingsStatus(tr("Select at least one WooCommerce status to import."), {
       kind: "error",
     });
@@ -7107,9 +7114,11 @@ async function beginWooCommerceInstall() {
 
   setWooCommerceSettingsBusy(true, { mode: "redirect" });
   setWooCommerceSettingsStatus(tr("Preparing WooCommerce authorization..."));
-  let installTab = null;
+  let externalTab = installTab;
   try {
-    installTab = openExternalProviderTab(tr("WooCommerce"));
+    if (!externalTab) {
+      externalTab = openExternalProviderTab(tr("WooCommerce"));
+    }
     const data = await fetchApiWithAuth("/api/woocommerce/install-link", {
       method: "POST",
       body: JSON.stringify({
@@ -7121,9 +7130,9 @@ async function beginWooCommerceInstall() {
     if (!data || typeof data !== "object" || !data.url) {
       throw new Error(tr("WooCommerce authorization URL was not returned."));
     }
-    installTab.location.href = String(data.url);
+    externalTab.location.href = String(data.url);
   } catch (error) {
-    closeExternalProviderTab(installTab);
+    closeExternalProviderTab(externalTab);
     setWooCommerceSettingsStatus(
       error?.message || tr("Could not start WooCommerce connect flow."),
       {
@@ -7207,14 +7216,16 @@ async function disconnectWooCommerce() {
   }
 }
 
-async function beginShopifyInstall() {
+async function beginShopifyInstall(installTab = null) {
   const shop = normalizeShopDomain(shopifyStoreUrlInput?.value);
   if (!shop) {
+    closeExternalProviderTab(installTab);
     setShopifySettingsStatus(tr("Enter a valid .myshopify.com domain."), { kind: "error" });
     return;
   }
   const draftSettings = getShopifyDraftImportSettings();
   if (!draftSettings.selectedFinancialStatuses.length) {
+    closeExternalProviderTab(installTab);
     setShopifySettingsStatus(tr("Select at least one Shopify status to import."), {
       kind: "error",
     });
@@ -7226,10 +7237,12 @@ async function beginShopifyInstall() {
   });
   setShopifySettingsBusy(true, { mode: "redirect" });
   setShopifySettingsStatus("", { toast: false });
-  let installTab = null;
+  let externalTab = installTab;
   try {
     setProviderStatus(tr("Connecting Shopify..."), { persist: true });
-    installTab = openExternalProviderTab(tr("Shopify"));
+    if (!externalTab) {
+      externalTab = openExternalProviderTab(tr("Shopify"));
+    }
     const data = await fetchApiWithAuth("/api/shopify/install-link", {
       method: "POST",
       body: JSON.stringify({ shop }),
@@ -7237,9 +7250,9 @@ async function beginShopifyInstall() {
     if (!data || typeof data !== "object" || !data.url) {
       throw new Error(tr("Shopify install URL was not returned."));
     }
-    installTab.location.href = String(data.url);
+    externalTab.location.href = String(data.url);
   } catch (error) {
-    closeExternalProviderTab(installTab);
+    closeExternalProviderTab(externalTab);
     clearPendingShopifySettings();
     setShopifySettingsStatus(error.message || tr("Could not start Shopify connect flow."), {
       kind: "error",
@@ -19960,7 +19973,14 @@ if (wixSettingsSave) {
       await saveWixSettings();
       return;
     }
-    await beginWixInstall();
+    try {
+      const installTab = openExternalProviderTab(tr("Wix eCommerce"));
+      await beginWixInstall(installTab);
+    } catch (error) {
+      const message = String(error?.message || tr("Could not start Wix connect flow."));
+      setWixSettingsStatus(message, { kind: "error" });
+      setProviderStatus(message, { kind: "error" });
+    }
   });
 }
 
@@ -20014,7 +20034,13 @@ if (woocommerceSettingsSave) {
       await saveWooCommerceSettings();
       return;
     }
-    await beginWooCommerceInstall();
+    try {
+      const installTab = openExternalProviderTab(tr("WooCommerce"));
+      await beginWooCommerceInstall(installTab);
+    } catch (error) {
+      const message = String(error?.message || tr("Could not start WooCommerce connect flow."));
+      setWooCommerceSettingsStatus(message, { kind: "error" });
+    }
   });
 }
 
@@ -20137,7 +20163,14 @@ if (shopifySettingsSave) {
       await saveShopifySettings();
       return;
     }
-    await beginShopifyInstall();
+    try {
+      const installTab = openExternalProviderTab(tr("Shopify"));
+      await beginShopifyInstall(installTab);
+    } catch (error) {
+      const message = String(error?.message || tr("Could not start Shopify connect flow."));
+      setShopifySettingsStatus(message, { kind: "error" });
+      setProviderStatus(message, { kind: "error" });
+    }
   });
 }
 
