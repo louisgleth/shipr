@@ -2134,14 +2134,14 @@
     </div>
 
     <div class="shopify-settings-overlay is-closed" id="shopifySettingsModal">
-      <div class="shopify-settings-modal">
+      <div class="shopify-settings-modal provider-credentials-modal">
         <div class="csv-modal-header">
-          <span class="csv-modal-title">Shopify Fulfillment Settings</span>
+          <span class="csv-modal-title">Shopify Settings</span>
           <button type="button" class="csv-modal-close" id="shopifySettingsClose">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div class="shopify-settings-body">
+        <div class="shopify-settings-body provider-credentials-body woocommerce-settings-body">
           <div class="provider-modal-connected-row is-hidden" id="shopifyConnectedPillRow">
             <span class="provider-connected-pill provider-connected-pill-modal">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2149,6 +2149,19 @@
               </svg>
               <span>Connected</span>
             </span>
+          </div>
+          <div class="provider-credentials-grid">
+            <label class="field">
+              <span>Store Domain</span>
+              <input
+                type="text"
+                id="shopifyStoreUrl"
+                placeholder="your-store.myshopify.com"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+              />
+            </label>
           </div>
           <div class="shopify-locations-picker woocommerce-statuses-picker">
             <div class="shopify-locations-head">
@@ -2158,17 +2171,19 @@
             <div class="shopify-locations-list woocommerce-statuses-list" id="shopifyStatusesList"></div>
           </div>
 
-          <h3>Select Fulfillment Locations</h3>
-          <p class="shopify-settings-note">
-            Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.
-          </p>
+          <div id="shopifyLocationsSection">
+            <h3>Select Fulfillment Locations</h3>
+            <p class="shopify-settings-note">
+              Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.
+            </p>
 
-          <div class="shopify-locations-picker">
-            <div class="shopify-locations-head">
-              <span>Locations</span>
-              <span class="mono" id="shopifyLocationsSummary">Loading locations...</span>
+            <div class="shopify-locations-picker">
+              <div class="shopify-locations-head">
+                <span>Locations</span>
+                <span class="mono" id="shopifyLocationsSummary">Loading locations...</span>
+              </div>
+              <div class="shopify-locations-list" id="shopifyLocationsList"></div>
             </div>
-            <div class="shopify-locations-list" id="shopifyLocationsList"></div>
           </div>
 
           <label class="woocommerce-settings-toggle">
@@ -2192,7 +2207,7 @@
           </div>
           <div class="panel-actions">
             <button type="button" class="btn btn-primary" id="shopifySettingsSave">
-              <span>Save Settings</span>
+              <span>Continue to Shopify</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </button>
           </div>
