@@ -426,6 +426,14 @@ const TRANSLATIONS = {
     fr: "Connectez-vous pour connecter votre boutique Shopify",
     nl: "Log in om je Shopify-winkel te verbinden",
   },
+  "Your Shopify store is successfully connected!": {
+    fr: "Votre boutique Shopify est connectee avec succes !",
+    nl: "Je Shopify-winkel is succesvol verbonden!",
+  },
+  "Head to Portal": {
+    fr: "Aller au portail",
+    nl: "Ga naar portal",
+  },
   "Complete your account registration": {
     fr: "Finalisez l’inscription de votre compte",
     nl: "Voltooi je accountregistratie",
@@ -14264,7 +14272,9 @@ function updateAuthRegisterSubmitState() {
     ? (authRegisterStep === 1 ? tr("Continue") : tr("Register Account"))
     : authMode === "recovery"
       ? tr("Update Password")
-      : tr("Sign In");
+      : hasConnectedShopifyEmbeddedContext()
+        ? tr("Head to Portal")
+        : tr("Sign In");
 
   if (authSignIn) {
     const label = authSignIn.querySelector("span");
@@ -15021,11 +15031,68 @@ function hasPendingShopifyLinkContext() {
   return Boolean(readStoredShopifyEmbeddedContext());
 }
 
+function getConnectedShopifyEmbeddedStoreUrl() {
+  if (!shopifyEmbeddedSession || typeof shopifyEmbeddedSession !== "object") {
+    return "";
+  }
+
+  return normalizeShopDomain(
+    shopifyEmbeddedSession?.connection?.shop
+      || shopifyEmbeddedSession?.shop
+      || ""
+  );
+}
+
+function hasConnectedShopifyEmbeddedContext() {
+  return Boolean(
+    hasPendingShopifyLinkContext()
+      && shopifyEmbeddedSession
+      && typeof shopifyEmbeddedSession === "object"
+      && shopifyEmbeddedSession.connected
+      && getConnectedShopifyEmbeddedStoreUrl()
+  );
+}
+
+function getShopifyEmbeddedPortalUrl() {
+  const rawPortalUrl =
+    shopifyEmbeddedSession && typeof shopifyEmbeddedSession === "object"
+      ? String(shopifyEmbeddedSession.portalUrl || "").trim()
+      : "";
+  const embeddedContext = getShopifyEmbeddedContext();
+  const portalUrl = new URL(rawPortalUrl || `${window.location.origin}/label-info`);
+  if (!portalUrl.searchParams.get("source")) {
+    portalUrl.searchParams.set("source", "shopify-embedded");
+  }
+  if (embeddedContext?.shop && !portalUrl.searchParams.get("shop")) {
+    portalUrl.searchParams.set("shop", embeddedContext.shop);
+  }
+  if (embeddedContext?.host && !portalUrl.searchParams.get("host")) {
+    portalUrl.searchParams.set("host", embeddedContext.host);
+  }
+  return portalUrl.toString();
+}
+
+function headToShopifyEmbeddedPortal() {
+  const destination = getShopifyEmbeddedPortalUrl();
+  try {
+    if (window.top && window.top !== window) {
+      window.top.location.assign(destination);
+      return;
+    }
+  } catch (_error) {
+  }
+  window.location.assign(destination);
+}
+
 function setAuthMode(mode, options = {}) {
   const { inviteToken = "" } = options;
   authMode = mode === "register" ? "register" : mode === "recovery" ? "recovery" : "login";
   const isRegister = authMode === "register";
   const isRecovery = authMode === "recovery";
+  const hasConnectedShopifyContext = !isRegister && !isRecovery && hasConnectedShopifyEmbeddedContext();
+  const connectedShopifyStoreUrl = hasConnectedShopifyContext
+    ? getConnectedShopifyEmbeddedStoreUrl()
+    : "";
   authInviteIsValid = false;
   authInviteToken = String(inviteToken || "").trim();
 
@@ -15046,13 +15113,18 @@ function setAuthMode(mode, options = {}) {
     authPasswordConfirmField.classList.toggle("is-hidden", !(isRegister || isRecovery));
   }
   if (authForgotPassword) {
-    authForgotPassword.classList.toggle("is-hidden", isRegister || isRecovery);
+    authForgotPassword.classList.toggle(
+      "is-hidden",
+      isRegister || isRecovery || hasConnectedShopifyContext
+    );
   }
   if (authTitle) {
     authTitle.textContent = isRegister
       ? tr("Complete your account registration")
       : isRecovery
         ? tr("Reset your password")
+        : hasConnectedShopifyContext
+          ? tr("Your Shopify store is successfully connected!")
         : hasPendingWixLinkContext()
           ? tr("Sign in to connect your Wix store")
           : hasPendingShopifyLinkContext()
@@ -15064,6 +15136,8 @@ function setAuthMode(mode, options = {}) {
       ? tr("Use your invite link to create your secure account and billing profile.")
       : isRecovery
         ? tr("Enter a new password for your Shipide account.")
+        : hasConnectedShopifyContext
+          ? connectedShopifyStoreUrl
         : tr("Use your email and password.");
   }
   if (authRegisterProgress) {
@@ -15377,6 +15451,10 @@ async function bootstrapShopifyEmbeddedSession() {
   const embeddedContext = getShopifyEmbeddedContext();
   if (!embeddedContext?.shop || !embeddedContext?.host) {
     shopifyEmbeddedSession = null;
+    if (!currentUser && authMode === "login") {
+      setAuthMode("login");
+      updateAuthRegisterSubmitState();
+    }
     return null;
   }
   if (!shopifyEmbeddedBootstrapPromise) {
@@ -15401,9 +15479,17 @@ async function bootstrapShopifyEmbeddedSession() {
       if (typeof window !== "undefined") {
         window.__SHIPIDE_SHOPIFY_EMBEDDED_SESSION__ = shopifyEmbeddedSession;
       }
+      if (!currentUser && authMode === "login") {
+        setAuthMode("login");
+        updateAuthRegisterSubmitState();
+      }
       return shopifyEmbeddedSession;
     })().catch((error) => {
       shopifyEmbeddedBootstrapPromise = null;
+      if (!currentUser && authMode === "login") {
+        setAuthMode("login");
+        updateAuthRegisterSubmitState();
+      }
       throw error;
     });
   }
@@ -15539,7 +15625,11 @@ async function loadRegistrationInvite(token, options = {}) {
   }
 }
 
-function setAuthBusy(isBusy, signInLabel = tr("Sign In"), signUpLabel = tr("Create Account")) {
+function setAuthBusy(
+  isBusy,
+  signInLabel = hasConnectedShopifyEmbeddedContext() ? tr("Head to Portal") : tr("Sign In"),
+  signUpLabel = tr("Create Account")
+) {
   authIsBusy = Boolean(isBusy);
   if (authEmail) authEmail.disabled = isBusy;
   if (authPassword) authPassword.disabled = isBusy;
@@ -18072,6 +18162,10 @@ if (authForm) {
         return;
       }
       await registerWithInvite();
+      return;
+    }
+    if (hasConnectedShopifyEmbeddedContext()) {
+      headToShopifyEmbeddedPortal();
       return;
     }
     await signInWithPassword();
