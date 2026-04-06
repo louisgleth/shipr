@@ -422,6 +422,10 @@ const TRANSLATIONS = {
     fr: "Connectez-vous pour connecter votre boutique Wix",
     nl: "Log in om je Wix-winkel te verbinden",
   },
+  "Sign in to connect your Shopify store": {
+    fr: "Connectez-vous pour connecter votre boutique Shopify",
+    nl: "Log in om je Shopify-winkel te verbinden",
+  },
   "Complete your account registration": {
     fr: "Finalisez l’inscription de votre compte",
     nl: "Voltooi je accountregistratie",
@@ -15005,6 +15009,18 @@ function hasPendingWixLinkContext() {
   return Boolean(String(window.sessionStorage.getItem(WIX_PENDING_INSTANCE_STORAGE_KEY) || "").trim());
 }
 
+function hasPendingShopifyLinkContext() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search || "");
+  if (String(params.get("source") || "").trim().toLowerCase() === "shopify-embedded") {
+    return true;
+  }
+  if (getShopifyEmbeddedContextFromLocation(window.location)) {
+    return true;
+  }
+  return Boolean(readStoredShopifyEmbeddedContext());
+}
+
 function setAuthMode(mode, options = {}) {
   const { inviteToken = "" } = options;
   authMode = mode === "register" ? "register" : mode === "recovery" ? "recovery" : "login";
@@ -15039,6 +15055,8 @@ function setAuthMode(mode, options = {}) {
         ? tr("Reset your password")
         : hasPendingWixLinkContext()
           ? tr("Sign in to connect your Wix store")
+          : hasPendingShopifyLinkContext()
+            ? tr("Sign in to connect your Shopify store")
           : tr("Sign in to continue");
   }
   if (authSubtitle) {
