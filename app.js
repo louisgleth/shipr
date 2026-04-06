@@ -15031,7 +15031,23 @@ function hasPendingShopifyLinkContext() {
   return Boolean(readStoredShopifyEmbeddedContext());
 }
 
+function getConnectedShopifyEmbeddedStoreUrlFromLocation(locationLike = window.location) {
+  const params = new URLSearchParams(locationLike?.search || "");
+  if (String(params.get("shopify_connected") || "").trim() !== "1") {
+    return "";
+  }
+  return normalizeShopDomain(
+    params.get("shopify_store")
+      || params.get("shop")
+      || ""
+  );
+}
+
 function getConnectedShopifyEmbeddedStoreUrl() {
+  const connectedStoreFromLocation = getConnectedShopifyEmbeddedStoreUrlFromLocation(window.location);
+  if (connectedStoreFromLocation) {
+    return connectedStoreFromLocation;
+  }
   if (!shopifyEmbeddedSession || typeof shopifyEmbeddedSession !== "object") {
     return "";
   }
@@ -15046,10 +15062,15 @@ function getConnectedShopifyEmbeddedStoreUrl() {
 function hasConnectedShopifyEmbeddedContext() {
   return Boolean(
     hasPendingShopifyLinkContext()
-      && shopifyEmbeddedSession
-      && typeof shopifyEmbeddedSession === "object"
-      && shopifyEmbeddedSession.connected
       && getConnectedShopifyEmbeddedStoreUrl()
+      && (
+        getConnectedShopifyEmbeddedStoreUrlFromLocation(window.location)
+        || (
+          shopifyEmbeddedSession
+          && typeof shopifyEmbeddedSession === "object"
+          && shopifyEmbeddedSession.connected
+        )
+      )
   );
 }
 
@@ -15068,6 +15089,11 @@ function getShopifyEmbeddedPortalUrl() {
   }
   if (embeddedContext?.host && !portalUrl.searchParams.get("host")) {
     portalUrl.searchParams.set("host", embeddedContext.host);
+  }
+  const connectedStoreUrl = getConnectedShopifyEmbeddedStoreUrl();
+  if (connectedStoreUrl && !portalUrl.searchParams.get("shopify_connected")) {
+    portalUrl.searchParams.set("shopify_connected", "1");
+    portalUrl.searchParams.set("shopify_store", connectedStoreUrl);
   }
   return portalUrl.toString();
 }
