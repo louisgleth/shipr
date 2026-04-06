@@ -1,0 +1,229 @@
+.shell {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(35, 118, 255, 0.22), transparent 34%),
+    radial-gradient(circle at 82% 12%, rgba(74, 227, 168, 0.16), transparent 24%),
+    linear-gradient(180deg, #070b15 0%, #0a1020 100%);
+  color: #f4f7fb;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glowPrimary,
+.glowAccent {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(18px);
+  opacity: 0.9;
+}
+
+.glowPrimary {
+  width: 18rem;
+  height: 18rem;
+  top: -5rem;
+  left: -4rem;
+  background: rgba(58, 130, 255, 0.28);
+}
+
+.glowAccent {
+  width: 14rem;
+  height: 14rem;
+  right: -2rem;
+  top: 4rem;
+  background: rgba(74, 227, 168, 0.18);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(88, 108, 150, 0.26) 0.9px, transparent 0.9px);
+  background-size: 15px 15px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0.18));
+}
+
+.frame {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 2rem;
+}
+
+.card {
+  width: min(100%, 58rem);
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+  border: 1px solid rgba(155, 176, 220, 0.14);
+  background: rgba(8, 13, 25, 0.88);
+  box-shadow:
+    0 24px 70px rgba(2, 5, 12, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+}
+
+.brandRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.72rem;
+  color: rgba(244, 247, 251, 0.95);
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.brandMark {
+  position: relative;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.brandMark span {
+  position: absolute;
+  border: 2px solid currentColor;
+}
+
+.brandMark span:first-child {
+  inset: 0.18rem 0 0 0.18rem;
+}
+
+.brandMark span:last-child {
+  inset: 0 0.18rem 0.18rem 0;
+}
+
+.brandText {
+  font-weight: 500;
+}
+
+.brandDivider,
+.brandSubtext {
+  color: rgba(244, 247, 251, 0.68);
+  font-weight: 300;
+}
+
+.copyBlock {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 42rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: rgba(160, 175, 205, 0.88);
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  line-height: 0.94;
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  max-width: 12ch;
+}
+
+.lead {
+  margin: 0;
+  max-width: 40rem;
+  color: rgba(214, 223, 238, 0.8);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+}
+
+.metaCard {
+  display: grid;
+  gap: 0.38rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(155, 176, 220, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metaCard dt {
+  color: rgba(160, 175, 205, 0.72);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.metaCard dd {
+  margin: 0;
+  color: #f4f7fb;
+  font-size: 1rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.primaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0 1.15rem;
+  border: 1px solid rgba(72, 152, 255, 0.78);
+  background: linear-gradient(180deg, #1d9ce7 0%, #0d79d4 100%);
+  color: #f8fbff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 18px 34px rgba(13, 121, 212, 0.24);
+}
+
+.primaryAction:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+  box-shadow: 0 22px 40px rgba(13, 121, 212, 0.3);
+}
+
+.actionHint {
+  margin: 0;
+  color: rgba(160, 175, 205, 0.72);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .frame {
+    padding: 1rem;
+  }
+
+  .card {
+    padding: 1.3rem;
+  }
+
+  .brandRow {
+    font-size: 1.35rem;
+  }
+
+  .metaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryAction {
+    width: 100%;
+  }
+}
