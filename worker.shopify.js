@@ -49,6 +49,12 @@ const BILLING_INVOICE_EVENTS_TABLE = "billing_invoice_events";
 const BILLING_WALLET_TABLE = "billing_wallets";
 const BILLING_WALLET_TOPUPS_TABLE = "billing_wallet_topups";
 const BILLING_WALLET_TRANSACTIONS_TABLE = "billing_wallet_transactions";
+const PRIVACY_REQUESTS_TABLE = "privacy_requests";
+const PRIVACY_DELETE_CONFIRMATION = "DELETE MY DATA";
+const PRIVACY_RETENTION_YEARS = 5;
+const PRIVACY_FINANCIAL_RETENTION_YEARS = 10;
+const PRIVACY_INVITE_RETENTION_DAYS = 180;
+const PRIVACY_STALE_CONNECTION_DAYS = 30;
 const PASSWORD_MIN_LENGTH = 10;
 const DEFAULT_INVITE_EXPIRY_DAYS = 14;
 const MAX_INVITE_EXPIRY_DAYS = 90;
@@ -183,6 +189,9 @@ export default {
       if (pathname === "/api/admin/invoices/run" && request.method === "POST") {
         return handleAdminInvoicesRun(request, env);
       }
+      if (pathname === "/api/admin/privacy-maintenance/run" && request.method === "POST") {
+        return handleAdminPrivacyMaintenanceRun(request, env);
+      }
       if (pathname === "/api/admin/invoices/send" && request.method === "POST") {
         return handleAdminInvoiceSend(request, env);
       }
@@ -221,6 +230,12 @@ export default {
       }
       if (pathname === "/api/auth/register" && request.method === "POST") {
         return handleRegisterWithInvite(request, env);
+      }
+      if (pathname === "/api/privacy/export" && request.method === "GET") {
+        return handlePrivacyExport(request, env);
+      }
+      if (pathname === "/api/privacy/delete" && request.method === "POST") {
+        return handlePrivacyDelete(request, env);
       }
 
       if (pathname === "/api/shopify/install-link" && request.method === "POST") {
@@ -349,6 +364,7 @@ export default {
   async scheduled(_event, env) {
     try {
       await runInvoiceReminders(env, { limit: 500 });
+      await runPrivacyMaintenance(env);
     } catch (_error) {
       // Scheduled runs should not throw unhandled errors.
     }
@@ -1281,7 +1297,7 @@ function canManageRegistrationInvites(user, env) {
   if (!user?.id) return false;
   if (user?.user_metadata?.app_admin === true) return true;
   const allowlist = getInviteAdminEmails(env);
-  if (!allowlist.length) return true;
+  if (!allowlist.length) return false;
   const email = normalizeEmail(user.email || "");
   return Boolean(email && allowlist.includes(email));
 }
@@ -3486,11 +3502,33 @@ function getRecipientFromLabelPayload(payload = {}) {
   };
 }
 
+function getInvoiceItemShipideSourceMetadata(payload = {}) {
+  const source =
+    payload?.shipideSource && typeof payload.shipideSource === "object"
+      ? payload.shipideSource
+      : null;
+  if (!source) return null;
+
+  const provider = String(source?.provider || "").trim();
+  if (!provider) return null;
+
+  return {
+    provider,
+    shop: normalizeShopDomain(source?.shop || "") || null,
+    orderId: String(source?.orderId || "").trim() || null,
+    orderName: String(source?.orderName || "").trim() || null,
+    redacted: Boolean(source?.redacted),
+    redactedAt: String(source?.redactedAt || "").trim() || null,
+  };
+}
+
 function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE) {
   const safeVatRate = Math.max(0, Number(vatRate) || DEFAULT_VAT_RATE);
   const items = [];
   const sortedRows = Array.isArray(rows)
-    ? rows.slice().sort((left, right) => Date.parse(left?.created_at || 0) - Date.parse(right?.created_at || 0))
+    ? rows
+        .slice()
+        .sort((left, right) => Date.parse(left?.created_at || 0) - Date.parse(right?.created_at || 0))
     : [];
 
   sortedRows.forEach((row) => {
@@ -3504,6 +3542,7 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
       labels.forEach((label, labelIndex) => {
         const labelData = label?.data && typeof label.data === "object" ? label.data : {};
         const recipient = getRecipientFromLabelPayload(labelData);
+        const shipideSourceMetadata = getInvoiceItemShipideSourceMetadata(labelData);
         const amountEx = perLabelEx[labelIndex] || 0;
         const vat = Math.round(amountEx * safeVatRate);
         items.push({
@@ -3525,6 +3564,7 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
             source: "label_generation",
             generation_quantity: quantityFromRow,
             label_index: Number(label?.index) || labelIndex + 1,
+            ...(shipideSourceMetadata ? { shipide_source: shipideSourceMetadata } : {}),
           },
         });
       });
@@ -3533,7 +3573,9 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
 
     const unitExCents = Math.round(totalExCents / quantityFromRow);
     const vatCents = Math.round(totalExCents * safeVatRate);
-    const recipient = getRecipientFromLabelPayload(payload?.selection || payload || {});
+    const selectionPayload = payload?.selection || payload || {};
+    const recipient = getRecipientFromLabelPayload(selectionPayload);
+    const shipideSourceMetadata = getInvoiceItemShipideSourceMetadata(selectionPayload);
     items.push({
       generation_id: row?.id || null,
       generated_at: row?.created_at || null,
@@ -3552,6 +3594,7 @@ function buildInvoiceItemsFromHistoryRows(rows = [], vatRate = DEFAULT_VAT_RATE)
       metadata: {
         source: "label_generation",
         generation_quantity: quantityFromRow,
+        ...(shipideSourceMetadata ? { shipide_source: shipideSourceMetadata } : {}),
       },
     });
   });
@@ -5397,7 +5440,1214 @@ async function deleteSupabaseUserById(env, userId) {
   }
 }
 
-async function upsertShopifyConnection(env, payload) {
+function buildSupabaseInFilter(values) {
+  const safeValues = Array.isArray(values)
+    ? values.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (!safeValues.length) return '';
+  return `in.(${safeValues.map((value) => JSON.stringify(value)).join(',')})`;
+}
+
+function isMissingPrivacyRequestsSchemaError(details) {
+  const text = String(details || '').toLowerCase();
+  return text.includes('privacy_requests')
+    && (text.includes('relation') || text.includes('column') || text.includes('schema'));
+}
+
+async function fetchAllSupabaseRows(env, tableName, paramsInit = {}, options = {}) {
+  const pageSize = Math.max(1, Math.min(1000, Number(options.pageSize) || 500));
+  const allowMissingSchema = options.allowMissingSchema === true;
+  const rows = [];
+  let offset = 0;
+
+  while (true) {
+    const params = new URLSearchParams();
+    Object.entries(paramsInit || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      params.set(key, String(value));
+    });
+    params.set('limit', String(pageSize));
+    params.set('offset', String(offset));
+
+    const response = await supabaseServiceRequest(
+      env,
+      `/rest/v1/${tableName}?${params.toString()}`,
+      {
+        method: 'GET',
+      }
+    );
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      if (allowMissingSchema && isMissingPrivacyRequestsSchemaError(details)) {
+        return [];
+      }
+      throw new Error(`Failed reading ${tableName} (${response.status}) ${details}`.trim());
+    }
+
+    const pageRows = await response.json().catch(() => []);
+    if (!Array.isArray(pageRows) || !pageRows.length) break;
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    offset += pageRows.length;
+  }
+
+  return rows;
+}
+
+async function deleteSupabaseRows(env, tableName, paramsInit = {}, options = {}) {
+  const params = new URLSearchParams();
+  Object.entries(paramsInit || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${tableName}?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: options.returnRepresentation === true ? 'return=representation' : 'return=minimal',
+      },
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`Failed deleting ${tableName} (${response.status}) ${details}`.trim());
+  }
+  if (options.returnRepresentation === true) {
+    const rows = await response.json().catch(() => []);
+    return Array.isArray(rows) ? rows : [];
+  }
+  return [];
+}
+
+async function patchSupabaseRows(env, tableName, paramsInit = {}, patch = {}, options = {}) {
+  const params = new URLSearchParams();
+  Object.entries(paramsInit || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${tableName}?${params.toString()}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: options.returnRepresentation === true ? 'return=representation' : 'return=minimal',
+      },
+      body: JSON.stringify(patch && typeof patch === 'object' ? patch : {}),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`Failed updating ${tableName} (${response.status}) ${details}`.trim());
+  }
+  if (options.returnRepresentation === true) {
+    const rows = await response.json().catch(() => []);
+    return Array.isArray(rows) ? rows : [];
+  }
+  return [];
+}
+
+async function insertPrivacyRequest(env, record, options = {}) {
+  const nowIso = new Date().toISOString();
+  const response = await supabaseServiceRequest(env, `/rest/v1/${PRIVACY_REQUESTS_TABLE}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify([
+      {
+        source: String(record?.source || 'portal').trim() || 'portal',
+        request_type: String(record?.requestType || 'export').trim() || 'export',
+        status: String(record?.status || 'received').trim() || 'received',
+        subject_user_id: String(record?.subjectUserId || '').trim() || null,
+        requested_by_user_id: String(record?.requestedByUserId || '').trim() || null,
+        provider: String(record?.provider || '').trim() || null,
+        shop_domain: String(record?.shopDomain || '').trim() || null,
+        external_customer_id: String(record?.externalCustomerId || '').trim() || null,
+        external_customer_email: normalizeEmail(record?.externalCustomerEmail || '') || null,
+        request_payload:
+          record?.requestPayload && typeof record.requestPayload === 'object'
+            ? record.requestPayload
+            : {},
+        result_payload:
+          record?.resultPayload && typeof record.resultPayload === 'object'
+            ? record.resultPayload
+            : {},
+        requested_at: record?.requestedAt || nowIso,
+        processed_at: record?.processedAt || null,
+        updated_at: nowIso,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    if (options.allowMissingSchema === true && isMissingPrivacyRequestsSchemaError(details)) {
+      return null;
+    }
+    throw new Error(`Failed creating privacy request (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function updatePrivacyRequest(env, requestId, patch = {}, options = {}) {
+  const safeRequestId = String(requestId || '').trim();
+  if (!safeRequestId) return null;
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${PRIVACY_REQUESTS_TABLE}?id=eq.${safeRequestId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({
+        ...(patch && typeof patch === 'object' ? patch : {}),
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    if (options.allowMissingSchema === true && isMissingPrivacyRequestsSchemaError(details)) {
+      return null;
+    }
+    throw new Error(`Failed updating privacy request (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function deleteShopifyConnection(env, userId, shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!userId || !normalizedShop) return;
+  await deleteSupabaseRows(env, 'provider_connections', {
+    user_id: `eq.${userId}`,
+    provider: 'eq.shopify',
+    shop_domain: `eq.${normalizedShop}`,
+  });
+}
+
+async function deleteWixConnection(env, userId, instanceId) {
+  const normalizedInstanceId = String(instanceId || '').trim();
+  if (!userId || !normalizedInstanceId) return;
+  await deleteSupabaseRows(env, 'provider_connections', {
+    user_id: `eq.${userId}`,
+    provider: 'eq.wix',
+    shop_domain: `eq.${normalizedInstanceId}`,
+  });
+}
+
+async function deleteWooCommerceConnection(env, userId, storeUrl) {
+  const normalizedStoreUrl = normalizeWooCommerceStoreUrl(storeUrl);
+  if (!userId || !normalizedStoreUrl) return;
+  await deleteSupabaseRows(env, 'provider_connections', {
+    user_id: `eq.${userId}`,
+    provider: 'eq.woocommerce',
+    shop_domain: `eq.${normalizedStoreUrl}`,
+  });
+}
+
+async function deleteShopifyConnectionsByShop(env, shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) return [];
+  return deleteSupabaseRows(
+    env,
+    'provider_connections',
+    {
+      provider: 'eq.shopify',
+      shop_domain: `eq.${normalizedShop}`,
+    },
+    { returnRepresentation: true }
+  );
+}
+
+async function deleteShopifySessionsByShop(env, shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) return;
+  await deleteSupabaseRows(env, 'Session', {
+    shop: `eq.${normalizedShop}`,
+  });
+}
+
+function normalizePrivacyMatchText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildRecipientFingerprint(parts = {}) {
+  const pieces = [
+    parts?.name,
+    parts?.street,
+    parts?.city,
+    parts?.zip,
+    parts?.country,
+  ].map((value) => normalizePrivacyMatchText(value));
+  if (pieces.filter(Boolean).length < 3) {
+    return "";
+  }
+  return pieces.join("|");
+}
+
+function buildShopifyOrderRecipientFingerprint(order) {
+  const shipping =
+    order?.shipping_address && typeof order.shipping_address === "object"
+      ? order.shipping_address
+      : order?.billing_address && typeof order.billing_address === "object"
+        ? order.billing_address
+        : {};
+  const name =
+    String(shipping?.name || "").trim() ||
+    [shipping?.first_name, shipping?.last_name].filter(Boolean).join(" ").trim();
+  return buildRecipientFingerprint({
+    name,
+    street: shipping?.address1,
+    city: shipping?.city,
+    zip: shipping?.zip,
+    country: shipping?.country_code || shipping?.country,
+  });
+}
+
+function buildLabelRecipientFingerprint(labelData = {}) {
+  return buildRecipientFingerprint({
+    name: labelData?.recipientName,
+    street: labelData?.recipientStreet,
+    city: labelData?.recipientCity,
+    zip: labelData?.recipientZip,
+    country: labelData?.recipientCountry,
+  });
+}
+
+function normalizeShopifyComplianceOrderIds(payload = {}) {
+  const candidates = [];
+  const requested = Array.isArray(payload?.orders_requested) ? payload.orders_requested : [];
+  const toRedact = Array.isArray(payload?.orders_to_redact) ? payload.orders_to_redact : [];
+  requested.concat(toRedact).forEach((value) => {
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      candidates.push(normalized);
+    }
+  });
+  return Array.from(new Set(candidates));
+}
+
+function serializeShopifyPrivacyOrder(order = {}) {
+  const shipping =
+    order?.shipping_address && typeof order.shipping_address === "object"
+      ? order.shipping_address
+      : order?.billing_address && typeof order.billing_address === "object"
+        ? order.billing_address
+        : {};
+  const customer = order?.customer && typeof order.customer === "object" ? order.customer : {};
+  return {
+    id: String(order?.id || "").trim() || null,
+    name: String(order?.name || "").trim() || null,
+    created_at: order?.created_at || null,
+    customer_id: String(customer?.id || "").trim() || null,
+    customer_email: normalizeEmail(order?.email || customer?.email || "") || null,
+    shipping_address: {
+      name:
+        String(shipping?.name || "").trim() ||
+        [shipping?.first_name, shipping?.last_name].filter(Boolean).join(" ").trim() ||
+        null,
+      address1: String(shipping?.address1 || "").trim() || null,
+      city: String(shipping?.city || "").trim() || null,
+      zip: String(shipping?.zip || "").trim() || null,
+      country: String(shipping?.country_code || shipping?.country || "").trim() || null,
+    },
+  };
+}
+
+async function listShopifyConnectionsByShop(env, shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  if (!normalizedShop) return [];
+  return fetchAllSupabaseRows(
+    env,
+    "provider_connections",
+    {
+      select: "user_id,shop_domain,access_token,status,connected_at,updated_at",
+      provider: "eq.shopify",
+      shop_domain: `eq.${normalizedShop}`,
+      order: "updated_at.desc",
+    },
+    { pageSize: 200 }
+  );
+}
+
+async function resolveShopifyPrivacyAccessToken(env, connections = []) {
+  for (const connection of Array.isArray(connections) ? connections : []) {
+    try {
+      const accessToken = await decryptToken(env, connection?.access_token || "");
+      if (accessToken) {
+        return accessToken;
+      }
+    } catch (_error) {}
+  }
+  return "";
+}
+
+async function fetchShopifyOrdersByIds(env, shop, accessToken, orderIds = []) {
+  const normalizedShop = normalizeShopDomain(shop);
+  const safeOrderIds = Array.from(
+    new Set(
+      Array.isArray(orderIds)
+        ? orderIds.map((value) => String(value || "").trim()).filter(Boolean)
+        : []
+    )
+  );
+  if (!normalizedShop || !accessToken || !safeOrderIds.length) {
+    return [];
+  }
+
+  const ordersById = new Map();
+  const apiVersion = String(env.SHOPIFY_API_VERSION || DEFAULT_SHOPIFY_API_VERSION);
+
+  for (const idChunk of chunkArray(safeOrderIds, 100)) {
+    const url = new URL(`https://${normalizedShop}/admin/api/${apiVersion}/orders.json`);
+    url.searchParams.set("ids", idChunk.join(","));
+    url.searchParams.set("status", "any");
+    url.searchParams.set("limit", String(idChunk.length));
+    url.searchParams.set(
+      "fields",
+      "id,name,created_at,email,phone,shipping_address,billing_address,customer"
+    );
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+      },
+    });
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      const error = new Error(
+        `Shopify privacy order fetch failed (${response.status}) ${details}`.trim()
+      );
+      error.status = response.status;
+      throw error;
+    }
+    const payload = await response.json().catch(() => null);
+    const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+    orders.forEach((order) => {
+      const orderId = String(order?.id || "").trim();
+      if (!orderId || ordersById.has(orderId)) return;
+      ordersById.set(orderId, order);
+    });
+  }
+
+  return Array.from(ordersById.values()).sort((left, right) => {
+    const leftTime = Date.parse(left?.created_at || "") || 0;
+    const rightTime = Date.parse(right?.created_at || "") || 0;
+    return rightTime - leftTime;
+  });
+}
+
+function buildShopifyPrivacyTargets(shop, payload = {}, orders = []) {
+  const normalizedShop = normalizeShopDomain(shop);
+  const orderIds = new Set(normalizeShopifyComplianceOrderIds(payload));
+  const customerIds = new Set();
+  const customerEmails = new Set();
+  const recipientFingerprints = new Set();
+  const customer = payload?.customer && typeof payload.customer === "object" ? payload.customer : {};
+
+  const payloadCustomerId = String(customer?.id || "").trim();
+  const payloadCustomerEmail = normalizeEmail(customer?.email || payload?.email || "");
+  if (payloadCustomerId) customerIds.add(payloadCustomerId);
+  if (payloadCustomerEmail) customerEmails.add(payloadCustomerEmail);
+
+  orders.forEach((order) => {
+    const orderId = String(order?.id || "").trim();
+    const customerId = String(order?.customer?.id || "").trim();
+    const customerEmail = normalizeEmail(order?.email || order?.customer?.email || "");
+    const fingerprint = buildShopifyOrderRecipientFingerprint(order);
+    if (orderId) orderIds.add(orderId);
+    if (customerId) customerIds.add(customerId);
+    if (customerEmail) customerEmails.add(customerEmail);
+    if (fingerprint) recipientFingerprints.add(fingerprint);
+  });
+
+  return {
+    shop: normalizedShop,
+    orderIds,
+    customerIds,
+    customerEmails,
+    recipientFingerprints,
+    orderExports: orders.map(serializeShopifyPrivacyOrder),
+  };
+}
+
+function getShopifySourceFromLabelData(labelData = {}) {
+  if (!labelData || typeof labelData !== "object") return null;
+  const source = labelData?.shipideSource;
+  if (!source || typeof source !== "object") return null;
+  return {
+    provider: String(source?.provider || "").trim().toLowerCase(),
+    shop: normalizeShopDomain(source?.shop || ""),
+    orderId: String(source?.orderId || "").trim(),
+    orderName: String(source?.orderName || "").trim(),
+    customerId: String(source?.customerId || "").trim(),
+    customerEmail: normalizeEmail(source?.customerEmail || ""),
+    importedAt: String(source?.importedAt || "").trim(),
+    redacted: Boolean(source?.redacted),
+    redactedAt: String(source?.redactedAt || "").trim(),
+  };
+}
+
+function matchShopifyLabelToTargets(labelData, shop, targets) {
+  const normalizedShop = normalizeShopDomain(shop);
+  const source = getShopifySourceFromLabelData(labelData);
+
+  if (source?.provider && source.provider !== "shopify") {
+    return { matched: false, strategy: "", source };
+  }
+  if (source?.shop && normalizedShop && source.shop !== normalizedShop) {
+    return { matched: false, strategy: "", source };
+  }
+  if (source?.orderId && targets.orderIds.has(source.orderId)) {
+    return { matched: true, strategy: "source_order_id", source };
+  }
+  if (source?.customerId && targets.customerIds.has(source.customerId)) {
+    return { matched: true, strategy: "source_customer_id", source };
+  }
+  if (source?.customerEmail && targets.customerEmails.has(source.customerEmail)) {
+    return { matched: true, strategy: "source_customer_email", source };
+  }
+
+  const fingerprint = buildLabelRecipientFingerprint(labelData);
+  if (fingerprint && targets.recipientFingerprints.has(fingerprint)) {
+    return {
+      matched: true,
+      strategy: source?.provider === "shopify" ? "recipient_fingerprint" : "recipient_fingerprint_legacy",
+      source,
+    };
+  }
+
+  return { matched: false, strategy: "", source };
+}
+
+function buildShopifyRedactedLabelData(labelData = {}, shop, nowIso) {
+  const redacted = labelData && typeof labelData === "object" ? { ...labelData } : {};
+  redacted.recipientName = "";
+  redacted.recipientStreet = "";
+  redacted.recipientCity = "";
+  redacted.recipientState = "";
+  redacted.recipientZip = "";
+  redacted.recipientCountry = "";
+  redacted.shipideSource = {
+    provider: "shopify",
+    shop: normalizeShopDomain(shop),
+    redacted: true,
+    redactedAt: nowIso,
+  };
+  return redacted;
+}
+
+function buildShopifyPrivacyExportMatch(row, label, labelData, match) {
+  const source = getShopifySourceFromLabelData(labelData);
+  return {
+    generation_id: row?.id || null,
+    user_id: row?.user_id || null,
+    generated_at: row?.created_at || null,
+    service_type: row?.service_type || null,
+    label_index: Number(label?.index) || null,
+    label_id: String(label?.labelId || "").trim() || null,
+    tracking_id: String(label?.trackingId || "").trim() || null,
+    matching_strategy: match?.strategy || null,
+    recipient: {
+      name: String(labelData?.recipientName || "").trim() || null,
+      street: String(labelData?.recipientStreet || "").trim() || null,
+      city: String(labelData?.recipientCity || "").trim() || null,
+      state: String(labelData?.recipientState || "").trim() || null,
+      zip: String(labelData?.recipientZip || "").trim() || null,
+      country: String(labelData?.recipientCountry || "").trim() || null,
+    },
+    shipide_source: source
+      ? {
+          provider: source.provider || null,
+          shop: source.shop || null,
+          orderId: source.orderId || null,
+          orderName: source.orderName || null,
+          customerId: source.customerId || null,
+          customerEmail: source.customerEmail || null,
+          importedAt: source.importedAt || null,
+          redacted: Boolean(source.redacted),
+          redactedAt: source.redactedAt || null,
+        }
+      : null,
+  };
+}
+
+function getShopifySourceFromInvoiceItem(item = {}) {
+  const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
+  const source =
+    metadata?.shipide_source && typeof metadata.shipide_source === "object"
+      ? metadata.shipide_source
+      : null;
+  if (!source) return null;
+  const provider = String(source?.provider || "").trim().toLowerCase();
+  if (!provider) return null;
+  return {
+    provider,
+    shop: normalizeShopDomain(source?.shop || ""),
+    orderId: String(source?.orderId || "").trim(),
+    orderName: String(source?.orderName || "").trim(),
+    redacted: Boolean(source?.redacted),
+    redactedAt: String(source?.redactedAt || "").trim(),
+  };
+}
+
+async function processShopifyCustomerPrivacyOperation(env, topic, shop, payload = {}) {
+  const normalizedShop = normalizeShopDomain(shop);
+  const nowIso = new Date().toISOString();
+  const connections = await listShopifyConnectionsByShop(env, normalizedShop).catch(() => []);
+  const userIds = Array.from(
+    new Set(
+      connections
+        .map((connection) => String(connection?.user_id || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const accessToken = await resolveShopifyPrivacyAccessToken(env, connections);
+  const requestedOrderIds = normalizeShopifyComplianceOrderIds(payload);
+  let fetchedOrders = [];
+  if (requestedOrderIds.length && accessToken) {
+    fetchedOrders = await fetchShopifyOrdersByIds(env, normalizedShop, accessToken, requestedOrderIds).catch(
+      () => []
+    );
+  }
+  const targets = buildShopifyPrivacyTargets(normalizedShop, payload, fetchedOrders);
+  const historyFilters = {
+    select: "id,user_id,created_at,service_type,quantity,total_price,payload,billed_invoice_id,billed_at",
+    order: "created_at.desc",
+  };
+  if (userIds.length) {
+    historyFilters.user_id = buildSupabaseInFilter(userIds);
+  }
+  const historyRows = await fetchAllSupabaseRows(env, HISTORY_TABLE, historyFilters, { pageSize: 500 });
+
+  const exportMatches = [];
+  const strategies = new Set();
+  const matchedGenerationIds = new Set();
+  const matchedLabelIdsByGeneration = new Map();
+  const matchedTrackingIdsByGeneration = new Map();
+  let legacyFingerprintMatched = false;
+  let redactedHistoryRows = 0;
+  let redactedHistoryLabels = 0;
+
+  for (const row of historyRows) {
+    const payloadObject = row?.payload && typeof row.payload === "object" ? row.payload : {};
+    const labels = Array.isArray(payloadObject?.labels) ? payloadObject.labels : [];
+
+    if (!labels.length) {
+      const selectionPayload =
+        payloadObject?.selection && typeof payloadObject.selection === "object"
+          ? payloadObject.selection
+          : payloadObject;
+      const match = matchShopifyLabelToTargets(selectionPayload, normalizedShop, targets);
+      if (!match.matched) {
+        continue;
+      }
+
+      strategies.add(match.strategy);
+      if (match.strategy === "recipient_fingerprint_legacy") {
+        legacyFingerprintMatched = true;
+      }
+
+      exportMatches.push(
+        buildShopifyPrivacyExportMatch(
+          row,
+          { index: 1, labelId: null, trackingId: null },
+          selectionPayload,
+          match
+        )
+      );
+
+      if (topic === "customers/redact") {
+        matchedGenerationIds.add(String(row?.id || "").trim());
+        const nextSelectionPayload = buildShopifyRedactedLabelData(selectionPayload, normalizedShop, nowIso);
+        const nextPayload =
+          payloadObject?.selection && typeof payloadObject.selection === "object"
+            ? {
+                ...payloadObject,
+                selection: nextSelectionPayload,
+              }
+            : {
+                ...payloadObject,
+                ...nextSelectionPayload,
+              };
+        await patchSupabaseRows(
+          env,
+          HISTORY_TABLE,
+          {
+            id: `eq.${row.id}`,
+          },
+          {
+            payload: nextPayload,
+          }
+        );
+        redactedHistoryRows += 1;
+        redactedHistoryLabels += 1;
+      }
+      continue;
+    }
+
+    let rowChanged = false;
+    const nextLabels = labels.map((label) => {
+      const labelData = label?.data && typeof label.data === "object" ? label.data : {};
+      const match = matchShopifyLabelToTargets(labelData, normalizedShop, targets);
+      if (!match.matched) {
+        return label;
+      }
+
+      strategies.add(match.strategy);
+      if (match.strategy === "recipient_fingerprint_legacy") {
+        legacyFingerprintMatched = true;
+      }
+
+      exportMatches.push(buildShopifyPrivacyExportMatch(row, label, labelData, match));
+
+      if (topic !== "customers/redact") {
+        return label;
+      }
+
+      rowChanged = true;
+      matchedGenerationIds.add(String(row?.id || "").trim());
+      const generationId = String(row?.id || "").trim();
+      const labelId = String(label?.labelId || "").trim();
+      const trackingId = String(label?.trackingId || "").trim();
+      if (generationId) {
+        if (!matchedLabelIdsByGeneration.has(generationId)) {
+          matchedLabelIdsByGeneration.set(generationId, new Set());
+        }
+        if (!matchedTrackingIdsByGeneration.has(generationId)) {
+          matchedTrackingIdsByGeneration.set(generationId, new Set());
+        }
+        if (labelId) matchedLabelIdsByGeneration.get(generationId).add(labelId);
+        if (trackingId) matchedTrackingIdsByGeneration.get(generationId).add(trackingId);
+      }
+      redactedHistoryLabels += 1;
+      return {
+        ...label,
+        labelId: null,
+        trackingId: null,
+        data: buildShopifyRedactedLabelData(labelData, normalizedShop, nowIso),
+      };
+    });
+
+    if (topic === "customers/redact" && rowChanged) {
+      await patchSupabaseRows(
+        env,
+        HISTORY_TABLE,
+        {
+          id: `eq.${row.id}`,
+        },
+        {
+          payload: {
+            ...payloadObject,
+            labels: nextLabels,
+          },
+        }
+      );
+      redactedHistoryRows += 1;
+    }
+  }
+
+  let redactedInvoiceItems = 0;
+  if (topic === "customers/redact" && matchedGenerationIds.size) {
+    const invoiceItems = await fetchAllSupabaseRows(
+      env,
+      BILLING_INVOICE_ITEMS_TABLE,
+      {
+        select: "id,invoice_id,generation_id,label_id,tracking_id,metadata",
+        generation_id: buildSupabaseInFilter(Array.from(matchedGenerationIds)),
+        order: "id.asc",
+      },
+      { pageSize: 1000 }
+    );
+
+    for (const item of invoiceItems) {
+      const generationId = String(item?.generation_id || "").trim();
+      if (!generationId) continue;
+      const matchedLabelIds = matchedLabelIdsByGeneration.get(generationId) || new Set();
+      const matchedTrackingIds = matchedTrackingIdsByGeneration.get(generationId) || new Set();
+      const labelId = String(item?.label_id || "").trim();
+      const trackingId = String(item?.tracking_id || "").trim();
+      const itemSource = getShopifySourceFromInvoiceItem(item);
+      const generationMatched = matchedGenerationIds.has(generationId);
+      const shouldRedact =
+        (labelId && matchedLabelIds.has(labelId)) ||
+        (trackingId && matchedTrackingIds.has(trackingId)) ||
+        (
+          itemSource?.provider === "shopify" &&
+          itemSource.shop === normalizedShop &&
+          (
+            (itemSource.orderId && targets.orderIds.has(itemSource.orderId)) ||
+            generationMatched
+          )
+        );
+      if (!shouldRedact) {
+        continue;
+      }
+
+      const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
+      await patchSupabaseRows(
+        env,
+        BILLING_INVOICE_ITEMS_TABLE,
+        {
+          id: `eq.${item.id}`,
+        },
+        {
+          recipient_name: null,
+          recipient_city: null,
+          recipient_country: null,
+          tracking_id: null,
+          label_id: null,
+          metadata: {
+            ...metadata,
+            shipide_source: {
+              ...(itemSource || {}),
+              provider: "shopify",
+              shop: normalizedShop,
+              redacted: true,
+              redactedAt: nowIso,
+            },
+            privacy_redacted: true,
+            privacy_redacted_at: nowIso,
+            privacy_redaction_provider: "shopify",
+            privacy_redaction_shop: normalizedShop,
+          },
+        }
+      );
+      redactedInvoiceItems += 1;
+    }
+  }
+
+  return {
+    completed_at: nowIso,
+    provider_connections_scanned: connections.length,
+    user_accounts_scanned: userIds.length,
+    history_scan_scope: userIds.length ? "connected_users" : "full_scan",
+    requested_order_ids: Array.from(targets.orderIds),
+    shopify_orders: targets.orderExports,
+    local_matches: exportMatches,
+    matched_history_rows: Array.from(new Set(exportMatches.map((match) => match.generation_id))).length,
+    matched_labels: exportMatches.length,
+    redacted_history_rows: redactedHistoryRows,
+    redacted_history_labels: redactedHistoryLabels,
+    redacted_invoice_items: redactedInvoiceItems,
+    matching_strategies: Array.from(strategies),
+    legacy_recipient_fingerprint_matches: legacyFingerprintMatched,
+    note: legacyFingerprintMatched
+      ? "Legacy records without explicit Shopify provenance were matched using exact recipient fingerprints. New Shopify imports now persist source provenance for deterministic future compliance handling."
+      : "Shopify customer privacy processing completed with stored source provenance and exact identifier matching.",
+  };
+}
+
+async function processShopifyShopRedactOperation(env, shop) {
+  const normalizedShop = normalizeShopDomain(shop);
+  const nowIso = new Date().toISOString();
+  const connections = await listShopifyConnectionsByShop(env, normalizedShop).catch(() => []);
+  const historyRows = await fetchAllSupabaseRows(
+    env,
+    HISTORY_TABLE,
+    {
+      select: "id,user_id,created_at,service_type,quantity,total_price,payload,billed_invoice_id,billed_at",
+      order: "created_at.desc",
+    },
+    { pageSize: 500 }
+  );
+
+  const matchedGenerationIds = new Set();
+  const matchedLabelIdsByGeneration = new Map();
+  const matchedTrackingIdsByGeneration = new Map();
+  let redactedHistoryRows = 0;
+  let redactedHistoryLabels = 0;
+
+  for (const row of historyRows) {
+    const payloadObject = row?.payload && typeof row.payload === "object" ? row.payload : {};
+    const labels = Array.isArray(payloadObject?.labels) ? payloadObject.labels : [];
+
+    if (!labels.length) {
+      const selectionPayload =
+        payloadObject?.selection && typeof payloadObject.selection === "object"
+          ? payloadObject.selection
+          : payloadObject;
+      const source = getShopifySourceFromLabelData(selectionPayload);
+      if (!(source?.provider === "shopify" && source.shop === normalizedShop)) {
+        continue;
+      }
+
+      matchedGenerationIds.add(String(row?.id || "").trim());
+      const nextSelectionPayload = buildShopifyRedactedLabelData(selectionPayload, normalizedShop, nowIso);
+      const nextPayload =
+        payloadObject?.selection && typeof payloadObject.selection === "object"
+          ? {
+              ...payloadObject,
+              selection: nextSelectionPayload,
+            }
+          : {
+              ...payloadObject,
+              ...nextSelectionPayload,
+            };
+      await patchSupabaseRows(
+        env,
+        HISTORY_TABLE,
+        {
+          id: `eq.${row.id}`,
+        },
+        {
+          payload: nextPayload,
+        }
+      );
+      redactedHistoryRows += 1;
+      redactedHistoryLabels += 1;
+      continue;
+    }
+
+    let rowChanged = false;
+    const nextLabels = labels.map((label) => {
+      const labelData = label?.data && typeof label.data === "object" ? label.data : {};
+      const source = getShopifySourceFromLabelData(labelData);
+      if (!(source?.provider === "shopify" && source.shop === normalizedShop)) {
+        return label;
+      }
+
+      rowChanged = true;
+      matchedGenerationIds.add(String(row?.id || "").trim());
+      const generationId = String(row?.id || "").trim();
+      const labelId = String(label?.labelId || "").trim();
+      const trackingId = String(label?.trackingId || "").trim();
+      if (generationId) {
+        if (!matchedLabelIdsByGeneration.has(generationId)) {
+          matchedLabelIdsByGeneration.set(generationId, new Set());
+        }
+        if (!matchedTrackingIdsByGeneration.has(generationId)) {
+          matchedTrackingIdsByGeneration.set(generationId, new Set());
+        }
+        if (labelId) matchedLabelIdsByGeneration.get(generationId).add(labelId);
+        if (trackingId) matchedTrackingIdsByGeneration.get(generationId).add(trackingId);
+      }
+      redactedHistoryLabels += 1;
+      return {
+        ...label,
+        labelId: null,
+        trackingId: null,
+        data: buildShopifyRedactedLabelData(labelData, normalizedShop, nowIso),
+      };
+    });
+
+    if (rowChanged) {
+      await patchSupabaseRows(
+        env,
+        HISTORY_TABLE,
+        {
+          id: `eq.${row.id}`,
+        },
+        {
+          payload: {
+            ...payloadObject,
+            labels: nextLabels,
+          },
+        }
+      );
+      redactedHistoryRows += 1;
+    }
+  }
+
+  const invoiceItems = await fetchAllSupabaseRows(
+    env,
+    BILLING_INVOICE_ITEMS_TABLE,
+    {
+      select: "id,invoice_id,generation_id,label_id,tracking_id,metadata",
+      order: "id.asc",
+    },
+    { pageSize: 1000 }
+  );
+
+  let redactedInvoiceItems = 0;
+  for (const item of invoiceItems) {
+    const generationId = String(item?.generation_id || "").trim();
+    const matchedLabelIds = generationId ? matchedLabelIdsByGeneration.get(generationId) || new Set() : new Set();
+    const matchedTrackingIds =
+      generationId ? matchedTrackingIdsByGeneration.get(generationId) || new Set() : new Set();
+    const labelId = String(item?.label_id || "").trim();
+    const trackingId = String(item?.tracking_id || "").trim();
+    const itemSource = getShopifySourceFromInvoiceItem(item);
+    const shouldRedact =
+      (itemSource?.provider === "shopify" && itemSource.shop === normalizedShop) ||
+      (generationId && matchedGenerationIds.has(generationId)) ||
+      (labelId && matchedLabelIds.has(labelId)) ||
+      (trackingId && matchedTrackingIds.has(trackingId));
+    if (!shouldRedact) {
+      continue;
+    }
+
+    const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
+    await patchSupabaseRows(
+      env,
+      BILLING_INVOICE_ITEMS_TABLE,
+      {
+        id: `eq.${item.id}`,
+      },
+      {
+        recipient_name: null,
+        recipient_city: null,
+        recipient_country: null,
+        tracking_id: null,
+        label_id: null,
+        metadata: {
+          ...metadata,
+          shipide_source: {
+            ...(itemSource || {}),
+            provider: "shopify",
+            shop: normalizedShop,
+            redacted: true,
+            redactedAt: nowIso,
+          },
+          privacy_redacted: true,
+          privacy_redacted_at: nowIso,
+          privacy_redaction_provider: "shopify",
+          privacy_redaction_shop: normalizedShop,
+        },
+      }
+    );
+    redactedInvoiceItems += 1;
+  }
+
+  const deletedConnections = await deleteShopifyConnectionsByShop(env, shop).catch(() => []);
+  await deleteShopifySessionsByShop(env, shop).catch(() => {});
+
+  return {
+    completed_at: nowIso,
+    provider_connections_scanned: connections.length,
+    history_scan_scope: "full_scan",
+    redacted_history_rows: redactedHistoryRows,
+    redacted_history_labels: redactedHistoryLabels,
+    redacted_invoice_items: redactedInvoiceItems,
+    deleted_shopify_connections: Array.isArray(deletedConnections) ? deletedConnections.length : 0,
+    deleted_shopify_sessions_for_shop: normalizedShop,
+    note: "Shopify shop redact scrubbed locally stored shipment and invoice records linked to this shop before deleting the live connection and sessions.",
+  };
+}
+
+async function processShopifyComplianceRequest(env, topic, shop, payload = {}) {
+  const customer =
+    payload?.customer && typeof payload.customer === 'object' ? payload.customer : {};
+  const requestRecord = await insertPrivacyRequest(
+    env,
+    {
+      source: 'shopify_webhook',
+      requestType:
+        topic === 'shop/redact'
+          ? 'shop_redact'
+          : topic === 'customers/data_request'
+            ? 'customer_data_request'
+            : 'customer_redact',
+      status: 'processing',
+      provider: 'shopify',
+      shopDomain: shop,
+      externalCustomerId: customer?.id,
+      externalCustomerEmail: customer?.email,
+      requestPayload: payload && typeof payload === 'object' ? payload : {},
+    },
+    { allowMissingSchema: true }
+  ).catch(() => null);
+
+  let status = 'completed';
+  let resultPayload = {
+    completed_at: new Date().toISOString(),
+  };
+
+  if (topic === 'shop/redact') {
+    resultPayload = await processShopifyShopRedactOperation(env, shop);
+  } else {
+    resultPayload = await processShopifyCustomerPrivacyOperation(env, topic, shop, payload);
+  }
+
+  if (requestRecord?.id) {
+    await updatePrivacyRequest(
+      env,
+      requestRecord.id,
+      {
+        status,
+        processed_at: new Date().toISOString(),
+        result_payload: resultPayload,
+      },
+      { allowMissingSchema: true }
+    ).catch(() => null);
+  }
+
+  return {
+    requestId: requestRecord?.id || null,
+    status,
+    result: resultPayload,
+  };
+}
+
+async function runPrivacyMaintenance(env, options = {}) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const inviteCutoffIso = new Date(
+    now.getTime() - PRIVACY_INVITE_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const staleConnectionIso = new Date(
+    now.getTime() - PRIVACY_STALE_CONNECTION_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const operationalRetentionCutoffIso = new Date(
+    now.getTime() - PRIVACY_RETENTION_YEARS * 365 * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const financialRetentionCutoffIso = new Date(
+    now.getTime() - PRIVACY_FINANCIAL_RETENTION_YEARS * 365 * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const financialRetentionCutoffDate = financialRetentionCutoffIso.slice(0, 10);
+  const anonymizedPayload = {
+    retention_status: 'anonymized',
+    anonymized_at: nowIso,
+  };
+
+  const deletedInvites = await deleteSupabaseRows(
+    env,
+    REGISTRATION_INVITES_TABLE,
+    {
+      expires_at: `lt.${inviteCutoffIso}`,
+    },
+    { returnRepresentation: true }
+  ).catch(() => []);
+
+  const deletedStaleConnections = await deleteSupabaseRows(
+    env,
+    'provider_connections',
+    {
+      status: 'in.(disconnected,token_invalid)',
+      updated_at: `lt.${staleConnectionIso}`,
+    },
+    { returnRepresentation: true }
+  ).catch(() => []);
+
+  const deletedExpiredSessions = await deleteSupabaseRows(
+    env,
+    'Session',
+    {
+      expires: `lt.${nowIso}`,
+    },
+    { returnRepresentation: true }
+  ).catch(() => []);
+
+  await patchSupabaseRows(
+    env,
+    HISTORY_TABLE,
+    {
+      created_at: `lt.${operationalRetentionCutoffIso}`,
+      billed_invoice_id: 'is.null',
+    },
+    {
+      payload: anonymizedPayload,
+    }
+  ).catch(() => null);
+
+  await patchSupabaseRows(
+    env,
+    HISTORY_TABLE,
+    {
+      created_at: `lt.${financialRetentionCutoffIso}`,
+      billed_invoice_id: 'not.is.null',
+    },
+    {
+      payload: anonymizedPayload,
+    }
+  ).catch(() => null);
+
+  const oldInvoices = await fetchAllSupabaseRows(
+    env,
+    BILLING_INVOICES_TABLE,
+    {
+      select: 'id',
+      period_end: `lt.${financialRetentionCutoffDate}`,
+    },
+    { pageSize: 200 }
+  ).catch(() => []);
+
+  const invoiceIds = oldInvoices.map((row) => String(row?.id || '').trim()).filter(Boolean);
+  for (const invoiceIdChunk of chunkArray(invoiceIds, 100)) {
+    const inFilter = buildSupabaseInFilter(invoiceIdChunk);
+    if (!inFilter) continue;
+    await patchSupabaseRows(
+      env,
+      BILLING_INVOICES_TABLE,
+      {
+        id: inFilter,
+      },
+      {
+        company_name: null,
+        contact_name: null,
+        contact_email: null,
+        customer_id: null,
+        account_manager: null,
+        metadata: anonymizedPayload,
+      }
+    ).catch(() => null);
+    await patchSupabaseRows(
+      env,
+      BILLING_INVOICE_ITEMS_TABLE,
+      {
+        invoice_id: inFilter,
+      },
+      {
+        recipient_name: null,
+        recipient_city: null,
+        recipient_country: null,
+        tracking_id: null,
+        label_id: null,
+        metadata: anonymizedPayload,
+      }
+    ).catch(() => null);
+  }
+
+  return {
+    ranAt: nowIso,
+    legalFinancialRetentionYears: PRIVACY_FINANCIAL_RETENTION_YEARS,
+    deletedExpiredInvites: Array.isArray(deletedInvites) ? deletedInvites.length : 0,
+    deletedStaleConnections: Array.isArray(deletedStaleConnections)
+      ? deletedStaleConnections.length
+      : 0,
+    deletedExpiredShopifySessions: Array.isArray(deletedExpiredSessions)
+      ? deletedExpiredSessions.length
+      : 0,
+    anonymizedInvoices: invoiceIds.length,
+  };
+}
+
+async function handleAdminPrivacyMaintenanceRun(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: 'Authentication required.' }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: 'You are not allowed to run privacy maintenance.' }, 403);
+  }
+  try {
+    const result = await runPrivacyMaintenance(env, {
+      triggeredBy: user.id,
+    });
+    return jsonResponse({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || 'Privacy maintenance failed.' }, 500);
+  }
+}
+
+async function exchangeShopifyAccessToken(env, payload) {
   const response = await supabaseServiceRequest(
     env,
     "/rest/v1/provider_connections?on_conflict=user_id,provider,shop_domain",
@@ -6358,11 +7608,13 @@ function indexLocationsById(locations) {
 }
 
 function mapShopifyOrdersToCsvRows(orders, options = {}) {
-  const { locationById = {}, selectedLocationIds = [] } = options;
+  const { locationById = {}, selectedLocationIds = [], shopDomain = "" } = options;
   if (!Array.isArray(orders)) return [];
   const selectedSet = new Set(sanitizeSelectedLocationIds(selectedLocationIds));
   const singleOverrideId = selectedSet.size === 1 ? selectedSet.values().next().value : "";
   const mirrorSelection = selectedSet.size > 1;
+  const normalizedShop = normalizeShopDomain(shopDomain);
+  const importedAt = new Date().toISOString();
 
   return orders.map((order) => {
     const shipping = order?.shipping_address || {};
@@ -6386,6 +7638,8 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
     }
 
     const sender = mapLocationToSender(locationById[senderLocationId]);
+    const customerId = String(order?.customer?.id || "").trim();
+    const customerEmail = normalizeEmail(order?.email || order?.customer?.email || "");
 
     return {
       senderName: sender.senderName,
@@ -6401,6 +7655,15 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
       recipientCountry: String(shipping?.country_code || shipping?.country || "").trim(),
       packageWeight,
       packageDims: "25 x 20 x 10",
+      shipideSource: {
+        provider: "shopify",
+        shop: normalizedShop,
+        orderId: String(order?.id || "").trim(),
+        orderName: String(order?.name || "").trim(),
+        customerId,
+        customerEmail,
+        importedAt,
+      },
     };
   });
 }
@@ -6589,7 +7852,7 @@ async function fetchShopifyOrders(env, shop, accessToken, limit, selectedFinanci
       ordersUrl.searchParams.set("financial_status", financialStatus);
       ordersUrl.searchParams.set(
         "fields",
-        "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments"
+        "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments,email,customer"
       );
 
       const response = await fetch(ordersUrl.toString(), {
@@ -9144,28 +10407,40 @@ async function handleShopifyEmbeddedSession(request, env, requestUrl) {
   }
 }
 
+
 async function handleShopifyComplianceWebhook(request, env) {
+  const rawBody = await request.text();
+  const topic = String(request.headers.get('x-shopify-topic') || '').trim().toLowerCase();
+  const shop = normalizeShopDomain(request.headers.get('x-shopify-shop-domain') || '');
+  const receivedHmac = String(request.headers.get('x-shopify-hmac-sha256') || '').trim();
+
+  if (!SHOPIFY_COMPLIANCE_WEBHOOK_TOPICS.includes(topic)) {
+    return jsonResponse({ error: 'Unsupported Shopify compliance webhook topic.' }, 400);
+  }
+  if (!(await verifyShopifyWebhookBodyHmac(env, rawBody, receivedHmac))) {
+    return jsonResponse({ error: 'Invalid Shopify webhook signature.' }, 401);
+  }
+
+  let payload = {};
   try {
-    assertConfig(env);
-    const rawBody = await readTextBody(request);
-    const topic = String(request.headers.get("x-shopify-topic") || "").trim().toLowerCase();
-    const shop = normalizeShopDomain(request.headers.get("x-shopify-shop-domain") || "");
-    const receivedHmac = String(request.headers.get("x-shopify-hmac-sha256") || "").trim();
+    payload = rawBody ? JSON.parse(rawBody) : {};
+  } catch (_error) {
+    payload = {};
+  }
 
-    if (!SHOPIFY_COMPLIANCE_WEBHOOK_TOPICS.includes(topic)) {
-      return jsonResponse({ error: "Unsupported Shopify compliance webhook topic." }, 400);
-    }
-    if (!(await verifyShopifyWebhookBodyHmac(env, rawBody, receivedHmac))) {
-      return jsonResponse({ error: "Invalid Shopify webhook signature." }, 400);
-    }
-
+  try {
+    const result = await processShopifyComplianceRequest(env, topic, shop, payload);
     return jsonResponse({
       ok: true,
       topic,
       shop,
+      result,
     });
   } catch (error) {
-    return jsonResponse({ error: error?.message || "Shopify webhook failed." }, 500);
+    return jsonResponse(
+      { error: error?.message || 'Failed to process Shopify compliance webhook.' },
+      500
+    );
   }
 }
 
@@ -9347,7 +10622,7 @@ async function handleWixDisconnect(request, env) {
     if (!connection) {
       return jsonResponse({ disconnected: false, connection: null });
     }
-    await setWixConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    await deleteWixConnection(env, user.id, connection.shop_domain);
     return jsonResponse({
       disconnected: true,
       connection: {
@@ -9629,7 +10904,7 @@ async function handleWooCommerceDisconnect(request, env) {
     if (!connection) {
       return jsonResponse({ disconnected: false, connection: null });
     }
-    await setWooCommerceConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    await deleteWooCommerceConnection(env, user.id, connection.shop_domain);
     return jsonResponse({
       disconnected: true,
       connection: {
@@ -9901,7 +11176,7 @@ async function handleShopifyDisconnect(request, env) {
     if (!connection) {
       return jsonResponse({ disconnected: false, connection: null });
     }
-    await setShopifyConnectionStatus(env, user.id, connection.shop_domain, "disconnected");
+    await deleteShopifyConnection(env, user.id, connection.shop_domain);
     return jsonResponse({
       disconnected: true,
       connection: {
@@ -9981,6 +11256,7 @@ async function handleImportOrders(request, env) {
     const rows = mapShopifyOrdersToCsvRows(orders, {
       locationById,
       selectedLocationIds: resolvedSelectedLocationIds,
+      shopDomain: connection.shop_domain,
     });
     return jsonResponse({
       shop: connection.shop_domain,

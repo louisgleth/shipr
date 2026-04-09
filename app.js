@@ -6988,6 +6988,23 @@ function mapShopifyImportRows(rows) {
   return rows
     .map((row) => {
       if (!row || typeof row !== "object") return null;
+      const shipideSource =
+        row.shipideSource && typeof row.shipideSource === "object"
+          ? {
+              provider: String(row.shipideSource.provider || "").trim(),
+              shop: String(row.shipideSource.shop || "").trim(),
+              orderId: String(row.shipideSource.orderId || "").trim(),
+              orderName: String(row.shipideSource.orderName || "").trim(),
+              customerId: String(row.shipideSource.customerId || "").trim(),
+              customerEmail: String(row.shipideSource.customerEmail || "")
+                .trim()
+                .toLowerCase(),
+              importedAt: String(row.shipideSource.importedAt || "").trim(),
+              redacted: Boolean(row.shipideSource.redacted),
+              redactedAt: String(row.shipideSource.redactedAt || "").trim(),
+            }
+          : null;
+
       return {
         senderName: String(row.senderName || "").trim(),
         senderStreet: String(row.senderStreet || "").trim(),
@@ -7002,6 +7019,9 @@ function mapShopifyImportRows(rows) {
         recipientCountry: String(row.recipientCountry || "").trim(),
         packageWeight: String(row.packageWeight || "").trim(),
         packageDims: String(row.packageDims || "").trim(),
+        ...((shipideSource && (shipideSource.provider || shipideSource.redacted))
+          ? { shipideSource }
+          : {}),
       };
     })
     .filter(Boolean);

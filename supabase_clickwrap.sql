@@ -216,7 +216,7 @@ The categories of personal data processed may include Merchant business contact 
 
 Merchants established in the EEA, or who process personal data of EEA-resident individuals through the Platform, acknowledge that Cryvelin LLC acts as a data processor in respect of shipment recipient data, and as a data controller in respect of Merchant account data.
 
-The terms governing such processing, including the technical and organisational measures applied by Cryvelin LLC, the lawful bases for processing, sub-processor relationships, data subject rights procedures, and breach notification commitments, are set out in full in the Shipide Privacy Policy available at [Privacy Policy URL].
+The terms governing such processing, including the technical and organisational measures applied by Cryvelin LLC, the lawful bases for processing, sub-processor relationships, data subject rights procedures, and breach notification commitments, are set out in full in the Shipide Privacy Policy available at https://shipide.com/privacy-policy.
 
 The Merchant's acceptance of this Agreement constitutes acceptance of those processing terms.
 
@@ -431,7 +431,7 @@ The categories of personal data processed may include Merchant business contact 
 
 Merchants established in the EEA, or who process personal data of EEA-resident individuals through the Platform, acknowledge that Cryvelin LLC acts as a data processor in respect of shipment recipient data, and as a data controller in respect of Merchant account data.
 
-The terms governing such processing, including the technical and organisational measures applied by Cryvelin LLC, the lawful bases for processing, sub-processor relationships, data subject rights procedures, and breach notification commitments, are set out in full in the Shipide Privacy Policy available at [Privacy Policy URL].
+The terms governing such processing, including the technical and organisational measures applied by Cryvelin LLC, the lawful bases for processing, sub-processor relationships, data subject rights procedures, and breach notification commitments, are set out in full in the Shipide Privacy Policy available at https://shipide.com/privacy-policy.
 
 The Merchant's acceptance of this Agreement constitutes acceptance of those processing terms.
 

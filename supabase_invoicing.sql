@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.billing_invoices (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
   period_start date not null,
   period_end date not null,
   due_at timestamptz not null,
