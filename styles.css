@@ -6080,7 +6080,7 @@ body.is-auth-view {
 
 .iban-topup-copy-icon:hover,
 .iban-topup-copy-icon:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   color: #ffffff;
   transform: translateY(-1px);
   outline: none;
