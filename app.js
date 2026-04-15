@@ -159,6 +159,7 @@ const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
 const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
+const RESERVED_CLIENT_USER_METADATA_KEYS = new Set(["app_admin"]);
 const SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY = "shipide-shopify-embedded-context-v1";
 const SHOPIFY_PUBLIC_CONFIG_ENDPOINT = "/api/shopify/public-config";
 const SHOPIFY_EMBEDDED_SESSION_ENDPOINT = "/api/shopify/embedded/session";
@@ -1934,6 +1935,10 @@ const adminAgreementPreviewButton = document.getElementById("adminAgreementPrevi
 const adminAgreementSendTestButton = document.getElementById("adminAgreementSendTest");
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
+const adminWiseRefreshButton = document.getElementById("adminWiseRefresh");
+const adminWiseSyncButton = document.getElementById("adminWiseSync");
+const adminWiseReceiptList = document.getElementById("adminWiseReceiptList");
+const adminWiseReceiptEmpty = document.getElementById("adminWiseReceiptEmpty");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
 const adminClientsList = document.getElementById("adminClientsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
@@ -2313,6 +2318,8 @@ let adminClientFilter = "all";
 let adminClientSort = "recent";
 let adminBillingBusy = false;
 let adminBillingInvoices = [];
+let adminWiseReceipts = [];
+let adminWiseConfigured = false;
 let adminSettingsDraft = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -3224,12 +3231,25 @@ function setStoredLanguagePreference(language) {
   }
 }
 
+function sanitizeClientWritableUserMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== "object") return {};
+  const next = {};
+  Object.entries(metadata).forEach(([key, value]) => {
+    if (RESERVED_CLIENT_USER_METADATA_KEYS.has(String(key || "").trim())) return;
+    next[key] = value;
+  });
+  return next;
+}
+
 async function saveLanguagePreference(language) {
   if (!supabaseClient || !currentUser?.id) return;
   const nextLanguage = normalizeLanguageCode(language);
   const existing = normalizeLanguageCode(currentUser?.user_metadata?.preferred_language);
   if (existing === nextLanguage) return;
-  const metadata = { ...(currentUser?.user_metadata || {}), preferred_language: nextLanguage };
+  const metadata = {
+    ...sanitizeClientWritableUserMetadata(currentUser?.user_metadata),
+    preferred_language: nextLanguage,
+  };
   const { data, error } = await supabaseClient.auth.updateUser({ data: metadata });
   if (!error && data?.user) {
     currentUser = data.user;
@@ -5108,9 +5128,16 @@ function getAdminPaymentModeLabel(mode) {
   return tr("Invoice");
 }
 
+function normalizeAdminActivityStatus(status) {
+  if (status === "active") return "active";
+  if (status === "quiet") return "quiet";
+  return "dormant";
+}
+
 function getAdminActivityLabel(status) {
-  if (status === "active") return tr("Active");
-  if (status === "quiet") return tr("Quiet");
+  const normalizedStatus = normalizeAdminActivityStatus(status);
+  if (normalizedStatus === "active") return tr("Active");
+  if (normalizedStatus === "quiet") return tr("Quiet");
   return tr("Dormant");
 }
 
@@ -5183,7 +5210,7 @@ function renderAdminClientsList() {
 
   if (adminClientFilter !== "all") {
     filtered = filtered.filter(
-      (client) => String(client?.metrics?.activity_status || "dormant") === adminClientFilter
+      (client) => normalizeAdminActivityStatus(client?.metrics?.activity_status) === adminClientFilter
     );
   }
 
@@ -5221,6 +5248,7 @@ function renderAdminClientsList() {
     const metrics = client?.metrics || {};
     const billing = normalizeAdminClientBilling(client);
     const paymentMode = metrics.payment_mode || getAdminClientPaymentMode(client);
+    const activityStatus = normalizeAdminActivityStatus(metrics.activity_status);
     const paymentTrackingLabel =
       paymentMode === "invoice" ? tr("Invoice Tracking") : tr("Payment Tracking");
     const paymentTimingLabel =
@@ -5231,53 +5259,72 @@ function renderAdminClientsList() {
           : "--";
     const userId = String(client?.user?.id || "").trim();
     const billingBusy = isAdminClientBillingBusy(userId);
+    const safeProfile = {
+      companyName: escapeHtml(profile.companyName),
+      contactName: escapeHtml(profile.contactName),
+      contactEmail: escapeHtml(profile.contactEmail),
+      contactPhone: escapeHtml(profile.contactPhone),
+      billingAddress: escapeHtml(profile.billingAddress),
+      customerId: escapeHtml(profile.customerId),
+      accountManager: escapeHtml(profile.accountManager),
+    };
     const row = document.createElement("article");
     row.className = "admin-client-row";
     row.innerHTML = `
       <div class="admin-client-identity">
-        <div class="admin-client-name">${profile.companyName}</div>
-        <div class="admin-client-meta">${profile.contactName} • ${profile.contactEmail} • ${profile.contactPhone}</div>
-        <div class="admin-client-address">${profile.billingAddress}</div>
-        <div class="admin-client-submeta mono">${profile.customerId} • ${profile.accountManager}</div>
+        <div class="admin-client-name">${safeProfile.companyName}</div>
+        <div class="admin-client-meta">${safeProfile.contactName} • ${safeProfile.contactEmail} • ${safeProfile.contactPhone}</div>
+        <div class="admin-client-address">${safeProfile.billingAddress}</div>
+        <div class="admin-client-submeta mono">${safeProfile.customerId} • ${safeProfile.accountManager}</div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Total Revenue")}</span>
-          <span class="admin-client-value">${formatMoney(metrics.total_revenue_ex_vat || 0)}</span>
+          <span class="admin-client-value">${escapeHtml(formatMoney(metrics.total_revenue_ex_vat || 0))}</span>
         </div>
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Total Profit")}</span>
-          <span class="${getAdminClientValueClass(metrics.total_profit_ex_vat)}">${formatMoney(metrics.total_profit_ex_vat || 0)}</span>
+          <span class="${getAdminClientValueClass(metrics.total_profit_ex_vat)}">${escapeHtml(
+            formatMoney(metrics.total_profit_ex_vat || 0)
+          )}</span>
         </div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
           <span class="admin-client-key">MRR</span>
-          <span class="admin-client-value">${formatMoney(metrics.mrr_ex_vat || 0)}</span>
+          <span class="admin-client-value">${escapeHtml(formatMoney(metrics.mrr_ex_vat || 0))}</span>
         </div>
         <div class="admin-client-metric">
           <span class="admin-client-key">MRP</span>
-          <span class="${getAdminClientValueClass(metrics.mrp_ex_vat)}">${formatMoney(metrics.mrp_ex_vat || 0)}</span>
+          <span class="${getAdminClientValueClass(metrics.mrp_ex_vat)}">${escapeHtml(
+            formatMoney(metrics.mrp_ex_vat || 0)
+          )}</span>
         </div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Parcels / Month")}</span>
-          <span class="admin-client-value">${Number(metrics.avg_parcels_per_month || 0).toFixed(1)}</span>
+          <span class="admin-client-value">${escapeHtml(
+            Number(metrics.avg_parcels_per_month || 0).toFixed(1)
+          )}</span>
         </div>
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Last Generation")}</span>
-          <span class="admin-client-value">${metrics.last_generation_at ? formatHistoryDate(metrics.last_generation_at) : "--"}</span>
+          <span class="admin-client-value">${escapeHtml(
+            metrics.last_generation_at ? formatHistoryDate(metrics.last_generation_at) : "--"
+          )}</span>
         </div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Registered")}</span>
-          <span class="admin-client-value">${client?.user?.created_at ? formatHistoryDate(client.user.created_at) : "--"}</span>
+          <span class="admin-client-value">${escapeHtml(
+            client?.user?.created_at ? formatHistoryDate(client.user.created_at) : "--"
+          )}</span>
         </div>
         <div class="admin-client-metric">
           <span class="admin-client-key">${tr("Avg. Payment Time")}</span>
-          <span class="admin-client-value">${paymentTimingLabel}</span>
+          <span class="admin-client-value">${escapeHtml(paymentTimingLabel)}</span>
         </div>
       </div>
       <div class="admin-client-stack">
@@ -5288,7 +5335,7 @@ function renderAdminClientsList() {
               type="button"
               class="admin-client-method-toggle${billing.invoice_enabled ? " is-active" : ""}"
               data-admin-billing-toggle="invoice"
-              data-admin-client-id="${userId}"
+              data-admin-client-id="${escapeHtml(userId)}"
               ${billingBusy ? "disabled" : ""}
             >
               <span class="admin-client-method-box" aria-hidden="true"></span>
@@ -5298,22 +5345,28 @@ function renderAdminClientsList() {
               type="button"
               class="admin-client-method-toggle${billing.card_enabled ? " is-active" : ""}"
               data-admin-billing-toggle="card"
-              data-admin-client-id="${userId}"
+              data-admin-client-id="${escapeHtml(userId)}"
               ${billingBusy ? "disabled" : ""}
             >
               <span class="admin-client-method-box" aria-hidden="true"></span>
               <span>${tr("Card")}</span>
             </button>
           </div>
-          <span class="admin-client-method-mode mono">${getAdminPaymentModeLabel(paymentMode)}</span>
+          <span class="admin-client-method-mode mono">${escapeHtml(
+            getAdminPaymentModeLabel(paymentMode)
+          )}</span>
         </div>
       </div>
       <div class="admin-client-stack">
         <div class="admin-client-metric">
-          <span class="admin-client-key">${paymentTrackingLabel}</span>
+          <span class="admin-client-key">${escapeHtml(paymentTrackingLabel)}</span>
           <div class="admin-client-pills">
-            <span class="admin-client-pill is-${metrics.activity_status || "dormant"}">${getAdminActivityLabel(metrics.activity_status || "dormant")}</span>
-            <span class="admin-client-pill is-billing">${formatAdminTrackingStatus(metrics.last_invoice_tracking)}</span>
+            <span class="admin-client-pill is-${activityStatus}">${escapeHtml(
+              getAdminActivityLabel(activityStatus)
+            )}</span>
+            <span class="admin-client-pill is-billing">${escapeHtml(
+              formatAdminTrackingStatus(metrics.last_invoice_tracking)
+            )}</span>
           </div>
         </div>
       </div>
@@ -5709,12 +5762,15 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardState = null;
     adminClients = [];
     adminBillingInvoices = [];
+    adminWiseReceipts = [];
+    adminWiseConfigured = false;
     adminClientBillingBusyIds = new Set();
     adminMockModeEnabled = false;
     adminMockSnapshot = null;
     renderAdminMockDataButton();
     renderAdminClientsList();
     renderAdminInvoiceList();
+    renderAdminWiseReceiptList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
     }
@@ -5749,9 +5805,12 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardState = null;
     adminClients = [];
     adminBillingInvoices = [];
+    adminWiseReceipts = [];
+    adminWiseConfigured = false;
     renderAdminMockDataButton();
     renderAdminClientsList();
     renderAdminInvoiceList();
+    renderAdminWiseReceiptList();
     if (!quiet) {
       showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
     }
@@ -5823,6 +5882,10 @@ function setAdminBillingBusy(isBusy) {
   if (adminReportsSendTestButton) adminReportsSendTestButton.disabled = adminBillingBusy;
   if (adminAgreementPreviewButton) adminAgreementPreviewButton.disabled = adminBillingBusy;
   if (adminAgreementSendTestButton) adminAgreementSendTestButton.disabled = adminBillingBusy;
+  if (adminWiseRefreshButton) adminWiseRefreshButton.disabled = adminBillingBusy;
+  if (adminWiseSyncButton) adminWiseSyncButton.disabled = adminBillingBusy;
+  renderAdminInvoiceList();
+  renderAdminWiseReceiptList();
 }
 
 function setAdminBillingStatus(message = "", options = {}) {
@@ -5916,10 +5979,102 @@ function renderAdminInvoiceList() {
   });
 }
 
+function getAdminWiseReceiptStatusClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (["manual_review", "pending", "credited", "matched", "ignored", "failed"].includes(normalized)) {
+    return normalized;
+  }
+  return "pending";
+}
+
+function formatAdminWiseReceiptDate(rawDate) {
+  const parsed = Date.parse(String(rawDate || "").trim());
+  if (!Number.isFinite(parsed)) return "--";
+  return new Date(parsed).toLocaleString(getUiLocale(), {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderAdminWiseReceiptList() {
+  if (!adminWiseReceiptList || !adminWiseReceiptEmpty) return;
+  adminWiseReceiptList.innerHTML = "";
+  const rows = Array.isArray(adminWiseReceipts) ? adminWiseReceipts : [];
+  if (!rows.length) {
+    adminWiseReceiptEmpty.classList.remove("is-hidden");
+    adminWiseReceiptEmpty.textContent = adminWiseConfigured
+      ? "No unmatched bank receipts."
+      : "Wise API is not configured yet.";
+    return;
+  }
+  adminWiseReceiptEmpty.classList.add("is-hidden");
+  rows.slice(0, 120).forEach((receipt) => {
+    const status = String(receipt?.status || "pending").trim().toLowerCase();
+    const row = document.createElement("article");
+    row.className = "admin-billing-item";
+    row.dataset.adminWiseReceipt = String(receipt?.id || "");
+    const suggestedTarget = String(
+      receipt?.suggested_topup_reference
+        || receipt?.suggested_invoice_reference
+        || receipt?.suggested_topup_id
+        || receipt?.suggested_invoice_id
+        || ""
+    ).trim();
+    row.innerHTML = `
+      <div class="admin-billing-item-main">
+        <div class="admin-billing-item-title">
+          <span>${escapeHtml(String(receipt?.payment_reference || receipt?.reference_number || "No reference"))}</span>
+          <span class="admin-billing-status-pill is-${getAdminWiseReceiptStatusClass(status)}">${escapeHtml(
+            status.replace(/_/g, " ")
+          )}</span>
+        </div>
+        <div class="admin-billing-item-sub">
+          ${formatMoney(Number(receipt?.amount_eur || 0))} • ${escapeHtml(
+      String(receipt?.currency || "EUR")
+    )} • ${escapeHtml(formatAdminWiseReceiptDate(receipt?.occurred_at))}
+        </div>
+        <div class="admin-billing-item-sub admin-wise-meta">
+          <span><strong>Sender</strong> ${escapeHtml(String(receipt?.sender_name || "--"))}</span>
+          <span><strong>Source</strong> ${escapeHtml(String(receipt?.source || "--"))}</span>
+          <span><strong>Match</strong> ${escapeHtml(
+      String(receipt?.match_reason || receipt?.review_note || "--")
+    )}</span>
+        </div>
+      </div>
+      <div class="admin-billing-item-actions is-stack">
+        <div class="admin-wise-targets">
+          <input type="text" placeholder="INV-..., SHIP-..., or record id" data-admin-wise-target value="${escapeHtml(
+            suggestedTarget
+          )}" ${adminBillingBusy ? "disabled" : ""} />
+          <input type="text" placeholder="Optional review note" data-admin-wise-note ${adminBillingBusy ? "disabled" : ""} />
+        </div>
+        <div class="admin-wise-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-admin-wise-action="topup" ${adminBillingBusy ? "disabled" : ""}>
+            <span>Credit Wallet</span>
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" data-admin-wise-action="invoice" ${adminBillingBusy ? "disabled" : ""}>
+            <span>Apply Invoice</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-admin-wise-action="ignore" ${adminBillingBusy ? "disabled" : ""}>
+            <span>Ignore</span>
+          </button>
+        </div>
+      </div>
+    `;
+    adminWiseReceiptList.appendChild(row);
+  });
+}
+
 function syncAdminBillingFromDashboard(payload = null) {
   const billingBlock = payload?.billing && typeof payload.billing === "object" ? payload.billing : null;
   adminBillingInvoices = Array.isArray(billingBlock?.invoices) ? billingBlock.invoices : [];
+  adminWiseConfigured = billingBlock?.wise?.configured === true;
+  adminWiseReceipts = Array.isArray(billingBlock?.wise?.receipts) ? billingBlock.wise.receipts : [];
   renderAdminInvoiceList();
+  renderAdminWiseReceiptList();
 }
 
 async function loadAdminInvoices(options = {}) {
@@ -5932,6 +6087,26 @@ async function loadAdminInvoices(options = {}) {
   } catch (error) {
     if (!quiet) {
       showToast(error?.message || tr("Could not load invoices."), { tone: "error" });
+    }
+    return [];
+  }
+}
+
+async function loadAdminWiseReceipts(options = {}) {
+  const { quiet = true } = options;
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/billing/wise/receipts?status=manual_review,pending&limit=80", {
+      timeoutMs: 20000,
+    });
+    adminWiseConfigured = payload?.wise?.configured === true;
+    adminWiseReceipts = Array.isArray(payload?.wise?.receipts) ? payload.wise.receipts : [];
+    renderAdminWiseReceiptList();
+    return adminWiseReceipts;
+  } catch (error) {
+    if (!quiet) {
+      showToast(error?.message || "Could not load Wise reconciliation queue.", {
+        tone: "error",
+      });
     }
     return [];
   }
@@ -6176,6 +6351,74 @@ async function sendAdminAgreementTestEmail() {
     );
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send test agreement email."), {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function syncAdminWiseReceipts() {
+  if (adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/billing/wise/sync", {
+      method: "POST",
+      timeoutMs: 120000,
+      body: JSON.stringify({
+        lookbackDays: 45,
+      }),
+    });
+    adminWiseConfigured = payload?.wise?.configured === true;
+    adminWiseReceipts = Array.isArray(payload?.wise?.receipts) ? payload.wise.receipts : [];
+    renderAdminWiseReceiptList();
+    const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+    setAdminBillingStatus(
+      `Wise sync complete. Scanned ${Number(summary?.scanned || 0)} movements, auto-resolved ${Number(
+        summary?.auto_topups || 0
+      ) + Number(summary?.auto_invoices || 0)} receipts.`,
+      { tone: "success" }
+    );
+    await loadAdminDashboard({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || "Could not sync Wise statement.", {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function resolveAdminWiseReceipt({ receiptId = "", action = "", target = "", note = "" } = {}) {
+  const safeReceiptId = String(receiptId || "").trim();
+  const safeAction = String(action || "").trim().toLowerCase();
+  if (!safeReceiptId || !safeAction || adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    await fetchApiWithAuth("/api/admin/billing/wise/receipts/resolve", {
+      method: "POST",
+      timeoutMs: 30000,
+      body: JSON.stringify({
+        receiptId: safeReceiptId,
+        action: safeAction,
+        target: String(target || "").trim(),
+        note: String(note || "").trim(),
+      }),
+    });
+    setAdminBillingStatus(
+      safeAction === "ignore"
+        ? "Bank receipt ignored."
+        : safeAction === "topup"
+          ? "Bank receipt credited to wallet."
+          : "Bank receipt applied to invoice.",
+      { tone: "success" }
+    );
+    await loadAdminWiseReceipts({ quiet: true });
+    await loadAdminDashboard({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || "Could not resolve bank receipt.", {
       tone: "error",
     });
   } finally {
@@ -18730,6 +18973,41 @@ if (adminInvoiceList) {
     if (paidButton instanceof HTMLElement) {
       await markAdminInvoicePaid(paidButton.dataset.adminInvoicePaid);
     }
+  });
+}
+
+if (adminWiseRefreshButton) {
+  adminWiseRefreshButton.addEventListener("click", async () => {
+    await loadAdminWiseReceipts({ quiet: false });
+  });
+}
+
+if (adminWiseSyncButton) {
+  adminWiseSyncButton.addEventListener("click", async () => {
+    await syncAdminWiseReceipts();
+  });
+}
+
+if (adminWiseReceiptList) {
+  adminWiseReceiptList.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const actionButton = target.closest("[data-admin-wise-action]");
+    if (!(actionButton instanceof HTMLElement)) return;
+    const action = String(actionButton.dataset.adminWiseAction || "").trim().toLowerCase();
+    const row = actionButton.closest("[data-admin-wise-receipt]");
+    if (!(row instanceof HTMLElement)) return;
+    const receiptId = String(row.dataset.adminWiseReceipt || "").trim();
+    const targetInput = row.querySelector("[data-admin-wise-target]");
+    const noteInput = row.querySelector("[data-admin-wise-note]");
+    const resolveTarget = targetInput instanceof HTMLInputElement ? targetInput.value.trim() : "";
+    const note = noteInput instanceof HTMLInputElement ? noteInput.value.trim() : "";
+    await resolveAdminWiseReceipt({
+      receiptId,
+      action,
+      target: resolveTarget,
+      note,
+    });
   });
 }
 

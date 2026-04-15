@@ -27,16 +27,8 @@ create policy "client_billing_select_own"
   using (auth.uid() = user_id);
 
 drop policy if exists "client_billing_insert_own" on public.client_billing_preferences;
-create policy "client_billing_insert_own"
-  on public.client_billing_preferences
-  for insert
-  to authenticated
-  with check (auth.uid() = user_id);
-
 drop policy if exists "client_billing_update_own" on public.client_billing_preferences;
-create policy "client_billing_update_own"
-  on public.client_billing_preferences
-  for update
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+
+-- Billing eligibility is managed by trusted backend/admin flows only.
+-- Authenticated clients may read their own effective settings but must not
+-- directly create or update them through the public Supabase API.

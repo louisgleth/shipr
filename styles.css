@@ -3321,6 +3321,20 @@ body.is-auth-view {
   padding-right: 2px;
 }
 
+.admin-billing-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-billing-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .admin-billing-item {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
@@ -3359,6 +3373,44 @@ body.is-auth-view {
   gap: 8px;
 }
 
+.admin-billing-item-actions.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 220px;
+}
+
+.admin-wise-targets {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.admin-wise-targets input {
+  width: 100%;
+}
+
+.admin-wise-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.admin-wise-meta strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.admin-wise-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-wise-actions .btn {
+  flex: 1 1 auto;
+}
+
 .admin-billing-status-pill {
   border: 1px solid var(--stroke);
   border-radius: 999px;
@@ -3390,6 +3442,31 @@ body.is-auth-view {
 }
 
 .admin-billing-status-pill.is-cancelled {
+  color: #c49aa6;
+  border-color: #5a3944;
+}
+
+.admin-billing-status-pill.is-manual_review {
+  color: #ffd194;
+  border-color: #7b5720;
+}
+
+.admin-billing-status-pill.is-pending {
+  color: #9eb2d6;
+  border-color: #3a4962;
+}
+
+.admin-billing-status-pill.is-credited {
+  color: var(--success);
+  border-color: var(--success-border);
+}
+
+.admin-billing-status-pill.is-matched {
+  color: #8fc1ff;
+  border-color: #35517b;
+}
+
+.admin-billing-status-pill.is-ignored {
   color: #c49aa6;
   border-color: #5a3944;
 }

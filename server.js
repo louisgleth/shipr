@@ -2,6 +2,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("node:dns").promises;
+const net = require("node:net");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 const { createClient } = require("@supabase/supabase-js");
@@ -78,6 +80,9 @@ const BILLING_INVOICE_EVENTS_TABLE = "billing_invoice_events";
 const BILLING_WALLET_TABLE = "billing_wallets";
 const BILLING_WALLET_TOPUPS_TABLE = "billing_wallet_topups";
 const BILLING_WALLET_TRANSACTIONS_TABLE = "billing_wallet_transactions";
+const BILLING_BANK_RECEIPTS_TABLE = "billing_bank_receipts";
+const BILLING_INVOICE_PAYMENTS_TABLE = "billing_invoice_payments";
+const WISE_WEBHOOK_EVENTS_TABLE = "wise_webhook_events";
 const PRIVACY_REQUESTS_TABLE = "privacy_requests";
 const PRIVACY_DELETE_CONFIRMATION = "DELETE MY DATA";
 const PRIVACY_RETENTION_YEARS = 5;
@@ -156,7 +161,30 @@ const REPORTS_PORTAL_URL = String(
 ).trim();
 const PUBLIC_APP_URL = String(process.env.PUBLIC_APP_URL || "").trim();
 const DEFAULT_PUBLIC_APP_URL = "https://portal.shipide.com";
-const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 400 * 24 * 60 * 60 * 1000;
+const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const WISE_DEFAULT_LOOKBACK_DAYS = 45;
+const WISE_WEBHOOK_SYNC_LOOKBACK_DAYS = 7;
+const WISE_DEFAULT_API_BASE_URL = "https://api.wise.com";
+const WISE_SANDBOX_API_BASE_URL = "https://api.sandbox.transferwise.tech";
+const WISE_APPLY_RECEIPT_RPC = "apply_billing_bank_receipt_resolution";
+const WISE_PRODUCTION_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvO8vXV+JksBzZAY6GhSO
+XdoTCfhXaaiZ+qAbtaDBiu2AGkGVpmEygFmWP4Li9m5+Ni85BhVvZOodM9epgW3F
+bA5Q1SexvAF1PPjX4JpMstak/QhAgl1qMSqEevL8cmUeTgcMuVWCJmlge9h7B1CS
+D4rtlimGZozG39rUBDg6Qt2K+P4wBfLblL0k4C4YUdLnpGYEDIth+i8XsRpFlogx
+CAFyH9+knYsDbR43UJ9shtc42Ybd40Afihj8KnYKXzchyQ42aC8aZ/h5hyZ28yVy
+Oj3Vos0VdBIs/gAyJ/4yyQFCXYte64I7ssrlbGRaco4nKF3HmaNhxwyKyJafz19e
+HwIDAQAB
+-----END PUBLIC KEY-----`;
+const WISE_SANDBOX_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwpb91cEYuyJNQepZAVfP
+ZIlPZfNUefH+n6w9SW3fykqKu938cR7WadQv87oF2VuT+fDt7kqeRziTmPSUhqPU
+ys/V2Q1rlfJuXbE+Gga37t7zwd0egQ+KyOEHQOpcTwKmtZ81ieGHynAQzsn1We3j
+wt760MsCPJ7GMT141ByQM+yW1Bx+4SG3IGjXWyqOWrcXsxAvIXkpUD/jK/L958Cg
+nZEgz0BSEh0QxYLITnW1lLokSx/dTianWPFEhMC9BgijempgNXHNfcVirg1lPSyg
+z7KqoKUN0oHqWLr2U1A+7kqrl6O2nx3CKs1bj1hToT1+p4kcMoHXA7kA+VBLUpEs
+VwIDAQAB
+-----END PUBLIC KEY-----`;
 const DEFAULT_ADMIN_SETTINGS = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -465,6 +493,102 @@ function normalizeShopDomain(value) {
   return normalized;
 }
 
+function createWooCommerceStoreUrlError(
+  message = "Enter a valid public HTTPS WooCommerce store URL."
+) {
+  const error = new Error(message);
+  error.code = "woocommerce_store_url_disallowed";
+  return error;
+}
+
+function isLiteralIpv4Address(value) {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(value || "").trim())) return false;
+  return String(value || "")
+    .trim()
+    .split(".")
+    .every((part) => {
+      const numeric = Number(part);
+      return Number.isInteger(numeric) && numeric >= 0 && numeric <= 255;
+    });
+}
+
+function isDisallowedWooCommerceHostname(hostname) {
+  const normalized = String(hostname || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "");
+  if (!normalized) return true;
+  if (!normalized.includes(".")) return true;
+  if (
+    normalized === "localhost"
+    || normalized.endsWith(".localhost")
+    || normalized.endsWith(".local")
+    || normalized.endsWith(".localdomain")
+    || normalized.endsWith(".internal")
+    || normalized.endsWith(".home.arpa")
+    || normalized.endsWith(".test")
+    || normalized.endsWith(".example")
+    || normalized.endsWith(".invalid")
+  ) {
+    return true;
+  }
+  return net.isIP(normalized) !== 0 || isLiteralIpv4Address(normalized);
+}
+
+function isPrivateOrReservedIpv4Address(address) {
+  const parts = String(address || "")
+    .trim()
+    .split(".")
+    .map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [first, second, third] = parts;
+  if (first === 0 || first === 10 || first === 127) return true;
+  if (first === 100 && second >= 64 && second <= 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 0 && third === 0) return true;
+  if (first === 192 && second === 0 && third === 2) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 198 && (second === 18 || second === 19)) return true;
+  if (first === 198 && second === 51 && third === 100) return true;
+  if (first === 203 && second === 0 && third === 113) return true;
+  if (first >= 224) return true;
+  return false;
+}
+
+function isPrivateOrReservedIpAddress(address) {
+  const normalized = String(address || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .split("%")[0];
+  if (!normalized) return true;
+  if (normalized.startsWith("::ffff:")) {
+    return isPrivateOrReservedIpAddress(normalized.slice(7));
+  }
+  const family = net.isIP(normalized);
+  if (family === 4) {
+    return isPrivateOrReservedIpv4Address(normalized);
+  }
+  if (family === 6) {
+    if (normalized === "::" || normalized === "::1") return true;
+    if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+    if (
+      normalized.startsWith("fe8")
+      || normalized.startsWith("fe9")
+      || normalized.startsWith("fea")
+      || normalized.startsWith("feb")
+    ) {
+      return true;
+    }
+    if (normalized.startsWith("2001:db8")) return true;
+    return false;
+  }
+  return true;
+}
+
 function normalizeWooCommerceStoreUrl(value) {
   const raw = String(value || "").trim();
   if (!raw || /\s/.test(raw)) return "";
@@ -475,13 +599,41 @@ function normalizeWooCommerceStoreUrl(value) {
   } catch (_error) {
     return "";
   }
-  if (!/^https?:$/i.test(parsed.protocol)) return "";
+  if (parsed.protocol !== "https:") return "";
   if (!parsed.hostname || parsed.username || parsed.password) return "";
+  if (isDisallowedWooCommerceHostname(parsed.hostname)) return "";
   const pathname = parsed.pathname.replace(/\/+$/, "");
   const storePath = pathname
     .replace(/\/wp-json(?:\/wc\/v3)?$/i, "")
     .replace(/\/wc-auth\/v1\/authorize$/i, "");
   return `${parsed.origin}${storePath === "/" ? "" : storePath}`;
+}
+
+async function assertSafeWooCommerceStoreUrlForFetch(storeUrl) {
+  const normalizedStoreUrl = normalizeWooCommerceStoreUrl(storeUrl);
+  if (!normalizedStoreUrl) {
+    throw createWooCommerceStoreUrlError();
+  }
+  const parsed = new URL(normalizedStoreUrl);
+  let records = [];
+  try {
+    records = await dns.lookup(parsed.hostname, { all: true, verbatim: true });
+  } catch (_error) {
+    throw createWooCommerceStoreUrlError(
+      "WooCommerce store URL could not be resolved to a public HTTPS storefront."
+    );
+  }
+  if (!Array.isArray(records) || !records.length) {
+    throw createWooCommerceStoreUrlError(
+      "WooCommerce store URL could not be resolved to a public HTTPS storefront."
+    );
+  }
+  if (records.some((record) => isPrivateOrReservedIpAddress(record?.address))) {
+    throw createWooCommerceStoreUrlError(
+      "WooCommerce store URL must resolve to a public HTTPS storefront."
+    );
+  }
+  return normalizedStoreUrl;
 }
 
 function getBearerToken(req) {
@@ -1889,12 +2041,21 @@ function parseInviteExpiryDays(value) {
   return Math.max(1, Math.min(MAX_INVITE_EXPIRY_DAYS, Math.round(numeric)));
 }
 
+function hasServerManagedInviteAdminAccess(user) {
+  return user?.app_metadata?.app_admin === true;
+}
+
+function hasInviteAdminEmailAllowlistAccess(user) {
+  if (!INVITE_ADMIN_EMAILS.length) return false;
+  const email = normalizeEmail(user?.email || "");
+  return Boolean(email && INVITE_ADMIN_EMAILS.includes(email));
+}
+
 function canManageRegistrationInvites(user) {
   if (!user || !user.id) return false;
-  if (user?.user_metadata?.app_admin === true) return true;
-  if (!INVITE_ADMIN_EMAILS.length) return false;
-  const email = normalizeEmail(user.email || "");
-  return Boolean(email && INVITE_ADMIN_EMAILS.includes(email));
+  // Only trust admin roles from server-managed app metadata or the explicit
+  // email allowlist. Client-writable user_metadata must never grant admin access.
+  return hasServerManagedInviteAdminAccess(user) || hasInviteAdminEmailAllowlistAccess(user);
 }
 
 function normalizePercent(value, fallback = 0) {
@@ -2297,6 +2458,11 @@ function normalizeClientBillingPreference(value) {
   };
 }
 
+function isDefaultClientBillingPreference(value) {
+  const normalized = normalizeClientBillingPreference(value);
+  return normalized.invoice_enabled !== true && normalized.card_enabled === true;
+}
+
 function getClientPaymentMode(pref) {
   const normalized = normalizeClientBillingPreference(pref);
   if (normalized.invoice_enabled && normalized.card_enabled) return "hybrid";
@@ -2439,6 +2605,15 @@ function mapInviteToPublic(invite) {
     customerId: String(invite?.customer_id || "").trim(),
     planName: String(invite?.plan_name || "Growth").trim() || "Growth",
   };
+}
+
+function getInviteBoundEmail(invite) {
+  return normalizeEmail(invite?.invited_email || "");
+}
+
+function inviteEmailMatches(invite, email) {
+  const inviteEmail = getInviteBoundEmail(invite);
+  return Boolean(inviteEmail && inviteEmail === normalizeEmail(email || ""));
 }
 
 function buildRegistrationMetadata(invite, submittedProfile, email, preferredLanguage = "en") {
@@ -4270,6 +4445,39 @@ async function getSupabaseUserById(userId) {
   return payload?.user && typeof payload.user === "object" ? payload.user : payload;
 }
 
+async function isTrustedClientBillingPreferenceUpdater(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return false;
+  const user = await getSupabaseUserById(safeUserId);
+  return canManageRegistrationInvites(user);
+}
+
+async function filterTrustedClientBillingPreferenceRows(rows = []) {
+  const trustedUpdaterCache = new Map();
+  const trustedRows = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (isDefaultClientBillingPreference(row)) {
+      trustedRows.push(row);
+      continue;
+    }
+    const updaterId = String(row?.updated_by || "").trim();
+    if (!updaterId) continue;
+    let trustedUpdater = trustedUpdaterCache.get(updaterId);
+    if (trustedUpdater == null) {
+      try {
+        trustedUpdater = await isTrustedClientBillingPreferenceUpdater(updaterId);
+      } catch (_error) {
+        trustedUpdater = false;
+      }
+      trustedUpdaterCache.set(updaterId, trustedUpdater);
+    }
+    if (trustedUpdater) {
+      trustedRows.push(row);
+    }
+  }
+  return trustedRows;
+}
+
 function mapInvoiceProfileFromUser(user = {}) {
   const metadata =
     user?.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {};
@@ -4377,7 +4585,9 @@ async function getClientBillingPreferenceForUser(userId) {
   }
   const rows = await response.json().catch(() => []);
   if (!Array.isArray(rows) || !rows.length) return { ...DEFAULT_CLIENT_BILLING_PREF };
-  return normalizeClientBillingPreference(rows[0]);
+  const trustedRows = await filterTrustedClientBillingPreferenceRows(rows);
+  if (!trustedRows.length) return { ...DEFAULT_CLIENT_BILLING_PREF };
+  return normalizeClientBillingPreference(trustedRows[0]);
 }
 
 function getBillingIbanConfig() {
@@ -4454,6 +4664,122 @@ function resolveWalletAccessIssue(details, tableName) {
     };
   }
   return null;
+}
+
+function resolveWiseStorageIssue(details, tableName) {
+  const raw = String(details || "");
+  const lower = raw.toLowerCase();
+  const table = String(tableName || "").toLowerCase();
+  if (!lower || !table || !lower.includes(table)) return null;
+  if (lower.includes("schema cache")) {
+    return {
+      kind: "cache",
+      message:
+        "Wise reconciliation schema cache is stale. Run: NOTIFY pgrst, 'reload schema'; in Supabase SQL editor.",
+    };
+  }
+  if (
+    lower.includes("does not exist") ||
+    lower.includes("undefined table") ||
+    lower.includes("\"code\":\"42p01\"")
+  ) {
+    return {
+      kind: "missing",
+      message:
+        "Wise reconciliation schema missing. Run supabase_wise_reconciliation.sql in Supabase SQL editor.",
+    };
+  }
+  if (
+    lower.includes("permission denied") ||
+    lower.includes("insufficient_privilege") ||
+    lower.includes("\"code\":\"42501\"")
+  ) {
+    return {
+      kind: "permission",
+      message: `Wise reconciliation access denied for ${tableName}. Grant table privileges (service_role/authenticated), then run: NOTIFY pgrst, 'reload schema';`,
+    };
+  }
+  return null;
+}
+
+function getWiseEnvironmentMode() {
+  const explicit = String(process.env.WISE_ENVIRONMENT || "").trim().toLowerCase();
+  if (explicit === "sandbox" || explicit === "test") return "sandbox";
+  if (explicit === "production" || explicit === "prod" || explicit === "live") return "production";
+  const apiBase = String(process.env.WISE_API_BASE_URL || "").trim().toLowerCase();
+  if (apiBase.includes("sandbox")) return "sandbox";
+  return "production";
+}
+
+function getWiseApiBaseUrl() {
+  const explicit = String(process.env.WISE_API_BASE_URL || "").trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  return getWiseEnvironmentMode() === "sandbox" ? WISE_SANDBOX_API_BASE_URL : WISE_DEFAULT_API_BASE_URL;
+}
+
+function getWiseWebhookPublicKeyPem() {
+  const explicit = String(process.env.WISE_WEBHOOK_PUBLIC_KEY || "").trim();
+  if (explicit) return explicit;
+  return getWiseEnvironmentMode() === "sandbox"
+    ? WISE_SANDBOX_PUBLIC_KEY
+    : WISE_PRODUCTION_PUBLIC_KEY;
+}
+
+function getWiseApiToken() {
+  return String(process.env.WISE_API_TOKEN || "").trim();
+}
+
+function getWiseProfileId() {
+  return String(process.env.WISE_PROFILE_ID || "").trim();
+}
+
+function getWiseBalanceId() {
+  return String(process.env.WISE_BALANCE_ID || "").trim();
+}
+
+function getWiseBalanceCurrency() {
+  return String(process.env.WISE_BALANCE_CURRENCY || DEFAULT_BILLING_CURRENCY).trim()
+    || DEFAULT_BILLING_CURRENCY;
+}
+
+function getWiseStatementLookbackDays(defaultValue = WISE_DEFAULT_LOOKBACK_DAYS) {
+  const numeric = Number(process.env.WISE_STATEMENT_LOOKBACK_DAYS);
+  if (!Number.isFinite(numeric)) return defaultValue;
+  return Math.max(1, Math.min(469, Math.round(numeric)));
+}
+
+function getWiseConfigSummary() {
+  return {
+    configured: Boolean(getWiseApiToken() && getWiseProfileId() && getWiseBalanceId()),
+    environment: getWiseEnvironmentMode(),
+    api_base_url: getWiseApiBaseUrl(),
+    profile_id: getWiseProfileId() || null,
+    balance_id: getWiseBalanceId() || null,
+    currency: getWiseBalanceCurrency(),
+  };
+}
+
+function assertWiseStatementConfig() {
+  if (!getWiseApiToken()) {
+    throw new Error("WISE_API_TOKEN is required for Wise reconciliation.");
+  }
+  if (!getWiseProfileId() || !getWiseBalanceId()) {
+    throw new Error("WISE_PROFILE_ID and WISE_BALANCE_ID are required for Wise reconciliation.");
+  }
+}
+
+function verifyWiseWebhookSignature(rawBody, receivedSignature) {
+  const signature = String(receivedSignature || "").trim();
+  const publicKey = getWiseWebhookPublicKeyPem();
+  if (!signature || !publicKey) return false;
+  try {
+    const verifier = crypto.createVerify("RSA-SHA256");
+    verifier.update(Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ""), "utf8"));
+    verifier.end();
+    return verifier.verify(publicKey, signature, "base64");
+  } catch (_error) {
+    return false;
+  }
 }
 
 function normalizeTopupStatus(value) {
@@ -4787,6 +5113,1080 @@ function mapBillingOverviewInvoiceRow(invoice) {
     total_ex_vat: fromCents(toCents(invoice.subtotal_ex_vat)),
     tracking: formatInvoiceTrackingLabel(invoice),
   };
+}
+
+function normalizeReferenceForMatch(value) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
+
+function normalizeInvoiceReferenceCandidate(value) {
+  const match = String(value || "").toUpperCase().match(/\bINV[\s-]*([A-Z0-9]{8})\b/);
+  if (!match) return "";
+  return `INV-${match[1]}`;
+}
+
+function normalizeTopupReferenceCandidate(value) {
+  const match = String(value || "").toUpperCase().match(/\bSHIP(?:[\s-]*[A-Z0-9]{2,}){2,}\b/);
+  if (!match) return "";
+  return match[0].replace(/[^A-Z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function collectNestedStringValues(value, bucket = [], depth = 0) {
+  if (bucket.length >= 120 || depth > 6 || value == null) return bucket;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) bucket.push(trimmed);
+    return bucket;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      if (bucket.length < 120) collectNestedStringValues(entry, bucket, depth + 1);
+    });
+    return bucket;
+  }
+  if (typeof value === "object") {
+    Object.values(value).forEach((entry) => {
+      if (bucket.length < 120) collectNestedStringValues(entry, bucket, depth + 1);
+    });
+  }
+  return bucket;
+}
+
+function extractStructuredReferenceCandidates(value) {
+  const candidates = new Set();
+  collectNestedStringValues(value).forEach((entry) => {
+    const invoiceReference = normalizeInvoiceReferenceCandidate(entry);
+    if (invoiceReference) candidates.add(invoiceReference);
+    const topupReference = normalizeTopupReferenceCandidate(entry);
+    if (topupReference) candidates.add(topupReference);
+  });
+  return Array.from(candidates);
+}
+
+function parseWiseMoneyPayload(value, fallbackCurrency = DEFAULT_BILLING_CURRENCY) {
+  if (value == null) {
+    return {
+      amount_cents: 0,
+      currency: fallbackCurrency,
+    };
+  }
+  if (typeof value === "number" || typeof value === "string") {
+    const numeric = Number(value);
+    return {
+      amount_cents: Number.isFinite(numeric) ? Math.max(0, Math.round(numeric * 100)) : 0,
+      currency: fallbackCurrency,
+    };
+  }
+  if (typeof value === "object") {
+    const currency = String(
+      value.currency || value.currencyCode || value.currency_code || fallbackCurrency
+    ).trim().toUpperCase() || fallbackCurrency;
+    const numeric =
+      Number(value.value)
+      || Number(value.amount)
+      || Number(value.total)
+      || Number(value.amountValue)
+      || 0;
+    return {
+      amount_cents: Number.isFinite(numeric) ? Math.max(0, Math.round(numeric * 100)) : 0,
+      currency,
+    };
+  }
+  return {
+    amount_cents: 0,
+    currency: fallbackCurrency,
+  };
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function parseWiseTimestamp(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+function buildWiseReceiptExternalKey(prefix, payload = {}) {
+  const rawKey = [
+    String(prefix || "wise").trim().toLowerCase() || "wise",
+    String(payload?.reference_number || "").trim(),
+    String(payload?.payment_reference || "").trim(),
+    String(payload?.occurred_at || "").trim(),
+    String(payload?.amount_cents || "").trim(),
+    String(payload?.currency || "").trim(),
+    String(payload?.event_type || "").trim(),
+  ]
+    .filter(Boolean)
+    .join("|")
+    || JSON.stringify(payload || {});
+  return `wise:${crypto.createHash("sha256").update(rawKey).digest("hex")}`;
+}
+
+function extractWiseReceiptFromStatementTransaction(transaction = {}) {
+  if (!transaction || typeof transaction !== "object") return null;
+  const money = parseWiseMoneyPayload(
+    transaction.amount
+      || transaction.transactionAmount
+      || transaction.totalAmount
+      || transaction.details?.amount
+      || transaction.value,
+    getWiseBalanceCurrency()
+  );
+  if (!money.amount_cents) return null;
+  const referenceCandidates = extractStructuredReferenceCandidates(transaction);
+  const paymentReference = pickFirstNonEmpty(
+    transaction?.details?.paymentReference,
+    transaction?.details?.reference,
+    transaction?.details?.publicReference,
+    transaction?.details?.message,
+    transaction?.reference,
+    referenceCandidates[0]
+  );
+  const referenceNumber = pickFirstNonEmpty(
+    transaction?.referenceNumber,
+    transaction?.transactionNumber,
+    transaction?.transferId,
+    transaction?.id
+  );
+  const occurredAt = parseWiseTimestamp(
+    transaction?.date
+      || transaction?.bookingDate
+      || transaction?.createdOn
+      || transaction?.created_at
+      || transaction?.occurredAt
+      || transaction?.details?.createdOn
+  );
+  const senderName = pickFirstNonEmpty(
+    transaction?.details?.senderName,
+    transaction?.details?.counterpartyName,
+    transaction?.details?.merchantName,
+    transaction?.senderName,
+    transaction?.counterpartyName
+  );
+  const senderAccount = pickFirstNonEmpty(
+    transaction?.details?.senderAccount,
+    transaction?.details?.senderIban,
+    transaction?.details?.counterpartyAccount,
+    transaction?.senderAccount
+  );
+  const senderBank = pickFirstNonEmpty(
+    transaction?.details?.senderBankName,
+    transaction?.details?.bankName,
+    transaction?.details?.counterpartyBankName,
+    transaction?.senderBank
+  );
+  return {
+    provider: "wise",
+    source: "statement",
+    external_key: buildWiseReceiptExternalKey("statement", {
+      reference_number: referenceNumber,
+      payment_reference: paymentReference,
+      occurred_at: occurredAt,
+      amount_cents: money.amount_cents,
+      currency: money.currency,
+      event_type: pickFirstNonEmpty(transaction?.type, transaction?.details?.type),
+    }),
+    event_type: pickFirstNonEmpty(transaction?.type, transaction?.details?.type) || null,
+    amount_cents: money.amount_cents,
+    currency: money.currency,
+    payment_reference: paymentReference || null,
+    reference_number: referenceNumber || null,
+    sender_name: senderName || null,
+    sender_account: senderAccount || null,
+    sender_bank: senderBank || null,
+    occurred_at: occurredAt,
+    metadata: {
+      extractor: "wise_statement",
+      reference_candidates: referenceCandidates,
+    },
+    raw_payload: transaction,
+  };
+}
+
+function extractWiseReceiptCandidatesFromWebhookPayload(payload = {}) {
+  const eventType = pickFirstNonEmpty(
+    payload?.event_type,
+    payload?.eventType,
+    payload?.type,
+    payload?.name
+  );
+  const candidateObjects = [
+    payload?.data,
+    payload?.data?.resource,
+    payload?.data?.action,
+    payload?.resource,
+    payload,
+  ].filter((entry) => entry && typeof entry === "object");
+  const receipts = [];
+  candidateObjects.forEach((entry) => {
+    const money = parseWiseMoneyPayload(
+      entry?.amount || entry?.money || entry?.value || entry?.details?.amount,
+      getWiseBalanceCurrency()
+    );
+    if (!money.amount_cents) return;
+    const referenceCandidates = extractStructuredReferenceCandidates(entry);
+    const paymentReference = pickFirstNonEmpty(
+      entry?.paymentReference,
+      entry?.reference,
+      entry?.publicReference,
+      entry?.details?.paymentReference,
+      entry?.details?.reference,
+      referenceCandidates[0]
+    );
+    const referenceNumber = pickFirstNonEmpty(
+      entry?.referenceNumber,
+      entry?.transactionNumber,
+      entry?.transferId,
+      entry?.id,
+      entry?.details?.id
+    );
+    const occurredAt = parseWiseTimestamp(
+      entry?.occurredAt
+        || entry?.createdOn
+        || entry?.created_at
+        || entry?.completedAt
+        || payload?.sent_at
+    );
+    receipts.push({
+      provider: "wise",
+      source: "webhook",
+      external_key: buildWiseReceiptExternalKey("webhook", {
+        reference_number: referenceNumber,
+        payment_reference: paymentReference,
+        occurred_at: occurredAt,
+        amount_cents: money.amount_cents,
+        currency: money.currency,
+        event_type: eventType,
+      }),
+      event_type: eventType || null,
+      amount_cents: money.amount_cents,
+      currency: money.currency,
+      payment_reference: paymentReference || null,
+      reference_number: referenceNumber || null,
+      sender_name: pickFirstNonEmpty(
+        entry?.senderName,
+        entry?.details?.senderName,
+        entry?.counterpartyName
+      ) || null,
+      sender_account: pickFirstNonEmpty(
+        entry?.senderAccount,
+        entry?.details?.senderAccount,
+        entry?.details?.senderIban
+      ) || null,
+      sender_bank: pickFirstNonEmpty(
+        entry?.senderBank,
+        entry?.details?.senderBankName,
+        entry?.details?.bankName
+      ) || null,
+      occurred_at: occurredAt,
+      metadata: {
+        extractor: "wise_webhook",
+        reference_candidates: referenceCandidates,
+      },
+      raw_payload: payload,
+    });
+  });
+  const unique = new Map();
+  receipts.forEach((entry) => {
+    if (!unique.has(entry.external_key)) {
+      unique.set(entry.external_key, entry);
+    }
+  });
+  return Array.from(unique.values());
+}
+
+function getBillingBankReceiptSelectColumns() {
+  return [
+    "id",
+    "provider",
+    "source",
+    "external_key",
+    "delivery_id",
+    "event_type",
+    "status",
+    "amount_cents",
+    "currency",
+    "payment_reference",
+    "reference_number",
+    "sender_name",
+    "sender_account",
+    "sender_bank",
+    "occurred_at",
+    "matched_user_id",
+    "matched_topup_id",
+    "matched_invoice_id",
+    "match_reason",
+    "review_note",
+    "credited_at",
+    "metadata",
+    "raw_payload",
+    "created_at",
+    "updated_at",
+  ].join(",");
+}
+
+function mapBillingBankReceiptRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  return {
+    id: String(row?.id || "").trim(),
+    provider: String(row?.provider || "wise").trim() || "wise",
+    source: String(row?.source || "statement").trim() || "statement",
+    status: String(row?.status || "pending").trim().toLowerCase() || "pending",
+    amount_cents: Math.max(0, Number(row?.amount_cents) || 0),
+    amount_eur: fromCents(Math.max(0, Number(row?.amount_cents) || 0)),
+    currency: String(row?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    payment_reference: String(row?.payment_reference || "").trim(),
+    reference_number: String(row?.reference_number || "").trim(),
+    sender_name: String(row?.sender_name || "").trim(),
+    sender_account: String(row?.sender_account || "").trim(),
+    sender_bank: String(row?.sender_bank || "").trim(),
+    occurred_at: row?.occurred_at || null,
+    matched_user_id: String(row?.matched_user_id || "").trim() || null,
+    matched_topup_id: String(row?.matched_topup_id || "").trim() || null,
+    matched_invoice_id: String(row?.matched_invoice_id || "").trim() || null,
+    match_reason: String(row?.match_reason || "").trim(),
+    review_note: String(row?.review_note || "").trim(),
+    credited_at: row?.credited_at || null,
+    created_at: row?.created_at || null,
+    updated_at: row?.updated_at || null,
+    suggested_topup_id: String(metadata?.suggested_topup_id || "").trim() || null,
+    suggested_topup_reference: String(metadata?.suggested_topup_reference || "").trim() || null,
+    suggested_invoice_id: String(metadata?.suggested_invoice_id || "").trim() || null,
+    suggested_invoice_reference: String(metadata?.suggested_invoice_reference || "").trim() || null,
+  };
+}
+
+async function getBillingBankReceiptById(receiptId, { allowMissing = false } = {}) {
+  const safeReceiptId = String(receiptId || "").trim();
+  if (!safeReceiptId) return null;
+  const params = new URLSearchParams();
+  params.set("select", getBillingBankReceiptSelectColumns());
+  params.set("id", `eq.${safeReceiptId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_BANK_RECEIPTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, BILLING_BANK_RECEIPTS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return null;
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load bank receipt (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getBillingBankReceiptByExternalKey(externalKey, { allowMissing = false } = {}) {
+  const safeExternalKey = String(externalKey || "").trim();
+  if (!safeExternalKey) return null;
+  const params = new URLSearchParams();
+  params.set("select", getBillingBankReceiptSelectColumns());
+  params.set("external_key", `eq.${safeExternalKey}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_BANK_RECEIPTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, BILLING_BANK_RECEIPTS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return null;
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load bank receipt (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function listBillingBankReceipts({ limit = 80, statuses = [], allowMissing = false } = {}) {
+  const safeLimit = Math.max(1, Math.min(300, Number(limit) || 80));
+  const params = new URLSearchParams();
+  params.set("select", getBillingBankReceiptSelectColumns());
+  params.set("order", "occurred_at.desc.nullslast,created_at.desc");
+  params.set("limit", String(safeLimit));
+  if (Array.isArray(statuses) && statuses.length) {
+    const normalized = statuses
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter(Boolean);
+    if (normalized.length) {
+      params.set("status", `in.(${normalized.join(",")})`);
+    }
+  }
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_BANK_RECEIPTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, BILLING_BANK_RECEIPTS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return [];
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load bank receipts (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function upsertBillingBankReceipt(candidate = {}) {
+  const existing = await getBillingBankReceiptByExternalKey(candidate?.external_key, {
+    allowMissing: true,
+  });
+  const existingMetadata =
+    existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+  const nextMetadata =
+    candidate?.metadata && typeof candidate.metadata === "object" ? candidate.metadata : {};
+  const payload = {
+    provider: "wise",
+    source: String(candidate?.source || existing?.source || "statement").trim() || "statement",
+    external_key: String(candidate?.external_key || existing?.external_key || "").trim(),
+    delivery_id: String(candidate?.delivery_id || existing?.delivery_id || "").trim() || null,
+    event_type: String(candidate?.event_type || existing?.event_type || "").trim() || null,
+    status: String(existing?.status || candidate?.status || "pending").trim().toLowerCase() || "pending",
+    amount_cents: Math.max(
+      0,
+      Number(candidate?.amount_cents ?? existing?.amount_cents) || 0
+    ),
+    currency:
+      String(candidate?.currency || existing?.currency || DEFAULT_BILLING_CURRENCY).trim()
+      || DEFAULT_BILLING_CURRENCY,
+    payment_reference:
+      String(candidate?.payment_reference || existing?.payment_reference || "").trim() || null,
+    reference_number:
+      String(candidate?.reference_number || existing?.reference_number || "").trim() || null,
+    sender_name: String(candidate?.sender_name || existing?.sender_name || "").trim() || null,
+    sender_account:
+      String(candidate?.sender_account || existing?.sender_account || "").trim() || null,
+    sender_bank: String(candidate?.sender_bank || existing?.sender_bank || "").trim() || null,
+    occurred_at: candidate?.occurred_at || existing?.occurred_at || null,
+    matched_user_id: existing?.matched_user_id || null,
+    matched_topup_id: existing?.matched_topup_id || null,
+    matched_invoice_id: existing?.matched_invoice_id || null,
+    match_reason: String(existing?.match_reason || candidate?.match_reason || "").trim() || null,
+    review_note: String(existing?.review_note || candidate?.review_note || "").trim() || null,
+    credited_at: existing?.credited_at || candidate?.credited_at || null,
+    metadata: {
+      ...existingMetadata,
+      ...nextMetadata,
+    },
+    raw_payload:
+      candidate?.raw_payload && typeof candidate.raw_payload === "object"
+        ? candidate.raw_payload
+        : existing?.raw_payload && typeof existing.raw_payload === "object"
+          ? existing.raw_payload
+          : {},
+    updated_at: new Date().toISOString(),
+  };
+  if (existing?.id) {
+    payload.id = existing.id;
+    payload.created_at = existing.created_at || undefined;
+  }
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_BANK_RECEIPTS_TABLE}?on_conflict=external_key`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify([payload]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, BILLING_BANK_RECEIPTS_TABLE);
+    if (issue) throw new Error(issue.message);
+    throw new Error(`Could not save bank receipt (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : payload;
+}
+
+async function updateBillingBankReceiptRow(receipt, patch = {}) {
+  const current = receipt?.id ? receipt : await getBillingBankReceiptById(receipt, { allowMissing: false });
+  if (!current?.id) {
+    throw new Error("Bank receipt not found.");
+  }
+  return upsertBillingBankReceipt({
+    ...current,
+    ...patch,
+    external_key: current.external_key,
+    metadata: {
+      ...(
+        current?.metadata && typeof current.metadata === "object" ? current.metadata : {}
+      ),
+      ...(
+        patch?.metadata && typeof patch.metadata === "object" ? patch.metadata : {}
+      ),
+    },
+    raw_payload:
+      patch?.raw_payload && typeof patch.raw_payload === "object"
+        ? patch.raw_payload
+        : current.raw_payload,
+  });
+}
+
+async function getWiseWebhookEventByDeliveryId(deliveryId, { allowMissing = false } = {}) {
+  const safeDeliveryId = String(deliveryId || "").trim();
+  if (!safeDeliveryId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,delivery_id,event_type,subscription_id,schema_version,signature_valid,is_test,processing_status,processing_error,payload,created_at,processed_at"
+  );
+  params.set("delivery_id", `eq.${safeDeliveryId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${WISE_WEBHOOK_EVENTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, WISE_WEBHOOK_EVENTS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return null;
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load Wise webhook event (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function upsertWiseWebhookEvent(payload = {}) {
+  const existing = await getWiseWebhookEventByDeliveryId(payload?.delivery_id, { allowMissing: true });
+  const record = {
+    delivery_id: String(payload?.delivery_id || existing?.delivery_id || "").trim(),
+    event_type: String(payload?.event_type || existing?.event_type || "unknown").trim() || "unknown",
+    subscription_id: String(payload?.subscription_id || "").trim() || null,
+    schema_version: String(payload?.schema_version || "").trim() || null,
+    signature_valid: payload?.signature_valid !== false,
+    is_test: payload?.is_test === true,
+    processing_status:
+      String(existing?.processing_status || payload?.processing_status || "received").trim()
+      || "received",
+    processing_error: String(payload?.processing_error || existing?.processing_error || "").trim() || null,
+    payload: payload?.payload && typeof payload.payload === "object" ? payload.payload : {},
+    processed_at: payload?.processed_at || existing?.processed_at || null,
+  };
+  if (existing?.id) {
+    record.id = existing.id;
+    record.created_at = existing.created_at || undefined;
+  }
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${WISE_WEBHOOK_EVENTS_TABLE}?on_conflict=delivery_id`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify([record]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWiseStorageIssue(details, WISE_WEBHOOK_EVENTS_TABLE);
+    if (issue) throw new Error(issue.message);
+    throw new Error(`Could not save Wise webhook event (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : record;
+}
+
+async function updateWiseWebhookEventStatus(deliveryId, status, processingError = "") {
+  const existing = await getWiseWebhookEventByDeliveryId(deliveryId, { allowMissing: false });
+  if (!existing?.delivery_id) {
+    throw new Error("Wise webhook delivery not found.");
+  }
+  return upsertWiseWebhookEvent({
+    ...existing,
+    delivery_id: existing.delivery_id,
+    event_type: existing.event_type,
+    processing_status: status,
+    processing_error: String(processingError || "").trim() || null,
+    processed_at:
+      status === "processed" || status === "ignored" || status === "failed"
+        ? new Date().toISOString()
+        : existing.processed_at || null,
+  });
+}
+
+async function getBillingTopupByReference(reference, { allowMissing = false } = {}) {
+  const safeReference = String(reference || "").trim().toUpperCase();
+  if (!safeReference) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at,updated_at"
+  );
+  params.set("reference", `eq.${safeReference}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return null;
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load wallet top-up (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getBillingTopupById(topupId, { allowMissing = false } = {}) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at,updated_at"
+  );
+  params.set("id", `eq.${safeTopupId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const issue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (issue) {
+      if (allowMissing && issue.kind === "missing") return null;
+      throw new Error(issue.message);
+    }
+    throw new Error(`Could not load wallet top-up (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function findBillingInvoiceByReference(reference, { allowMissing = false } = {}) {
+  const safeReference = normalizeInvoiceReferenceCandidate(reference);
+  if (!safeReference) return null;
+  const invoices = await listBillingInvoices({
+    limit: 2000,
+    statuses: ["draft", "sent", "overdue", "paid"],
+    allowMissing,
+  });
+  const matches = invoices.filter((invoice) => {
+    const canonicalInvoiceReference = normalizeReferenceForMatch(toInvoiceReference(invoice?.id));
+    const canonicalPaymentReference = normalizeReferenceForMatch(invoice?.payment_reference || "");
+    const canonicalTarget = normalizeReferenceForMatch(safeReference);
+    return canonicalTarget && (
+      canonicalTarget === canonicalInvoiceReference
+      || canonicalTarget === canonicalPaymentReference
+    );
+  });
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+async function applyBillingBankReceiptResolution({
+  receiptId = "",
+  resolution = "",
+  actor = "system",
+  topupId = null,
+  invoiceId = null,
+  note = "",
+} = {}) {
+  const response = await supabaseServiceRequest(`/rest/v1/rpc/${WISE_APPLY_RECEIPT_RPC}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_receipt_id: String(receiptId || "").trim(),
+      p_resolution: String(resolution || "").trim().toLowerCase(),
+      p_actor: String(actor || "system").trim() || "system",
+      p_topup_id: topupId ? String(topupId || "").trim() : null,
+      p_invoice_id: invoiceId ? String(invoiceId || "").trim() : null,
+      p_note: String(note || "").trim() || null,
+    }),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (
+      details.includes(WISE_APPLY_RECEIPT_RPC)
+      || details.includes("\"code\":\"42883\"")
+      || /function .*apply_billing_bank_receipt_resolution/i.test(details)
+    ) {
+      throw new Error(
+        "Wise reconciliation schema missing. Run supabase_wise_reconciliation.sql in Supabase SQL editor."
+      );
+    }
+    throw new Error(`Could not resolve bank receipt (${response.status}) ${details}`.trim());
+  }
+  const payload = await response.json().catch(() => null);
+  if (Array.isArray(payload)) {
+    return payload[0] || null;
+  }
+  return payload && typeof payload === "object" ? payload : null;
+}
+
+async function resolveBillingBankReceiptTarget(receipt, resolution, target = "") {
+  const action = String(resolution || "").trim().toLowerCase();
+  const metadata = receipt?.metadata && typeof receipt.metadata === "object" ? receipt.metadata : {};
+  const explicitTarget = String(target || "").trim();
+  const resolvedTarget = explicitTarget
+    || (
+      action === "topup"
+        ? String(metadata?.suggested_topup_id || metadata?.suggested_topup_reference || "").trim()
+        : String(metadata?.suggested_invoice_id || metadata?.suggested_invoice_reference || "").trim()
+    );
+  if (!resolvedTarget) return null;
+  if (isUuid(resolvedTarget)) {
+    return action === "topup"
+      ? getBillingTopupById(resolvedTarget, { allowMissing: true })
+      : getBillingInvoiceById(resolvedTarget, { withItems: false });
+  }
+  if (action === "topup") {
+    const topupReference = normalizeTopupReferenceCandidate(resolvedTarget);
+    return topupReference ? getBillingTopupByReference(topupReference, { allowMissing: true }) : null;
+  }
+  const invoiceReference = normalizeInvoiceReferenceCandidate(resolvedTarget);
+  return invoiceReference ? findBillingInvoiceByReference(invoiceReference, { allowMissing: true }) : null;
+}
+
+async function tryAutoResolveBankReceipt(receipt, actor = "wise-auto") {
+  const currentReceipt = receipt?.id
+    ? await getBillingBankReceiptById(receipt.id, { allowMissing: false })
+    : null;
+  if (!currentReceipt?.id) {
+    return { action: "skipped", receipt: null };
+  }
+  const currentStatus = String(currentReceipt.status || "").trim().toLowerCase();
+  if (["credited", "matched", "ignored"].includes(currentStatus)) {
+    return { action: "skipped", receipt: currentReceipt };
+  }
+
+  const referenceCandidates = Array.from(
+    new Set(
+      [
+        ...extractStructuredReferenceCandidates(currentReceipt?.payment_reference || ""),
+        ...extractStructuredReferenceCandidates(currentReceipt?.reference_number || ""),
+        ...extractStructuredReferenceCandidates(currentReceipt?.raw_payload || {}),
+        ...(
+          currentReceipt?.metadata?.reference_candidates
+          && Array.isArray(currentReceipt.metadata.reference_candidates)
+            ? currentReceipt.metadata.reference_candidates
+            : []
+        ),
+      ].filter(Boolean)
+    )
+  );
+
+  const topupMatches = [];
+  const invoiceMatches = [];
+  for (const candidate of referenceCandidates) {
+    const topupReference = normalizeTopupReferenceCandidate(candidate);
+    if (topupReference) {
+      const topup = await getBillingTopupByReference(topupReference, { allowMissing: true });
+      if (topup?.id && !topupMatches.some((entry) => entry?.row?.id === topup.id)) {
+        topupMatches.push({ reference: topupReference, row: topup });
+      }
+    }
+    const invoiceReference = normalizeInvoiceReferenceCandidate(candidate);
+    if (invoiceReference) {
+      const invoice = await findBillingInvoiceByReference(invoiceReference, { allowMissing: true });
+      if (invoice?.id && !invoiceMatches.some((entry) => entry?.row?.id === invoice.id)) {
+        invoiceMatches.push({ reference: invoiceReference, row: invoice });
+      }
+    }
+  }
+
+  const metadataPatch = {
+    reference_candidates: referenceCandidates,
+    suggested_topup_id: topupMatches.length === 1 ? topupMatches[0].row.id : null,
+    suggested_topup_reference: topupMatches.length === 1 ? topupMatches[0].reference : null,
+    suggested_invoice_id: invoiceMatches.length === 1 ? invoiceMatches[0].row.id : null,
+    suggested_invoice_reference: invoiceMatches.length === 1 ? invoiceMatches[0].reference : null,
+  };
+
+  if (topupMatches.length === 1 && invoiceMatches.length === 0) {
+    await updateBillingBankReceiptRow(currentReceipt, {
+      status: "pending",
+      match_reason: "topup_reference_exact",
+      metadata: metadataPatch,
+    });
+    const resolved = await applyBillingBankReceiptResolution({
+      receiptId: currentReceipt.id,
+      resolution: "topup",
+      actor,
+      topupId: topupMatches[0].row.id,
+    });
+    return { action: "topup", receipt: resolved || currentReceipt };
+  }
+
+  if (invoiceMatches.length === 1 && topupMatches.length === 0) {
+    const invoice = invoiceMatches[0].row;
+    const outstandingCents = Math.max(
+      0,
+      toCents(invoice?.total_inc_vat) - toCents(invoice?.payment_received_amount)
+    );
+    if (outstandingCents <= 0) {
+      const updated = await updateBillingBankReceiptRow(currentReceipt, {
+        status: "manual_review",
+        match_reason: "invoice_already_paid_review",
+        review_note: "Reference matched an invoice that is already fully paid.",
+        metadata: metadataPatch,
+      });
+      return { action: "manual_review", receipt: updated };
+    }
+    if (outstandingCents > 0 && Number(currentReceipt?.amount_cents || 0) > outstandingCents) {
+      const updated = await updateBillingBankReceiptRow(currentReceipt, {
+        status: "manual_review",
+        match_reason: "invoice_overpayment_review",
+        review_note:
+          "Reference matched an invoice, but the received amount is larger than the outstanding balance.",
+        metadata: metadataPatch,
+      });
+      return { action: "manual_review", receipt: updated };
+    }
+    await updateBillingBankReceiptRow(currentReceipt, {
+      status: "pending",
+      match_reason:
+        outstandingCents > 0 && Number(currentReceipt?.amount_cents || 0) < outstandingCents
+          ? "invoice_reference_partial"
+          : "invoice_reference_exact",
+      metadata: metadataPatch,
+    });
+    const resolved = await applyBillingBankReceiptResolution({
+      receiptId: currentReceipt.id,
+      resolution: "invoice",
+      actor,
+      invoiceId: invoice.id,
+    });
+    return { action: "invoice", receipt: resolved || currentReceipt };
+  }
+
+  const updated = await updateBillingBankReceiptRow(currentReceipt, {
+    status: "manual_review",
+    match_reason:
+      topupMatches.length && invoiceMatches.length
+        ? "ambiguous_reference"
+        : referenceCandidates.length
+          ? "no_exact_match"
+          : "missing_reference",
+    metadata: metadataPatch,
+  });
+  return { action: "manual_review", receipt: updated };
+}
+
+function extractWiseStatementTransactions(payload) {
+  if (Array.isArray(payload?.transactions)) return payload.transactions;
+  if (Array.isArray(payload?.statement?.transactions)) return payload.statement.transactions;
+  if (Array.isArray(payload?.data?.transactions)) return payload.data.transactions;
+  return [];
+}
+
+async function fetchWiseBalanceStatement({ lookbackDays = WISE_DEFAULT_LOOKBACK_DAYS } = {}) {
+  assertWiseStatementConfig();
+  const safeLookbackDays = Math.max(1, Math.min(469, Number(lookbackDays) || WISE_DEFAULT_LOOKBACK_DAYS));
+  const intervalEnd = new Date();
+  const intervalStart = new Date(Date.now() - safeLookbackDays * 24 * 60 * 60 * 1000);
+  const url = new URL(
+    `/v1/profiles/${encodeURIComponent(getWiseProfileId())}/balance-statements/${encodeURIComponent(
+      getWiseBalanceId()
+    )}/statement.json`,
+    `${getWiseApiBaseUrl()}/`
+  );
+  url.searchParams.set("currency", getWiseBalanceCurrency());
+  url.searchParams.set("intervalStart", intervalStart.toISOString());
+  url.searchParams.set("intervalEnd", intervalEnd.toISOString());
+  url.searchParams.set("type", "COMPACT");
+  url.searchParams.set("statementLocale", "en");
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${getWiseApiToken()}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        "Wise statement access was denied. Refresh Wise API access or complete the required Strong Customer Authentication in Wise."
+      );
+    }
+    throw new Error(`Could not load Wise balance statement (${response.status}) ${details}`.trim());
+  }
+  return response.json().catch(() => ({}));
+}
+
+async function syncWiseBalanceStatement({
+  lookbackDays = getWiseStatementLookbackDays(),
+  actor = "wise-sync",
+} = {}) {
+  const statement = await fetchWiseBalanceStatement({ lookbackDays });
+  const transactions = extractWiseStatementTransactions(statement);
+  const summary = {
+    scanned: transactions.length,
+    created: 0,
+    updated: 0,
+    auto_topups: 0,
+    auto_invoices: 0,
+    manual_review: 0,
+    ignored: 0,
+  };
+  for (const transaction of transactions) {
+    const candidate = extractWiseReceiptFromStatementTransaction(transaction);
+    if (!candidate) {
+      summary.ignored += 1;
+      continue;
+    }
+    const existing = await getBillingBankReceiptByExternalKey(candidate.external_key, {
+      allowMissing: true,
+    });
+    const receipt = await upsertBillingBankReceipt(candidate);
+    if (existing?.id) {
+      summary.updated += 1;
+    } else {
+      summary.created += 1;
+    }
+    const result = await tryAutoResolveBankReceipt(receipt, actor);
+    if (result.action === "topup") summary.auto_topups += 1;
+    if (result.action === "invoice") summary.auto_invoices += 1;
+    if (result.action === "manual_review") summary.manual_review += 1;
+  }
+  return summary;
+}
+
+async function acceptWiseWebhookDelivery(rawBody, headers = {}) {
+  const deliveryId = String(headers?.deliveryId || "").trim()
+    || `wise-${crypto.createHash("sha256").update(rawBody).digest("hex").slice(0, 32)}`;
+  let payload = null;
+  try {
+    payload = JSON.parse(Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : String(rawBody || ""));
+  } catch (_error) {
+    throw new Error("Invalid Wise webhook payload.");
+  }
+  const signatureValid = verifyWiseWebhookSignature(rawBody, headers?.signature);
+  if (!signatureValid) {
+    const error = new Error("Wise webhook signature verification failed.");
+    error.statusCode = 401;
+    throw error;
+  }
+  const eventType = pickFirstNonEmpty(
+    payload?.event_type,
+    payload?.eventType,
+    payload?.type,
+    payload?.name
+  ) || "unknown";
+  const eventRecord = await upsertWiseWebhookEvent({
+    delivery_id: deliveryId,
+    event_type: eventType,
+    subscription_id: String(headers?.subscriptionId || "").trim() || null,
+    schema_version: String(headers?.schemaVersion || "").trim() || null,
+    signature_valid: true,
+    is_test: headers?.isTest === true,
+    processing_status: "received",
+    payload,
+  });
+  return {
+    deliveryId,
+    eventType,
+    payload,
+    isTest: headers?.isTest === true,
+    eventRecord,
+  };
+}
+
+async function processWiseWebhookAcceptedEvent(accepted) {
+  const deliveryId = String(accepted?.deliveryId || "").trim();
+  if (!deliveryId) return { scanned: 0, created: 0, updated: 0, auto_topups: 0, auto_invoices: 0, manual_review: 0, ignored: 0 };
+  try {
+    if (accepted?.isTest) {
+      await updateWiseWebhookEventStatus(deliveryId, "ignored", "");
+      return {
+        scanned: 0,
+        created: 0,
+        updated: 0,
+        auto_topups: 0,
+        auto_invoices: 0,
+        manual_review: 0,
+        ignored: 1,
+      };
+    }
+
+    let summary = null;
+    try {
+      if (getWiseConfigSummary().configured) {
+        summary = await syncWiseBalanceStatement({
+          lookbackDays: WISE_WEBHOOK_SYNC_LOOKBACK_DAYS,
+          actor: "wise-webhook",
+        });
+      }
+    } catch (_error) {
+      summary = null;
+    }
+
+    if (!summary || Number(summary.scanned || 0) === 0) {
+      const fallbackSummary = {
+        scanned: 0,
+        created: 0,
+        updated: 0,
+        auto_topups: 0,
+        auto_invoices: 0,
+        manual_review: 0,
+        ignored: 0,
+      };
+      const candidates = extractWiseReceiptCandidatesFromWebhookPayload(accepted?.payload || {});
+      for (const candidate of candidates) {
+        fallbackSummary.scanned += 1;
+        const existing = await getBillingBankReceiptByExternalKey(candidate.external_key, {
+          allowMissing: true,
+        });
+        const receipt = await upsertBillingBankReceipt({
+          ...candidate,
+          delivery_id: deliveryId,
+        });
+        if (existing?.id) {
+          fallbackSummary.updated += 1;
+        } else {
+          fallbackSummary.created += 1;
+        }
+        const result = await tryAutoResolveBankReceipt(receipt, "wise-webhook");
+        if (result.action === "topup") fallbackSummary.auto_topups += 1;
+        if (result.action === "invoice") fallbackSummary.auto_invoices += 1;
+        if (result.action === "manual_review") fallbackSummary.manual_review += 1;
+      }
+      summary = fallbackSummary;
+    }
+
+    await updateWiseWebhookEventStatus(deliveryId, "processed", "");
+    return summary;
+  } catch (error) {
+    await updateWiseWebhookEventStatus(
+      deliveryId,
+      "failed",
+      error?.message || "Wise webhook processing failed."
+    ).catch(() => {});
+    throw error;
+  }
 }
 
 async function sendBillingInvoiceById(invoiceId, options = {}) {
@@ -5297,7 +6697,7 @@ async function listClientBillingPreferences(limit = 2000) {
     throw new Error(`Could not load client billing settings (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return filterTrustedClientBillingPreferenceRows(rows);
 }
 
 async function saveClientBillingPreference(adminUserId, userId, payload) {
@@ -5416,20 +6816,22 @@ function mapInviteHistoryRow(invite, baseUrl) {
 
 function shouldIncludeAdminClient(user) {
   if (!user?.id) return false;
-  if (user?.user_metadata?.app_admin === true) return false;
-  const email = normalizeEmail(user.email || "");
-  if (email && INVITE_ADMIN_EMAILS.includes(email)) return false;
-  return true;
+  return !canManageRegistrationInvites(user);
 }
 
 async function buildAdminDashboard(baseUrl) {
-  const [settings, invites, users, historyRows, billingPreferences, invoices] = await Promise.all([
+  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts] = await Promise.all([
     getAdminSettings(),
     listRegistrationInvites({ limit: 50 }),
     listSupabaseUsers(250),
     listGenerationHistoryRows(10000),
     listClientBillingPreferences(2000),
     listBillingInvoices({ limit: 500, allowMissing: true }),
+    listBillingBankReceipts({
+      limit: 80,
+      statuses: ["manual_review", "pending"],
+      allowMissing: true,
+    }),
   ]);
 
   const historyByUserId = new Map();
@@ -5482,6 +6884,10 @@ async function buildAdminDashboard(baseUrl) {
     summary: buildAdminClientSummary(clients, invites),
     billing: {
       invoices: buildInvoiceListResponseRows(invoices.slice(0, 120)),
+      wise: {
+        ...getWiseConfigSummary(),
+        receipts: wiseReceipts.map(mapBillingBankReceiptRow).filter(Boolean),
+      },
     },
   };
 }
@@ -5587,10 +6993,28 @@ function buildSupabaseInFilter(values) {
   return `in.(${safeValues.map((value) => JSON.stringify(value)).join(',')})`;
 }
 
-function isMissingPrivacyRequestsSchemaError(details) {
+function chunkArray(values = [], size = 100) {
+  const safeValues = Array.isArray(values) ? values : [];
+  const chunkSize = Math.max(1, Number(size) || 100);
+  const chunks = [];
+  for (let index = 0; index < safeValues.length; index += chunkSize) {
+    chunks.push(safeValues.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function isMissingSupabaseSchemaError(tableName, details) {
+  const table = String(tableName || '').toLowerCase();
   const text = String(details || '').toLowerCase();
-  return text.includes('privacy_requests')
-    && (text.includes('relation') || text.includes('column') || text.includes('schema'));
+  return Boolean(
+    table
+    && text.includes(table)
+    && (text.includes('relation') || text.includes('column') || text.includes('schema'))
+  );
+}
+
+function isMissingPrivacyRequestsSchemaError(details) {
+  return isMissingSupabaseSchemaError(PRIVACY_REQUESTS_TABLE, details);
 }
 
 async function fetchAllSupabaseRows(tableName, paramsInit = {}, options = {}) {
@@ -5613,7 +7037,7 @@ async function fetchAllSupabaseRows(tableName, paramsInit = {}, options = {}) {
     });
     if (!response.ok) {
       const details = await response.text().catch(() => '');
-      if (allowMissingSchema && isMissingPrivacyRequestsSchemaError(details)) {
+      if (allowMissingSchema && isMissingSupabaseSchemaError(tableName, details)) {
         return [];
       }
       throw new Error(`Failed reading ${tableName} (${response.status}) ${details}`.trim());
@@ -5749,6 +7173,323 @@ async function updatePrivacyRequest(requestId, patch = {}, options = {}) {
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+function buildPrivacyExportFilename(date = new Date()) {
+  const stamp = date.toISOString().slice(0, 10);
+  return `shipide-privacy-export-${stamp}.json`;
+}
+
+function buildPrivacyExportSummary(bundle = {}) {
+  return {
+    provider_connections: Array.isArray(bundle.provider_connections) ? bundle.provider_connections.length : 0,
+    history_rows: Array.isArray(bundle.history) ? bundle.history.length : 0,
+    invoices: Array.isArray(bundle.billing?.invoices) ? bundle.billing.invoices.length : 0,
+    invoice_items: Array.isArray(bundle.billing?.invoice_items) ? bundle.billing.invoice_items.length : 0,
+    topups: Array.isArray(bundle.billing?.topups) ? bundle.billing.topups.length : 0,
+    wallet_transactions: Array.isArray(bundle.billing?.wallet_transactions)
+      ? bundle.billing.wallet_transactions.length
+      : 0,
+    clickwrap_acceptances: Array.isArray(bundle.clickwrap_acceptances)
+      ? bundle.clickwrap_acceptances.length
+      : 0,
+    privacy_requests: Array.isArray(bundle.privacy_requests) ? bundle.privacy_requests.length : 0,
+  };
+}
+
+async function getSingleOptionalSupabaseRow(tableName, paramsInit = {}) {
+  const rows = await fetchAllSupabaseRows(tableName, paramsInit, {
+    pageSize: 1,
+    allowMissingSchema: true,
+  }).catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function listProviderConnectionsForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    'provider_connections',
+    {
+      select: 'provider,shop_domain,status,scopes,connected_at,updated_at',
+      user_id: `eq.${userId}`,
+      order: 'updated_at.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listHistoryRowsForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    HISTORY_TABLE,
+    {
+      select: '*',
+      user_id: `eq.${userId}`,
+      order: 'created_at.desc',
+    },
+    { pageSize: 500, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listBillingInvoicesForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    BILLING_INVOICES_TABLE,
+    {
+      select:
+        'id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at',
+      user_id: `eq.${userId}`,
+      order: 'updated_at.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listBillingInvoiceItemsForPrivacyExport(invoiceIds = []) {
+  const items = [];
+  for (const invoiceIdChunk of chunkArray(invoiceIds, 100)) {
+    const inFilter = buildSupabaseInFilter(invoiceIdChunk);
+    if (!inFilter) continue;
+    const rows = await fetchAllSupabaseRows(
+      BILLING_INVOICE_ITEMS_TABLE,
+      {
+        select:
+          'id,invoice_id,generation_id,generated_at,service_type,quantity,recipient_name,recipient_city,recipient_country,tracking_id,label_id,unit_price_ex_vat,amount_ex_vat,vat_amount,amount_inc_vat,sort_index,metadata,created_at',
+        invoice_id: inFilter,
+        order: 'sort_index.asc,id.asc',
+      },
+      { pageSize: 500, allowMissingSchema: true }
+    ).catch(() => []);
+    items.push(...rows);
+  }
+  return items;
+}
+
+async function listBillingTopupsForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    BILLING_WALLET_TOPUPS_TABLE,
+    {
+      select: 'id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at',
+      user_id: `eq.${userId}`,
+      order: 'requested_at.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listBillingWalletTransactionsForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    BILLING_WALLET_TRANSACTIONS_TABLE,
+    {
+      select: 'id,user_id,source,amount_cents,balance_after_cents,reference,metadata,created_at',
+      user_id: `eq.${userId}`,
+      order: 'created_at.desc,id.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listClickwrapAcceptancesForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    CLICKWRAP_ACCEPTANCES_TABLE,
+    {
+      select:
+        'id,invite_id,accepted_email,invited_email,contract_id,contract_version,contract_hash_sha256,agreement_method,scrolled_to_end,scrolled_to_end_at,agreed_at,client_timezone,client_locale,proof_payload,created_at',
+      user_id: `eq.${userId}`,
+      order: 'agreed_at.desc,created_at.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function listPrivacyRequestsForPrivacyExport(userId) {
+  return fetchAllSupabaseRows(
+    PRIVACY_REQUESTS_TABLE,
+    {
+      select:
+        'id,source,request_type,status,provider,shop_domain,external_customer_id,external_customer_email,request_payload,result_payload,requested_at,processed_at,created_at,updated_at',
+      requested_by_user_id: `eq.${userId}`,
+      order: 'requested_at.desc,created_at.desc',
+    },
+    { pageSize: 200, allowMissingSchema: true }
+  ).catch(() => []);
+}
+
+async function buildPrivacyExportBundle(user) {
+  const userId = String(user?.id || '').trim();
+  if (!userId) {
+    throw new Error('Authentication required.');
+  }
+  const [
+    accountSettings,
+    providerConnections,
+    historyRows,
+    invoices,
+    topups,
+    walletTransactions,
+    clickwrapAcceptances,
+    privacyRequests,
+    billingWallet,
+    billingPreference,
+  ] = await Promise.all([
+    getSingleOptionalSupabaseRow('account_settings', {
+      select: '*',
+      user_id: `eq.${userId}`,
+    }),
+    listProviderConnectionsForPrivacyExport(userId),
+    listHistoryRowsForPrivacyExport(userId),
+    listBillingInvoicesForPrivacyExport(userId),
+    listBillingTopupsForPrivacyExport(userId),
+    listBillingWalletTransactionsForPrivacyExport(userId),
+    listClickwrapAcceptancesForPrivacyExport(userId),
+    listPrivacyRequestsForPrivacyExport(userId),
+    getSingleOptionalSupabaseRow(BILLING_WALLET_TABLE, {
+      select: 'user_id,balance_cents,currency,created_at,updated_at',
+      user_id: `eq.${userId}`,
+    }),
+    getClientBillingPreferenceForUser(userId).catch(() => ({ ...DEFAULT_CLIENT_BILLING_PREF })),
+  ]);
+  const invoiceIds = invoices.map((invoice) => String(invoice?.id || '').trim()).filter(Boolean);
+  const invoiceItems = await listBillingInvoiceItemsForPrivacyExport(invoiceIds);
+  const bundle = {
+    schema: 'shipide.privacy-export.v1',
+    generated_at: new Date().toISOString(),
+    user: {
+      id: userId,
+      email: normalizeEmail(user?.email || '') || null,
+      created_at: user?.created_at || null,
+      last_sign_in_at: user?.last_sign_in_at || null,
+      user_metadata: user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {},
+    },
+    account_settings: accountSettings,
+    provider_connections: providerConnections,
+    history: historyRows,
+    billing: {
+      preference: normalizeClientBillingPreference(billingPreference),
+      wallet: billingWallet,
+      invoices,
+      invoice_items: invoiceItems,
+      topups,
+      wallet_transactions: walletTransactions,
+    },
+    clickwrap_acceptances: clickwrapAcceptances,
+    privacy_requests: privacyRequests,
+  };
+  return {
+    bundle,
+    summary: buildPrivacyExportSummary(bundle),
+  };
+}
+
+async function handlePrivacyExport(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: 'Authentication required.' });
+    return;
+  }
+  const requestRecord = await insertPrivacyRequest(
+    {
+      source: 'portal',
+      requestType: 'export',
+      status: 'processing',
+      subjectUserId: user.id,
+      requestedByUserId: user.id,
+      requestPayload: {
+        requested_via: '/api/privacy/export',
+        requested_email: normalizeEmail(user.email || '') || null,
+      },
+    },
+    { allowMissingSchema: true }
+  ).catch(() => null);
+  try {
+    const { bundle, summary } = await buildPrivacyExportBundle(user);
+    if (requestRecord?.id) {
+      await updatePrivacyRequest(
+        requestRecord.id,
+        {
+          status: 'completed',
+          processed_at: new Date().toISOString(),
+          result_payload: {
+            exported_at: bundle.generated_at,
+            summary,
+          },
+        },
+        { allowMissingSchema: true }
+      ).catch(() => null);
+    }
+    send(
+      res,
+      200,
+      {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Content-Disposition': `attachment; filename="${buildPrivacyExportFilename()}"`,
+      },
+      Buffer.from(JSON.stringify(bundle, null, 2))
+    );
+  } catch (error) {
+    if (requestRecord?.id) {
+      await updatePrivacyRequest(
+        requestRecord.id,
+        {
+          status: 'failed',
+          processed_at: new Date().toISOString(),
+          result_payload: {
+            error: error?.message || 'Privacy export failed.',
+          },
+        },
+        { allowMissingSchema: true }
+      ).catch(() => null);
+    }
+    sendJson(res, 500, { error: error.message || 'Could not build privacy export.' });
+  }
+}
+
+async function handlePrivacyDelete(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: 'Authentication required.' });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || 'Invalid request body.' });
+    return;
+  }
+  if (body?.confirm !== true) {
+    sendJson(res, 400, {
+      error: 'Account deletion requests require an explicit confirm=true flag.',
+    });
+    return;
+  }
+  const requestRecord = await insertPrivacyRequest(
+    {
+      source: 'portal',
+      requestType: 'delete',
+      status: 'manual_review_required',
+      subjectUserId: user.id,
+      requestedByUserId: user.id,
+      requestPayload: {
+        requested_via: '/api/privacy/delete',
+        requested_email: normalizeEmail(user.email || '') || null,
+        reason: String(body?.reason || '').trim() || null,
+      },
+      resultPayload: {
+        queued_for_manual_review: true,
+      },
+    },
+    { allowMissingSchema: true }
+  ).catch(() => null);
+  if (!requestRecord?.id) {
+    sendJson(res, 503, { error: 'Privacy request storage is unavailable.' });
+    return;
+  }
+  sendJson(res, 202, {
+    ok: true,
+    queued: true,
+    requestId: requestRecord.id,
+    status: requestRecord.status,
+    message: 'Deletion request recorded and queued for manual review.',
+  });
 }
 
 async function deleteShopifyConnection(userId, shop) {
@@ -8037,7 +9778,8 @@ async function fetchWooCommerceOrders(
 ) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 50;
   const normalizedStatuses = normalizeWooCommerceImportStatuses(selectedStatuses);
-  const url = new URL(`${storeUrl.replace(/\/+$/, "")}/wp-json/wc/v3/orders`);
+  const safeStoreUrl = await assertSafeWooCommerceStoreUrlForFetch(storeUrl);
+  const url = new URL(`${safeStoreUrl.replace(/\/+$/, "")}/wp-json/wc/v3/orders`);
   url.searchParams.set("per_page", String(safeLimit));
   url.searchParams.set("orderby", "date");
   url.searchParams.set("order", "desc");
@@ -8072,7 +9814,8 @@ async function fetchWooCommerceOrders(
 }
 
 async function fetchWooCommerceGeneralSettings(storeUrl, consumerKey, consumerSecret) {
-  const url = new URL(`${storeUrl.replace(/\/+$/, "")}/wp-json/wc/v3/settings/general`);
+  const safeStoreUrl = await assertSafeWooCommerceStoreUrlForFetch(storeUrl);
+  const url = new URL(`${safeStoreUrl.replace(/\/+$/, "")}/wp-json/wc/v3/settings/general`);
   url.searchParams.set("_fields", "id,value");
 
   const response = await fetch(url.toString(), {
@@ -9090,6 +10833,208 @@ async function handleAdminInvoiceMarkPaid(req, res) {
   }
 }
 
+async function handleWiseWebhook(req, res) {
+  let rawBody = Buffer.alloc(0);
+  try {
+    rawBody = await readRequestBodyBuffer(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  try {
+    const accepted = await acceptWiseWebhookDelivery(rawBody, {
+      signature: req.headers["x-signature-sha256"],
+      deliveryId: req.headers["x-delivery-id"],
+      subscriptionId: req.headers["x-subscription-id"],
+      schemaVersion: req.headers["x-schema-version"],
+      isTest: String(req.headers["x-test-notification"] || "").trim().toLowerCase() === "true",
+    });
+    sendJson(res, 202, {
+      ok: true,
+      deliveryId: accepted.deliveryId,
+      eventType: accepted.eventType,
+    });
+    setImmediate(() => {
+      void processWiseWebhookAcceptedEvent(accepted).catch((error) => {
+        console.error("[wise webhook]", error);
+      });
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    sendJson(res, statusCode, { error: error.message || "Could not accept Wise webhook." });
+  }
+}
+
+async function handleAdminWiseReceiptsList(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to access Wise reconciliation." });
+    return;
+  }
+  const limit = Math.max(1, Math.min(200, Number(requestUrl.searchParams.get("limit")) || 80));
+  const statuses = String(requestUrl.searchParams.get("status") || "manual_review,pending")
+    .split(",")
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .filter(Boolean);
+  try {
+    const receipts = await listBillingBankReceipts({
+      limit,
+      statuses,
+      allowMissing: true,
+    });
+    sendJson(res, 200, {
+      wise: {
+        ...getWiseConfigSummary(),
+        receipts: receipts.map(mapBillingBankReceiptRow).filter(Boolean),
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load Wise reconciliation queue." });
+  }
+}
+
+async function handleAdminWiseSync(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to sync Wise reconciliation." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  try {
+    const summary = await syncWiseBalanceStatement({
+      lookbackDays: Number(body?.lookbackDays) || getWiseStatementLookbackDays(),
+      actor: normalizeEmail(user.email || "") || user.id,
+    });
+    const receipts = await listBillingBankReceipts({
+      limit: 80,
+      statuses: ["manual_review", "pending"],
+      allowMissing: true,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      summary,
+      wise: {
+        ...getWiseConfigSummary(),
+        receipts: receipts.map(mapBillingBankReceiptRow).filter(Boolean),
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not sync Wise statement." });
+  }
+}
+
+async function handleAdminWiseReceiptResolve(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to update Wise reconciliation." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const receiptId = String(body?.receiptId || "").trim();
+  const resolution = String(body?.action || body?.resolution || "").trim().toLowerCase();
+  const target = String(body?.target || "").trim();
+  const note = String(body?.note || "").trim();
+  if (!receiptId) {
+    sendJson(res, 400, { error: "Bank receipt id is required." });
+    return;
+  }
+  if (!["topup", "invoice", "ignore"].includes(resolution)) {
+    sendJson(res, 400, { error: "Resolution must be topup, invoice, or ignore." });
+    return;
+  }
+
+  try {
+    const receipt = await getBillingBankReceiptById(receiptId, { allowMissing: false });
+    if (!receipt?.id) {
+      sendJson(res, 404, { error: "Bank receipt not found." });
+      return;
+    }
+    if (resolution === "ignore") {
+      const updated = await applyBillingBankReceiptResolution({
+        receiptId,
+        resolution,
+        actor: normalizeEmail(user.email || "") || user.id,
+        note,
+      });
+      sendJson(res, 200, {
+        ok: true,
+        receipt: mapBillingBankReceiptRow(updated || receipt),
+      });
+      return;
+    }
+
+    const targetRow = await resolveBillingBankReceiptTarget(receipt, resolution, target);
+    if (!targetRow?.id) {
+      sendJson(res, 400, {
+        error:
+          resolution === "topup"
+            ? "Provide a valid SHIP- reference or top-up id."
+            : "Provide a valid INV- reference or invoice id.",
+      });
+      return;
+    }
+    if (resolution === "invoice") {
+      const outstandingCents = Math.max(
+        0,
+        toCents(targetRow?.total_inc_vat) - toCents(targetRow?.payment_received_amount)
+      );
+      if (outstandingCents <= 0) {
+        sendJson(res, 400, {
+          error: "This invoice is already fully paid.",
+        });
+        return;
+      }
+      if (outstandingCents > 0 && Number(receipt?.amount_cents || 0) > outstandingCents) {
+        sendJson(res, 400, {
+          error:
+            "This bank receipt is larger than the invoice outstanding balance. Use a wallet credit or review it manually.",
+        });
+        return;
+      }
+    }
+
+    const updated = await applyBillingBankReceiptResolution({
+      receiptId,
+      resolution,
+      actor: normalizeEmail(user.email || "") || user.id,
+      topupId: resolution === "topup" ? targetRow.id : null,
+      invoiceId: resolution === "invoice" ? targetRow.id : null,
+      note,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      receipt: mapBillingBankReceiptRow(updated || receipt),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not resolve bank receipt." });
+  }
+}
+
 async function handleBillingOverview(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -9550,6 +11495,15 @@ async function handleRegisterWithInvite(req, res) {
     const invite = await getRegistrationInviteByToken(token);
     if (!invite || invite.claimed_at || inviteIsRevoked(invite) || inviteIsExpired(invite)) {
       sendJson(res, 410, { error: "This registration link is invalid or expired." });
+      return;
+    }
+    const inviteEmail = getInviteBoundEmail(invite);
+    if (!inviteEmailMatches(invite, email)) {
+      sendJson(res, 400, {
+        error: inviteEmail
+          ? `This registration link is only valid for ${inviteEmail}.`
+          : "This registration link is invalid.",
+      });
       return;
     }
 
@@ -10130,14 +12084,15 @@ async function handleWooCommerceInstallLink(req, res) {
   }
 
   try {
+    const safeStoreUrl = await assertSafeWooCommerceStoreUrlForFetch(storeUrl);
     const stateToken = makeSignedStateToken({
       type: "woocommerce_auth",
       userId: user.id,
-      storeUrl,
+      storeUrl: safeStoreUrl,
       selectedStatuses,
       autoRefreshEnabled,
     });
-    const installUrl = new URL(`${storeUrl.replace(/\/+$/, "")}/wc-auth/v1/authorize`);
+    const installUrl = new URL(`${safeStoreUrl.replace(/\/+$/, "")}/wc-auth/v1/authorize`);
     const callbackUrl = new URL("/api/woocommerce/callback", publicBaseUrl);
     callbackUrl.searchParams.set("state", stateToken);
     installUrl.searchParams.set("app_name", WOOCOMMERCE_APP_NAME);
@@ -10147,16 +12102,20 @@ async function handleWooCommerceInstallLink(req, res) {
       "return_url",
       getCallbackRedirect(req, {
         provider: "woocommerce",
-        store: storeUrl,
+        store: safeStoreUrl,
       })
     );
     installUrl.searchParams.set("callback_url", callbackUrl.toString());
 
     sendJson(res, 200, {
       url: installUrl.toString(),
-      storeUrl,
+      storeUrl: safeStoreUrl,
     });
   } catch (error) {
+    if (error?.code === "woocommerce_store_url_disallowed") {
+      sendJson(res, 400, { error: error.message });
+      return;
+    }
     sendJson(res, 500, { error: error.message || "Could not start WooCommerce connect flow." });
   }
 }
@@ -10185,7 +12144,7 @@ async function handleWooCommerceCallback(req, res, requestUrl) {
   const consumerKey = String(body?.consumer_key || "").trim();
   const consumerSecret = String(body?.consumer_secret || "").trim();
   const keyPermissions = String(body?.key_permissions || "").trim().toLowerCase();
-  const storeUrl = normalizeWooCommerceStoreUrl(statePayload.storeUrl);
+  let storeUrl = normalizeWooCommerceStoreUrl(statePayload.storeUrl);
   const importSettings = getWooCommerceImportSettings(statePayload);
 
   if (!consumerKey || !consumerSecret) {
@@ -10204,6 +12163,7 @@ async function handleWooCommerceCallback(req, res, requestUrl) {
   }
 
   try {
+    storeUrl = await assertSafeWooCommerceStoreUrlForFetch(storeUrl);
     await fetchWooCommerceOrders(storeUrl, consumerKey, consumerSecret, 1);
     await upsertWooCommerceConnection(
       statePayload.userId,
@@ -10227,6 +12187,10 @@ async function handleWooCommerceCallback(req, res, requestUrl) {
         error:
           "WooCommerce credentials were rejected. Double-check the store URL and try authorizing again.",
       });
+      return;
+    }
+    if (error?.code === "woocommerce_store_url_disallowed") {
+      sendJson(res, 400, { error: error.message });
       return;
     }
     if (error?.code === "woocommerce_api_not_found") {
@@ -10469,7 +12433,11 @@ async function handleWooCommerceImportOrders(req, res) {
       return;
     }
     if (
-      (error?.code === "woocommerce_auth_invalid" || error?.code === "woocommerce_api_not_found") &&
+      (
+        error?.code === "woocommerce_auth_invalid"
+        || error?.code === "woocommerce_api_not_found"
+        || error?.code === "woocommerce_store_url_disallowed"
+      ) &&
       resolvedStoreUrl
     ) {
       await setWooCommerceConnectionStatus(user.id, resolvedStoreUrl, "token_invalid").catch(() => {});
@@ -10477,7 +12445,9 @@ async function handleWooCommerceImportOrders(req, res) {
         error:
           error?.code === "woocommerce_api_not_found"
             ? "WooCommerce API endpoint was not found for this store. Open WooCommerce settings and reconnect with the correct URL."
-            : "WooCommerce credentials expired or were rejected. Reconnect WooCommerce and try again.",
+            : error?.code === "woocommerce_store_url_disallowed"
+              ? "WooCommerce store URL is no longer allowed. Reconnect WooCommerce using a public HTTPS store URL."
+              : "WooCommerce credentials expired or were rejected. Reconnect WooCommerce and try again.",
       });
       return;
     }
@@ -10889,6 +12859,18 @@ async function handleApi(req, res, requestUrl) {
     await handleAdminInvoiceMarkPaid(req, res);
     return true;
   }
+  if (pathname === "/api/admin/billing/wise/receipts" && req.method === "GET") {
+    await handleAdminWiseReceiptsList(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/admin/billing/wise/sync" && req.method === "POST") {
+    await handleAdminWiseSync(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/billing/wise/receipts/resolve" && req.method === "POST") {
+    await handleAdminWiseReceiptResolve(req, res);
+    return true;
+  }
   if (pathname === "/api/auth/invites" && req.method === "GET") {
     await handleListRegistrationInvites(req, res, requestUrl);
     return true;
@@ -10919,6 +12901,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/privacy/delete" && req.method === "POST") {
     await handlePrivacyDelete(req, res);
+    return true;
+  }
+  if (pathname === "/api/wise/webhooks" && req.method === "POST") {
+    await handleWiseWebhook(req, res);
     return true;
   }
   if (pathname === "/api/shopify/install-link" && req.method === "POST") {
