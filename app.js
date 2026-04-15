@@ -10650,7 +10650,8 @@ function setIbanTopupStatus(message = "", options = {}) {
 function syncIbanTopupActions() {
   const ready = Boolean(ibanTopupDraft) && !ibanTopupRequestInFlight;
   ibanCopyButtons.forEach((button) => {
-    button.disabled = !ready;
+    button.setAttribute("aria-disabled", ready ? "false" : "true");
+    button.tabIndex = ready ? 0 : -1;
   });
   if (ibanTopupRequest) {
     ibanTopupRequest.disabled = ibanTopupRequestInFlight;
@@ -10658,6 +10659,7 @@ function syncIbanTopupActions() {
 }
 
 async function copyIbanField(button) {
+  if (!button || button.getAttribute("aria-disabled") === "true") return;
   const targetId = String(button?.dataset?.ibanCopyTarget || "").trim();
   if (!targetId) return;
   const target = document.getElementById(targetId);
@@ -19563,6 +19565,11 @@ if (ibanTopupRequest) {
 
 ibanCopyButtons.forEach((button) => {
   button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await copyIbanField(button);
+  });
+  button.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     await copyIbanField(button);
   });
