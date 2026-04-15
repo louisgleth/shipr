@@ -2102,6 +2102,7 @@ const ibanTopupResult = document.getElementById("ibanTopupResult");
 const ibanResultBeneficiary = document.getElementById("ibanResultBeneficiary");
 const ibanResultIban = document.getElementById("ibanResultIban");
 const ibanResultBic = document.getElementById("ibanResultBic");
+const ibanResultAddress = document.getElementById("ibanResultAddress");
 const ibanResultReference = document.getElementById("ibanResultReference");
 const ibanResultEta = document.getElementById("ibanResultEta");
 const ibanResultNote = document.getElementById("ibanResultNote");
@@ -10694,6 +10695,7 @@ function resetIbanTopupResult(options = {}) {
   if (ibanResultBeneficiary) ibanResultBeneficiary.textContent = "--";
   if (ibanResultIban) ibanResultIban.textContent = "--";
   if (ibanResultBic) ibanResultBic.textContent = "--";
+  if (ibanResultAddress) ibanResultAddress.textContent = "--";
   if (ibanResultReference) ibanResultReference.textContent = "--";
   if (ibanResultEta) ibanResultEta.textContent = "Instant / Up to 3 days";
   if (ibanResultNote) {
@@ -10749,6 +10751,9 @@ function populateIbanTopupResult(payload) {
   }
   if (ibanResultBic) {
     ibanResultBic.textContent = String(instructions.bic || "--");
+  }
+  if (ibanResultAddress) {
+    ibanResultAddress.textContent = String(instructions.address || "--");
   }
   if (ibanResultReference) {
     ibanResultReference.textContent = String(instructions.reference || topup?.reference || "--");
@@ -17575,6 +17580,7 @@ function getIbanInstructionsFromOverview() {
     beneficiary: "Shipide",
     iban: "BE68 5390 0754 7034",
     bic: "KREDBEBB",
+    address: "",
     note: "",
   };
   const fromOverview = billingOverview?.iban_instructions;
@@ -17583,6 +17589,7 @@ function getIbanInstructionsFromOverview() {
     beneficiary: String(fromOverview.beneficiary || fallback.beneficiary).trim() || fallback.beneficiary,
     iban: String(fromOverview.iban || fallback.iban).trim() || fallback.iban,
     bic: String(fromOverview.bic || fallback.bic).trim() || fallback.bic,
+    address: String(fromOverview.address || fallback.address).trim() || fallback.address,
     note: String(fromOverview.note || fallback.note).trim() || fallback.note,
   };
 }

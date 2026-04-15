@@ -108,6 +108,7 @@ const BILLING_TOPUP_REFERENCE_REUSE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
+const DEFAULT_IBAN_ADDRESS = "";
 const DEFAULT_IBAN_TRANSFER_NOTE =
   "Transfers are credited once received (typically 1-2 business days).";
 const DEFAULT_INVOICE_ISSUER = Object.freeze({
@@ -3083,6 +3084,7 @@ function getBillingIbanConfig(env) {
     beneficiary: String(env.BILLING_IBAN_BENEFICIARY || DEFAULT_IBAN_BENEFICIARY).trim(),
     iban: String(env.BILLING_IBAN || DEFAULT_IBAN).trim(),
     bic: String(env.BILLING_IBAN_BIC || DEFAULT_IBAN_BIC).trim(),
+    address: String(env.BILLING_IBAN_ADDRESS || DEFAULT_IBAN_ADDRESS).trim(),
     note: String(env.BILLING_IBAN_NOTE || DEFAULT_IBAN_TRANSFER_NOTE).trim(),
   };
 }
@@ -3376,6 +3378,7 @@ async function createBillingTopupRequest(env, user, amountEur = null) {
         iban_beneficiary: ibanConfig.beneficiary,
         iban: ibanConfig.iban,
         bic: ibanConfig.bic,
+        address: ibanConfig.address,
       },
     };
     const response = await supabaseServiceRequest(env, `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}`, {
