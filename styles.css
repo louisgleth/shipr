@@ -5997,6 +5997,13 @@ body.is-auth-view {
   gap: 6px;
 }
 
+.iban-topup-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
 .iban-topup-kicker {
   font-size: var(--fs-2xs);
   color: var(--muted);
@@ -6057,6 +6064,39 @@ body.is-auth-view {
   font-weight: 300;
 }
 
+.iban-topup-copy-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(241, 244, 251, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.iban-topup-copy-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.iban-topup-copy-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+  transform: none;
+}
+
+.iban-topup-copy-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .iban-topup-note {
   font-size: var(--fs-xs);
   color: var(--muted);
@@ -6064,17 +6104,6 @@ body.is-auth-view {
 
 .iban-topup-note:empty {
   display: none;
-}
-
-.iban-topup-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.iban-topup-actions .btn:disabled {
-  opacity: 0.48;
-  pointer-events: none;
 }
 
 .iban-topup-footer-note {

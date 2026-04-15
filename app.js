@@ -2106,8 +2106,7 @@ const ibanResultAddress = document.getElementById("ibanResultAddress");
 const ibanResultReference = document.getElementById("ibanResultReference");
 const ibanResultEta = document.getElementById("ibanResultEta");
 const ibanResultNote = document.getElementById("ibanResultNote");
-const ibanCopyReference = document.getElementById("ibanCopyReference");
-const ibanCopyIban = document.getElementById("ibanCopyIban");
+const ibanCopyButtons = Array.from(document.querySelectorAll("[data-iban-copy-target]"));
 const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
 const walletHistoryModal = document.getElementById("walletHistoryModal");
 const walletHistoryClose = document.getElementById("walletHistoryClose");
@@ -10650,15 +10649,35 @@ function setIbanTopupStatus(message = "", options = {}) {
 
 function syncIbanTopupActions() {
   const ready = Boolean(ibanTopupDraft) && !ibanTopupRequestInFlight;
-  if (ibanCopyReference) {
-    ibanCopyReference.disabled = !ready;
-  }
-  if (ibanCopyIban) {
-    ibanCopyIban.disabled = !ready;
-  }
+  ibanCopyButtons.forEach((button) => {
+    button.disabled = !ready;
+  });
   if (ibanTopupRequest) {
     ibanTopupRequest.disabled = ibanTopupRequestInFlight;
   }
+}
+
+async function copyIbanField(button) {
+  const targetId = String(button?.dataset?.ibanCopyTarget || "").trim();
+  if (!targetId) return;
+  const target = document.getElementById(targetId);
+  const value = String(target?.textContent || "").trim();
+  if (!value || value === "--") return;
+  const label = String(button?.dataset?.ibanCopyLabel || "Value").trim() || "Value";
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(`${label} copied to clipboard.`, { tone: "success" });
+  } catch (_error) {
+    showToast(`Could not copy ${label.toLowerCase()}.`, { tone: "error" });
+  }
+}
+
+function formatIbanDisplay(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "--") return "--";
+  const compact = raw.replace(/\s+/g, "").toUpperCase();
+  if (!/^[A-Z0-9]+$/.test(compact)) return raw;
+  return compact.match(/.{1,4}/g)?.join(" ") || compact;
 }
 
 function setIbanTopupLoading(loading, options = {}) {
@@ -10747,7 +10766,7 @@ function populateIbanTopupResult(payload) {
     ibanResultBeneficiary.textContent = String(instructions.beneficiary || "--");
   }
   if (ibanResultIban) {
-    ibanResultIban.textContent = String(instructions.iban || "--");
+    ibanResultIban.textContent = formatIbanDisplay(instructions.iban || "--");
   }
   if (ibanResultBic) {
     ibanResultBic.textContent = String(instructions.bic || "--");
@@ -19542,33 +19561,12 @@ if (ibanTopupRequest) {
   });
 }
 
-if (ibanCopyReference) {
-  ibanCopyReference.addEventListener("click", async (event) => {
+ibanCopyButtons.forEach((button) => {
+  button.addEventListener("click", async (event) => {
     event.preventDefault();
-    const value = String(ibanResultReference?.textContent || "").trim();
-    if (!value || value === "--") return;
-    try {
-      await navigator.clipboard.writeText(value);
-      showToast(tr("Reference copied to clipboard."), { tone: "success" });
-    } catch (_error) {
-      showToast(tr("Could not copy reference."), { tone: "error" });
-    }
+    await copyIbanField(button);
   });
-}
-
-if (ibanCopyIban) {
-  ibanCopyIban.addEventListener("click", async (event) => {
-    event.preventDefault();
-    const value = String(ibanResultIban?.textContent || "").trim();
-    if (!value || value === "--") return;
-    try {
-      await navigator.clipboard.writeText(value);
-      showToast(tr("IBAN copied to clipboard."), { tone: "success" });
-    } catch (_error) {
-      showToast(tr("Could not copy IBAN."), { tone: "error" });
-    }
-  });
-}
+});
 
 if (receiptDownloadPdf) {
   receiptDownloadPdf.addEventListener("click", (event) => {

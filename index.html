@@ -2257,40 +2257,85 @@
             <div class="iban-topup-eta-pill" id="ibanResultEta">Instant / Up to 3 days</div>
             <div class="iban-topup-reference-block">
               <span class="iban-topup-kicker">Transfer Reference</span>
-              <strong class="mono iban-topup-reference" id="ibanResultReference">--</strong>
+              <div class="iban-topup-copy-row">
+                <strong class="mono iban-topup-reference" id="ibanResultReference">--</strong>
+                <button
+                  type="button"
+                  class="iban-topup-copy-button"
+                  data-iban-copy-target="ibanResultReference"
+                  data-iban-copy-label="Reference"
+                  aria-label="Copy transfer reference"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                </button>
+              </div>
             </div>
             <div class="iban-topup-lines">
               <div class="iban-topup-line">
                 <span>Beneficiary</span>
-                <strong id="ibanResultBeneficiary">--</strong>
+                <div class="iban-topup-copy-row">
+                  <strong id="ibanResultBeneficiary">--</strong>
+                  <button
+                    type="button"
+                    class="iban-topup-copy-button"
+                    data-iban-copy-target="ibanResultBeneficiary"
+                    data-iban-copy-label="Beneficiary"
+                    aria-label="Copy beneficiary"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  </button>
+                </div>
               </div>
               <div class="iban-topup-line">
                 <span>IBAN</span>
-                <strong class="mono" id="ibanResultIban">--</strong>
+                <div class="iban-topup-copy-row">
+                  <strong class="mono" id="ibanResultIban">--</strong>
+                  <button
+                    type="button"
+                    class="iban-topup-copy-button"
+                    data-iban-copy-target="ibanResultIban"
+                    data-iban-copy-label="IBAN"
+                    aria-label="Copy IBAN"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  </button>
+                </div>
               </div>
               <div class="iban-topup-line">
                 <span>BIC</span>
-                <strong class="mono" id="ibanResultBic">--</strong>
+                <div class="iban-topup-copy-row">
+                  <strong class="mono" id="ibanResultBic">--</strong>
+                  <button
+                    type="button"
+                    class="iban-topup-copy-button"
+                    data-iban-copy-target="ibanResultBic"
+                    data-iban-copy-label="BIC"
+                    aria-label="Copy BIC"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  </button>
+                </div>
               </div>
               <div class="iban-topup-line">
                 <span>Address</span>
-                <strong id="ibanResultAddress">--</strong>
+                <div class="iban-topup-copy-row">
+                  <strong id="ibanResultAddress">--</strong>
+                  <button
+                    type="button"
+                    class="iban-topup-copy-button"
+                    data-iban-copy-target="ibanResultAddress"
+                    data-iban-copy-label="Address"
+                    aria-label="Copy address"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
           <p class="shopify-settings-note iban-topup-footer-note" id="ibanResultNote">
             Transfers are credited once received (typically 1-2 business days).
           </p>
-          <div class="iban-topup-actions">
-            <button type="button" class="btn btn-secondary btn-sm" id="ibanCopyReference">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
-              <span>Copy Reference</span>
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" id="ibanCopyIban">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
-              <span>Copy IBAN</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>
