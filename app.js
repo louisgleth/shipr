@@ -2351,7 +2351,7 @@ let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
 let billingOverview = null;
 let checkoutPaymentMethod = "invoice";
-const IBAN_TOPUP_REFERENCE_REUSE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const IBAN_TOPUP_EXPIRY_MS = 48 * 60 * 60 * 1000;
 let ibanTopupDraft = null;
 let ibanTopupRequestInFlight = false;
 let ibanTopupRequestPromise = null;
@@ -17620,7 +17620,7 @@ function getReusableIbanTopupFromOverview() {
   const topup = topups.find((entry) => String(entry?.status || "").trim().toLowerCase() === "pending");
   if (!topup) return null;
   const requestedAt = Date.parse(String(topup?.requested_at || ""));
-  if (Number.isFinite(requestedAt) && Date.now() - requestedAt > IBAN_TOPUP_REFERENCE_REUSE_MAX_AGE_MS) {
+  if (Number.isFinite(requestedAt) && Date.now() - requestedAt > IBAN_TOPUP_EXPIRY_MS) {
     return null;
   }
   const reference = String(topup?.reference || "").trim();
@@ -17831,6 +17831,7 @@ function getTopupStatusMeta(status) {
   const key = String(status || "").trim().toLowerCase();
   if (key === "credited") return { label: tr("Credited"), className: "is-success" };
   if (key === "received") return { label: tr("Received"), className: "is-info" };
+  if (key === "expired") return { label: tr("Expired"), className: "is-muted" };
   if (key === "cancelled") return { label: tr("Cancelled"), className: "is-muted" };
   if (key === "failed") return { label: tr("Failed"), className: "is-danger" };
   return { label: tr("Pending"), className: "is-warning" };

@@ -121,7 +121,7 @@ const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
 const APPROVED_INVOICE_RENDERER_VERSION = "native-html-v1";
-const BILLING_TOPUP_REFERENCE_REUSE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const BILLING_TOPUP_EXPIRY_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_IBAN_BENEFICIARY = "Shipide";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
@@ -4602,6 +4602,21 @@ function getBillingIbanConfig() {
   };
 }
 
+function parseTopupRequestedAt(row) {
+  const requestedAt = Date.parse(String(row?.requested_at || row?.created_at || ""));
+  return Number.isFinite(requestedAt) ? requestedAt : null;
+}
+
+function getEffectiveTopupStatus(row) {
+  const status = normalizeTopupStatus(row?.status);
+  if (status !== "pending") return status;
+  const requestedAt = parseTopupRequestedAt(row);
+  if (requestedAt !== null && Date.now() - requestedAt > BILLING_TOPUP_EXPIRY_MS) {
+    return "expired";
+  }
+  return status;
+}
+
 function buildTopupReference(userId = "") {
   const userChunk = String(userId || "")
     .replace(/[^a-z0-9]/gi, "")
@@ -4626,12 +4641,10 @@ function buildTopupInstructions(ibanConfig, row, amountCents = null) {
 }
 
 function isReusablePendingTopup(row) {
-  if (normalizeTopupStatus(row?.status) !== "pending") return false;
+  if (getEffectiveTopupStatus(row) !== "pending") return false;
   const reference = String(row?.reference || "").trim();
   if (!reference) return false;
-  const requestedAt = Date.parse(String(row?.requested_at || row?.created_at || ""));
-  if (!Number.isFinite(requestedAt)) return true;
-  return Date.now() - requestedAt <= BILLING_TOPUP_REFERENCE_REUSE_MAX_AGE_MS;
+  return true;
 }
 
 function resolveWalletAccessIssue(details, tableName) {
@@ -4794,7 +4807,7 @@ function normalizeTopupStatus(value) {
 }
 
 function mapBillingTopupRow(row) {
-  const status = normalizeTopupStatus(row?.status);
+  const status = getEffectiveTopupStatus(row);
   const amountCents = Math.max(0, toCents(fromCents(row?.amount_cents)));
   return {
     id: String(row?.id || "").trim(),
@@ -11062,14 +11075,20 @@ async function handleBillingOverview(req, res) {
       updated_at: null,
     };
     let pendingTopups = [];
+    let recentTopups = [];
     let walletTransactions = [];
     try {
-      [wallet, pendingTopups, walletTransactions] = await Promise.all([
+      [wallet, pendingTopups, recentTopups, walletTransactions] = await Promise.all([
         getOrCreateBillingWallet(user.id),
         listBillingTopups({
           userId: user.id,
           statuses: ["pending", "received"],
           limit: 80,
+          allowMissing: true,
+        }),
+        listBillingTopups({
+          userId: user.id,
+          limit: 30,
           allowMissing: true,
         }),
         listBillingWalletTransactions({
@@ -11108,10 +11127,10 @@ async function handleBillingOverview(req, res) {
       : projectedExVat;
     const nextVat = nextDraft ? fromCents(toCents(nextDraft.vat_amount)) : projectedVat;
     const nextIncl = nextDraft ? fromCents(toCents(nextDraft.total_inc_vat)) : projectedIncl;
-    const pendingTopupCents = pendingTopups.reduce(
-      (sum, topup) => sum + Math.max(0, Number(topup?.amount_cents) || 0),
-      0
-    );
+    const pendingTopupCents = pendingTopups.reduce((sum, topup) => {
+      if (getEffectiveTopupStatus(topup) === "expired") return sum;
+      return sum + Math.max(0, Number(topup?.amount_cents) || 0);
+    }, 0);
     const walletBalanceCents = Math.max(0, Number(wallet?.balance_cents) || 0);
 
     sendJson(res, 200, {
@@ -11143,7 +11162,7 @@ async function handleBillingOverview(req, res) {
       wallet_pending_topups_eur: fromCents(pendingTopupCents),
       wallet_currency: String(wallet?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
       wallet_transactions: walletTransactions.slice(0, 10).map(mapBillingWalletTransactionRow),
-      recent_topups: pendingTopups.slice(0, 8).map(mapBillingTopupRow),
+      recent_topups: recentTopups.slice(0, 30).map(mapBillingTopupRow),
       iban_instructions: getBillingIbanConfig(),
     });
   } catch (error) {
