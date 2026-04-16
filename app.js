@@ -11683,6 +11683,88 @@ function buildInvoiceViewModel(record) {
   };
 }
 
+function canDownloadTopupInvoice(row) {
+  return String(row?.status || "").trim().toLowerCase() === "credited";
+}
+
+function getTopupInvoiceIssuedAt(row) {
+  return (
+    row?.credited_at
+    || row?.received_at
+    || row?.requested_at
+    || null
+  );
+}
+
+function getTopupInvoiceStatusCopy(row) {
+  const status = String(row?.status || "").trim().toLowerCase();
+  if (status === "credited") {
+    return {
+      statusValue: tr("Credited to account balance"),
+      settlementBadge: tr("Credited"),
+      settlementBadgeTone: "success",
+    };
+  }
+  if (status === "received") {
+    return {
+      statusValue: tr("Payment received"),
+      settlementBadge: tr("Received"),
+      settlementBadgeTone: "info",
+    };
+  }
+  return {
+    statusValue: tr("Pending"),
+    settlementBadge: tr("Pending"),
+    settlementBadgeTone: "warning",
+  };
+}
+
+function buildTopupInvoiceViewModel(topup) {
+  const profile = buildMockAccountProfile(currentUser);
+  const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
+  const issuedDate = new Date(issuedDateRaw || Date.now());
+  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
+  const amount = Math.max(0, Number(topup?.amount_eur) || 0);
+  const reference = String(topup?.reference || topup?.id || "--").trim() || "--";
+  const statusCopy = getTopupInvoiceStatusCopy(topup);
+
+  return {
+    issuedAt: formatInvoiceDateDisplay(resolvedIssuedDate),
+    issuedIso: resolvedIssuedDate.toISOString(),
+    dueAt: "--",
+    invoiceNumber: reference,
+    invoiceSlug: buildInvoicePdfFilenameFromReference(`topup-${reference}`)
+      .replace(/^invoice-/, "")
+      .replace(/\.pdf$/, ""),
+    quantity: 1,
+    paymentMode: "wallet",
+    paymentMethodLabel: tr("Bank transfer top-up"),
+    isMonthlyBilling: false,
+    statusLabel: tr("Status"),
+    statusValue: statusCopy.statusValue,
+    settlementBadge: statusCopy.settlementBadge,
+    settlementBadgeTone: statusCopy.settlementBadgeTone,
+    settlementTitle: tr("Top-up Summary"),
+    settlementLines: [],
+    settlementTransferRows: [],
+    reverseVatNote: "",
+    issuer: INVOICE_ISSUER_PROFILE,
+    profile,
+    billingAddressLines: splitInvoiceAddressLines(profile?.billingAddress),
+    totals: {
+      totalIncVat: amount,
+    },
+    serviceRows: [
+      {
+        service: tr("Account balance top-up"),
+        quantity: 1,
+        rate: formatMoney(amount),
+        total: formatMoney(amount),
+      },
+    ],
+  };
+}
+
 function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
   const grouped = new Map();
   const safeItems = Array.isArray(items) && items.length
@@ -11946,8 +12028,12 @@ function buildInvoiceHeaderHtml(viewModel) {
     paymentMethodLabel,
     isMonthlyBilling,
     issuer,
+    statusLabel,
+    statusValue,
   } = viewModel;
   const profileName = profile?.companyName || "--";
+  const resolvedStatusLabel = String(statusLabel || "").trim() || (isMonthlyBilling ? "Due date" : "Status");
+  const resolvedStatusValue = String(statusValue || "").trim() || (isMonthlyBilling ? dueAt : "Paid automatically");
   const clientLines = [
     ...billingAddressLines,
     profile?.taxId ? `VAT ${profile.taxId}` : "",
@@ -12011,8 +12097,8 @@ function buildInvoiceHeaderHtml(viewModel) {
         <div class="invoice-meta-value mono">${escapeHtml(issuedAt)}</div>
       </div>
       <div class="invoice-meta-item">
-        <div class="receipt-panel-title">${escapeHtml(isMonthlyBilling ? "Due date" : "Status")}</div>
-        <div class="invoice-meta-value">${escapeHtml(isMonthlyBilling ? dueAt : "Paid automatically")}</div>
+        <div class="receipt-panel-title">${escapeHtml(resolvedStatusLabel)}</div>
+        <div class="invoice-meta-value">${escapeHtml(resolvedStatusValue)}</div>
       </div>
       <div class="invoice-meta-item">
         <div class="receipt-panel-title">${escapeHtml("Payment")}</div>
@@ -13079,7 +13165,7 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
       tr("Invoice"),
       `${tr("Invoice No.")}: ${viewModel.invoiceNumber}`,
       `${tr("Issue date")}: ${viewModel.issuedAt}`,
-      `${viewModel.isMonthlyBilling ? tr("Due date") : tr("Status")}: ${viewModel.isMonthlyBilling ? viewModel.dueAt : tr("Paid automatically")}`,
+      `${viewModel.statusLabel || (viewModel.isMonthlyBilling ? tr("Due date") : tr("Status"))}: ${viewModel.statusValue || (viewModel.isMonthlyBilling ? viewModel.dueAt : tr("Paid automatically"))}`,
       `${tr("Payment method")}: ${viewModel.paymentMethodLabel}`,
       `${tr("Quantity")}: ${viewModel.quantity}`,
       `${tr("Total")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
@@ -17845,20 +17931,68 @@ function renderTopupReferenceHistory() {
 
   accountReferenceHistoryList.innerHTML = "";
   rows.slice(0, 30).forEach((row) => {
+    const rowId = String(row?.id || "").trim();
     const reference = String(row?.reference || "--").trim();
     const timestamp = formatHistoryDate(row?.requested_at || row?.created_at || "");
     const statusMeta = getTopupStatusMeta(row?.status);
+    const amount = Number(row?.amount_eur || 0);
+    const amountLabel = Number.isFinite(amount) && amount > 0 ? formatMoney(amount) : "";
+    const metaParts = [timestamp, amountLabel].filter(Boolean);
+    const canDownloadInvoice = canDownloadTopupInvoice(row);
     const item = document.createElement("article");
     item.className = "account-reference-item";
     item.innerHTML = `
       <div class="account-reference-main">
         <div class="account-reference-code mono">${escapeHtml(reference)}</div>
-        <div class="account-reference-date">${escapeHtml(timestamp)}</div>
+        <div class="account-reference-date">${escapeHtml(metaParts.join(" • "))}</div>
       </div>
-      <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
+      <div class="account-reference-side">
+        <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
+        ${canDownloadInvoice && rowId
+          ? `<button type="button" class="account-reference-action" data-topup-invoice-id="${escapeHtml(rowId)}"><span>${escapeHtml(tr("Download Invoice"))}</span></button>`
+          : ""}
+      </div>
     `;
     accountReferenceHistoryList.appendChild(item);
   });
+}
+
+function getTopupInvoicePdfFilename(topup) {
+  const reference = String(topup?.reference || topup?.id || "topup").trim() || "topup";
+  return buildInvoicePdfFilenameFromReference(`topup-${reference}`);
+}
+
+async function downloadTopupInvoicePdf(button, topupId) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) return;
+  const rows = Array.isArray(billingOverview?.recent_topups) ? billingOverview.recent_topups : [];
+  const topup = rows.find((entry) => String(entry?.id || "").trim() === safeTopupId);
+  if (!topup) {
+    showToast(tr("Could not load top-up history."), { tone: "error" });
+    return;
+  }
+  const restoreButton = setPdfActionBusy(button, true, {
+    idleLabel: tr("Download Invoice"),
+    busyLabel: tr("Preparing invoice PDF..."),
+  });
+  try {
+    const viewModel = buildTopupInvoiceViewModel(topup);
+    const exportData = await buildInvoicePdfExportFromViewModel(
+      viewModel,
+      getTopupInvoicePdfFilename(topup)
+    );
+    if (!exportData?.blob) {
+      throw new Error(tr("Could not generate invoice PDF."));
+    }
+    const url = URL.createObjectURL(exportData.blob);
+    triggerFileDownload(url, exportData.filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showToast(tr("Invoice PDF ready."), { tone: "success" });
+  } catch (error) {
+    showToast(error?.message || tr("Could not generate invoice PDF."), { tone: "error" });
+  } finally {
+    restoreButton();
+  }
 }
 
 function renderAccountBillingOverview() {
@@ -19380,6 +19514,17 @@ if (accountBatchList) {
     const index = Number(target.dataset.accountLabelIndex);
     if (Number.isNaN(index)) return;
     selectAccountLabel(index);
+  });
+}
+
+if (accountReferenceHistoryList) {
+  accountReferenceHistoryList.addEventListener("click", (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("[data-topup-invoice-id]")
+      : null;
+    if (!(target instanceof HTMLButtonElement)) return;
+    event.preventDefault();
+    void downloadTopupInvoicePdf(target, target.dataset.topupInvoiceId);
   });
 }
 

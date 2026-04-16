@@ -2426,6 +2426,12 @@ body.is-auth-view {
   gap: 2px;
 }
 
+.account-reference-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
 .account-reference-code {
   min-width: 0;
   overflow: hidden;
@@ -2481,6 +2487,25 @@ body.is-auth-view {
   color: var(--muted);
   border-color: var(--stroke);
   background: rgba(58, 67, 84, 0.25);
+}
+
+.account-reference-action {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.account-reference-action:hover,
+.account-reference-action:focus-visible {
+  color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .account-billing-empty {
