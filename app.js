@@ -17962,7 +17962,6 @@ function renderTopupReferenceHistory() {
         <div class="account-reference-date">${escapeHtml(metaParts.join(" • "))}</div>
       </div>
       <div class="account-reference-side">
-        <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
         ${canDownloadInvoice && rowId
           ? `<button type="button" class="account-reference-action" data-topup-invoice-id="${escapeHtml(rowId)}" aria-label="${escapeHtml(tr("Download Invoice"))}" title="${escapeHtml(tr("Download Invoice"))}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
@@ -17972,6 +17971,7 @@ function renderTopupReferenceHistory() {
               </svg>
             </button>`
           : ""}
+        <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
       </div>
     `;
     accountReferenceHistoryList.appendChild(item);

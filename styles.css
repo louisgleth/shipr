@@ -2495,10 +2495,10 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: 1px solid var(--stroke);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.02);
   padding: 0;
   color: var(--muted);
@@ -2507,8 +2507,8 @@ body.is-auth-view {
 }
 
 .account-reference-action svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   flex: 0 0 auto;
 }
 
@@ -9514,6 +9514,9 @@ input.is-invalid {
 
   .auth-actions .btn {
     width: 100%;
+    flex: 0 0 auto;
+    min-height: 46px;
+    height: 46px;
   }
 
   .panel {
