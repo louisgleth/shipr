@@ -49,6 +49,9 @@ const BILLING_INVOICE_EVENTS_TABLE = "billing_invoice_events";
 const BILLING_WALLET_TABLE = "billing_wallets";
 const BILLING_WALLET_TOPUPS_TABLE = "billing_wallet_topups";
 const BILLING_WALLET_TRANSACTIONS_TABLE = "billing_wallet_transactions";
+const BILLING_INVOICE_SELECT_FIELDS = "id,user_id,invoice_kind,source_topup_id,invoice_number,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at";
+const BILLING_INVOICE_ITEM_SELECT_FIELDS = "id,invoice_id,generation_id,generated_at,service_type,quantity,recipient_name,recipient_city,recipient_country,tracking_id,label_id,unit_price_ex_vat,amount_ex_vat,vat_amount,amount_inc_vat,sort_index,metadata,created_at";
+const BILLING_TOPUP_SELECT_FIELDS = "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at,updated_at";
 const BILLING_BANK_RECEIPTS_TABLE = "billing_bank_receipts";
 const BILLING_INVOICE_PAYMENTS_TABLE = "billing_invoice_payments";
 const WISE_WEBHOOK_EVENTS_TABLE = "wise_webhook_events";
@@ -228,6 +231,9 @@ export default {
       if (pathname === "/api/admin/invoices/send-test" && request.method === "POST") {
         return handleAdminInvoiceSendTest(request, env);
       }
+      if (pathname === "/api/admin/invoices/send-topup-test" && request.method === "POST") {
+        return handleAdminTopupInvoiceSendTest(request, env);
+      }
       if (pathname === "/api/admin/invoices/send-test-sequence" && request.method === "POST") {
         return handleAdminInvoiceSendTestSequence(request, env);
       }
@@ -387,6 +393,9 @@ export default {
       }
       if (pathname === "/api/billing/topups" && request.method === "GET") {
         return handleBillingTopups(request, env, url);
+      }
+      if (pathname === "/api/billing/invoices/detail" && request.method === "GET") {
+        return handleBillingInvoiceDetail(request, env, url);
       }
       if (pathname === "/api/billing/topups/request" && request.method === "POST") {
         return handleBillingTopupRequest(request, env);
@@ -1779,6 +1788,50 @@ function toInvoiceReference(invoiceId) {
   return `INV-${safe.slice(0, 8).toUpperCase()}`;
 }
 
+function getBillingInvoiceKind(invoice = {}) {
+  const normalized = String(
+    invoice?.invoice_kind
+      || invoice?.metadata?.invoice_kind
+      || "monthly"
+  )
+    .trim()
+    .toLowerCase();
+  return normalized === "topup" ? "topup" : "monthly";
+}
+
+function isTopupBillingInvoice(invoice = {}) {
+  return getBillingInvoiceKind(invoice) === "topup";
+}
+
+function getBillingInvoiceReference(invoice = {}) {
+  const customReference = String(
+    invoice?.reference
+      || invoice?.invoice_number
+      || invoice?.metadata?.invoice_number
+      || ""
+  ).trim();
+  return customReference || toInvoiceReference(invoice?.id);
+}
+
+function buildTopupInvoiceNumber(topup = {}) {
+  const issuedSource =
+    topup?.credited_at
+    || topup?.received_at
+    || topup?.requested_at
+    || topup?.created_at
+    || Date.now();
+  const issuedDate = new Date(issuedSource);
+  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
+  const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
+  const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
+  const tokenSource = String(topup?.id || topup?.reference || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
+  return `TUP-${yy}${mm}${dd}-${token}`;
+}
+
 function formatInvoiceSubjectMonthYear(invoice = {}) {
   const candidates = [invoice?.period_start, invoice?.issued_at, invoice?.created_at, invoice?.due_at];
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -1805,11 +1858,15 @@ function formatInvoiceSubjectMonthYear(invoice = {}) {
 }
 
 function buildInvoiceEmailSubject(invoice = {}, options = {}) {
-  const reference = toInvoiceReference(invoice?.id);
+  const reference = getBillingInvoiceReference(invoice);
+  const isTopup = isTopupBillingInvoice(invoice);
   const monthYear = formatInvoiceSubjectMonthYear(invoice);
   const suffix = `${monthYear} [${reference}]`;
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Number(options?.reminderStage) || 0;
+  if (isTopup && !isReminder) {
+    return `Your Invoice — Top-up [${reference}]`;
+  }
   if (isReminder && reminderStage >= 5) {
     return `URGENT ! Invoice Overdue — ${suffix}`;
   }
@@ -1830,6 +1887,11 @@ function escapeHtml(value) {
 
 function formatInvoiceTrackingLabel(invoice) {
   if (!invoice) return "No invoices yet";
+  if (isTopupBillingInvoice(invoice)) {
+    const topupStatus = String(invoice.status || "").trim().toLowerCase();
+    if (topupStatus === "paid") return "Credited";
+    if (topupStatus === "sent") return "Sent";
+  }
   const status = String(invoice.status || "").trim().toLowerCase();
   if (status === "paid") return "Paid";
   if (status === "overdue") return "Overdue";
@@ -2003,7 +2065,7 @@ function normalizeInvoicePdfVariantStage(stage) {
 }
 
 function buildBillingInvoiceStoragePath(invoice, reminderStage, filename) {
-  const referenceSegment = toInvoiceReference(invoice?.id)
+  const referenceSegment = getBillingInvoiceReference(invoice)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")
@@ -3211,6 +3273,7 @@ function normalizeTopupStatus(value) {
 function mapBillingTopupRow(row) {
   const status = getEffectiveTopupStatus(row);
   const amountCents = Math.max(0, toCents(fromCents(row?.amount_cents)));
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
   return {
     id: String(row?.id || "").trim(),
     amount_eur: fromCents(amountCents),
@@ -3220,7 +3283,10 @@ function mapBillingTopupRow(row) {
     requested_at: row?.requested_at || row?.created_at || null,
     received_at: row?.received_at || null,
     credited_at: row?.credited_at || null,
-    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+    invoice_id: String(metadata?.invoice_id || "").trim() || null,
+    invoice_reference:
+      String(metadata?.invoice_reference || metadata?.invoice_number || "").trim() || null,
+    metadata,
   };
 }
 
@@ -3313,10 +3379,7 @@ async function listBillingTopups(
   if (!safeUserId) return [];
   const safeLimit = Math.max(1, Math.min(200, Number(limit) || 30));
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at"
-  );
+  params.set("select", BILLING_TOPUP_SELECT_FIELDS);
   params.set("user_id", `eq.${safeUserId}`);
   params.set("order", "requested_at.desc");
   params.set("limit", String(safeLimit));
@@ -3452,6 +3515,36 @@ async function createBillingTopupRequest(env, user, amountEur = null) {
   };
 }
 
+async function updateBillingTopupFields(env, topupId, patch = {}) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) throw new Error("Top-up id is required.");
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeTopupId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        ...patch,
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
+    throw new Error(`Could not update top-up (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
 async function saveWalletTransaction(env, payload) {
   const response = await supabaseServiceRequest(
     env,
@@ -3542,7 +3635,8 @@ function mapBillingOverviewInvoiceRow(invoice) {
   return {
     id: String(invoice.id || "").trim(),
     status: normalizeInvoiceStatus(invoice.status),
-    reference: toInvoiceReference(invoice.id),
+    reference: getBillingInvoiceReference(invoice),
+    invoice_kind: getBillingInvoiceKind(invoice),
     issued_at: invoice.issued_at || invoice.created_at || null,
     due_at: invoice.due_at || null,
     total_inc_vat: fromCents(toCents(invoice.total_inc_vat)),
@@ -4176,10 +4270,7 @@ async function getBillingTopupByReference(env, reference, { allowMissing = false
   const safeReference = String(reference || "").trim().toUpperCase();
   if (!safeReference) return null;
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at,updated_at"
-  );
+  params.set("select", BILLING_TOPUP_SELECT_FIELDS);
   params.set("reference", `eq.${safeReference}`);
   params.set("limit", "1");
   const response = await supabaseServiceRequest(
@@ -4204,10 +4295,7 @@ async function getBillingTopupById(env, topupId, { allowMissing = false } = {}) 
   const safeTopupId = String(topupId || "").trim();
   if (!safeTopupId) return null;
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at,updated_at"
-  );
+  params.set("select", BILLING_TOPUP_SELECT_FIELDS);
   params.set("id", `eq.${safeTopupId}`);
   params.set("limit", "1");
   const response = await supabaseServiceRequest(
@@ -4226,6 +4314,208 @@ async function getBillingTopupById(env, topupId, { allowMissing = false } = {}) 
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+function buildInvoiceProfileSnapshotMetadata(profile = {}) {
+  return {
+    companyName: String(profile?.company_name || "").trim(),
+    contactName: String(profile?.contact_name || "").trim(),
+    contactEmail: normalizeEmail(profile?.contact_email || ""),
+    contactPhone: String(profile?.contact_phone || "").trim(),
+    billingAddress: String(profile?.billing_address || "").trim(),
+    taxId: String(profile?.tax_id || "").trim(),
+    customerId: String(profile?.customer_id || "").trim(),
+    accountManager: String(profile?.account_manager || "").trim(),
+  };
+}
+
+function buildTopupInvoiceItems(topup = {}) {
+  const amount = fromCents(Math.max(0, Number(topup?.amount_cents) || 0));
+  return [
+    {
+      service_type: "Account balance top-up",
+      quantity: 1,
+      amount_ex_vat: amount,
+      vat_amount: 0,
+      amount_inc_vat: amount,
+      sort_index: 0,
+      metadata: {
+        invoice_kind: "topup",
+        topup_reference: String(topup?.reference || "").trim() || null,
+      },
+    },
+  ];
+}
+
+function buildTopupInvoicePayload(topup = {}, user = null) {
+  const issuedAt =
+    parseIsoTimestamp(
+      topup?.credited_at || topup?.received_at || topup?.requested_at || topup?.created_at || ""
+    ) || new Date().toISOString();
+  const amount = fromCents(Math.max(0, Number(topup?.amount_cents) || 0));
+  const profile = mapInvoiceProfileFromUser(user);
+  const invoiceNumber = buildTopupInvoiceNumber(topup);
+  return {
+    user_id: String(topup?.user_id || "").trim() || null,
+    invoice_kind: "topup",
+    source_topup_id: String(topup?.id || "").trim() || null,
+    invoice_number: invoiceNumber,
+    period_start: issuedAt.slice(0, 10),
+    period_end: issuedAt.slice(0, 10),
+    due_at: issuedAt,
+    issued_at: issuedAt,
+    sent_at: null,
+    paid_at: issuedAt,
+    status: "paid",
+    payment_mode: "wallet",
+    currency: String(topup?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    vat_rate: 0,
+    subtotal_ex_vat: amount,
+    vat_amount: 0,
+    total_inc_vat: amount,
+    labels_count: 1,
+    line_count: 1,
+    company_name: profile.company_name,
+    contact_name: profile.contact_name,
+    contact_email: profile.contact_email,
+    customer_id: profile.customer_id,
+    account_manager: profile.account_manager,
+    payment_reference: String(topup?.reference || "").trim() || null,
+    payment_received_amount: amount,
+    metadata: {
+      invoice_kind: "topup",
+      invoice_number: invoiceNumber,
+      source_topup_id: String(topup?.id || "").trim() || null,
+      topup_reference: String(topup?.reference || "").trim() || null,
+      invoice_profile: buildInvoiceProfileSnapshotMetadata(profile),
+    },
+  };
+}
+
+async function upsertBillingTopupInvoice(env, topup, user = null) {
+  if (!topup?.id) return null;
+  const payload = buildTopupInvoicePayload(topup, user);
+  const existing = await getBillingInvoiceBySourceTopupId(env, topup.id, {
+    withItems: false,
+    allowMissing: true,
+  });
+  let invoice = existing;
+  if (!invoice?.id) {
+    invoice = await createBillingTopupInvoice(env, payload);
+    if (invoice?.id) {
+      await insertBillingInvoiceEvent(env, invoice.id, {
+        event_type: "created",
+        actor: "system",
+        channel: "wallet",
+        message: "Top-up invoice created from credited wallet top-up.",
+        metadata: {
+          topup_id: topup.id,
+          topup_reference: topup.reference || null,
+        },
+      }).catch(() => {});
+    }
+  } else {
+    invoice = await updateBillingInvoiceFields(env, invoice.id, {
+      invoice_kind: "topup",
+      source_topup_id: topup.id,
+      invoice_number: payload.invoice_number,
+      issued_at: invoice?.issued_at || payload.issued_at,
+      due_at: invoice?.due_at || payload.due_at,
+      paid_at: invoice?.paid_at || payload.paid_at,
+      status: invoice?.status || payload.status,
+      payment_mode: "wallet",
+      currency: payload.currency,
+      vat_rate: 0,
+      subtotal_ex_vat: payload.subtotal_ex_vat,
+      vat_amount: 0,
+      total_inc_vat: payload.total_inc_vat,
+      labels_count: 1,
+      line_count: 1,
+      company_name: payload.company_name,
+      contact_name: payload.contact_name,
+      contact_email: payload.contact_email,
+      customer_id: payload.customer_id,
+      account_manager: payload.account_manager,
+      payment_reference: payload.payment_reference,
+      payment_received_amount: payload.payment_received_amount,
+      metadata: {
+        ...(invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {}),
+        ...(payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
+      },
+    });
+  }
+  if (!invoice?.id) {
+    invoice = await getBillingInvoiceBySourceTopupId(env, topup.id, {
+      withItems: false,
+      allowMissing: true,
+    });
+  }
+  if (!invoice?.id) return null;
+  await replaceBillingInvoiceItems(env, invoice.id, buildTopupInvoiceItems(topup));
+  return getBillingInvoiceById(env, invoice.id, { withItems: true });
+}
+
+async function linkBillingTopupInvoice(env, topup, invoice) {
+  if (!topup?.id || !invoice?.id) return topup || null;
+  const currentMetadata = topup?.metadata && typeof topup.metadata === "object" ? topup.metadata : {};
+  const desiredMetadata = {
+    ...currentMetadata,
+    invoice_id: invoice.id,
+    invoice_reference: getBillingInvoiceReference(invoice),
+    invoice_number: String(invoice?.invoice_number || currentMetadata?.invoice_number || "").trim() || null,
+    invoice_kind: "topup",
+  };
+  const metadataChanged =
+    String(currentMetadata?.invoice_id || "").trim() !== String(desiredMetadata.invoice_id || "").trim()
+    || String(currentMetadata?.invoice_reference || "").trim() !== String(desiredMetadata.invoice_reference || "").trim()
+    || String(currentMetadata?.invoice_number || "").trim() !== String(desiredMetadata.invoice_number || "").trim()
+    || String(currentMetadata?.invoice_kind || "").trim() !== "topup";
+  if (!metadataChanged) return topup;
+  return updateBillingTopupFields(env, topup.id, { metadata: desiredMetadata });
+}
+
+async function ensureBillingTopupInvoiceAndSend(env, topupId, options = {}) {
+  const topup = await getBillingTopupById(env, topupId, { allowMissing: true });
+  if (!topup?.id) {
+    return { skipped: true, reason: "Top-up not found.", invoice: null, topup: null };
+  }
+  if (getEffectiveTopupStatus(topup) !== "credited") {
+    return { skipped: true, reason: "Top-up is not credited yet.", invoice: null, topup };
+  }
+
+  let user = null;
+  if (topup?.user_id) {
+    try {
+      user = await getSupabaseUserById(env, topup.user_id);
+    } catch (_error) {
+      user = null;
+    }
+  }
+
+  const invoice = await upsertBillingTopupInvoice(env, topup, user);
+  if (!invoice?.id) {
+    throw new Error("Could not create top-up invoice.");
+  }
+  const linkedTopup = await linkBillingTopupInvoice(env, topup, invoice).catch(() => topup);
+  const alreadySent =
+    Boolean(String(invoice?.sent_at || "").trim())
+    || Boolean(String(invoice?.email_message_id || "").trim());
+  if (alreadySent) {
+    return { skipped: true, reason: "Top-up invoice already sent.", invoice, topup: linkedTopup };
+  }
+  const sendResult = await sendBillingInvoiceById(env, invoice.id, {
+    publicAppUrl: options?.publicAppUrl,
+  });
+  const finalInvoice = sendResult?.invoice || invoice;
+  const finalTopup = await linkBillingTopupInvoice(env, linkedTopup || topup, finalInvoice).catch(
+    () => linkedTopup || topup
+  );
+  return {
+    skipped: Boolean(sendResult?.skipped),
+    reason: sendResult?.reason || "",
+    invoice: finalInvoice,
+    topup: finalTopup,
+  };
 }
 
 async function findBillingInvoiceByReference(env, reference, { allowMissing = false } = {}) {
@@ -4385,6 +4675,9 @@ async function tryAutoResolveBankReceipt(env, receipt, actor = "wise-auto") {
       actor,
       topupId: topupMatches[0].row.id,
     });
+    await ensureBillingTopupInvoiceAndSend(env, topupMatches[0].row.id, {
+      publicAppUrl: getPublicAppUrl(env),
+    }).catch(() => {});
     return { action: "topup", receipt: resolved || currentReceipt };
   }
 
@@ -4660,10 +4953,7 @@ async function listBillingInvoices(env, { limit = 100, userId = "", statuses = [
   const safeUserId = String(userId || "").trim();
   const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
-  );
+  params.set("select", BILLING_INVOICE_SELECT_FIELDS);
   params.set("order", "updated_at.desc");
   params.set("limit", String(safeLimit));
   if (safeUserId) {
@@ -4706,8 +4996,8 @@ async function listBillingInvoicesForPeriod(
       env,
       BILLING_INVOICES_TABLE,
       {
-        select:
-          "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at",
+        select: BILLING_INVOICE_SELECT_FIELDS,
+        invoice_kind: "eq.monthly",
         period_start: `eq.${safeStart}`,
         period_end: `eq.${safeEnd}`,
         order: "created_at.asc,updated_at.asc",
@@ -4750,11 +5040,9 @@ async function getBillingInvoiceByPeriod(env, userId, periodStart, periodEnd) {
   const safeEnd = String(periodEnd || "").trim();
   if (!safeUserId || !safeStart || !safeEnd) return null;
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
-  );
+  params.set("select", BILLING_INVOICE_SELECT_FIELDS);
   params.set("user_id", `eq.${safeUserId}`);
+  params.set("invoice_kind", "eq.monthly");
   params.set("period_start", `eq.${safeStart}`);
   params.set("period_end", `eq.${safeEnd}`);
   params.set("limit", "1");
@@ -4778,10 +5066,7 @@ async function getBillingInvoiceById(env, invoiceId, { withItems = false } = {})
   const safeInvoiceId = String(invoiceId || "").trim();
   if (!safeInvoiceId) return null;
   const params = new URLSearchParams();
-  params.set(
-    "select",
-    "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at"
-  );
+  params.set("select", BILLING_INVOICE_SELECT_FIELDS);
   params.set("id", `eq.${safeInvoiceId}`);
   params.set("limit", "1");
   const response = await supabaseServiceRequest(
@@ -4801,10 +5086,7 @@ async function getBillingInvoiceById(env, invoiceId, { withItems = false } = {})
   if (!invoice || !withItems) return invoice;
 
   const itemParams = new URLSearchParams();
-  itemParams.set(
-    "select",
-    "id,invoice_id,generation_id,generated_at,service_type,quantity,recipient_name,recipient_city,recipient_country,tracking_id,label_id,unit_price_ex_vat,amount_ex_vat,vat_amount,amount_inc_vat,sort_index,metadata,created_at"
-  );
+  itemParams.set("select", BILLING_INVOICE_ITEM_SELECT_FIELDS);
   itemParams.set("invoice_id", `eq.${safeInvoiceId}`);
   itemParams.set("order", "sort_index.asc,id.asc");
   itemParams.set("limit", "10000");
@@ -4843,6 +5125,63 @@ async function upsertBillingInvoice(env, invoicePayload) {
       throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
     }
     throw new Error(`Could not save invoice (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getBillingInvoiceBySourceTopupId(env, topupId, { withItems = false, allowMissing = false } = {}) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) return null;
+  const params = new URLSearchParams();
+  params.set("select", BILLING_INVOICE_SELECT_FIELDS);
+  params.set("source_topup_id", `eq.${safeTopupId}`);
+  params.set("invoice_kind", "eq.topup");
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*billing_invoices/i.test(details) || /invoice_kind|source_topup_id|invoice_number/i.test(details)) {
+      if (allowMissing) return null;
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql and supabase_topup_invoice_automation.sql in Supabase SQL editor.");
+    }
+    throw new Error(`Could not load top-up invoice (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const invoice = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!invoice || !withItems) return invoice;
+  return getBillingInvoiceById(env, invoice.id, { withItems: true });
+}
+
+async function createBillingTopupInvoice(env, invoicePayload) {
+  const response = await supabaseServiceRequest(env, `/rest/v1/${BILLING_INVOICES_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([invoicePayload]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (
+      /relation .*billing_invoices/i.test(details)
+      || /invoice_kind|source_topup_id|invoice_number/i.test(details)
+    ) {
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql and supabase_topup_invoice_automation.sql in Supabase SQL editor.");
+    }
+    if ((details.includes("23505") || /duplicate key/i.test(details)) && invoicePayload?.source_topup_id) {
+      const existing = await getBillingInvoiceBySourceTopupId(env, invoicePayload.source_topup_id, {
+        withItems: false,
+        allowMissing: true,
+      });
+      if (existing?.id) return existing;
+    }
+    throw new Error(`Could not create top-up invoice (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
@@ -5099,13 +5438,14 @@ function invoiceRequiresManualSettlement(invoice = {}) {
 }
 
 function formatInvoicePaymentModeLabel(invoice = {}) {
+  if (isTopupBillingInvoice(invoice)) return "Account balance top-up";
   const mode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
   return "Account balance";
 }
 
 function buildInvoicePdfFilename(invoice = {}) {
-  const reference = toInvoiceReference(invoice?.id)
+  const reference = getBillingInvoiceReference(invoice)
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-");
   return `invoice-${reference || "shipide"}.pdf`;
@@ -5238,6 +5578,9 @@ function getInvoiceSettlementBadgeMeta(invoice = {}, options = {}) {
   const manual = invoiceRequiresManualSettlement(invoice);
   const status = normalizeInvoiceStatus(invoice?.status);
   const reminderStage = Number(options?.reminderStage) || 0;
+  if (isTopupBillingInvoice(invoice)) {
+    return { label: "Account balance credited", tone: "success" };
+  }
   if (manual && reminderStage > 0) {
     const mapping = {
       1: { label: "Due in 15 days", tone: "warning" },
@@ -5272,12 +5615,20 @@ function getInvoiceSettlementBadgeMeta(invoice = {}, options = {}) {
   return { label: `${Math.abs(diffDays)} days overdue`, tone: "danger" };
 }
 
+function getAutomatedInvoiceStatusLabel(invoice = {}) {
+  return isTopupBillingInvoice(invoice) ? "Account balance credited" : "Paid automatically";
+}
+
 function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
   const manual = invoiceRequiresManualSettlement(invoice);
   const issuedAt = options?.issuedAt || invoice?.issued_at || null;
   const dueAt = options?.dueAt || invoice?.due_at || null;
   const paidAt = options?.paidAt || invoice?.paid_at || issuedAt || null;
-  const reference = String(invoice?.payment_reference || toInvoiceReference(invoice?.id)).trim();
+  const reference = String(
+    invoice?.payment_reference
+      || invoice?.metadata?.topup_reference
+      || getBillingInvoiceReference(invoice)
+  ).trim();
   const badgeMeta = getInvoiceSettlementBadgeMeta(invoice, {
     dueAt,
     paidAt,
@@ -5295,6 +5646,17 @@ function buildInvoicePdfSettlementModel(invoice = {}, options = {}) {
           mono: true,
         },
         { label: "Communication", value: reference, mono: true },
+      ],
+      lines: [],
+      note: "",
+    };
+  }
+  if (isTopupBillingInvoice(invoice)) {
+    return {
+      badge: badgeMeta.label,
+      badgeTone: badgeMeta.tone,
+      transferRows: [
+        { label: "Transfer reference", value: reference || "--", mono: true },
       ],
       lines: [],
       note: "",
@@ -5451,7 +5813,7 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
     accentSoft: rgb(58 / 255, 37 / 255, 112 / 255),
     success: rgb(143 / 255, 226 / 255, 178 / 255),
   };
-  const reference = toInvoiceReference(invoice?.id);
+  const reference = getBillingInvoiceReference(invoice);
   const profile = resolveInvoiceProfileSnapshot(invoice, options?.user || null);
   const settlement = buildInvoicePdfSettlementModel(invoice, {
     ...options,
@@ -5471,7 +5833,7 @@ async function buildInvoicePdf(env, invoice = {}, items = [], options = {}) {
   const dueOrStatusLabel = invoiceRequiresManualSettlement(invoice) ? "Due date" : "Status";
   const dueOrStatusValue = invoiceRequiresManualSettlement(invoice)
     ? formatInvoicePdfDate(options?.dueAt || invoice?.due_at)
-    : "Paid automatically";
+    : getAutomatedInvoiceStatusLabel(invoice);
   const taxNote =
     "VAT not charged. Any reverse-charge VAT is due by the recipient.";
   const badgeStyles = {
@@ -6241,21 +6603,34 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const hasViewUrl = viewUrl !== "#";
   const isOverdueReminder = isReminder && reminderStage >= 5;
   const manualSettlement = invoiceRequiresManualSettlement(invoice);
+  const isTopup = isTopupBillingInvoice(invoice);
   const logoUrl = "https://portal.shipide.com/shipide_logo.png";
-  const titleLine1 = isOverdueReminder
-    ? "Urgent Invoice"
-    : isReminder
-      ? "Payment Reminder"
-      : "Your Monthly Invoice";
-  const titleLine2 = isOverdueReminder ? "Is Overdue" : isReminder ? "Invoice Due Soon" : "Is Ready";
-  const subtitleLine1 = "Your invoice PDF is attached to this email.";
+  const titleLine1 = isTopup
+    ? "Here's your"
+    : isOverdueReminder
+      ? "Urgent Invoice"
+      : isReminder
+        ? "Payment Reminder"
+        : "Your Monthly Invoice";
+  const titleLine2 = isTopup
+    ? "latest invoice"
+    : isOverdueReminder
+      ? "Is Overdue"
+      : isReminder
+        ? "Invoice Due Soon"
+        : "Is Ready";
+  const subtitleLine1 = isTopup
+    ? "Your top-up invoice PDF is attached to this email."
+    : "Your invoice PDF is attached to this email.";
   const subtitleLine2 = hasViewUrl ? "You can also view it instantly with the button below." : "";
 
   let stageLabel = "Due in 30 days";
   let stageBg = "rgba(143, 226, 178, 0.16)";
   let stageBorder = "#8fe2b2";
   let stageText = "#8fe2b2";
-  if (!manualSettlement) {
+  if (isTopup) {
+    stageLabel = "Account balance credited";
+  } else if (!manualSettlement) {
     stageLabel = "Paid automatically";
     stageBg = "rgba(143, 226, 178, 0.16)";
     stageBorder = "#8fe2b2";
@@ -6352,11 +6727,12 @@ function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
 }
 
 function buildInvoiceEmailText(invoice, options = {}) {
-  const reference = toInvoiceReference(invoice?.id);
+  const reference = getBillingInvoiceReference(invoice);
   const dueLabel = String(invoice?.due_at || "").trim()
     ? new Date(invoice.due_at).toISOString().slice(0, 10)
     : "--";
-  const prefix = options?.isReminder ? "Payment reminder" : "Invoice";
+  const isTopup = isTopupBillingInvoice(invoice);
+  const prefix = options?.isReminder ? "Payment reminder" : isTopup ? "Top-up invoice" : "Invoice";
   const viewUrl = String(options?.viewUrl || "").trim();
   const lines = [
     `${prefix}: ${reference}`,
@@ -6367,7 +6743,10 @@ function buildInvoiceEmailText(invoice, options = {}) {
   if (invoiceRequiresManualSettlement(invoice)) {
     lines.splice(2, 0, `Due date: ${dueLabel}`);
   } else {
-    lines.splice(2, 0, "Status: Paid automatically");
+    lines.splice(2, 0, `Status: ${getAutomatedInvoiceStatusLabel(invoice)}`);
+  }
+  if (isTopup) {
+    lines.splice(3, 0, `Transfer reference: ${String(invoice?.payment_reference || invoice?.metadata?.topup_reference || "--").trim() || "--"}`);
   }
   if (viewUrl && viewUrl !== "#") {
     lines.push(`View invoice: ${viewUrl}`);
@@ -6568,6 +6947,7 @@ function mapInvoiceProfileFromUser(user = {}) {
 function buildInvoiceStatsByUser(invoices = []) {
   const grouped = new Map();
   invoices.forEach((invoice) => {
+    if (isTopupBillingInvoice(invoice)) return;
     const userId = String(invoice?.user_id || "").trim();
     if (!userId) return;
     if (!grouped.has(userId)) grouped.set(userId, []);
@@ -6614,7 +6994,9 @@ function buildInvoiceListResponseRows(invoices = []) {
   return (Array.isArray(invoices) ? invoices : []).map((invoice) => ({
     id: invoice?.id || null,
     user_id: invoice?.user_id || null,
-    reference: toInvoiceReference(invoice?.id),
+    reference: getBillingInvoiceReference(invoice),
+    invoice_kind: getBillingInvoiceKind(invoice),
+    source_topup_id: invoice?.source_topup_id || null,
     company_name: String(invoice?.company_name || "").trim() || "Client account",
     contact_email: normalizeEmail(invoice?.contact_email || ""),
     period_start: invoice?.period_start || null,
@@ -7214,8 +7596,7 @@ async function listBillingInvoicesForPrivacyExport(env, userId) {
     env,
     BILLING_INVOICES_TABLE,
     {
-      select:
-        'id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at',
+      select: BILLING_INVOICE_SELECT_FIELDS,
       user_id: `eq.${userId}`,
       order: 'updated_at.desc',
     },
@@ -7249,7 +7630,7 @@ async function listBillingTopupsForPrivacyExport(env, userId) {
     env,
     BILLING_WALLET_TOPUPS_TABLE,
     {
-      select: 'id,user_id,amount_cents,currency,status,reference,requested_at,received_at,credited_at,metadata,created_at',
+      select: BILLING_TOPUP_SELECT_FIELDS,
       user_id: `eq.${userId}`,
       order: 'requested_at.desc',
     },
@@ -10098,7 +10479,11 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     throw new Error("Invoice not found.");
   }
   const currentStatus = normalizeInvoiceStatus(invoiceWithItems.status);
-  if (currentStatus === "paid" || currentStatus === "cancelled") {
+  const topupPaidButUnsent =
+    isTopupBillingInvoice(invoiceWithItems)
+    && currentStatus === "paid"
+    && !String(invoiceWithItems?.sent_at || "").trim();
+  if ((currentStatus === "paid" && !topupPaidButUnsent) || currentStatus === "cancelled") {
     return {
       skipped: true,
       reason: `Invoice is already ${currentStatus}.`,
@@ -10192,7 +10577,7 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
           invoice: {
             ...pdfInvoice,
             items: invoiceWithItems.items || [],
-            reference: toInvoiceReference(invoiceWithItems.id),
+            reference: getBillingInvoiceReference(invoiceWithItems),
           },
           reminderStage,
           filename: buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage),
@@ -10442,7 +10827,7 @@ async function runScheduledMonthlyBillingAutomation(env, options = {}) {
       sendSummary.failed += 1;
       sendSummary.failures.push({
         invoice_id: invoice?.id || null,
-        reference: toInvoiceReference(invoice?.id),
+        reference: getBillingInvoiceReference(invoice),
         error: error?.message || "Invoice send failed.",
       });
       await insertBillingInvoiceEvent(env, invoice.id, {
@@ -10988,7 +11373,32 @@ async function handleAdminInvoiceDetail(request, env, url) {
     return jsonResponse({
       invoice: {
         ...invoice,
-        reference: toInvoiceReference(invoice.id),
+        reference: getBillingInvoiceReference(invoice),
+      },
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load invoice." }, 500);
+  }
+}
+
+async function handleBillingInvoiceDetail(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  const invoiceId = String(url.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  try {
+    const invoice = await getBillingInvoiceById(env, invoiceId, { withItems: true });
+    if (!invoice?.id || String(invoice?.user_id || "").trim() !== String(user.id || "").trim()) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    return jsonResponse({
+      invoice: {
+        ...invoice,
+        reference: getBillingInvoiceReference(invoice),
       },
     });
   } catch (error) {
@@ -11071,6 +11481,7 @@ function buildAdminBillingTestInvoice(env, toEmail) {
   return {
     invoice: {
       id: crypto.randomUUID(),
+      invoice_kind: "monthly",
       company_name: "Test Client",
       contact_name: "Claire Dupont",
       contact_email: toEmail,
@@ -11113,6 +11524,70 @@ function buildAdminBillingTestInvoice(env, toEmail) {
   };
 }
 
+function buildAdminTopupBillingTestInvoice(toEmail) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const topupSeed = {
+    id: crypto.randomUUID(),
+    reference: "SHIP-TEST-TOPUP-2604",
+    credited_at: nowIso,
+    amount_cents: 500,
+    currency: "EUR",
+  };
+  const invoiceNumber = buildTopupInvoiceNumber(topupSeed);
+  return {
+    invoice: {
+      id: crypto.randomUUID(),
+      invoice_kind: "topup",
+      source_topup_id: topupSeed.id,
+      invoice_number: invoiceNumber,
+      company_name: "Atelier Meridian",
+      contact_name: "Claire Dupont",
+      contact_email: toEmail,
+      period_start: nowIso.slice(0, 10),
+      period_end: nowIso.slice(0, 10),
+      due_at: nowIso,
+      issued_at: nowIso,
+      subtotal_ex_vat: 5,
+      vat_amount: 0,
+      total_inc_vat: 5,
+      vat_rate: 0,
+      labels_count: 1,
+      line_count: 1,
+      payment_mode: "wallet",
+      payment_reference: topupSeed.reference,
+      payment_received_amount: 5,
+      metadata: {
+        invoice_kind: "topup",
+        invoice_number: invoiceNumber,
+        source_topup_id: topupSeed.id,
+        topup_reference: topupSeed.reference,
+        invoice_profile: {
+          companyName: "Atelier Meridian",
+          contactName: "Claire Dupont",
+          contactEmail: toEmail,
+          contactPhone: "+32 2 555 01 29",
+          billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+          taxId: "BE0123456789",
+          customerId: "SHIPIDE-TEST",
+          accountManager: "Shipide Billing",
+        },
+      },
+    },
+    items: [
+      {
+        service_type: "Account balance top-up",
+        quantity: 1,
+        amount_ex_vat: 5,
+        amount_inc_vat: 5,
+        metadata: {
+          topup_reference: topupSeed.reference,
+        },
+      },
+    ],
+  };
+}
+
 function normalizeProvidedInvoicePdfVariantsFromBody(body = {}) {
   const rows = Array.isArray(body?.pdfVariants) ? body.pdfVariants : [];
   return rows
@@ -11130,7 +11605,7 @@ function normalizeProvidedInvoicePdfVariantsFromBody(body = {}) {
 
 async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
   const { invoice, items } = buildAdminBillingTestInvoice(env, toEmail);
-  const providedVariants = [];
+  const providedVariants = Array.isArray(options?.pdfVariants) ? options.pdfVariants : [];
   const steps = [
     { reminderStage: 0, isReminder: false, key: "initial" },
     { reminderStage: 1, isReminder: true, key: "due_15_days" },
@@ -11177,7 +11652,7 @@ async function sendAdminBillingTestSequenceEmails(env, toEmail, options = {}) {
           invoice: {
             ...emailInvoice,
             items,
-            reference: toInvoiceReference(emailInvoice.id),
+            reference: getBillingInvoiceReference(emailInvoice),
           },
           reminderStage: step.reminderStage,
           filename: buildInvoiceVariantPdfFilename(emailInvoice, step.reminderStage),
@@ -11299,15 +11774,16 @@ async function handleAdminInvoiceSendTest(request, env) {
   }
   try {
     const { invoice: testInvoice, items: testItems } = buildAdminBillingTestInvoice(env, toEmail);
-    const renderedVariant = !env?.BROWSER
-      ? null
-      : await renderSelectableInvoicePdf(
+    const providedPdfBase64 = String(body?.pdfBase64 || "").trim();
+    const providedFilename = String(body?.filename || "").trim();
+    const renderedVariant = !providedPdfBase64 && env?.BROWSER
+      ? await renderSelectableInvoicePdf(
           env,
           {
             invoice: {
               ...testInvoice,
               items: testItems,
-              reference: toInvoiceReference(testInvoice.id),
+              reference: getBillingInvoiceReference(testInvoice),
             },
             reminderStage: 0,
             filename: buildInvoicePdfFilename(testInvoice),
@@ -11315,8 +11791,11 @@ async function handleAdminInvoiceSendTest(request, env) {
           { request }
         ).catch((error) => {
           throw new Error(error?.message || "Could not render the approved invoice PDF for the test email.");
-        });
-    const pdfBytes = renderedVariant?.bytes || null;
+        })
+      : null;
+    const pdfBytes = providedPdfBase64
+      ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
+      : renderedVariant?.bytes || null;
     if (!pdfBytes) {
       throw new Error("Approved invoice PDF is unavailable for the test email.");
     }
@@ -11332,7 +11811,7 @@ async function handleAdminInvoiceSendTest(request, env) {
       }),
       attachments: [
         {
-          filename: renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
+          filename: providedFilename || renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
           content: pdfBytes,
           contentType: "application/pdf",
         },
@@ -11345,6 +11824,79 @@ async function handleAdminInvoiceSendTest(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not send test invoice email." }, 500);
+  }
+}
+
+async function handleAdminTopupInvoiceSendTest(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send billing tests." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    return jsonResponse({ error: "A valid test email is required." }, 400);
+  }
+  try {
+    const { invoice: testInvoice, items: testItems } = buildAdminTopupBillingTestInvoice(toEmail);
+    const providedPdfBase64 = String(body?.pdfBase64 || "").trim();
+    const providedFilename = String(body?.filename || "").trim();
+    const renderedVariant = !providedPdfBase64 && env?.BROWSER
+      ? await renderSelectableInvoicePdf(
+          env,
+          {
+            invoice: {
+              ...testInvoice,
+              items: testItems,
+              reference: getBillingInvoiceReference(testInvoice),
+            },
+            reminderStage: 0,
+            filename: buildInvoicePdfFilename(testInvoice),
+          },
+          { request }
+        ).catch((error) => {
+          throw new Error(error?.message || "Could not render the approved top-up invoice PDF for the test email.");
+        })
+      : null;
+    const pdfBytes = providedPdfBase64
+      ? Uint8Array.from(atob(providedPdfBase64), (char) => char.charCodeAt(0))
+      : renderedVariant?.bytes || null;
+    if (!pdfBytes) {
+      throw new Error("Approved top-up invoice PDF is unavailable for the test email.");
+    }
+    const resendResponse = await sendResendEmail(env, {
+      to: toEmail,
+      subject: buildInvoiceEmailSubject(testInvoice, { isReminder: false, reminderStage: 0 }),
+      html: buildInvoiceEmailHtml(testInvoice, testItems, {
+        isReminder: false,
+        reminderStage: 0,
+      }),
+      text: buildInvoiceEmailText(testInvoice, {
+        isReminder: false,
+      }),
+      attachments: [
+        {
+          filename: providedFilename || renderedVariant?.filename || buildInvoicePdfFilename(testInvoice),
+          content: pdfBytes,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+    return jsonResponse({
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not send test top-up invoice email." }, 500);
   }
 }
 
@@ -11369,6 +11921,7 @@ async function handleAdminInvoiceSendTestSequence(request, env) {
   try {
     const sequence = await sendAdminBillingTestSequenceEmails(env, toEmail, {
       request,
+      pdfVariants: normalizeProvidedInvoicePdfVariantsFromBody(body),
     });
     return jsonResponse({
       ok: sequence.failed_count === 0,
@@ -11755,9 +12308,21 @@ async function handleAdminWiseReceiptResolve(request, env) {
       invoiceId: resolution === "invoice" ? targetRow.id : null,
       note,
     });
+    let topupInvoiceWarning = "";
+    if (resolution === "topup" && targetRow?.id) {
+      try {
+        await ensureBillingTopupInvoiceAndSend(env, targetRow.id, {
+          publicAppUrl: getPublicAppUrl(env, request),
+        });
+      } catch (topupInvoiceError) {
+        topupInvoiceWarning =
+          topupInvoiceError?.message || "Wallet was credited, but the top-up invoice email could not be sent.";
+      }
+    }
     return jsonResponse({
       ok: true,
       receipt: mapBillingBankReceiptRow(updated || receipt),
+      warning: topupInvoiceWarning || null,
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not resolve bank receipt." }, 500);

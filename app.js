@@ -1945,6 +1945,7 @@ const adminBillingRunStatus = document.getElementById("adminBillingRunStatus");
 const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
+const adminBillingSendTopupTestButton = document.getElementById("adminBillingSendTopupTest");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
 const adminAgreementPreviewButton = document.getElementById("adminAgreementPreview");
@@ -5876,6 +5877,7 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunCreateButton) adminBillingRunCreateButton.disabled = adminBillingBusy;
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
+  if (adminBillingSendTopupTestButton) adminBillingSendTopupTestButton.disabled = adminBillingBusy;
   if (adminBillingSendTestSequenceButton) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
@@ -6191,15 +6193,55 @@ async function sendAdminBillingTestEmail() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
+    const invoiceRecord = buildAdminTestBillingInvoiceRecord(toEmail);
+    const prepared = await prepareInvoicePdfVariantsForEmail(invoiceRecord);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test", {
       method: "POST",
       timeoutMs: 120000,
       body: JSON.stringify({
         toEmail,
+        pdfBase64: prepared.primary.pdfBase64,
+        filename: prepared.primary.filename,
       }),
     });
     setAdminBillingStatus(
       tr("Test invoice email sent to {email}.", { email: String(payload?.to || toEmail) }),
+      { tone: "success" }
+    );
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send test invoice email."), {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminTopupBillingTestEmail() {
+  if (adminBillingBusy) return;
+  const toEmail = String(adminBillingTestEmailInput?.value || "").trim();
+  if (!toEmail) {
+    setAdminBillingStatus(tr("A valid test email is required."), { tone: "error" });
+    return;
+  }
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const invoiceRecord = buildAdminTestTopupInvoiceRecord(toEmail);
+    const prepared = await prepareInvoicePdfVariantsForEmail(invoiceRecord);
+    const payload = await fetchApiWithAuth("/api/admin/invoices/send-topup-test", {
+      method: "POST",
+      timeoutMs: 120000,
+      body: JSON.stringify({
+        toEmail,
+        pdfBase64: prepared.primary.pdfBase64,
+        filename: prepared.primary.filename,
+      }),
+    });
+    setAdminBillingStatus(
+      tr("Top-up invoice test email sent to {email}.", {
+        email: String(payload?.to || toEmail),
+      }),
       { tone: "success" }
     );
   } catch (error) {
@@ -6221,11 +6263,14 @@ async function sendAdminBillingTestSequence() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
+    const invoiceRecord = buildAdminTestBillingInvoiceRecord(toEmail);
+    const prepared = await prepareInvoicePdfVariantsForEmail(invoiceRecord);
     const payload = await fetchApiWithAuth("/api/admin/invoices/send-test-sequence", {
       method: "POST",
       timeoutMs: 240000,
       body: JSON.stringify({
         toEmail,
+        pdfVariants: prepared.variants,
       }),
     });
     const sent = Number(payload?.sent_count || 0);
@@ -11528,7 +11573,29 @@ function invoiceRequiresManualSettlementClient(paymentMode = "") {
   return String(paymentMode || "").trim().toLowerCase() === "invoice";
 }
 
-function getInvoicePaymentMethodLabel(paymentMode = "") {
+function getBillingInvoiceKindClient(invoice = {}) {
+  const normalized = String(
+    invoice?.invoice_kind
+    || invoice?.metadata?.invoice_kind
+    || "monthly"
+  )
+    .trim()
+    .toLowerCase();
+  return normalized === "topup" ? "topup" : "monthly";
+}
+
+function getBillingInvoiceReferenceClient(invoice = {}) {
+  return String(
+    invoice?.reference
+    || invoice?.invoice_number
+    || invoice?.metadata?.invoice_number
+    || buildInvoiceTrackingId(invoice?.id).display
+    || "--"
+  ).trim() || "--";
+}
+
+function getInvoicePaymentMethodLabel(paymentMode = "", invoiceKind = "monthly") {
+  if (invoiceKind === "topup") return tr("Bank transfer top-up");
   const mode = String(paymentMode || "").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
   return "Account balance";
@@ -11539,7 +11606,11 @@ function getInvoiceSettlementBadgeMeta({
   dueDate = null,
   paymentMode = "",
   reminderStage = 0,
+  invoiceKind = "monthly",
 } = {}) {
+  if (invoiceKind === "topup") {
+    return { label: tr("Account balance credited"), tone: "success" };
+  }
   if (!isMonthlyBilling) {
     if (paymentMode === "wallet") return { label: "Settled via wallet", tone: "success" };
     return { label: "Collected automatically", tone: "success" };
@@ -11700,8 +11771,8 @@ function getTopupInvoiceStatusCopy(row) {
   const status = String(row?.status || "").trim().toLowerCase();
   if (status === "credited") {
     return {
-      statusValue: tr("Credited to account balance"),
-      settlementBadge: tr("Credited"),
+      statusValue: tr("Account balance credited"),
+      settlementBadge: tr("Account balance credited"),
       settlementBadgeTone: "success",
     };
   }
@@ -11753,7 +11824,7 @@ function buildTopupInvoiceViewModel(topup) {
     paymentMode: "wallet",
     paymentMethodLabel: tr("Bank transfer top-up"),
     isMonthlyBilling: false,
-    statusLabel: tr("Status"),
+    statusLabel: isMonthlyBilling ? tr("Due date") : tr("Status"),
     statusValue: statusCopy.statusValue,
     settlementBadge: statusCopy.settlementBadge,
     settlementBadgeTone: statusCopy.settlementBadgeTone,
@@ -11781,12 +11852,13 @@ function buildTopupInvoiceViewModel(topup) {
 }
 
 function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
+  const invoiceKind = getBillingInvoiceKindClient(invoice);
   const grouped = new Map();
   const safeItems = Array.isArray(items) && items.length
     ? items
     : [
         {
-          service_type: "Shipping labels",
+          service_type: invoiceKind === "topup" ? "Account balance top-up" : "Shipping labels",
           quantity: Math.max(1, Number(invoice?.labels_count) || 1),
           amount_inc_vat: Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0),
           sort_index: 0,
@@ -11826,8 +11898,10 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
     invoice?.metadata?.invoice_profile && typeof invoice.metadata.invoice_profile === "object"
       ? invoice.metadata.invoice_profile
       : {};
+  const invoiceKind = getBillingInvoiceKindClient(invoice);
+  const isTopupInvoice = invoiceKind === "topup";
   const paymentMode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
-  const isMonthlyBilling = invoiceRequiresManualSettlementClient(paymentMode);
+  const isMonthlyBilling = !isTopupInvoice && invoiceRequiresManualSettlementClient(paymentMode);
   const issuedDate =
     new Date(
       options?.issuedAt
@@ -11843,16 +11917,17 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
   const dueDate = dueSource ? new Date(dueSource) : null;
   const resolvedDueDate = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
-  const invoiceNumber = String(
-    invoice?.reference
-    || buildInvoiceTrackingId(invoice?.id).display
-    || "--"
-  ).trim();
+  const invoiceNumber = getBillingInvoiceReferenceClient(invoice);
   const serviceRows = buildInvoiceServiceRowsFromBillingItems(invoice?.items || [], invoice);
   const quantity =
     Number(invoice?.labels_count)
     || serviceRows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0)
     || 0;
+  const transferReference = String(
+    invoice?.payment_reference
+    || invoice?.metadata?.topup_reference
+    || ""
+  ).trim();
   const billingAddress = String(
     snapshot?.billingAddress
     || invoice?.billing_address
@@ -11869,7 +11944,15 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
     dueDate: resolvedDueDate,
     paymentMode,
     reminderStage,
+    invoiceKind,
   });
+  const statusValue = isTopupInvoice
+    ? tr("Account balance credited")
+    : isMonthlyBilling
+      ? formatInvoiceDateDisplay(resolvedDueDate)
+      : paymentMode === "wallet"
+        ? tr("Settled via wallet")
+        : tr("Paid automatically");
 
   return {
     issuedAt: formatInvoiceDateDisplay(resolvedIssuedDate),
@@ -11878,26 +11961,36 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
     invoiceNumber,
     invoiceSlug: buildInvoicePdfFilenameFromReference(invoiceNumber).replace(/^invoice-/, "").replace(/\.pdf$/, ""),
     quantity,
+    quantityLabel: isTopupInvoice ? tr("item") : tr("labels"),
     paymentMode,
-    paymentMethodLabel: getInvoicePaymentMethodLabel(paymentMode),
+    paymentMethodLabel: getInvoicePaymentMethodLabel(paymentMode, invoiceKind),
     isMonthlyBilling,
+    statusLabel: tr("Status"),
+    statusValue,
     settlementBadge: settlementBadgeMeta.label,
     settlementBadgeTone: settlementBadgeMeta.tone,
-    settlementTitle: "Payment & Summary",
+    settlementTitle: isTopupInvoice ? tr("Transfer details") : "Payment & Summary",
     settlementLines: isMonthlyBilling
       ? [
           `IBAN ${INVOICE_ISSUER_PROFILE.iban}`,
           `Communication ${invoiceNumber}`,
         ]
-      : [],
+      : isTopupInvoice && transferReference
+        ? [`Reference ${transferReference}`]
+        : [],
     settlementTransferRows: isMonthlyBilling
       ? [
           { label: "IBAN", value: INVOICE_ISSUER_PROFILE.iban },
           { label: "Communication", value: invoiceNumber, mono: true },
         ]
-      : [],
-    reverseVatNote:
-      "VAT not charged. Any reverse-charge VAT is due by the recipient.",
+      : isTopupInvoice && transferReference
+        ? [
+            { label: tr("Transfer reference"), value: transferReference, mono: true },
+          ]
+        : [],
+    reverseVatNote: isTopupInvoice
+      ? ""
+      : "VAT not charged. Any reverse-charge VAT is due by the recipient.",
     issuer: INVOICE_ISSUER_PROFILE,
     profile,
     billingAddressLines: splitInvoiceAddressLines(profile.billingAddress),
@@ -12170,6 +12263,7 @@ function buildInvoiceTableCardHtml(viewModel, options = {}) {
   } = options;
   const invoiceRows = buildInvoiceRowsHtml(viewModel, rowIndices);
   const quantityValue = viewModel.quantity;
+  const quantityLabel = String(viewModel.quantityLabel || tr("labels")).trim() || tr("labels");
 
   return `
     <section class="receipt-table-card invoice-table-card${showSectionHead ? "" : " is-continuation"}">
@@ -12179,7 +12273,7 @@ function buildInvoiceTableCardHtml(viewModel, options = {}) {
             <span class="receipt-table-title">${escapeHtml("Services")}</span>
             <span class="receipt-table-sub">${escapeHtml("Condensed by billed service.")}</span>
           </div>
-          <span class="receipt-table-badge mono">${escapeHtml(`${quantityValue} ${tr("labels")}`)}</span>
+          <span class="receipt-table-badge mono">${escapeHtml(`${quantityValue} ${quantityLabel}`)}</span>
         </div>
       ` : ""}
       <div class="receipt-table-wrap">
@@ -13215,6 +13309,7 @@ function buildAdminTestBillingInvoiceRecord(toEmail) {
   const issuedDate = new Date();
   return {
     id: invoiceId,
+    invoice_kind: "monthly",
     reference: buildInvoiceTrackingId(invoiceId).display,
     company_name: "Atelier Meridian",
     contact_name: "Claire Dupont",
@@ -13252,6 +13347,79 @@ function buildAdminTestInvoiceViewModel(toEmail) {
   });
 }
 
+function buildAdminTestTopupInvoiceRecord(toEmail) {
+  const topupId = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `topup-${Date.now()}`;
+  const issuedDate = new Date();
+  const topupReference = "SHIP-TEST-TOPUP-2604";
+  const invoiceNumber = buildTopupInvoiceNumber({
+    id: topupId,
+    reference: topupReference,
+    credited_at: issuedDate.toISOString(),
+  });
+  return {
+    id: typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `inv-topup-${Date.now()}`,
+    invoice_kind: "topup",
+    source_topup_id: topupId,
+    invoice_number: invoiceNumber,
+    reference: invoiceNumber,
+    company_name: "Atelier Meridian",
+    contact_name: "Claire Dupont",
+    contact_email: String(toEmail || "").trim(),
+    issued_at: issuedDate.toISOString(),
+    due_at: issuedDate.toISOString(),
+    paid_at: issuedDate.toISOString(),
+    payment_mode: "wallet",
+    payment_reference: topupReference,
+    total_inc_vat: 5,
+    subtotal_ex_vat: 5,
+    labels_count: 1,
+    metadata: {
+      invoice_kind: "topup",
+      invoice_number: invoiceNumber,
+      source_topup_id: topupId,
+      topup_reference: topupReference,
+      invoice_profile: {
+        companyName: "Atelier Meridian",
+        contactName: "Claire Dupont",
+        contactEmail: String(toEmail || "").trim(),
+        contactPhone: "+32 2 555 01 29",
+        billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+        taxId: "BE0123456789",
+        customerId: "SHIPIDE-TEST",
+      },
+    },
+    items: [
+      {
+        service_type: "Account balance top-up",
+        quantity: 1,
+        amount_inc_vat: 5,
+        metadata: {
+          topup_reference: topupReference,
+        },
+      },
+    ],
+  };
+}
+
+async function prepareInvoicePdfVariantsForEmail(invoiceRecord) {
+  const variants = await buildInvoicePdfVariantsForInvoiceRecord(invoiceRecord);
+  const primary =
+    variants.find((entry) => Number(entry?.reminderStage || 0) === 0)
+    || variants[0]
+    || null;
+  if (!primary?.pdfBase64) {
+    throw new Error(tr("Could not generate invoice PDF."));
+  }
+  return {
+    variants,
+    primary,
+  };
+}
+
 async function fetchAdminInvoiceDetail(invoiceId) {
   const safeInvoiceId = String(invoiceId || "").trim();
   if (!safeInvoiceId) {
@@ -13259,6 +13427,18 @@ async function fetchAdminInvoiceDetail(invoiceId) {
   }
   const payload = await fetchApiWithAuth(
     `/api/admin/invoices/detail?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
+    { timeoutMs: 30000 }
+  );
+  return payload?.invoice && typeof payload.invoice === "object" ? payload.invoice : null;
+}
+
+async function fetchBillingInvoiceDetail(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error(tr("Invoice id is required."));
+  }
+  const payload = await fetchApiWithAuth(
+    `/api/billing/invoices/detail?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
     { timeoutMs: 30000 }
   );
   return payload?.invoice && typeof payload.invoice === "object" ? payload.invoice : null;
@@ -17996,10 +18176,26 @@ async function downloadTopupInvoicePdf(button, topupId) {
     busyLabel: tr("Preparing invoice PDF..."),
   });
   try {
-    const viewModel = buildTopupInvoiceViewModel(topup);
+    let invoiceRecord = null;
+    const linkedInvoiceId = String(topup?.invoice_id || "").trim();
+    if (linkedInvoiceId) {
+      invoiceRecord = await fetchBillingInvoiceDetail(linkedInvoiceId).catch(() => null);
+    }
+    const viewModel = invoiceRecord?.id
+      ? buildBillingInvoiceViewModel(invoiceRecord)
+      : buildTopupInvoiceViewModel(topup);
+    const filename = invoiceRecord?.id
+      ? buildInvoicePdfFilenameFromReference(
+          String(invoiceRecord?.reference || getBillingInvoiceReferenceClient(invoiceRecord)).trim()
+        )
+      : getTopupInvoicePdfFilename(topup);
     const exportData = await buildInvoicePdfExportFromViewModel(
       viewModel,
-      getTopupInvoicePdfFilename(topup)
+      filename,
+      {
+        allowRasterFallback: !invoiceRecord?.id,
+        preferServerRender: Boolean(invoiceRecord?.id),
+      }
     );
     if (!exportData?.blob) {
       throw new Error(tr("Could not generate invoice PDF."));
@@ -19117,6 +19313,12 @@ if (adminBillingRunSendButton) {
 if (adminBillingSendTestButton) {
   adminBillingSendTestButton.addEventListener("click", async () => {
     await sendAdminBillingTestEmail();
+  });
+}
+
+if (adminBillingSendTopupTestButton) {
+  adminBillingSendTopupTestButton.addEventListener("click", async () => {
+    await sendAdminTopupBillingTestEmail();
   });
 }
 
