@@ -2427,8 +2427,9 @@ body.is-auth-view {
 }
 
 .account-reference-side {
-  display: grid;
-  justify-items: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -2494,13 +2495,13 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--stroke);
-  border-radius: 10px;
-  background: rgba(58, 67, 84, 0.18);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.02);
   padding: 0;
-  color: var(--text);
+  color: var(--muted);
   cursor: pointer;
   transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
@@ -2513,9 +2514,9 @@ body.is-auth-view {
 
 .account-reference-action:hover,
 .account-reference-action:focus-visible {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke));
-  background: rgba(107, 183, 255, 0.08);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
   transform: translateY(-1px);
 }
 
