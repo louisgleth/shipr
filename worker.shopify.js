@@ -4974,9 +4974,9 @@ async function listBillingInvoices(env, { limit = 100, userId = "", statuses = [
   );
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    if (/relation .*billing_invoices/i.test(details)) {
+    if (isBillingInvoicesSchemaMissingDetails(details)) {
       if (allowMissing) return [];
-      throw new Error("Billing schema missing. Run supabase_invoicing.sql in Supabase SQL editor.");
+      throw new Error("Billing schema missing. Run supabase_invoicing.sql and supabase_topup_invoice_automation.sql in Supabase SQL editor.");
     }
     throw new Error(`Could not load invoices (${response.status}) ${details}`.trim());
   }
@@ -7017,6 +7017,15 @@ function buildInvoiceListResponseRows(invoices = []) {
     tracking_label: formatInvoiceTrackingLabel(invoice),
     updated_at: invoice?.updated_at || null,
   }));
+}
+
+function isBillingInvoicesSchemaMissingDetails(details = "") {
+  const message = String(details || "");
+  return (
+    /relation .*billing_invoices/i.test(message)
+    || /invoice_kind|source_topup_id|invoice_number/i.test(message)
+    || /column .*billing_invoices/i.test(message)
+  );
 }
 
 async function listClientBillingPreferences(env, limit = 2000) {
@@ -12342,6 +12351,7 @@ async function handleBillingOverview(request, env) {
     const invoices = await listBillingInvoices(env, {
       userId: user.id,
       limit: 120,
+      allowMissing: true,
     });
     let wallet = {
       user_id: user.id,
