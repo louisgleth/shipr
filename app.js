@@ -11719,6 +11719,18 @@ function getTopupInvoiceStatusCopy(row) {
   };
 }
 
+function buildTopupInvoiceNumber(topup) {
+  const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
+  const issuedDate = new Date(issuedDateRaw || Date.now());
+  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
+  const yy = String(resolvedIssuedDate.getFullYear()).slice(-2);
+  const mm = String(resolvedIssuedDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(resolvedIssuedDate.getDate()).padStart(2, "0");
+  const tokenSource = String(topup?.id || topup?.reference || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
+  return `TUP-${yy}${mm}${dd}-${token}`;
+}
+
 function buildTopupInvoiceViewModel(topup) {
   const profile = buildMockAccountProfile(currentUser);
   const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
@@ -11726,14 +11738,15 @@ function buildTopupInvoiceViewModel(topup) {
   const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
   const amount = Math.max(0, Number(topup?.amount_eur) || 0);
   const reference = String(topup?.reference || topup?.id || "--").trim() || "--";
+  const invoiceNumber = buildTopupInvoiceNumber(topup);
   const statusCopy = getTopupInvoiceStatusCopy(topup);
 
   return {
     issuedAt: formatInvoiceDateDisplay(resolvedIssuedDate),
     issuedIso: resolvedIssuedDate.toISOString(),
     dueAt: "--",
-    invoiceNumber: reference,
-    invoiceSlug: buildInvoicePdfFilenameFromReference(`topup-${reference}`)
+    invoiceNumber,
+    invoiceSlug: buildInvoicePdfFilenameFromReference(invoiceNumber)
       .replace(/^invoice-/, "")
       .replace(/\.pdf$/, ""),
     quantity: 1,
@@ -11744,9 +11757,11 @@ function buildTopupInvoiceViewModel(topup) {
     statusValue: statusCopy.statusValue,
     settlementBadge: statusCopy.settlementBadge,
     settlementBadgeTone: statusCopy.settlementBadgeTone,
-    settlementTitle: tr("Top-up Summary"),
+    settlementTitle: tr("Transfer details"),
     settlementLines: [],
-    settlementTransferRows: [],
+    settlementTransferRows: [
+      { label: tr("Reference"), value: reference, mono: true },
+    ],
     reverseVatNote: "",
     issuer: INVOICE_ISSUER_PROFILE,
     profile,
@@ -17949,7 +17964,13 @@ function renderTopupReferenceHistory() {
       <div class="account-reference-side">
         <span class="account-reference-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
         ${canDownloadInvoice && rowId
-          ? `<button type="button" class="account-reference-action" data-topup-invoice-id="${escapeHtml(rowId)}"><span>${escapeHtml(tr("Download Invoice"))}</span></button>`
+          ? `<button type="button" class="account-reference-action" data-topup-invoice-id="${escapeHtml(rowId)}" aria-label="${escapeHtml(tr("Download Invoice"))}" title="${escapeHtml(tr("Download Invoice"))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                <path d="M12 4v10"></path>
+                <polyline points="8 11 12 15 16 11"></polyline>
+                <path d="M5 19h14"></path>
+              </svg>
+            </button>`
           : ""}
       </div>
     `;
@@ -17958,8 +17979,7 @@ function renderTopupReferenceHistory() {
 }
 
 function getTopupInvoicePdfFilename(topup) {
-  const reference = String(topup?.reference || topup?.id || "topup").trim() || "topup";
-  return buildInvoicePdfFilenameFromReference(`topup-${reference}`);
+  return buildInvoicePdfFilenameFromReference(buildTopupInvoiceNumber(topup));
 }
 
 async function downloadTopupInvoicePdf(button, topupId) {

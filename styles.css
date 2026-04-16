@@ -2491,20 +2491,31 @@ body.is-auth-view {
 
 .account-reference-action {
   appearance: none;
-  border: 0;
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: rgba(58, 67, 84, 0.18);
   padding: 0;
   color: var(--text);
-  font: inherit;
-  font-size: var(--fs-2xs);
-  line-height: 1.2;
   cursor: pointer;
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition: color 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.account-reference-action svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .account-reference-action:hover,
 .account-reference-action:focus-visible {
   color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke));
+  background: rgba(107, 183, 255, 0.08);
   transform: translateY(-1px);
 }
 
