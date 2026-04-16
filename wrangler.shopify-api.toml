@@ -4,6 +4,9 @@ compatibility_date = "2026-02-23"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+[triggers]
+crons = ["15 6 * * *"]
+
 [browser]
 binding = "BROWSER"
 

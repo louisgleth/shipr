@@ -664,6 +664,10 @@ const TRANSLATIONS = {
   "Payment Methods": { fr: "Modes de paiement", nl: "Betaalmethodes" },
   "Invoice": { fr: "Facture", nl: "Factuur" },
   "Card": { fr: "Carte", nl: "Kaart" },
+  "Account balance debit": {
+    fr: "Débit sur solde du compte",
+    nl: "Afschrijving van accountsaldo",
+  },
   "Instant": { fr: "Instant", nl: "Instant" },
   "Payment Tracking": { fr: "Suivi du paiement", nl: "Betalingsopvolging" },
   "Invoice Tracking": { fr: "Suivi facture", nl: "Factuuropvolging" },
@@ -717,6 +721,10 @@ const TRANSLATIONS = {
   "Wallet or card payment": {
     fr: "Paiement par solde ou carte",
     nl: "Betaling via saldo of kaart",
+  },
+  "Account balance payment": {
+    fr: "Paiement par solde du compte",
+    nl: "Betaling via accountsaldo",
   },
   "Label PDF": { fr: "PDF Étiquette", nl: "Label-PDF" },
   "Label Output": { fr: "Sortie étiquettes", nl: "Labeloutput" },
@@ -877,6 +885,10 @@ const TRANSLATIONS = {
     fr: "Sélectionnez un mode de paiement instantané pour générer vos étiquettes maintenant.",
     nl: "Kies een directe betaalmethode om je labels nu te genereren.",
   },
+  "Use your available account balance to generate your labels now.": {
+    fr: "Utilisez votre solde disponible pour générer vos étiquettes maintenant.",
+    nl: "Gebruik je beschikbare accountsaldo om je labels nu te genereren.",
+  },
   "Pay & Generate": { fr: "Payer & Générer", nl: "Betalen & Genereren" },
   "No open invoices.": { fr: "Aucune facture ouverte.", nl: "Geen open facturen." },
   "No paid invoices yet.": { fr: "Aucune facture payée pour l’instant.", nl: "Nog geen betaalde facturen." },
@@ -954,6 +966,10 @@ const TRANSLATIONS = {
   "Insufficient wallet balance. Top up by IBAN or use card.": {
     fr: "Solde insuffisant. Rechargez via IBAN ou utilisez la carte.",
     nl: "Onvoldoende saldo. Waardeer op via IBAN of gebruik kaart.",
+  },
+  "Insufficient account balance. Top up by IBAN to continue.": {
+    fr: "Solde du compte insuffisant. Rechargez via IBAN pour continuer.",
+    nl: "Onvoldoende accountsaldo. Waardeer op via IBAN om verder te gaan.",
   },
   "Could not process checkout.": {
     fr: "Impossible de traiter le paiement.",
@@ -5104,28 +5120,20 @@ function getAdminClientProfile(client) {
 
 function normalizeAdminClientBilling(client) {
   const raw = client?.billing && typeof client.billing === "object" ? client.billing : {};
-  let invoiceEnabled = raw.invoice_enabled === true;
-  let cardEnabled = raw.card_enabled === false ? false : true;
-  if (!invoiceEnabled && !cardEnabled) {
-    cardEnabled = true;
-  }
+  const invoiceEnabled = raw.invoice_enabled === true;
   return {
     invoice_enabled: invoiceEnabled,
-    card_enabled: cardEnabled,
+    card_enabled: false,
   };
 }
 
 function getAdminClientPaymentMode(client) {
   const billing = normalizeAdminClientBilling(client);
-  if (billing.invoice_enabled && billing.card_enabled) return "hybrid";
-  if (billing.card_enabled) return "card";
-  return "invoice";
+  return billing.invoice_enabled ? "invoice" : "wallet";
 }
 
 function getAdminPaymentModeLabel(mode) {
-  if (mode === "hybrid") return `${tr("Invoice")} + ${tr("Card")}`;
-  if (mode === "card") return tr("Card");
-  return tr("Invoice");
+  return mode === "invoice" ? tr("Invoice") : tr("Account balance");
 }
 
 function normalizeAdminActivityStatus(status) {
@@ -5252,7 +5260,7 @@ function renderAdminClientsList() {
     const paymentTrackingLabel =
       paymentMode === "invoice" ? tr("Invoice Tracking") : tr("Payment Tracking");
     const paymentTimingLabel =
-      paymentMode === "card" && Number(metrics.avg_payment_days) === 0
+      paymentMode === "wallet" && Number(metrics.avg_payment_days) === 0
         ? tr("Instant")
         : metrics.avg_payment_days != null
           ? `${metrics.avg_payment_days} ${tr("days")}`
@@ -5343,13 +5351,13 @@ function renderAdminClientsList() {
             </button>
             <button
               type="button"
-              class="admin-client-method-toggle${billing.card_enabled ? " is-active" : ""}"
-              data-admin-billing-toggle="card"
+              class="admin-client-method-toggle${!billing.invoice_enabled ? " is-active" : ""}"
+              data-admin-billing-toggle="wallet"
               data-admin-client-id="${escapeHtml(userId)}"
               ${billingBusy ? "disabled" : ""}
             >
               <span class="admin-client-method-box" aria-hidden="true"></span>
-              <span>${tr("Card")}</span>
+              <span>${tr("Account balance")}</span>
             </button>
           </div>
           <span class="admin-client-method-mode mono">${escapeHtml(
@@ -5406,21 +5414,14 @@ function normalizeBillingForMetrics(billing) {
 function applyBillingToClientMetrics(metrics = {}, billing) {
   const normalizedBilling = normalizeBillingForMetrics(billing);
   const nextMetrics = { ...(metrics || {}) };
-  const paymentMode =
-    normalizedBilling.invoice_enabled && normalizedBilling.card_enabled
-      ? "hybrid"
-      : normalizedBilling.card_enabled
-        ? "card"
-        : "invoice";
+  const paymentMode = normalizedBilling.invoice_enabled ? "invoice" : "wallet";
   const hasRevenue = Number(nextMetrics.total_revenue_ex_vat || 0) > 0;
   nextMetrics.payment_mode = paymentMode;
   nextMetrics.invoice_enabled = normalizedBilling.invoice_enabled;
   nextMetrics.card_enabled = normalizedBilling.card_enabled;
-  if (paymentMode === "card") {
+  if (paymentMode === "wallet") {
     nextMetrics.avg_payment_days = hasRevenue ? 0 : null;
-    nextMetrics.last_invoice_tracking = hasRevenue ? "Card auto-charge" : "No billable activity";
-  } else if (paymentMode === "hybrid") {
-    nextMetrics.last_invoice_tracking = hasRevenue ? "Hybrid billing" : "No billable activity";
+    nextMetrics.last_invoice_tracking = hasRevenue ? "Account balance debit" : "No billable activity";
   } else if (!String(nextMetrics.last_invoice_tracking || "").trim()) {
     nextMetrics.last_invoice_tracking = hasRevenue ? "Billing not live" : "No billable activity";
   }
@@ -5487,7 +5488,7 @@ function buildMockAdminClients() {
       customerId: "CUST-874300",
       accountManager: "N. Martin",
       billingAddress: "Avenue Louise 221, 1050 Brussels, Belgium",
-      payment: { invoice_enabled: false, card_enabled: true },
+      payment: { invoice_enabled: false, card_enabled: false },
       metrics: {
         total_revenue_ex_vat: 8470.2,
         total_profit_ex_vat: 2123.5,
@@ -5495,7 +5496,7 @@ function buildMockAdminClients() {
         mrp_ex_vat: 353.92,
         avg_parcels_per_month: 112.3,
         avg_payment_days: 0,
-        last_invoice_tracking: "Card auto-charge",
+        last_invoice_tracking: "Account balance debit",
         activity_status: "active",
       },
     },
@@ -5506,7 +5507,7 @@ function buildMockAdminClients() {
       customerId: "CUST-719255",
       accountManager: "A. Lambert",
       billingAddress: "Rue des Guillemins 18, 4000 Liège, Belgium",
-      payment: { invoice_enabled: true, card_enabled: true },
+      payment: { invoice_enabled: true, card_enabled: false },
       metrics: {
         total_revenue_ex_vat: 12324.1,
         total_profit_ex_vat: 2840.12,
@@ -5514,7 +5515,7 @@ function buildMockAdminClients() {
         mrp_ex_vat: 236.68,
         avg_parcels_per_month: 96.7,
         avg_payment_days: 8,
-        last_invoice_tracking: "Hybrid billing",
+        last_invoice_tracking: "Invoice sent · pending",
         activity_status: "quiet",
       },
     },
@@ -5544,7 +5545,7 @@ function buildMockAdminClients() {
       customerId: "CUST-638512",
       accountManager: "N. Martin",
       billingAddress: "Industrieweg 10, 3001 Leuven, Belgium",
-      payment: { invoice_enabled: false, card_enabled: true },
+      payment: { invoice_enabled: false, card_enabled: false },
       metrics: {
         total_revenue_ex_vat: 2160.4,
         total_profit_ex_vat: 422.12,
@@ -5552,7 +5553,7 @@ function buildMockAdminClients() {
         mrp_ex_vat: 35.18,
         avg_parcels_per_month: 21.1,
         avg_payment_days: 0,
-        last_invoice_tracking: "Card auto-charge",
+        last_invoice_tracking: "Account balance debit",
         activity_status: "dormant",
       },
     },
@@ -5631,20 +5632,20 @@ function toggleAdminMockData() {
 async function updateAdminClientBilling(userId, method) {
   const safeUserId = String(userId || "").trim();
   const normalizedMethod = String(method || "").trim();
-  if (!safeUserId || !["invoice", "card"].includes(normalizedMethod)) return;
+  if (!safeUserId || !["invoice", "wallet"].includes(normalizedMethod)) return;
   if (isAdminClientBillingBusy(safeUserId)) return;
 
   const client = adminClients.find((entry) => String(entry?.user?.id || "").trim() === safeUserId);
   if (!client) return;
   const current = normalizeAdminClientBilling(client);
-  const next = { ...current };
-  if (normalizedMethod === "invoice") {
-    next.invoice_enabled = !current.invoice_enabled;
-  } else {
-    next.card_enabled = !current.card_enabled;
-  }
-  if (!next.invoice_enabled && !next.card_enabled) {
-    showToast(tr("At least one payment method must remain enabled."), { tone: "error" });
+  const next = {
+    invoice_enabled: normalizedMethod === "invoice",
+    card_enabled: false,
+  };
+  if (
+    current.invoice_enabled === next.invoice_enabled
+    && current.card_enabled === next.card_enabled
+  ) {
     return;
   }
 
@@ -5662,8 +5663,7 @@ async function updateAdminClientBilling(userId, method) {
       method: "POST",
       body: JSON.stringify({
         userId: safeUserId,
-        invoiceEnabled: next.invoice_enabled,
-        cardEnabled: next.card_enabled,
+        paymentMode: normalizedMethod,
       }),
     });
     const returnedBilling = response?.billing || next;
@@ -11531,8 +11531,7 @@ function invoiceRequiresManualSettlementClient(paymentMode = "") {
 function getInvoicePaymentMethodLabel(paymentMode = "") {
   const mode = String(paymentMode || "").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
-  if (mode === "wallet") return "Wallet debit";
-  return "Automatic collection";
+  return "Account balance";
 }
 
 function getInvoiceSettlementBadgeMeta({
@@ -13254,27 +13253,27 @@ async function openReceiptPdfFile() {
   }
 }
 
-async function downloadInvoicePdfFile() {
+async function downloadAccountHistoryReceiptPdfFile() {
   if (!accountActiveRecord) return;
   const restoreButton = setPdfActionBusy(
     accountDownloadInvoice,
     true,
     {
-      idleLabel: tr("Download Invoice"),
-      busyLabel: tr("Preparing invoice PDF..."),
+      idleLabel: tr("Download Receipt PDF"),
+      busyLabel: tr("Preparing receipt PDF..."),
     }
   );
   try {
-    const exportData = await buildInvoicePdfExport();
+    const exportData = await buildReceiptPdfExport();
     if (!exportData?.blob) {
-      throw new Error(tr("Could not generate invoice PDF."));
+      throw new Error(tr("Could not generate receipt PDF."));
     }
     const url = URL.createObjectURL(exportData.blob);
     triggerFileDownload(url, exportData.filename);
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    showToast(tr("Invoice PDF ready."), { tone: "success" });
+    showToast(tr("Receipt PDF ready."), { tone: "success" });
   } catch (error) {
-    showToast(error?.message || tr("Could not generate invoice PDF."), { tone: "error" });
+    showToast(error?.message || tr("Could not generate receipt PDF."), { tone: "error" });
   } finally {
     restoreButton();
   }
@@ -17638,12 +17637,9 @@ function getReusableIbanTopupFromOverview() {
 }
 
 function getBillingFlags() {
-  let invoiceEnabled = billingOverview?.invoice_enabled === true;
-  let cardEnabled = billingOverview?.card_enabled === false ? false : true;
+  const invoiceEnabled = billingOverview?.invoice_enabled === true;
+  const cardEnabled = billingOverview?.card_enabled === true;
   const walletEnabled = billingOverview?.wallet_enabled !== false;
-  if (!invoiceEnabled && !cardEnabled) {
-    cardEnabled = true;
-  }
   return {
     invoiceEnabled,
     cardEnabled,
@@ -17894,6 +17890,7 @@ function renderCheckoutStepMode() {
     walletPendingValue.textContent = formatMoney(pendingTopups);
   }
   if (paymentMethodCard) {
+    paymentMethodCard.classList.toggle("is-hidden", !cardEnabled);
     paymentMethodCard.classList.toggle("is-disabled", !cardEnabled);
   }
   if (paymentMethodWallet) {
@@ -17920,14 +17917,18 @@ function renderCheckoutStepMode() {
     setCheckoutPaymentMethod("invoice", { quiet: true });
   } else {
     if (step3Title) step3Title.textContent = tr("Payment");
-    if (step3Sub) step3Sub.textContent = tr("Wallet or card payment");
+    if (step3Sub) {
+      step3Sub.textContent = cardEnabled
+        ? tr("Wallet or card payment")
+        : tr("Account balance payment");
+    }
     if (invoiceReviewWrap) invoiceReviewWrap.classList.add("is-hidden");
     if (directPaymentWrap) directPaymentWrap.classList.remove("is-hidden");
     if (checkoutStepTitle) checkoutStepTitle.textContent = tr("Choose payment method");
     if (checkoutStepSubtitle) {
-      checkoutStepSubtitle.textContent = tr(
-        "Select an instant payment method to generate your labels now."
-      );
+      checkoutStepSubtitle.textContent = cardEnabled
+        ? tr("Select an instant payment method to generate your labels now.")
+        : tr("Use your available account balance to generate your labels now.");
     }
     if (payButtonLabel) {
       payButtonLabel.textContent = tr("Pay & Generate");
@@ -17936,7 +17937,7 @@ function renderCheckoutStepMode() {
       checkoutPaymentMethod === "wallet" || checkoutPaymentMethod === "card"
         ? checkoutPaymentMethod
         : "";
-    const nextMethod =
+      const nextMethod =
       currentMethod === "wallet" && (!walletEnabled || !walletSufficient) && cardEnabled
         ? "card"
         : currentMethod === "card" && !cardEnabled && walletEnabled
@@ -19586,7 +19587,7 @@ if (receiptDownloadPdf) {
 if (accountDownloadInvoice) {
   accountDownloadInvoice.addEventListener("click", (event) => {
     event.preventDefault();
-    downloadInvoicePdfFile();
+    downloadAccountHistoryReceiptPdfFile();
   });
 }
 
@@ -19820,7 +19821,9 @@ async function handleCheckoutAndGenerate() {
       if (walletBalance + 0.0001 < total) {
         setInlineFormErrorToast(
           paymentMethodError,
-          tr("Insufficient wallet balance. Top up by IBAN or use card."),
+          cardEnabled
+            ? tr("Insufficient wallet balance. Top up by IBAN or use card.")
+            : tr("Insufficient account balance. Top up by IBAN to continue."),
           "error"
         );
         return;

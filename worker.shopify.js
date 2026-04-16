@@ -80,6 +80,8 @@ const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BILLING_INVOICE_RENDER_BATCH_VARIANTS = 5;
 const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
+const DEFAULT_MONTHLY_BILLING_RUN_DAY = 1;
+const DEFAULT_MONTHLY_BILLING_MAX_SENDS = 500;
 const WISE_DEFAULT_LOOKBACK_DAYS = 45;
 const WISE_WEBHOOK_SYNC_LOOKBACK_DAYS = 7;
 const WISE_DEFAULT_API_BASE_URL = "https://api.wise.com";
@@ -124,7 +126,7 @@ const DEFAULT_ADMIN_SETTINGS = {
 };
 const DEFAULT_CLIENT_BILLING_PREF = {
   invoice_enabled: false,
-  card_enabled: true,
+  card_enabled: false,
 };
 const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "v2.0";
 const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Commercial Agreement";
@@ -401,12 +403,29 @@ export default {
       return jsonResponse({ error: error?.message || "Unexpected server error." }, 500);
     }
   },
-  async scheduled(_event, env) {
+  async scheduled(event, env) {
+    const scheduledNow = Number.isFinite(Number(event?.scheduledTime))
+      ? new Date(Number(event.scheduledTime))
+      : new Date();
+    try {
+      const monthlyBilling = await runScheduledMonthlyBillingAutomation(env, {
+        now: scheduledNow,
+      });
+      if (monthlyBilling?.ran) {
+        console.log("[scheduled monthly billing]", JSON.stringify(monthlyBilling));
+      }
+    } catch (error) {
+      console.error("[scheduled monthly billing]", error);
+    }
     try {
       await runInvoiceReminders(env, { limit: 500 });
+    } catch (error) {
+      console.error("[scheduled invoice reminders]", error);
+    }
+    try {
       await runPrivacyMaintenance(env);
-    } catch (_error) {
-      // Scheduled runs should not throw unhandled errors.
+    } catch (error) {
+      console.error("[scheduled privacy maintenance]", error);
     }
   },
 };
@@ -1710,6 +1729,24 @@ function getInvoiceTermsDays(env) {
   return Math.max(1, Math.min(120, Math.round(value)));
 }
 
+function isMonthlyBillingAutomationEnabled(env) {
+  const raw = String(env?.MONTHLY_BILLING_AUTOMATION_ENABLED || "").trim().toLowerCase();
+  if (!raw) return true;
+  return !["0", "false", "off", "disabled", "no"].includes(raw);
+}
+
+function getMonthlyBillingRunDay(env) {
+  const configured = Number(env?.MONTHLY_BILLING_RUN_DAY);
+  if (!Number.isFinite(configured)) return DEFAULT_MONTHLY_BILLING_RUN_DAY;
+  return Math.max(1, Math.min(28, Math.floor(configured)));
+}
+
+function getMonthlyBillingMaxSends(env) {
+  const configured = Number(env?.MONTHLY_BILLING_MAX_SENDS);
+  if (!Number.isFinite(configured)) return DEFAULT_MONTHLY_BILLING_MAX_SENDS;
+  return Math.max(1, Math.min(5000, Math.floor(configured)));
+}
+
 function getReminderThresholdsDays() {
   return [-15, -7, -1, 0, 3, 10, 15, 30];
 }
@@ -2357,14 +2394,10 @@ async function buildAcceptedAgreementTestPayload(env, request, toEmail, options 
 
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
-  let invoiceEnabled = raw.invoice_enabled === true;
-  let cardEnabled = raw.card_enabled === false ? false : true;
-  if (!invoiceEnabled && !cardEnabled) {
-    cardEnabled = true;
-  }
+  const invoiceEnabled = raw.invoice_enabled === true;
   return {
     invoice_enabled: invoiceEnabled,
-    card_enabled: cardEnabled,
+    card_enabled: false,
     updated_at: raw.updated_at || null,
     updated_by: raw.updated_by || null,
   };
@@ -2372,14 +2405,12 @@ function normalizeClientBillingPreference(value) {
 
 function isDefaultClientBillingPreference(value) {
   const normalized = normalizeClientBillingPreference(value);
-  return normalized.invoice_enabled !== true && normalized.card_enabled === true;
+  return normalized.invoice_enabled !== true;
 }
 
 function getClientPaymentMode(pref) {
   const normalized = normalizeClientBillingPreference(pref);
-  if (normalized.invoice_enabled && normalized.card_enabled) return "hybrid";
-  if (normalized.card_enabled) return "card";
-  return "invoice";
+  return normalized.invoice_enabled ? "invoice" : "wallet";
 }
 
 function buildAdminClientMetrics(user, historyRows, settings, billingPreference, invoiceStats) {
@@ -2431,13 +2462,9 @@ function buildAdminClientMetrics(user, historyRows, settings, billingPreference,
   let lastInvoiceTracking =
     normalizedInvoiceStats?.last_invoice_tracking ||
     (totalRevenue > 0 ? "Billing not live" : "No billable activity");
-  if (paymentMode === "card") {
+  if (paymentMode === "wallet") {
     avgPaymentDays = totalRevenue > 0 ? 0 : null;
-    lastInvoiceTracking = totalRevenue > 0 ? "Card auto-charge" : "No billable activity";
-  } else if (paymentMode === "hybrid") {
-    lastInvoiceTracking =
-      normalizedInvoiceStats?.last_invoice_tracking ||
-      (totalRevenue > 0 ? "Hybrid billing" : "No billable activity");
+    lastInvoiceTracking = totalRevenue > 0 ? "Account balance debit" : "No billable activity";
   }
 
   return {
@@ -4667,6 +4694,56 @@ async function listBillingInvoices(env, { limit = 100, userId = "", statuses = [
   return Array.isArray(rows) ? rows : [];
 }
 
+async function listBillingInvoicesForPeriod(
+  env,
+  { periodStart = "", periodEnd = "", statuses = [], paymentModes = [], allowMissing = false } = {}
+) {
+  const safeStart = String(periodStart || "").trim();
+  const safeEnd = String(periodEnd || "").trim();
+  if (!safeStart || !safeEnd) return [];
+  try {
+    const rows = await fetchAllSupabaseRows(
+      env,
+      BILLING_INVOICES_TABLE,
+      {
+        select:
+          "id,user_id,period_start,period_end,due_at,issued_at,sent_at,paid_at,status,payment_mode,currency,vat_rate,subtotal_ex_vat,vat_amount,total_inc_vat,labels_count,line_count,reminder_stage,last_reminder_sent_at,email_message_id,company_name,contact_name,contact_email,customer_id,account_manager,payment_reference,payment_received_amount,metadata,created_at,updated_at",
+        period_start: `eq.${safeStart}`,
+        period_end: `eq.${safeEnd}`,
+        order: "created_at.asc,updated_at.asc",
+      },
+      { pageSize: 500, allowMissingSchema: allowMissing }
+    );
+    return rows.filter((invoice) => {
+      const invoiceStatus = normalizeInvoiceStatus(invoice?.status);
+      const invoicePaymentMode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
+      if (Array.isArray(statuses) && statuses.length) {
+        const allowedStatuses = statuses
+          .map((entry) => String(entry || "").trim().toLowerCase())
+          .filter(Boolean);
+        if (allowedStatuses.length && !allowedStatuses.includes(invoiceStatus)) {
+          return false;
+        }
+      }
+      if (Array.isArray(paymentModes) && paymentModes.length) {
+        const allowedPaymentModes = paymentModes
+          .map((entry) => String(entry || "").trim().toLowerCase())
+          .filter(Boolean);
+        if (allowedPaymentModes.length && !allowedPaymentModes.includes(invoicePaymentMode)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (allowMissing && /billing schema missing/i.test(message)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function getBillingInvoiceByPeriod(env, userId, periodStart, periodEnd) {
   const safeUserId = String(userId || "").trim();
   const safeStart = String(periodStart || "").trim();
@@ -5024,10 +5101,7 @@ function invoiceRequiresManualSettlement(invoice = {}) {
 function formatInvoicePaymentModeLabel(invoice = {}) {
   const mode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
-  if (mode === "wallet") return "Wallet debit";
-  if (mode === "card") return "Card on file";
-  if (mode === "hybrid") return "Automatic collection";
-  return "Automatic collection";
+  return "Account balance";
 }
 
 function buildInvoicePdfFilename(invoice = {}) {
@@ -7256,7 +7330,7 @@ async function buildPrivacyExportBundle(env, user) {
       select: 'user_id,balance_cents,currency,created_at,updated_at',
       user_id: `eq.${userId}`,
     }),
-    getClientBillingPreferenceForUser(env, userId).catch(() => ({ invoice_enabled: false, card_enabled: true })),
+    getClientBillingPreferenceForUser(env, userId).catch(() => ({ invoice_enabled: false, card_enabled: false })),
   ]);
   const invoiceIds = invoices.map((invoice) => String(invoice?.id || '').trim()).filter(Boolean);
   const invoiceItems = await listBillingInvoiceItemsForPrivacyExport(env, invoiceIds);
@@ -10287,10 +10361,129 @@ async function runInvoiceReminders(env, options = {}) {
   return out;
 }
 
+function isInvoiceEligibleForAutomatedSend(invoice = {}) {
+  if (!invoiceRequiresManualSettlement(invoice)) return false;
+  if (String(invoice?.sent_at || "").trim()) return false;
+  const status = normalizeInvoiceStatus(invoice?.status);
+  return !["paid", "cancelled"].includes(status);
+}
+
+async function runScheduledMonthlyBillingAutomation(env, options = {}) {
+  const now = options?.now instanceof Date ? options.now : new Date(options?.now || Date.now());
+  const billingWindow = getPreviousMonthWindow(now);
+  const runDay = getMonthlyBillingRunDay(env);
+  if (!isMonthlyBillingAutomationEnabled(env)) {
+    return {
+      enabled: false,
+      ran: false,
+      reason: "disabled",
+      period_start: billingWindow.startIsoDate,
+      period_end: billingWindow.endIsoDate,
+    };
+  }
+  if (now.getUTCDate() < runDay) {
+    return {
+      enabled: true,
+      ran: false,
+      reason: `waiting_for_day_${runDay}`,
+      period_start: billingWindow.startIsoDate,
+      period_end: billingWindow.endIsoDate,
+    };
+  }
+
+  const publicAppUrl = getPublicAppUrl(env);
+  const buildResult = await buildInvoicesFromLabelHistory(env, {
+    mode: "create",
+    window: billingWindow,
+    publicAppUrl,
+    freezeIssuedInvoices: true,
+  });
+  const monthlyInvoices = await listBillingInvoicesForPeriod(env, {
+    periodStart: billingWindow.startIsoDate,
+    periodEnd: billingWindow.endIsoDate,
+    paymentModes: ["invoice"],
+    allowMissing: false,
+  });
+  const sendLimit = getMonthlyBillingMaxSends(env);
+  const invoicesToSend = monthlyInvoices
+    .filter((invoice) => isInvoiceEligibleForAutomatedSend(invoice))
+    .sort(
+      (left, right) =>
+        Date.parse(left?.created_at || left?.updated_at || 0)
+        - Date.parse(right?.created_at || right?.updated_at || 0)
+    )
+    .slice(0, sendLimit);
+
+  const sendSummary = {
+    attempted: invoicesToSend.length,
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    failures: [],
+  };
+  let hasQueuedInvoiceSend = false;
+  for (const invoice of invoicesToSend) {
+    try {
+      if (hasQueuedInvoiceSend) {
+        await waitMs(getInvoiceEmailQueueDelayMs(env));
+      }
+      const sendResult = await sendBillingInvoiceById(env, invoice.id, {
+        isReminder: false,
+        requireApprovedPdf: true,
+        publicAppUrl,
+      });
+      hasQueuedInvoiceSend = true;
+      if (sendResult?.skipped) {
+        sendSummary.skipped += 1;
+      } else {
+        sendSummary.sent += 1;
+      }
+    } catch (error) {
+      sendSummary.failed += 1;
+      sendSummary.failures.push({
+        invoice_id: invoice?.id || null,
+        reference: toInvoiceReference(invoice?.id),
+        error: error?.message || "Invoice send failed.",
+      });
+      await insertBillingInvoiceEvent(env, invoice.id, {
+        event_type: "failed",
+        actor: "system",
+        channel: "email",
+        message: `Automated monthly invoice send failed: ${error?.message || "Unknown error."}`,
+        metadata: {
+          automation: "scheduled_monthly_billing",
+        },
+      }).catch(() => {});
+    }
+  }
+
+  const issuedLockedCount = Array.isArray(buildResult?.skipped)
+    ? buildResult.skipped.filter((entry) =>
+        String(entry?.reason || "").toLowerCase().startsWith("invoice already issued")
+      ).length
+    : 0;
+
+  return {
+    enabled: true,
+    ran: true,
+    period_start: billingWindow.startIsoDate,
+    period_end: billingWindow.endIsoDate,
+    build: {
+      invoices_created: Number(buildResult?.invoices_created || 0),
+      invoices_updated: Number(buildResult?.invoices_updated || 0),
+      rows_marked_billed: Number(buildResult?.rows_marked_billed || 0),
+      skipped_count: Array.isArray(buildResult?.skipped) ? buildResult.skipped.length : 0,
+      issued_locked_count: issuedLockedCount,
+    },
+    send: sendSummary,
+  };
+}
+
 async function buildInvoicesFromLabelHistory(env, options = {}) {
   const mode = normalizeInvoiceRunMode(options?.mode);
   const billingWindow = options?.window || getPreviousMonthWindow();
   const onlyUserId = String(options?.userId || "").trim();
+  const freezeIssuedInvoices = options?.freezeIssuedInvoices === true;
   const runTimestamp = new Date().toISOString();
   const termsDays = getInvoiceTermsDays(env);
   const settings = await getAdminSettings(env);
@@ -10380,11 +10573,23 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
       billingWindow.startIsoDate,
       billingWindow.endIsoDate
     );
-    if (existing && ["paid", "cancelled"].includes(normalizeInvoiceStatus(existing.status))) {
+    const existingStatus = normalizeInvoiceStatus(existing?.status);
+    const existingAlreadyIssued =
+      Boolean(String(existing?.sent_at || "").trim())
+      || ["sent", "overdue", "paid", "cancelled"].includes(existingStatus);
+    if (existing && freezeIssuedInvoices && existingAlreadyIssued) {
       result.skipped.push({
         user_id: userId,
         invoice_id: existing.id,
-        reason: `Invoice already ${normalizeInvoiceStatus(existing.status)}.`,
+        reason: `Invoice already issued (${existingStatus}).`,
+      });
+      continue;
+    }
+    if (existing && ["paid", "cancelled"].includes(existingStatus)) {
+      result.skipped.push({
+        user_id: userId,
+        invoice_id: existing.id,
+        reason: `Invoice already ${existingStatus}.`,
       });
       continue;
     }
@@ -10699,16 +10904,25 @@ async function handleAdminClientBillingSave(request, env) {
   if (!targetUserId) {
     return jsonResponse({ error: "Client id is required." }, 400);
   }
-  const invoiceEnabled = body?.invoiceEnabled !== false;
-  const cardEnabled = body?.cardEnabled === true;
-  if (!invoiceEnabled && !cardEnabled) {
-    return jsonResponse({ error: "At least one payment method must remain enabled." }, 400);
+  const rawPaymentMode = String(
+    body?.paymentMode || body?.method || (body?.invoiceEnabled === true ? "invoice" : "wallet")
+  )
+    .trim()
+    .toLowerCase();
+  const paymentMode =
+    rawPaymentMode === "invoice"
+      ? "invoice"
+      : ["wallet", "account_balance", "account-balance", "balance"].includes(rawPaymentMode)
+        ? "wallet"
+        : "";
+  if (!paymentMode) {
+    return jsonResponse({ error: "A valid client payment mode is required." }, 400);
   }
 
   try {
     const billing = await saveClientBillingPreference(env, user.id, targetUserId, {
-      invoice_enabled: invoiceEnabled,
-      card_enabled: cardEnabled,
+      invoice_enabled: paymentMode === "invoice",
+      card_enabled: false,
     });
     return jsonResponse({
       ok: true,

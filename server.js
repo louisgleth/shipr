@@ -193,7 +193,7 @@ const DEFAULT_ADMIN_SETTINGS = {
 };
 const DEFAULT_CLIENT_BILLING_PREF = {
   invoice_enabled: false,
-  card_enabled: true,
+  card_enabled: false,
 };
 const DEFAULT_CLICKWRAP_CONTRACT_VERSION = "v2.0";
 const DEFAULT_CLICKWRAP_CONTRACT_TITLE = "Commercial Agreement";
@@ -2447,14 +2447,10 @@ async function sendResendEmail(payload) {
 
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
-  let invoiceEnabled = raw.invoice_enabled === true;
-  let cardEnabled = raw.card_enabled === false ? false : true;
-  if (!invoiceEnabled && !cardEnabled) {
-    cardEnabled = true;
-  }
+  const invoiceEnabled = raw.invoice_enabled === true;
   return {
     invoice_enabled: invoiceEnabled,
-    card_enabled: cardEnabled,
+    card_enabled: false,
     updated_at: raw.updated_at || null,
     updated_by: raw.updated_by || null,
   };
@@ -2462,14 +2458,12 @@ function normalizeClientBillingPreference(value) {
 
 function isDefaultClientBillingPreference(value) {
   const normalized = normalizeClientBillingPreference(value);
-  return normalized.invoice_enabled !== true && normalized.card_enabled === true;
+  return normalized.invoice_enabled !== true;
 }
 
 function getClientPaymentMode(pref) {
   const normalized = normalizeClientBillingPreference(pref);
-  if (normalized.invoice_enabled && normalized.card_enabled) return "hybrid";
-  if (normalized.card_enabled) return "card";
-  return "invoice";
+  return normalized.invoice_enabled ? "invoice" : "wallet";
 }
 
 function buildAdminClientMetrics(user, historyRows, settings, billingPreference, invoiceStats) {
@@ -2521,13 +2515,9 @@ function buildAdminClientMetrics(user, historyRows, settings, billingPreference,
   let lastInvoiceTracking =
     normalizedInvoiceStats?.last_invoice_tracking ||
     (totalRevenue > 0 ? "Billing not live" : "No billable activity");
-  if (paymentMode === "card") {
+  if (paymentMode === "wallet") {
     avgPaymentDays = totalRevenue > 0 ? 0 : null;
-    lastInvoiceTracking = totalRevenue > 0 ? "Card auto-charge" : "No billable activity";
-  } else if (paymentMode === "hybrid") {
-    lastInvoiceTracking =
-      normalizedInvoiceStats?.last_invoice_tracking ||
-      (totalRevenue > 0 ? "Hybrid billing" : "No billable activity");
+    lastInvoiceTracking = totalRevenue > 0 ? "Account balance debit" : "No billable activity";
   }
 
   return {
@@ -3296,10 +3286,7 @@ function invoiceRequiresManualSettlement(invoice = {}) {
 function formatInvoicePaymentModeLabel(invoice = {}) {
   const mode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
-  if (mode === "wallet") return "Wallet debit";
-  if (mode === "card") return "Card on file";
-  if (mode === "hybrid") return "Automatic collection";
-  return "Automatic collection";
+  return "Account balance";
 }
 
 function buildInvoicePdfFilename(invoice = {}) {
@@ -10235,17 +10222,26 @@ async function handleAdminClientBillingSave(req, res) {
     return;
   }
 
-  const invoiceEnabled = body?.invoiceEnabled !== false;
-  const cardEnabled = body?.cardEnabled === true;
-  if (!invoiceEnabled && !cardEnabled) {
-    sendJson(res, 400, { error: "At least one payment method must remain enabled." });
+  const rawPaymentMode = String(
+    body?.paymentMode || body?.method || (body?.invoiceEnabled === true ? "invoice" : "wallet")
+  )
+    .trim()
+    .toLowerCase();
+  const paymentMode =
+    rawPaymentMode === "invoice"
+      ? "invoice"
+      : ["wallet", "account_balance", "account-balance", "balance"].includes(rawPaymentMode)
+        ? "wallet"
+        : "";
+  if (!paymentMode) {
+    sendJson(res, 400, { error: "A valid client payment mode is required." });
     return;
   }
 
   try {
     const billing = await saveClientBillingPreference(user.id, targetUserId, {
-      invoice_enabled: invoiceEnabled,
-      card_enabled: cardEnabled,
+      invoice_enabled: paymentMode === "invoice",
+      card_enabled: false,
     });
     sendJson(res, 200, {
       ok: true,
