@@ -12507,6 +12507,7 @@ function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
   const settlementHeight = Math.max(0, Number(options?.settlementHeight) || 0);
   const settlementGap = Math.max(0, Number(options?.settlementGap) || 0);
   const settlementBudget = settlementHeight > 0 ? settlementHeight + settlementGap : 0;
+  const rebalanceFinalPage = Boolean(options?.rebalanceFinalPage);
   const rowHeightByIndex = new Map(rows.map((row) => [row.index, row.height]));
 
   if (!rows.length) {
@@ -12536,6 +12537,22 @@ function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
     pages.push({
       firstPage: pages.length === 0,
       rows: currentRows,
+      hasSettlement: true,
+    });
+    return pages;
+  }
+
+  if (!rebalanceFinalPage) {
+    if (currentRows.length) {
+      pages.push({
+        firstPage: pages.length === 0,
+        rows: currentRows,
+        hasSettlement: false,
+      });
+    }
+    pages.push({
+      firstPage: false,
+      rows: [],
       hasSettlement: true,
     });
     return pages;
@@ -12670,6 +12687,7 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
         continuationBudget: contentBudget - theadPx,
         settlementHeight: settlementPx,
         settlementGap: 4,
+        rebalanceFinalPage: Boolean(viewModel?.isMonthlyBilling),
       }
     );
   } finally {
@@ -13330,6 +13348,7 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
             continuationBudget: contentBudget - theadPt,
             settlementHeight: settlementPt,
             settlementGap: 4,
+            rebalanceFinalPage: Boolean(viewModel?.isMonthlyBilling),
           }
         );
 
