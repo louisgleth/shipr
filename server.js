@@ -5077,6 +5077,73 @@ async function listBillingTopups(
   return Array.isArray(rows) ? rows : [];
 }
 
+async function listRecentCreditedTopupsForInvoiceBackfill(
+  { limit = 40, allowMissing = false } = {}
+) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 40));
+  const params = new URLSearchParams();
+  params.set("select", BILLING_TOPUP_SELECT_FIELDS);
+  params.set("status", "eq.credited");
+  params.set("order", "credited_at.desc.nullslast,requested_at.desc.nullslast,created_at.desc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (walletIssue) {
+      if (allowMissing && walletIssue.kind === "missing") return [];
+      throw new Error(walletIssue.message);
+    }
+    throw new Error(`Could not load credited bank top-ups (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function runCreditedTopupInvoiceBackfill(
+  { limit = 40, publicAppUrl = "", logger = console } = {}
+) {
+  const topups = await listRecentCreditedTopupsForInvoiceBackfill({
+    limit,
+    allowMissing: true,
+  });
+  const summary = {
+    scanned: topups.length,
+    attempted: 0,
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    failures: [],
+  };
+  for (const topup of topups) {
+    const topupId = String(topup?.id || "").trim();
+    if (!topupId) continue;
+    summary.attempted += 1;
+    try {
+      const result = await ensureBillingTopupInvoiceAndSend(topupId, {
+        publicAppUrl,
+      });
+      if (result?.skipped) {
+        summary.skipped += 1;
+      } else {
+        summary.sent += 1;
+      }
+    } catch (error) {
+      summary.failed += 1;
+      summary.failures.push({
+        topup_id: topupId,
+        reference: String(topup?.reference || "").trim() || null,
+        error: error?.message || "Top-up invoice backfill failed.",
+      });
+      logger?.error?.("[topup invoice backfill]", topupId, error);
+    }
+  }
+  return summary;
+}
+
 async function listBillingWalletTransactions({ userId = "", limit = 30, allowMissing = false } = {}) {
   const safeUserId = String(userId || "").trim();
   if (!safeUserId) return [];
@@ -6322,7 +6389,9 @@ async function tryAutoResolveBankReceipt(receipt, actor = "wise-auto") {
     });
     await ensureBillingTopupInvoiceAndSend(topupMatches[0].row.id, {
       publicAppUrl: getPublicAppUrl(),
-    }).catch(() => {});
+    }).catch((error) => {
+      console.error("[topup invoice auto-send]", topupMatches[0].row.id, error);
+    });
     return { action: "topup", receipt: resolved || currentReceipt };
   }
 
@@ -11474,6 +11543,10 @@ async function handleAdminWiseSync(req, res) {
       lookbackDays: Number(body?.lookbackDays) || getWiseStatementLookbackDays(),
       actor: normalizeEmail(user.email || "") || user.id,
     });
+    const topupInvoiceBackfill = await runCreditedTopupInvoiceBackfill({
+      limit: 50,
+      publicAppUrl: getPublicAppUrl(req),
+    });
     const receipts = await listBillingBankReceipts({
       limit: 80,
       statuses: ["manual_review", "pending"],
@@ -11481,7 +11554,10 @@ async function handleAdminWiseSync(req, res) {
     });
     sendJson(res, 200, {
       ok: true,
-      summary,
+      summary: {
+        ...summary,
+        topup_invoice_backfill: topupInvoiceBackfill,
+      },
       wise: {
         ...getWiseConfigSummary(),
         receipts: receipts.map(mapBillingBankReceiptRow).filter(Boolean),
