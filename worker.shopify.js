@@ -498,6 +498,24 @@ function isBrowserRateLimitError(error) {
   return message.includes("429") || message.includes("rate limit exceeded");
 }
 
+function getBrowserRenderRateLimitResponse(env, message = "") {
+  const retryAfterSeconds = Math.max(
+    5,
+    Math.ceil((getBrowserRenderRetryAttempts(env) * getBrowserRenderRetryBaseMs(env)) / 1000)
+  );
+  return jsonResponse(
+    {
+      error:
+        String(message || "").trim()
+        || `PDF rendering is temporarily busy. Please retry in about ${retryAfterSeconds} seconds.`,
+    },
+    429,
+    {
+      "Retry-After": String(retryAfterSeconds),
+    }
+  );
+}
+
 function enqueueInvoiceBrowserRender(task) {
   const run = invoiceBrowserRenderQueue.catch(() => {}).then(task);
   invoiceBrowserRenderQueue = run.catch(() => {});
@@ -12888,6 +12906,9 @@ async function handleBillingInvoicePdfRender(request, env) {
       }),
     });
   } catch (error) {
+    if (isBrowserRateLimitError(error)) {
+      return getBrowserRenderRateLimitResponse(env, "PDF rendering is temporarily busy. Please retry shortly.");
+    }
     return jsonResponse({ error: error?.message || "Could not render invoice PDF." }, 500);
   }
 }
@@ -12925,6 +12946,9 @@ async function handleBillingReceiptPdfRender(request, env) {
       }),
     });
   } catch (error) {
+    if (isBrowserRateLimitError(error)) {
+      return getBrowserRenderRateLimitResponse(env, "PDF rendering is temporarily busy. Please retry shortly.");
+    }
     return jsonResponse({ error: error?.message || "Could not render receipt PDF." }, 500);
   }
 }
@@ -12987,6 +13011,9 @@ async function handleBillingInvoicePdfRenderBatch(request, env) {
   } catch (error) {
     if (error?.code === "invoice_pdf_batch_too_large") {
       return jsonResponse({ error: error.message }, 400);
+    }
+    if (isBrowserRateLimitError(error)) {
+      return getBrowserRenderRateLimitResponse(env, "PDF rendering is temporarily busy. Please retry shortly.");
     }
     return jsonResponse({ error: error?.message || "Could not render invoice PDFs." }, 500);
   }

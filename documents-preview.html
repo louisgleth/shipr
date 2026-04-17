@@ -493,23 +493,30 @@
         setStatus(`Generating PDFs and sending them to ${PREVIEW_TEST_EMAIL}...`);
 
         try {
-          const exported = await Promise.all([
-            renderer.buildReceiptPdfExportFromViewModel(
+          const exportJobs = [
+            () => renderer.buildReceiptPdfExportFromViewModel(
               receiptViewModel,
               "preview-receipt-long-list.pdf",
               { preferServerRender: true, allowRasterFallback: false }
             ),
-            renderer.buildInvoicePdfExportFromViewModel(
+            () => renderer.buildInvoicePdfExportFromViewModel(
               monthlyInvoiceViewModel,
               "preview-monthly-invoice-long-list.pdf",
               { preferServerRender: true, allowRasterFallback: false }
             ),
-            renderer.buildInvoicePdfExportFromViewModel(
+            () => renderer.buildInvoicePdfExportFromViewModel(
               topupInvoiceViewModel,
               "preview-topup-invoice-long-list.pdf",
               { preferServerRender: true, allowRasterFallback: false }
             ),
-          ]);
+          ];
+          const exported = [];
+          for (let index = 0; index < exportJobs.length; index += 1) {
+            exported.push(await exportJobs[index]());
+            if (index < exportJobs.length - 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 900));
+            }
+          }
 
           const attachments = await Promise.all(
             exported.map(async (entry) => {

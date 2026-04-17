@@ -6277,8 +6277,8 @@ async function sendAdminDocumentPreviewTriplet() {
     const topupInvoiceViewModel = buildBillingInvoiceViewModel(topupInvoiceRecord, {
       reminderStage: 0,
     });
-    const exports = await Promise.all([
-      buildReceiptPdfExportFromViewModel(
+    const exportJobs = [
+      () => buildReceiptPdfExportFromViewModel(
         receiptViewModel,
         "preview-receipt-long-list.pdf",
         {
@@ -6286,7 +6286,7 @@ async function sendAdminDocumentPreviewTriplet() {
           allowRasterFallback: false,
         }
       ),
-      buildInvoicePdfExportFromViewModel(
+      () => buildInvoicePdfExportFromViewModel(
         monthlyInvoiceViewModel,
         "preview-monthly-invoice-long-list.pdf",
         {
@@ -6294,7 +6294,7 @@ async function sendAdminDocumentPreviewTriplet() {
           allowRasterFallback: false,
         }
       ),
-      buildInvoicePdfExportFromViewModel(
+      () => buildInvoicePdfExportFromViewModel(
         topupInvoiceViewModel,
         "preview-topup-invoice-long-list.pdf",
         {
@@ -6302,7 +6302,14 @@ async function sendAdminDocumentPreviewTriplet() {
           allowRasterFallback: false,
         }
       ),
-    ]);
+    ];
+    const exports = [];
+    for (let index = 0; index < exportJobs.length; index += 1) {
+      exports.push(await exportJobs[index]());
+      if (index < exportJobs.length - 1) {
+        await delayMs(900);
+      }
+    }
     const attachments = await Promise.all(
       exports.map(async (entry) => {
         if (!entry?.blob || !entry?.filename) {
@@ -13349,6 +13356,12 @@ function base64ToBlob(base64, contentType = "application/pdf") {
     bytes[index] = binary.charCodeAt(index);
   }
   return new Blob([bytes], { type: contentType });
+}
+
+function delayMs(ms = 0) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  if (!safeMs) return Promise.resolve();
+  return new Promise((resolve) => window.setTimeout(resolve, safeMs));
 }
 
 async function requestSelectableInvoicePdfBatch(entries = []) {
