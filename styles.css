@@ -3404,6 +3404,41 @@ body.is-auth-view {
   flex-wrap: wrap;
 }
 
+.admin-ledger-summary {
+  margin-top: 4px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.admin-ledger-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-ledger-filter select {
+  width: 100%;
+}
+
+.admin-ledger-list {
+  max-height: 360px;
+}
+
+.admin-ledger-item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-ledger-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.admin-ledger-row-meta strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
 .admin-billing-item {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
@@ -3533,6 +3568,16 @@ body.is-auth-view {
 .admin-billing-status-pill.is-matched {
   color: #8fc1ff;
   border-color: #35517b;
+}
+
+.admin-billing-status-pill.is-exported {
+  color: #8ec9ff;
+  border-color: rgba(110, 172, 255, 0.45);
+}
+
+.admin-billing-status-pill.is-pending-export {
+  color: #d0d5e7;
+  border-color: rgba(138, 151, 179, 0.45);
 }
 
 .admin-billing-status-pill.is-ignored {
@@ -9383,6 +9428,10 @@ input.is-invalid {
 
   .admin-billing-item-actions .btn {
     flex: 1;
+  }
+
+  .admin-ledger-filters {
+    grid-template-columns: 1fr 1fr;
   }
 
   .admin-summary-grid {

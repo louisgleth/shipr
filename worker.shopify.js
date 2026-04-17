@@ -228,6 +228,9 @@ export default {
       if (pathname === "/api/admin/invoices/send" && request.method === "POST") {
         return handleAdminInvoiceSend(request, env);
       }
+      if (pathname === "/api/admin/invoices/accounting-export" && request.method === "POST") {
+        return handleAdminInvoiceAccountingExport(request, env);
+      }
       if (pathname === "/api/admin/invoices/send-test" && request.method === "POST") {
         return handleAdminInvoiceSendTest(request, env);
       }
@@ -7295,6 +7298,27 @@ function buildInvoiceStatsByUser(invoices = []) {
 
 function buildInvoiceListResponseRows(invoices = []) {
   return (Array.isArray(invoices) ? invoices : []).map((invoice) => ({
+    ...(function getRowAccountingExport() {
+      const metadata =
+        invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+      const accountingExport =
+        metadata?.accounting_export && typeof metadata.accounting_export === "object"
+          ? metadata.accounting_export
+          : {};
+      const exportedAt = String(accountingExport?.exported_at || "").trim() || null;
+      const exportedBy = String(accountingExport?.exported_by || "").trim() || null;
+      const exportBatchId = String(accountingExport?.export_batch_id || "").trim() || null;
+      const exportFormat =
+        String(accountingExport?.export_format || "").trim().toLowerCase() || null;
+      return {
+        created_at: invoice?.created_at || null,
+        accounting_exported: Boolean(exportedAt),
+        accounting_exported_at: exportedAt,
+        accounting_exported_by: exportedBy,
+        accounting_export_batch_id: exportBatchId,
+        accounting_export_format: exportFormat,
+      };
+    })(),
     id: invoice?.id || null,
     user_id: invoice?.user_id || null,
     reference: getBillingInvoiceReference(invoice),
@@ -11662,6 +11686,91 @@ async function handleAdminInvoicesList(request, env, url) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not load invoices." }, 500);
+  }
+}
+
+function buildAccountingExportBatchId(now = new Date()) {
+  const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
+  return `acct-${iso.slice(0, 10).replace(/-/g, "")}-${iso.slice(11, 19).replace(/:/g, "")}`;
+}
+
+async function handleAdminInvoiceAccountingExport(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to export invoices for accounting." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const invoiceIds = Array.from(
+    new Set(
+      (Array.isArray(body?.invoiceIds) ? body.invoiceIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (!invoiceIds.length) {
+    return jsonResponse({ error: "Select at least one invoice to export." }, 400);
+  }
+  const requestedFormat = String(body?.format || "csv").trim().toLowerCase() || "csv";
+  const exportedAtRaw = String(body?.exportedAt || "").trim();
+  const exportedAtDate = exportedAtRaw ? new Date(exportedAtRaw) : new Date();
+  if (Number.isNaN(exportedAtDate.getTime())) {
+    return jsonResponse({ error: "Export date is invalid." }, 400);
+  }
+  const exportedAt = exportedAtDate.toISOString();
+  const actor = normalizeEmail(user.email || "") || user.id;
+  const exportBatchId =
+    String(body?.batchId || "").trim() || buildAccountingExportBatchId(exportedAtDate);
+  try {
+    const updatedInvoices = [];
+    for (const invoiceId of invoiceIds) {
+      const invoice = await getBillingInvoiceById(env, invoiceId);
+      if (!invoice?.id) continue;
+      const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+      const currentExport =
+        metadata?.accounting_export && typeof metadata.accounting_export === "object"
+          ? metadata.accounting_export
+          : {};
+      const nextExport = {
+        exported_at: String(currentExport?.exported_at || "").trim() || exportedAt,
+        exported_by: String(currentExport?.exported_by || "").trim() || actor,
+        export_batch_id: String(currentExport?.export_batch_id || "").trim() || exportBatchId,
+        export_format: String(currentExport?.export_format || "").trim().toLowerCase() || requestedFormat,
+      };
+      const updated = await updateBillingInvoiceFields(env, invoice.id, {
+        metadata: {
+          ...metadata,
+          accounting_export: nextExport,
+        },
+      });
+      await insertBillingInvoiceEvent(env, invoice.id, {
+        event_type: "updated",
+        actor,
+        channel: "accounting",
+        message: "Exported to accounting ledger.",
+        metadata: {
+          accounting_export: nextExport,
+        },
+      });
+      updatedInvoices.push(updated || invoice);
+    }
+    if (!updatedInvoices.length) {
+      return jsonResponse({ error: "No invoices were updated." }, 404);
+    }
+    return jsonResponse({
+      ok: true,
+      batchId: exportBatchId,
+      invoices: buildInvoiceListResponseRows(updatedInvoices),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not export invoices for accounting." }, 500);
   }
 }
 

@@ -1953,6 +1953,14 @@ const adminAgreementPreviewButton = document.getElementById("adminAgreementPrevi
 const adminAgreementSendTestButton = document.getElementById("adminAgreementSendTest");
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
+const adminLedgerMonthFilterSelect = document.getElementById("adminLedgerMonthFilter");
+const adminLedgerKindFilterSelect = document.getElementById("adminLedgerKindFilter");
+const adminLedgerPaidFilterSelect = document.getElementById("adminLedgerPaidFilter");
+const adminLedgerExportFilterSelect = document.getElementById("adminLedgerExportFilter");
+const adminLedgerExportButton = document.getElementById("adminLedgerExportButton");
+const adminLedgerSummary = document.getElementById("adminLedgerSummary");
+const adminLedgerEmpty = document.getElementById("adminLedgerEmpty");
+const adminLedgerList = document.getElementById("adminLedgerList");
 const adminWiseRefreshButton = document.getElementById("adminWiseRefresh");
 const adminWiseSyncButton = document.getElementById("adminWiseSync");
 const adminWiseReceiptList = document.getElementById("adminWiseReceiptList");
@@ -2338,6 +2346,10 @@ let adminBillingBusy = false;
 let adminBillingInvoices = [];
 let adminWiseReceipts = [];
 let adminWiseConfigured = false;
+let adminLedgerMonthFilter = "all";
+let adminLedgerKindFilter = "all";
+let adminLedgerPaidFilter = "all";
+let adminLedgerExportFilter = "all";
 let adminSettingsDraft = {
   carrier_discount_pct: 25,
   client_discount_pct: 20,
@@ -5772,6 +5784,7 @@ async function loadAdminDashboard(options = {}) {
     renderAdminMockDataButton();
     renderAdminClientsList();
     renderAdminInvoiceList();
+    renderAdminSalesLedger();
     renderAdminWiseReceiptList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
@@ -5795,6 +5808,7 @@ async function loadAdminDashboard(options = {}) {
     renderAdminSummary(adminDashboardState?.summary || {});
     renderClientInviteHistory(clientInviteHistory);
     applyAdminSettings(adminDashboardState?.settings || {});
+    await loadAdminInvoices({ quiet: true });
     adminDashboardLoaded = true;
     renderAdminMockDataButton();
     renderAdminClientsList();
@@ -5812,6 +5826,7 @@ async function loadAdminDashboard(options = {}) {
     renderAdminMockDataButton();
     renderAdminClientsList();
     renderAdminInvoiceList();
+    renderAdminSalesLedger();
     renderAdminWiseReceiptList();
     if (!quiet) {
       showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
@@ -5891,6 +5906,7 @@ function setAdminBillingBusy(isBusy) {
   if (adminWiseRefreshButton) adminWiseRefreshButton.disabled = adminBillingBusy;
   if (adminWiseSyncButton) adminWiseSyncButton.disabled = adminBillingBusy;
   renderAdminInvoiceList();
+  renderAdminSalesLedger();
   renderAdminWiseReceiptList();
 }
 
@@ -5982,6 +5998,213 @@ function renderAdminInvoiceList() {
       </div>
     `;
     adminInvoiceList.appendChild(row);
+  });
+}
+
+function getAdminInvoiceSortTimestamp(invoice) {
+  const parsed = Date.parse(
+    String(invoice?.updated_at || invoice?.issued_at || invoice?.sent_at || invoice?.created_at || 0)
+  );
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeAdminInvoiceRows(rows = []) {
+  const nextRows = Array.isArray(rows) ? rows : [];
+  if (!nextRows.length) return adminBillingInvoices;
+  const map = new Map();
+  (Array.isArray(adminBillingInvoices) ? adminBillingInvoices : []).forEach((invoice) => {
+    const id = String(invoice?.id || "").trim();
+    if (id) map.set(id, invoice);
+  });
+  nextRows.forEach((invoice) => {
+    const id = String(invoice?.id || "").trim();
+    if (id) map.set(id, invoice);
+  });
+  adminBillingInvoices = Array.from(map.values()).sort(
+    (left, right) => getAdminInvoiceSortTimestamp(right) - getAdminInvoiceSortTimestamp(left)
+  );
+  renderAdminInvoiceList();
+  renderAdminSalesLedger();
+  return adminBillingInvoices;
+}
+
+function isAdminLedgerInvoiceIssued(invoice) {
+  const status = String(invoice?.status || "").trim().toLowerCase();
+  return Boolean(invoice?.issued_at || invoice?.sent_at || invoice?.paid_at || status !== "draft");
+}
+
+function isAdminLedgerInvoicePaid(invoice) {
+  return Boolean(invoice?.paid_at) || String(invoice?.status || "").trim().toLowerCase() === "paid";
+}
+
+function getAdminLedgerMonthKey(invoice) {
+  const rawDate = String(
+    invoice?.issued_at || invoice?.sent_at || invoice?.created_at || invoice?.updated_at || ""
+  ).trim();
+  if (!rawDate) return "";
+  const parsed = new Date(rawDate);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatAdminLedgerMonthLabel(monthKey) {
+  const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return tr("All months");
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+  return parsed.toLocaleDateString(getUiLocale(), {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatAdminLedgerDate(rawDate) {
+  const parsed = Date.parse(String(rawDate || "").trim());
+  if (!Number.isFinite(parsed)) return "--";
+  return new Date(parsed).toLocaleDateString(getUiLocale(), {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getAdminLedgerKindLabel(invoiceKind) {
+  const normalized = String(invoiceKind || "").trim().toLowerCase();
+  if (normalized === "topup") return "Top-up";
+  if (normalized === "monthly") return "Monthly billing";
+  return "Invoice";
+}
+
+function getAdminLedgerExportState(invoice) {
+  return String(invoice?.accounting_exported_at || "").trim() ? "exported" : "pending";
+}
+
+function getAdminSalesLedgerBaseRows() {
+  return (Array.isArray(adminBillingInvoices) ? adminBillingInvoices : [])
+    .filter((invoice) => invoice && typeof invoice === "object")
+    .filter(isAdminLedgerInvoiceIssued)
+    .sort((left, right) => getAdminInvoiceSortTimestamp(right) - getAdminInvoiceSortTimestamp(left));
+}
+
+function getAdminSalesLedgerRows() {
+  return getAdminSalesLedgerBaseRows().filter((invoice) => {
+    const monthKey = getAdminLedgerMonthKey(invoice);
+    const kind = String(invoice?.invoice_kind || "").trim().toLowerCase();
+    const isPaid = isAdminLedgerInvoicePaid(invoice);
+    const exportState = getAdminLedgerExportState(invoice);
+    if (adminLedgerMonthFilter !== "all" && monthKey !== adminLedgerMonthFilter) return false;
+    if (adminLedgerKindFilter !== "all" && kind !== adminLedgerKindFilter) return false;
+    if (adminLedgerPaidFilter === "paid" && !isPaid) return false;
+    if (adminLedgerPaidFilter === "unpaid" && isPaid) return false;
+    if (adminLedgerExportFilter === "exported" && exportState !== "exported") return false;
+    if (adminLedgerExportFilter === "pending" && exportState !== "pending") return false;
+    return true;
+  });
+}
+
+function renderAdminLedgerMonthOptions() {
+  if (!adminLedgerMonthFilterSelect) return;
+  const monthKeys = Array.from(
+    new Set(
+      getAdminSalesLedgerBaseRows()
+        .map((invoice) => getAdminLedgerMonthKey(invoice))
+        .filter(Boolean)
+    )
+  ).sort((left, right) => right.localeCompare(left));
+  const nextValue =
+    adminLedgerMonthFilter !== "all" && monthKeys.includes(adminLedgerMonthFilter)
+      ? adminLedgerMonthFilter
+      : "all";
+  adminLedgerMonthFilter = nextValue;
+  adminLedgerMonthFilterSelect.innerHTML = [
+    `<option value="all">${escapeHtml(tr("All months"))}</option>`,
+    ...monthKeys.map(
+      (monthKey) =>
+        `<option value="${escapeHtml(monthKey)}">${escapeHtml(formatAdminLedgerMonthLabel(monthKey))}</option>`
+    ),
+  ].join("");
+  adminLedgerMonthFilterSelect.value = nextValue;
+}
+
+function syncAdminLedgerFilterControls() {
+  renderAdminLedgerMonthOptions();
+  if (adminLedgerMonthFilterSelect) adminLedgerMonthFilterSelect.disabled = adminBillingBusy;
+  if (adminLedgerKindFilterSelect) {
+    adminLedgerKindFilterSelect.value = adminLedgerKindFilter;
+    adminLedgerKindFilterSelect.disabled = adminBillingBusy;
+  }
+  if (adminLedgerPaidFilterSelect) {
+    adminLedgerPaidFilterSelect.value = adminLedgerPaidFilter;
+    adminLedgerPaidFilterSelect.disabled = adminBillingBusy;
+  }
+  if (adminLedgerExportFilterSelect) {
+    adminLedgerExportFilterSelect.value = adminLedgerExportFilter;
+    adminLedgerExportFilterSelect.disabled = adminBillingBusy;
+  }
+}
+
+function renderAdminSalesLedger() {
+  if (!adminLedgerList || !adminLedgerEmpty || !adminLedgerSummary || !adminLedgerExportButton) return;
+  syncAdminLedgerFilterControls();
+  const baseRows = getAdminSalesLedgerBaseRows();
+  const rows = getAdminSalesLedgerRows();
+  adminLedgerList.innerHTML = "";
+  const pendingVisibleCount = rows.filter((invoice) => getAdminLedgerExportState(invoice) === "pending").length;
+  const visibleTotal = rows.reduce(
+    (sum, invoice) => sum + Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0),
+    0
+  );
+  adminLedgerSummary.textContent = baseRows.length
+    ? `${rows.length} shown • ${pendingVisibleCount} ready to export • ${formatMoney(visibleTotal)} gross`
+    : "No issued invoices yet.";
+  adminLedgerExportButton.disabled = adminBillingBusy || !rows.length;
+  if (!rows.length) {
+    adminLedgerEmpty.classList.remove("is-hidden");
+    adminLedgerEmpty.textContent = baseRows.length
+      ? "No invoices match the current filters."
+      : "No issued invoices yet.";
+    return;
+  }
+  adminLedgerEmpty.classList.add("is-hidden");
+  rows.forEach((invoice) => {
+    const status = String(invoice?.status || "draft").trim().toLowerCase();
+    const exportState = getAdminLedgerExportState(invoice);
+    const row = document.createElement("article");
+    row.className = "admin-billing-item admin-ledger-item";
+    row.innerHTML = `
+      <div class="admin-billing-item-main">
+        <div class="admin-billing-item-title">
+          <span>${escapeHtml(String(invoice?.reference || "--"))}</span>
+          <span class="admin-billing-status-pill is-${getAdminInvoiceStatusClass(status)}">${escapeHtml(
+            String(invoice?.tracking_label || status || "invoice")
+          )}</span>
+          <span class="admin-billing-status-pill">${escapeHtml(
+            getAdminLedgerKindLabel(invoice?.invoice_kind)
+          )}</span>
+          <span class="admin-billing-status-pill is-${exportState === "exported" ? "exported" : "pending-export"}">${escapeHtml(
+            exportState === "exported" ? "Exported" : "Pending export"
+          )}</span>
+        </div>
+        <div class="admin-billing-item-sub">
+          ${escapeHtml(String(invoice?.company_name || "--"))} • ${escapeHtml(
+      String(invoice?.contact_email || "--")
+    )}
+        </div>
+        <div class="admin-billing-item-sub admin-ledger-row-meta">
+          <span><strong>Issued</strong> ${escapeHtml(formatAdminLedgerDate(invoice?.issued_at || invoice?.sent_at || invoice?.created_at))}</span>
+          <span><strong>${escapeHtml(isAdminLedgerInvoicePaid(invoice) ? "Paid" : "Due")}</strong> ${escapeHtml(
+      formatAdminLedgerDate(isAdminLedgerInvoicePaid(invoice) ? invoice?.paid_at : invoice?.due_at)
+    )}</span>
+          <span><strong>Total</strong> ${escapeHtml(
+      formatMoney(Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0))
+    )}</span>
+          <span><strong>Lines</strong> ${escapeHtml(String(Number(invoice?.line_count) || 0))}</span>
+          <span><strong>Batch</strong> ${escapeHtml(
+      String(invoice?.accounting_export_batch_id || "--")
+    )}</span>
+        </div>
+      </div>
+    `;
+    adminLedgerList.appendChild(row);
   });
 }
 
@@ -6080,15 +6303,17 @@ function syncAdminBillingFromDashboard(payload = null) {
   adminWiseConfigured = billingBlock?.wise?.configured === true;
   adminWiseReceipts = Array.isArray(billingBlock?.wise?.receipts) ? billingBlock.wise.receipts : [];
   renderAdminInvoiceList();
+  renderAdminSalesLedger();
   renderAdminWiseReceiptList();
 }
 
 async function loadAdminInvoices(options = {}) {
   const { quiet = true } = options;
   try {
-    const payload = await fetchApiWithAuth("/api/admin/invoices?limit=120", { timeoutMs: 20000 });
+    const payload = await fetchApiWithAuth("/api/admin/invoices?limit=300", { timeoutMs: 20000 });
     adminBillingInvoices = Array.isArray(payload?.invoices) ? payload.invoices : [];
     renderAdminInvoiceList();
+    renderAdminSalesLedger();
     return adminBillingInvoices;
   } catch (error) {
     if (!quiet) {
@@ -6594,6 +6819,126 @@ async function markAdminInvoicePaid(invoiceId) {
     await loadBillingOverview({ quiet: true });
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not mark invoice as paid."), {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+function buildAdminLedgerBatchId(now = new Date()) {
+  const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
+  return `acct-${iso.slice(0, 10).replace(/-/g, "")}-${iso.slice(11, 19).replace(/:/g, "")}`;
+}
+
+function escapeCsvValue(value) {
+  const text = String(value == null ? "" : value);
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildAdminSalesLedgerCsv(rows = [], options = {}) {
+  const batchId = String(options?.batchId || "").trim();
+  const headers = [
+    "Invoice Number",
+    "Type",
+    "Company",
+    "Contact Email",
+    "Issue Date",
+    "Due Date",
+    "Paid Date",
+    "Status",
+    "Payment Mode",
+    "Subtotal Ex VAT",
+    "VAT",
+    "Total Inc VAT",
+    "Accounting Exported",
+    "Accounting Exported At",
+    "Accounting Export Batch",
+    "Accounting Exported By",
+  ];
+  const lines = [headers.join(",")];
+  rows.forEach((invoice) => {
+    lines.push(
+      [
+        invoice?.reference || "",
+        getAdminLedgerKindLabel(invoice?.invoice_kind),
+        invoice?.company_name || "",
+        invoice?.contact_email || "",
+        invoice?.issued_at || invoice?.sent_at || invoice?.created_at || "",
+        invoice?.due_at || "",
+        invoice?.paid_at || "",
+        invoice?.status || "",
+        invoice?.payment_mode || "",
+        Number(invoice?.subtotal_ex_vat || 0).toFixed(2),
+        Number(invoice?.vat_amount || 0).toFixed(2),
+        Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0).toFixed(2),
+        invoice?.accounting_exported_at ? "yes" : "no",
+        invoice?.accounting_exported_at || "",
+        invoice?.accounting_export_batch_id || batchId,
+        invoice?.accounting_exported_by || "",
+      ].map(escapeCsvValue).join(",")
+    );
+  });
+  return lines.join("\r\n");
+}
+
+function downloadAdminLedgerCsv(filename, csvText) {
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function exportAdminSalesLedger() {
+  if (adminBillingBusy) return;
+  const visibleRows = getAdminSalesLedgerRows();
+  if (!visibleRows.length) return;
+  const batchId = buildAdminLedgerBatchId();
+  const invoiceIdsToMark = visibleRows
+    .filter((invoice) => getAdminLedgerExportState(invoice) === "pending")
+    .map((invoice) => String(invoice?.id || "").trim())
+    .filter(Boolean);
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    if (invoiceIdsToMark.length) {
+      const payload = await fetchApiWithAuth("/api/admin/invoices/accounting-export", {
+        method: "POST",
+        body: JSON.stringify({
+          invoiceIds: invoiceIdsToMark,
+          batchId,
+          format: "csv",
+        }),
+      });
+      mergeAdminInvoiceRows(Array.isArray(payload?.invoices) ? payload.invoices : []);
+    }
+    const invoiceMap = new Map(
+      (Array.isArray(adminBillingInvoices) ? adminBillingInvoices : []).map((invoice) => [
+        String(invoice?.id || "").trim(),
+        invoice,
+      ])
+    );
+    const exportRows = visibleRows.map((invoice) => {
+      const id = String(invoice?.id || "").trim();
+      return invoiceMap.get(id) || invoice;
+    });
+    const csvText = buildAdminSalesLedgerCsv(exportRows, { batchId });
+    const filename = `sales-ledger-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.csv`;
+    downloadAdminLedgerCsv(filename, csvText);
+    setAdminBillingStatus(
+      invoiceIdsToMark.length
+        ? `Exported ${invoiceIdsToMark.length} invoice${invoiceIdsToMark.length === 1 ? "" : "s"} for accounting.`
+        : "Downloaded CSV for already-exported invoices.",
+      { tone: "success" }
+    );
+  } catch (error) {
+    setAdminBillingStatus(error?.message || "Could not export the sales ledger.", {
       tone: "error",
     });
   } finally {
@@ -19909,6 +20254,40 @@ if (adminAgreementPreviewButton) {
 if (adminAgreementSendTestButton) {
   adminAgreementSendTestButton.addEventListener("click", async () => {
     await sendAdminAgreementTestEmail();
+  });
+}
+
+if (adminLedgerMonthFilterSelect) {
+  adminLedgerMonthFilterSelect.addEventListener("change", () => {
+    adminLedgerMonthFilter = String(adminLedgerMonthFilterSelect.value || "all").trim() || "all";
+    renderAdminSalesLedger();
+  });
+}
+
+if (adminLedgerKindFilterSelect) {
+  adminLedgerKindFilterSelect.addEventListener("change", () => {
+    adminLedgerKindFilter = String(adminLedgerKindFilterSelect.value || "all").trim() || "all";
+    renderAdminSalesLedger();
+  });
+}
+
+if (adminLedgerPaidFilterSelect) {
+  adminLedgerPaidFilterSelect.addEventListener("change", () => {
+    adminLedgerPaidFilter = String(adminLedgerPaidFilterSelect.value || "all").trim() || "all";
+    renderAdminSalesLedger();
+  });
+}
+
+if (adminLedgerExportFilterSelect) {
+  adminLedgerExportFilterSelect.addEventListener("change", () => {
+    adminLedgerExportFilter = String(adminLedgerExportFilterSelect.value || "all").trim() || "all";
+    renderAdminSalesLedger();
+  });
+}
+
+if (adminLedgerExportButton) {
+  adminLedgerExportButton.addEventListener("click", async () => {
+    await exportAdminSalesLedger();
   });
 }
 

@@ -1239,6 +1239,54 @@
             </div>
             <div class="admin-billing-invoices">
               <div class="admin-billing-headline">
+                <div>
+                  <div class="invite-result-label">Sales ledger</div>
+                  <div class="admin-ledger-summary" id="adminLedgerSummary">No issued invoices yet.</div>
+                </div>
+                <div class="admin-billing-inline-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminLedgerExportButton">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/></svg>
+                    <span>Export Visible CSV</span>
+                  </button>
+                </div>
+              </div>
+              <div class="admin-ledger-filters">
+                <label class="field admin-ledger-filter">
+                  <span>Month</span>
+                  <select id="adminLedgerMonthFilter">
+                    <option value="all">All months</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Type</span>
+                  <select id="adminLedgerKindFilter">
+                    <option value="all">All invoices</option>
+                    <option value="monthly">Monthly billing</option>
+                    <option value="topup">Top-up</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Paid status</span>
+                  <select id="adminLedgerPaidFilter">
+                    <option value="all">All statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Accounting</span>
+                  <select id="adminLedgerExportFilter">
+                    <option value="all">All exports</option>
+                    <option value="pending">Not exported</option>
+                    <option value="exported">Exported</option>
+                  </select>
+                </label>
+              </div>
+              <div class="admin-billing-empty" id="adminLedgerEmpty">No issued invoices yet.</div>
+              <div class="admin-billing-list admin-ledger-list" id="adminLedgerList"></div>
+            </div>
+            <div class="admin-billing-invoices">
+              <div class="admin-billing-headline">
                 <div class="invite-result-label">Wise reconciliation</div>
                 <div class="admin-billing-inline-actions">
                   <button type="button" class="btn btn-secondary btn-sm" id="adminWiseRefresh">
