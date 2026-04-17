@@ -132,6 +132,7 @@ const ROUTE_PATHS = {
   signupPreview: "/signup-preview",
   account: "/account",
   admin: "/admin",
+  documents: "/documents",
   leads: "/leads",
   history: "/history",
   reports: "/reports",
@@ -1840,6 +1841,7 @@ const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
 const openBuilderPageButton = document.getElementById("openBuilderPage");
 const openAdminPageButton = document.getElementById("openAdminPage");
+const openDocumentsPageButton = document.getElementById("openDocumentsPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
@@ -1856,6 +1858,7 @@ const openAdminSettingsModalButton = document.getElementById("openAdminSettingsM
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
+const documentsPageSection = document.getElementById("documentsPageSection");
 const leadsPageSection = document.getElementById("leadsPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
@@ -1946,7 +1949,6 @@ const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTopupTestButton = document.getElementById("adminBillingSendTopupTest");
-const adminBillingPreviewDocumentsButton = document.getElementById("adminBillingPreviewDocuments");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
 const adminAgreementPreviewButton = document.getElementById("adminAgreementPreview");
@@ -2129,11 +2131,9 @@ const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
 const walletHistoryModal = document.getElementById("walletHistoryModal");
 const walletHistoryClose = document.getElementById("walletHistoryClose");
 const walletHistoryCancel = document.getElementById("walletHistoryCancel");
-const documentLabModal = document.getElementById("documentLabModal");
-const documentLabClose = document.getElementById("documentLabClose");
-const documentLabReceiptPreview = document.getElementById("documentLabReceiptPreview");
-const documentLabMonthlyInvoicePreview = document.getElementById("documentLabMonthlyInvoicePreview");
-const documentLabTopupInvoicePreview = document.getElementById("documentLabTopupInvoicePreview");
+const documentsReceiptPreview = document.getElementById("documentsReceiptPreview");
+const documentsMonthlyInvoicePreview = document.getElementById("documentsMonthlyInvoicePreview");
+const documentsTopupInvoicePreview = document.getElementById("documentsTopupInvoicePreview");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
@@ -2745,6 +2745,9 @@ function parseRouteFromLocation() {
   if (path === ROUTE_PATHS.admin) {
     return { view: "admin" };
   }
+  if (path === ROUTE_PATHS.documents) {
+    return { view: "documents" };
+  }
   if (path === ROUTE_PATHS.leads) {
     return { view: "leads" };
   }
@@ -2768,6 +2771,9 @@ function parseRouteFromLocation() {
   }
   if (hash === "#admin") {
     return { view: "admin" };
+  }
+  if (hash === "#documents") {
+    return { view: "documents" };
   }
   if (hash === "#leads") {
     return { view: "leads" };
@@ -2924,6 +2930,9 @@ function routeToPath(route) {
   }
   if (route.view === "admin") {
     return buildRoutePath(ROUTE_PATHS.admin);
+  }
+  if (route.view === "documents") {
+    return buildRoutePath(ROUTE_PATHS.documents);
   }
   if (route.view === "leads") {
     return buildRoutePath(ROUTE_PATHS.leads);
@@ -5736,6 +5745,9 @@ async function loadAdminAccessStatus(options = {}) {
       if (!adminAccessAllowed && currentMainView === "admin") {
         setAdminPageVisible(false, { replace: true });
       }
+      if (!adminAccessAllowed && currentMainView === "documents") {
+        setDocumentsPageVisible(false, { replace: true });
+      }
       if (!adminAccessAllowed && currentMainView === "leads") {
         setLeadsPageVisible(false, { replace: true });
       }
@@ -5780,6 +5792,9 @@ async function loadAdminDashboard(options = {}) {
     renderAdminWiseReceiptList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
+    }
+    if (currentMainView === "documents") {
+      setDocumentsPageVisible(false, { replace: true });
     }
     if (!quiet) {
       showToast(tr("You are not allowed to access the admin panel."), { tone: "error" });
@@ -5884,9 +5899,6 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
   if (adminBillingSendTopupTestButton) adminBillingSendTopupTestButton.disabled = adminBillingBusy;
-  if (adminBillingPreviewDocumentsButton) {
-    adminBillingPreviewDocumentsButton.disabled = adminBillingBusy;
-  }
   if (adminBillingSendTestSequenceButton) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
@@ -8442,6 +8454,15 @@ function writeCachedAdminAccess(userId, allowed) {
 function syncAdminAccessButtons() {
   const isAuthed = Boolean(currentUser);
   const shouldShow = isAuthed && adminAccessAllowed;
+  if (openDocumentsPageButton) {
+    openDocumentsPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
+    if (adminAccessLoading) {
+      openDocumentsPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openDocumentsPageButton.removeAttribute("aria-busy");
+    }
+    openDocumentsPageButton.classList.toggle("is-hidden", !shouldShow);
+  }
   if (openLeadsPageButton) {
     openLeadsPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
     if (adminAccessLoading) {
@@ -10489,6 +10510,7 @@ function setMainView(view, options = {}) {
   const nextView =
     view === "account" ||
     view === "admin" ||
+    view === "documents" ||
     view === "leads" ||
     view === "history" ||
     view === "reports" ||
@@ -10510,6 +10532,9 @@ function setMainView(view, options = {}) {
     }
     if (adminPageSection) {
       adminPageSection.classList.toggle("is-hidden", nextView !== "admin");
+    }
+    if (documentsPageSection) {
+      documentsPageSection.classList.toggle("is-hidden", nextView !== "documents");
     }
     if (leadsPageSection) {
       leadsPageSection.classList.toggle("is-hidden", nextView !== "leads");
@@ -10533,10 +10558,12 @@ function setMainView(view, options = {}) {
     if (nextView !== "admin") {
       setClientInviteHistoryModalOpen(false);
       setAdminSettingsModalOpen(false);
-      setDocumentLabModalOpen(false);
     }
     if (nextView !== "leads") {
       setLeadCallOutcomeModalOpen(false);
+    }
+    if (nextView === "documents") {
+      renderDocumentsPagePreviews();
     }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
@@ -10558,6 +10585,10 @@ function setMainView(view, options = {}) {
     }
     if (nextView === "admin") {
       updateRoute({ view: "admin" }, { replace });
+      return;
+    }
+    if (nextView === "documents") {
+      updateRoute({ view: "documents" }, { replace });
       return;
     }
     if (nextView === "leads") {
@@ -10584,6 +10615,7 @@ function syncTopbarNavState(view = currentMainView) {
   const nextView =
     view === "account" ||
     view === "admin" ||
+    view === "documents" ||
     view === "leads" ||
     view === "history" ||
     view === "reports" ||
@@ -10593,6 +10625,7 @@ function syncTopbarNavState(view = currentMainView) {
   const navButtons = [
     [openBuilderPageButton, "builder"],
     [openAccountPageButton, "account"],
+    [openDocumentsPageButton, "documents"],
     [openLeadsPageButton, "leads"],
     [openAdminPageButton, "admin"],
     [openHistoryPageButton, "history"],
@@ -10610,6 +10643,10 @@ function setAccountPageVisible(visible, options = {}) {
 
 function setAdminPageVisible(visible, options = {}) {
   setMainView(visible ? "admin" : "builder", options);
+}
+
+function setDocumentsPageVisible(visible, options = {}) {
+  setMainView(visible ? "documents" : "builder", options);
 }
 
 function setLeadsPageVisible(visible, options = {}) {
@@ -10811,17 +10848,6 @@ function setIbanTopupModalOpen(open, options = {}) {
 function setWalletHistoryModalOpen(open) {
   if (!walletHistoryModal) return;
   walletHistoryModal.classList.toggle("is-closed", !open);
-}
-
-function setDocumentLabModalOpen(open) {
-  if (!documentLabModal) return;
-  documentLabModal.classList.toggle("is-closed", !open);
-  if (open) {
-    window.requestAnimationFrame(() => {
-      renderDocumentLabPreviews();
-      documentLabClose?.focus();
-    });
-  }
 }
 
 function populateIbanTopupResult(payload) {
@@ -13425,27 +13451,12 @@ function getAdminDocumentPreviewEmail() {
   ).trim() || "billing@shipide.com";
 }
 
-function renderDocumentLabPreview(container, markup) {
+function renderDocumentsPagePreview(container, markup) {
   if (!container) return;
-  container.innerHTML = `<div class="document-lab-preview-inner">${markup}</div>`;
+  container.innerHTML = markup;
 }
 
-function syncDocumentLabPreviewLayout() {
-  const previews = [
-    documentLabReceiptPreview,
-    documentLabMonthlyInvoicePreview,
-    documentLabTopupInvoicePreview,
-  ];
-  previews.forEach((preview) => {
-    if (!(preview instanceof HTMLElement)) return;
-    const availableWidth = Math.max(220, preview.clientWidth - 24);
-    const scale = Math.min(1, Math.max(0.24, availableWidth / 860));
-    preview.style.setProperty("--document-preview-scale", scale.toFixed(4));
-    preview.style.height = `${Math.round((860 * 297 / 210) * scale)}px`;
-  });
-}
-
-function renderDocumentLabPreviews() {
+function renderDocumentsPagePreviews() {
   const previewEmail = getAdminDocumentPreviewEmail();
   const receiptViewModel = buildAdminTestReceiptViewModel(previewEmail);
   const monthlyInvoiceViewModel = buildAdminTestInvoiceViewModel(previewEmail);
@@ -13453,8 +13464,8 @@ function renderDocumentLabPreviews() {
     buildAdminTestTopupInvoiceRecord(previewEmail)
   );
 
-  renderDocumentLabPreview(
-    documentLabReceiptPreview,
+  renderDocumentsPagePreview(
+    documentsReceiptPreview,
     buildReceiptPageHtml(receiptViewModel, {
       rowIndices: receiptViewModel.labels.map((_, index) => index),
       showHeader: true,
@@ -13464,17 +13475,14 @@ function renderDocumentLabPreviews() {
       showDisclaimer: true,
     })
   );
-  renderDocumentLabPreview(
-    documentLabMonthlyInvoicePreview,
+  renderDocumentsPagePreview(
+    documentsMonthlyInvoicePreview,
     buildInvoiceDocumentHtmlFromViewModel(monthlyInvoiceViewModel)
   );
-  renderDocumentLabPreview(
-    documentLabTopupInvoicePreview,
+  renderDocumentsPagePreview(
+    documentsTopupInvoicePreview,
     buildInvoiceDocumentHtmlFromViewModel(topupInvoiceViewModel)
   );
-  window.requestAnimationFrame(() => {
-    syncDocumentLabPreviewLayout();
-  });
 }
 
 async function prepareInvoicePdfVariantsForEmail(invoiceRecord) {
@@ -16804,6 +16812,9 @@ async function initializeAuth() {
     setMainView("account", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "admin") {
     setMainView("admin", { push: false, animate: false });
+  } else if (isAppAuthed && initialRoute.view === "documents") {
+    setMainView("documents", { push: false, animate: false });
+    void loadAdminAccessStatus({ quiet: true });
   } else if (isAppAuthed && initialRoute.view === "leads") {
     setMainView("leads", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "history") {
@@ -19038,6 +19049,17 @@ if (openAdminPageButton) {
   });
 }
 
+if (openDocumentsPageButton) {
+  openDocumentsPageButton.addEventListener("click", async () => {
+    const hasAccess = await loadAdminAccessStatus({ quiet: true });
+    if (!hasAccess) {
+      showToast(tr("You are not allowed to access document previews."), { tone: "error" });
+      return;
+    }
+    setDocumentsPageVisible(true);
+  });
+}
+
 if (openLeadsPageButton) {
   openLeadsPageButton.addEventListener("click", async () => {
     const hasAccess = await loadAdminAccessStatus({ quiet: true });
@@ -19386,12 +19408,6 @@ if (adminBillingSendTestButton) {
 if (adminBillingSendTopupTestButton) {
   adminBillingSendTopupTestButton.addEventListener("click", async () => {
     await sendAdminTopupBillingTestEmail();
-  });
-}
-
-if (adminBillingPreviewDocumentsButton) {
-  adminBillingPreviewDocumentsButton.addEventListener("click", () => {
-    setDocumentLabModalOpen(true);
   });
 }
 
@@ -19998,26 +20014,6 @@ if (walletHistoryModal) {
   });
 }
 
-if (documentLabClose) {
-  documentLabClose.addEventListener("click", () => {
-    setDocumentLabModalOpen(false);
-  });
-}
-
-if (documentLabModal) {
-  documentLabModal.addEventListener("click", (event) => {
-    if (event.target === documentLabModal) {
-      setDocumentLabModalOpen(false);
-    }
-  });
-}
-
-window.addEventListener("resize", () => {
-  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) {
-    syncDocumentLabPreviewLayout();
-  }
-});
-
 if (ibanTopupRequest) {
   ibanTopupRequest.addEventListener("click", (event) => {
     event.preventDefault();
@@ -20062,7 +20058,6 @@ document.addEventListener("keydown", (event) => {
   if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) return;
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) return;
-  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) return;
   if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -20098,10 +20093,6 @@ document.addEventListener("keydown", (event) => {
   }
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
     setAdminSettingsModalOpen(false);
-    return;
-  }
-  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) {
-    setDocumentLabModalOpen(false);
     return;
   }
   if (labelConfirmModal && !labelConfirmModal.classList.contains("is-closed")) {
@@ -22103,6 +22094,12 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     if (route.view === "admin") {
       setMainView("admin", { push: false });
       loadAdminDashboard({ quiet: true });
+      return;
+    }
+
+    if (route.view === "documents") {
+      setMainView("documents", { push: false });
+      loadAdminAccessStatus({ quiet: true });
       return;
     }
 
