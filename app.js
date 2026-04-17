@@ -12507,6 +12507,7 @@ function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
   const settlementHeight = Math.max(0, Number(options?.settlementHeight) || 0);
   const settlementGap = Math.max(0, Number(options?.settlementGap) || 0);
   const settlementBudget = settlementHeight > 0 ? settlementHeight + settlementGap : 0;
+  const rowHeightByIndex = new Map(rows.map((row) => [row.index, row.height]));
 
   if (!rows.length) {
     return [{ firstPage: true, rows: [], hasSettlement: true }];
@@ -12544,24 +12545,27 @@ function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
   const settlementRows = [];
   let settlementRowsHeight = 0;
   const minimumRowsToKeep = pages.length === 0 ? 1 : 0;
+  const targetSettlementRows = 3;
 
-  while (currentRows.length > minimumRowsToKeep) {
-    const candidateIndex = currentRows[currentRows.length - 1];
-    const candidateMetric = rows.find((row) => row.index === candidateIndex);
-    const candidateHeight = candidateMetric?.height || 0;
-    if (
-      settlementRows.length
-      && settlementRowsHeight + candidateHeight > maxRowsOnSettlementPageBudget
-    ) {
-      break;
+  const moveTrailingRowToSettlement = (sourceRows = [], minRowsToKeep = 0) => {
+    if (!Array.isArray(sourceRows) || sourceRows.length <= minRowsToKeep) {
+      return false;
     }
-    if (!settlementRows.length && candidateHeight > maxRowsOnSettlementPageBudget) {
-      break;
+    const candidateIndex = sourceRows[sourceRows.length - 1];
+    const candidateHeight = rowHeightByIndex.get(candidateIndex) || 0;
+    if (
+      (settlementRows.length && settlementRowsHeight + candidateHeight > maxRowsOnSettlementPageBudget)
+      || (!settlementRows.length && candidateHeight > maxRowsOnSettlementPageBudget)
+    ) {
+      return false;
     }
     settlementRows.unshift(candidateIndex);
     settlementRowsHeight += candidateHeight;
-    currentRows.pop();
-  }
+    sourceRows.pop();
+    return true;
+  };
+
+  while (moveTrailingRowToSettlement(currentRows, minimumRowsToKeep)) {}
 
   if (currentRows.length) {
     pages.push({
@@ -12569,6 +12573,25 @@ function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
       rows: currentRows,
       hasSettlement: false,
     });
+  }
+
+  for (
+    let pageIndex = pages.length - 1;
+    pageIndex >= 0 && settlementRows.length < targetSettlementRows;
+    pageIndex -= 1
+  ) {
+    const sourcePage = pages[pageIndex];
+    if (!Array.isArray(sourcePage?.rows) || !sourcePage.rows.length) {
+      continue;
+    }
+    const minRowsToKeepOnSourcePage = pageIndex === 0 ? 1 : 0;
+    while (
+      settlementRows.length < targetSettlementRows
+      && moveTrailingRowToSettlement(sourcePage.rows, minRowsToKeepOnSourcePage)
+    ) {}
+    if (!sourcePage.rows.length) {
+      pages.splice(pageIndex, 1);
+    }
   }
 
   pages.push({
@@ -12915,7 +12938,7 @@ async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt
 
       const scaleFactor = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
       const h2cOpts = {
-        backgroundColor: "#0b1018",
+        backgroundColor: "#00060f",
         scale: scaleFactor,
         useCORS: true,
         logging: false,
@@ -13242,7 +13265,7 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
 
       const scaleFactor = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
       const h2cOpts = {
-        backgroundColor: "#0b1018",
+        backgroundColor: "#00060f",
         scale: scaleFactor,
         useCORS: true,
         logging: false,
@@ -13274,7 +13297,7 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
       const usableH = pageHeight - margin * 2;
 
       const paintBg = () => {
-        pdf.setFillColor(0, 0, 0);
+        pdf.setFillColor(0, 6, 15);
         pdf.rect(0, 0, pageWidth, pageHeight, "F");
       };
       const toPt = (canvasPx) => (canvasPx * cW) / fullCanvas.width;

@@ -6480,7 +6480,7 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
       html, body {
         margin: 0;
         padding: 0;
-        background: #000000;
+        background: #00060f;
       }
       body {
         color: #f1f4fb;
@@ -6489,7 +6489,7 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
         print-color-adjust: exact;
       }
       body.invoice-native-print-view {
-        background: #000000;
+        background: #00060f;
         color: #f1f4fb;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
