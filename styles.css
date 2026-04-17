@@ -2496,6 +2496,7 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   width: 26px;
   height: 26px;
   border: 1px solid var(--stroke);
@@ -2511,6 +2512,7 @@ body.is-auth-view {
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
+  transition: opacity 0.18s ease, transform 0.18s ease, color 0.18s ease;
 }
 
 .account-reference-action:hover,
@@ -2519,6 +2521,35 @@ body.is-auth-view {
   border-color: rgba(255, 255, 255, 0.28);
   background: rgba(255, 255, 255, 0.06);
   transform: translateY(-1px);
+}
+
+.account-reference-action .btn-inline-loader--overlay {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  transform: scale(0.86);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.account-reference-action .btn-inline-loader--overlay .btn-inline-loader-bar {
+  width: 3px;
+  height: 3px;
+  border-radius: 0.5px;
+}
+
+.account-reference-action.is-loading svg {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.account-reference-action.is-loading .btn-inline-loader--overlay {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .account-billing-empty {

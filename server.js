@@ -2632,6 +2632,60 @@ async function handleDocumentsPreviewSendTestEmail(req, res) {
   }
 }
 
+async function proxyAuthenticatedPdfRender(req, res, targetPath) {
+  const bearerToken = getBearerToken(req);
+  if (!bearerToken) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let rawBody = "";
+  try {
+    rawBody = await readTextBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error?.message || "Invalid request body." });
+    return;
+  }
+  try {
+    const response = await fetch(`${getPublicAppUrl(req)}${targetPath}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        "Content-Type": "application/json",
+      },
+      body: rawBody || "{}",
+    });
+    const contentType = String(response.headers.get("content-type") || "").trim();
+    if (!response.ok || !/application\/pdf/i.test(contentType)) {
+      const payload = await response.json().catch(() => ({}));
+      sendJson(
+        res,
+        response.status,
+        payload && typeof payload === "object"
+          ? payload
+          : { error: "Could not render PDF through production renderer." }
+      );
+      return;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    send(
+      res,
+      200,
+      {
+        "Content-Type": contentType || "application/pdf",
+        "Content-Disposition":
+          String(response.headers.get("content-disposition") || "").trim()
+          || 'inline; filename="document.pdf"',
+        "Cache-Control": "no-store",
+      },
+      Buffer.from(arrayBuffer)
+    );
+  } catch (error) {
+    sendJson(res, 502, {
+      error: error?.message || "Could not reach the production PDF renderer.",
+    });
+  }
+}
+
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
   const invoiceEnabled = raw.invoice_enabled === true;
@@ -13829,6 +13883,14 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/invoices/detail" && req.method === "GET") {
     await handleBillingInvoiceDetail(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/billing/render-invoice-pdf" && req.method === "POST") {
+    await proxyAuthenticatedPdfRender(req, res, "/api/billing/render-invoice-pdf");
+    return true;
+  }
+  if (pathname === "/api/billing/render-receipt-pdf" && req.method === "POST") {
+    await proxyAuthenticatedPdfRender(req, res, "/api/billing/render-receipt-pdf");
     return true;
   }
   if (pathname === "/api/billing/topups/request" && req.method === "POST") {

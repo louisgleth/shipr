@@ -391,6 +391,9 @@ export default {
       if (pathname === "/api/billing/render-invoice-pdf" && request.method === "POST") {
         return handleBillingInvoicePdfRender(request, env);
       }
+      if (pathname === "/api/billing/render-receipt-pdf" && request.method === "POST") {
+        return handleBillingReceiptPdfRender(request, env);
+      }
       if (pathname === "/api/billing/render-invoice-pdf-batch" && request.method === "POST") {
         return handleBillingInvoicePdfRenderBatch(request, env);
       }
@@ -6622,6 +6625,127 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
 </html>`;
 }
 
+function buildReceiptPrintDocumentHtml(env, payload = {}, options = {}) {
+  const publicAppUrl = getPublicAppUrl(env, options?.request || null);
+  const safeFilename =
+    String(payload?.filename || "receipt-shipide.pdf").trim()
+    || "receipt-shipide.pdf";
+  const viewModelScript = payload?.viewModel && typeof payload.viewModel === "object"
+    ? `const printViewModel = ${serializeForInlineScript(payload.viewModel)};`
+    : "const printViewModel = null;";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeFilename}</title>
+    <base href="${publicAppUrl}/" />
+    <link rel="stylesheet" href="${publicAppUrl}/styles.css" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #00060f;
+      }
+      body {
+        color: #f1f4fb;
+        -webkit-font-smoothing: antialiased;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body.invoice-native-print-view {
+        background: #00060f;
+        color: #f1f4fb;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .receipt-export-host {
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        width: 210mm !important;
+        margin: 0 auto !important;
+        pointer-events: auto !important;
+        z-index: auto !important;
+      }
+      #receiptDocument {
+        width: 210mm;
+        margin: 0 auto;
+        min-height: 297mm;
+      }
+      #receiptDocument.receipt-print-pages {
+        display: block;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document {
+        width: 210mm !important;
+        height: 297mm !important;
+        min-height: 297mm !important;
+        margin: 0 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        break-after: page;
+        page-break-after: always;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document > .receipt-sheet {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+      #receiptDocument .receipt-table-wrap {
+        overflow: visible !important;
+        max-height: none !important;
+      }
+      @page {
+        size: A4;
+        margin: 0;
+      }
+    </style>
+    <script>
+      window.__SHIPIDE_INVOICE_PRINT_MODE__ = true;
+      window.__SHIPIDE_PRINT_READY__ = false;
+      window.__SHIPIDE_PRINT_ERROR__ = "";
+    </script>
+  </head>
+  <body class="invoice-native-print-view">
+    <div class="receipt-export-host" aria-hidden="true">
+      <div id="receiptDocument" class="receipt-document"></div>
+    </div>
+    <script src="${publicAppUrl}/app.js"></script>
+    <script>
+      ${viewModelScript}
+
+      const waitForRenderer = async () => {
+        for (let index = 0; index < 200; index += 1) {
+          if (window.__shipideDocumentRenderer) return window.__shipideDocumentRenderer;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        throw new Error("Receipt renderer did not load.");
+      };
+
+      const boot = async () => {
+        try {
+          const renderer = await waitForRenderer();
+          await renderer.renderReceiptPrintViewModel(printViewModel);
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready.catch(() => {});
+          }
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          window.__SHIPIDE_PRINT_READY__ = true;
+        } catch (error) {
+          window.__SHIPIDE_PRINT_ERROR__ = String(error && error.message ? error.message : error || "Print render failed.");
+        }
+      };
+
+      void boot();
+    </script>
+  </body>
+</html>`;
+}
+
 async function renderSelectableInvoicePdfOnPage(page, env, payload = {}, options = {}) {
   await page.setContent(buildInvoicePrintDocumentHtml(env, payload, options), {
     waitUntil: "networkidle0",
@@ -6654,6 +6778,36 @@ async function renderSelectableInvoicePdfOnPage(page, env, payload = {}, options
   };
 }
 
+async function renderSelectableReceiptPdfOnPage(page, env, payload = {}, options = {}) {
+  await page.setContent(buildReceiptPrintDocumentHtml(env, payload, options), {
+    waitUntil: "networkidle0",
+  });
+  await page.waitForFunction(
+    () => window.__SHIPIDE_PRINT_READY__ === true || Boolean(window.__SHIPIDE_PRINT_ERROR__),
+    { timeout: 60000 }
+  );
+  const printError = await page.evaluate(() => String(window.__SHIPIDE_PRINT_ERROR__ || "").trim());
+  if (printError) {
+    throw new Error(printError);
+  }
+  await page.emulateMediaType("print");
+  const pdfBytes = await page.pdf({
+    format: "A4",
+    printBackground: true,
+    preferCSSPageSize: true,
+    margin: {
+      top: "0",
+      right: "0",
+      bottom: "0",
+      left: "0",
+    },
+  });
+  return {
+    bytes: pdfBytes,
+    filename: String(payload?.filename || "receipt-shipide.pdf").trim() || "receipt-shipide.pdf",
+  };
+}
+
 async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
   if (!env?.BROWSER) {
     throw new Error("Cloudflare Browser Rendering is not configured.");
@@ -6665,6 +6819,26 @@ async function renderSelectableInvoicePdf(env, payload = {}, options = {}) {
       page = await browser.newPage();
       await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
       return await renderSelectableInvoicePdfOnPage(page, env, payload, options);
+    } finally {
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      await browser.close().catch(() => {});
+    }
+  });
+}
+
+async function renderSelectableReceiptPdf(env, payload = {}, options = {}) {
+  if (!env?.BROWSER) {
+    throw new Error("Cloudflare Browser Rendering is not configured.");
+  }
+  return enqueueInvoiceBrowserRender(async () => {
+    const browser = await launchInvoiceBrowserWithRetry(env);
+    let page = null;
+    try {
+      page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
+      return await renderSelectableReceiptPdfOnPage(page, env, payload, options);
     } finally {
       if (page) {
         await page.close().catch(() => {});
@@ -12715,6 +12889,43 @@ async function handleBillingInvoicePdfRender(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not render invoice PDF." }, 500);
+  }
+}
+
+async function handleBillingReceiptPdfRender(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const viewModel = body?.viewModel && typeof body.viewModel === "object" ? body.viewModel : null;
+  const filename = String(body?.filename || "receipt-shipide.pdf").trim() || "receipt-shipide.pdf";
+  if (!viewModel) {
+    return jsonResponse({ error: "Receipt view model is required." }, 400);
+  }
+  try {
+    const rendered = await renderSelectableReceiptPdf(
+      env,
+      {
+        viewModel,
+        filename,
+      },
+      { request }
+    );
+    return new Response(rendered.bytes, {
+      status: 200,
+      headers: noStoreHeaders({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${rendered.filename}"`,
+      }),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not render receipt PDF." }, 500);
   }
 }
 

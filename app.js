@@ -6280,14 +6280,18 @@ async function sendAdminDocumentPreviewTriplet() {
     const exports = await Promise.all([
       buildReceiptPdfExportFromViewModel(
         receiptViewModel,
-        "preview-receipt-long-list.pdf"
+        "preview-receipt-long-list.pdf",
+        {
+          preferServerRender: true,
+          allowRasterFallback: false,
+        }
       ),
       buildInvoicePdfExportFromViewModel(
         monthlyInvoiceViewModel,
         "preview-monthly-invoice-long-list.pdf",
         {
           preferServerRender: true,
-          allowRasterFallback: true,
+          allowRasterFallback: false,
         }
       ),
       buildInvoicePdfExportFromViewModel(
@@ -6295,7 +6299,7 @@ async function sendAdminDocumentPreviewTriplet() {
         "preview-topup-invoice-long-list.pdf",
         {
           preferServerRender: true,
-          allowRasterFallback: true,
+          allowRasterFallback: false,
         }
       ),
     ]);
@@ -12696,6 +12700,93 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
   }
 }
 
+async function buildPaginatedReceiptPageConfigs(viewModel) {
+  if (!receiptDocument || !viewModel) {
+    return [
+      {
+        firstPage: true,
+        rows: Array.isArray(viewModel?.labels) ? viewModel.labels.map((_, index) => index) : [],
+        hasDisclaimer: true,
+      },
+    ];
+  }
+
+  const allRows = Array.isArray(viewModel.labels) ? viewModel.labels.map((_, index) => index) : [];
+  const previousMarkup = receiptDocument.innerHTML;
+  const previousClassName = receiptDocument.className;
+
+  try {
+    receiptDocument.className = "receipt-document";
+    receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
+      rowIndices: allRows,
+      showHeader: true,
+      showTableCard: true,
+      showSectionHead: true,
+      showColumnHead: true,
+      showDisclaimer: true,
+    });
+    await waitForAnimationFrame();
+
+    const measurementPage = receiptDocument;
+    if (!measurementPage) {
+      return [{ firstPage: true, rows: allRows, hasDisclaimer: true }];
+    }
+
+    const regions = measureReceiptRegions(measurementPage, 1);
+    const bodyNode = measurementPage.querySelector(".receipt-sheet-body");
+    const footerNode = measurementPage.querySelector(".receipt-footer");
+    const bodyRect = bodyNode?.getBoundingClientRect();
+    const footerRect = footerNode?.getBoundingClientRect();
+    const footerGap = 8;
+    const contentBudget =
+      bodyRect && footerRect
+        ? Math.max(0, footerRect.top - bodyRect.top - footerGap)
+        : Math.max(0, bodyRect?.height || 0);
+
+    if (!contentBudget || !regions.rows.length) {
+      return [{ firstPage: true, rows: allRows, hasDisclaimer: true }];
+    }
+
+    const headerPx = regions.headerH;
+    const tableGapPx = regions.tableGapY;
+    const tableSectionHeadPx = regions.tableSectionHeadH;
+    const theadPx = regions.theadH;
+    const disclaimerPx = regions.disclaimer ? regions.disclaimer.h : 0;
+    const pages = [];
+    let rowIdx = 0;
+    const rowCount = regions.rows.length;
+    let budget = contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx;
+    let pageRows = [];
+
+    while (rowIdx < rowCount) {
+      const rowPx = regions.rows[rowIdx]?.h || 0;
+      if (rowPx <= budget) {
+        pageRows.push(rowIdx);
+        budget -= rowPx;
+        rowIdx += 1;
+      } else {
+        pages.push({ firstPage: pages.length === 0, rows: pageRows, hasDisclaimer: false });
+        pageRows = [];
+        budget = contentBudget - theadPx;
+      }
+    }
+
+    const isFirstPage = pages.length === 0;
+    const forceInlineDisclaimer = rowCount <= 1 && isFirstPage;
+    if (forceInlineDisclaimer || disclaimerPx + 4 <= budget) {
+      pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: true });
+    } else {
+      pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: false });
+      pages.push({ firstPage: false, rows: [], hasDisclaimer: true });
+    }
+
+    return pages;
+  } finally {
+    receiptDocument.className = previousClassName;
+    receiptDocument.innerHTML = previousMarkup;
+  }
+}
+
 async function renderInvoicePrintDocumentFromViewModel(viewModel) {
   if (!viewModel) {
     throw new Error("Invoice print view model is required.");
@@ -12742,6 +12833,50 @@ async function renderInvoicePrintDocumentFromViewModel(viewModel) {
   return receiptDocument.innerHTML;
 }
 
+async function renderReceiptPrintDocumentFromViewModel(viewModel) {
+  if (!viewModel) {
+    throw new Error("Receipt print view model is required.");
+  }
+  if (!receiptDocument) {
+    throw new Error("Receipt print container is missing.");
+  }
+  const pages = await buildPaginatedReceiptPageConfigs(viewModel);
+  if (pages.length <= 1) {
+    const pageConfig = pages[0] || {
+      firstPage: true,
+      rows: Array.isArray(viewModel.labels) ? viewModel.labels.map((_, index) => index) : [],
+      hasDisclaimer: true,
+    };
+    receiptDocument.className = "receipt-document";
+    receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
+      rowIndices: pageConfig.rows,
+      showHeader: pageConfig.firstPage,
+      showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+      showSectionHead: pageConfig.firstPage,
+      showColumnHead: true,
+      showDisclaimer: Boolean(pageConfig.hasDisclaimer),
+    });
+    return receiptDocument.outerHTML;
+  }
+
+  receiptDocument.className = "receipt-print-pages";
+  receiptDocument.innerHTML = pages
+    .map((pageConfig) =>
+      wrapReceiptPageDocumentHtml(
+        buildReceiptPageHtml(viewModel, {
+          rowIndices: pageConfig.rows,
+          showHeader: pageConfig.firstPage,
+          showTableCard: pageConfig.firstPage || pageConfig.rows.length > 0,
+          showSectionHead: pageConfig.firstPage,
+          showColumnHead: true,
+          showDisclaimer: Boolean(pageConfig.hasDisclaimer),
+        })
+      )
+    )
+    .join("");
+  return receiptDocument.innerHTML;
+}
+
 if (typeof window !== "undefined") {
   window.__shipideInvoiceRenderer = {
     renderViewModel: renderInvoiceViewModel,
@@ -12753,6 +12888,7 @@ if (typeof window !== "undefined") {
     buildInvoiceViewModelFromBillingInvoice: buildBillingInvoiceViewModel,
     buildInvoiceDocumentHtmlFromViewModel,
     buildReceiptPageHtml,
+    renderReceiptPrintViewModel: renderReceiptPrintDocumentFromViewModel,
     buildInvoicePdfExportFromViewModel,
     buildReceiptPdfExportFromViewModel,
   };
@@ -12861,6 +12997,8 @@ function setPdfActionBusy(triggerButton, isBusy, options = {}) {
   if (!triggerButton) return () => {};
   const idleLabel = String(options?.idleLabel || "").trim();
   const busyLabel = String(options?.busyLabel || "").trim();
+  const loaderMode = String(triggerButton.dataset.inlineLoaderMode || "").trim().toLowerCase();
+  const useOverlayLoader = loaderMode === "overlay";
   const label = Array.from(triggerButton.children).find(
     (child) => child.tagName === "SPAN" && !child.classList.contains("btn-inline-loader")
   ) || null;
@@ -12869,36 +13007,40 @@ function setPdfActionBusy(triggerButton, isBusy, options = {}) {
   let loader = triggerButton.querySelector(".btn-inline-loader");
   triggerButton.disabled = Boolean(isBusy);
   triggerButton.classList.toggle("is-loading", Boolean(isBusy));
-  if (icon) {
-    icon.hidden = Boolean(isBusy);
-  }
   if (!loader) {
     loader = document.createElement("span");
-    loader.className = "btn-inline-loader is-hidden";
+    loader.className = `btn-inline-loader${useOverlayLoader ? " btn-inline-loader--overlay" : ""} is-hidden`;
     loader.setAttribute("aria-hidden", "true");
     for (let index = 0; index < 3; index += 1) {
       const bar = document.createElement("span");
       bar.className = "btn-inline-loader-bar";
       loader.appendChild(bar);
     }
-    if (label) {
+    if (useOverlayLoader) {
+      triggerButton.appendChild(loader);
+    } else if (label) {
       triggerButton.insertBefore(loader, label);
     } else {
       triggerButton.appendChild(loader);
     }
   }
-  loader.classList.toggle("is-hidden", !isBusy);
+  if (icon && !useOverlayLoader) {
+    icon.hidden = Boolean(isBusy);
+  }
+  loader.classList.toggle("is-hidden", !isBusy && !useOverlayLoader);
+  loader.setAttribute("aria-hidden", isBusy ? "false" : "true");
   if (label) {
     label.textContent = isBusy ? (busyLabel || originalLabel) : (idleLabel || originalLabel);
   }
   return () => {
     triggerButton.disabled = false;
     triggerButton.classList.remove("is-loading");
-    if (icon) {
+    if (icon && !useOverlayLoader) {
       icon.hidden = false;
     }
     if (loader) {
-      loader.classList.add("is-hidden");
+      loader.classList.toggle("is-hidden", !useOverlayLoader);
+      loader.setAttribute("aria-hidden", "true");
     }
     if (label) {
       label.textContent = idleLabel || originalLabel;
@@ -12927,8 +13069,29 @@ function openReceiptPdfTarget(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt-shipide.pdf") {
+async function buildReceiptPdfExportFromViewModel(
+  viewModel,
+  filename = "receipt-shipide.pdf",
+  options = {}
+) {
   if (!viewModel) return null;
+  const allowRasterFallback = options?.allowRasterFallback === true;
+  const preferServerRender = options?.preferServerRender !== false;
+  if (preferServerRender) {
+    try {
+      const renderedPdf = await requestSelectableReceiptPdf(viewModel, filename);
+      if (renderedPdf?.blob) {
+        return renderedPdf;
+      }
+      if (!allowRasterFallback) {
+        throw new Error(tr("Could not generate the approved receipt PDF."));
+      }
+    } catch (error) {
+      if (!allowRasterFallback) {
+        throw error;
+      }
+    }
+  }
   const previousMarkup = receiptDocument ? receiptDocument.innerHTML : "";
   if (receiptDocument) {
     receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
@@ -13029,9 +13192,11 @@ async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt
           }
         }
 
-        /* check if disclaimer fits on current page */
+        /* Keep single-label receipts together so the billing notice stays
+           visually attached to the generated-label section. */
         const isFirstPage = pages.length === 0;
-        if (disclaimerPt + 4 <= budget) {
+        const forceInlineDisclaimer = rowCount <= 1 && isFirstPage;
+        if (forceInlineDisclaimer || disclaimerPt + 4 <= budget) {
           pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: true });
         } else {
           pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: false });
@@ -13112,13 +13277,19 @@ async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt
 async function buildReceiptPdfExport() {
   if (!accountActiveRecord) return;
   const viewModel = buildReceiptViewModel(accountActiveRecord);
-  return buildReceiptPdfExportFromViewModel(viewModel, getReceiptPdfFilename());
+  return buildReceiptPdfExportFromViewModel(viewModel, getReceiptPdfFilename(), {
+    preferServerRender: true,
+    allowRasterFallback: false,
+  });
 }
 
 async function buildInvoicePdfExport() {
   if (!accountActiveRecord) return;
   const viewModel = buildInvoiceViewModel(accountActiveRecord);
-  return buildInvoicePdfExportFromViewModel(viewModel, getInvoicePdfFilename());
+  return buildInvoicePdfExportFromViewModel(viewModel, getInvoicePdfFilename(), {
+    preferServerRender: true,
+    allowRasterFallback: false,
+  });
 }
 
 async function requestSelectableInvoicePdf(viewModel, filename) {
@@ -13129,6 +13300,30 @@ async function requestSelectableInvoicePdf(viewModel, filename) {
     return null;
   }
   const response = await fetchApiBlobWithAuth("/api/billing/render-invoice-pdf", {
+    method: "POST",
+    timeoutMs: 120000,
+    body: JSON.stringify({
+      viewModel,
+      filename,
+    }),
+  });
+  if (!response?.blob) {
+    return null;
+  }
+  return {
+    blob: response.blob,
+    filename,
+  };
+}
+
+async function requestSelectableReceiptPdf(viewModel, filename) {
+  if (
+    !viewModel
+    || (typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)
+  ) {
+    return null;
+  }
+  const response = await fetchApiBlobWithAuth("/api/billing/render-receipt-pdf", {
     method: "POST",
     timeoutMs: 120000,
     body: JSON.stringify({
@@ -13246,7 +13441,7 @@ function drawInvoicePdfTextLayer(pdf, snapshot, layout = {}) {
 
 async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice-shipide.pdf", options = {}) {
   if (!viewModel) return null;
-  const allowRasterFallback = options?.allowRasterFallback !== false;
+  const allowRasterFallback = options?.allowRasterFallback === true;
   const preferServerRender = options?.preferServerRender !== false;
   if (preferServerRender) {
     try {
@@ -18500,7 +18695,7 @@ function renderTopupReferenceHistory() {
       </div>
       <div class="account-reference-side">
         ${canDownloadInvoice && rowId
-          ? `<button type="button" class="account-reference-action" data-topup-invoice-id="${escapeHtml(rowId)}" aria-label="${escapeHtml(tr("Download Invoice"))}" title="${escapeHtml(tr("Download Invoice"))}">
+          ? `<button type="button" class="account-reference-action" data-inline-loader-mode="overlay" data-topup-invoice-id="${escapeHtml(rowId)}" aria-label="${escapeHtml(tr("Download Invoice"))}" title="${escapeHtml(tr("Download Invoice"))}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
                 <path d="M12 4v10"></path>
                 <polyline points="8 11 12 15 16 11"></polyline>
