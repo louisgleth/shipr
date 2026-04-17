@@ -433,7 +433,7 @@ export default {
     }
     try {
       const topupInvoiceBackfill = await runCreditedTopupInvoiceBackfill(env, {
-        limit: 50,
+        limit: 1,
         publicAppUrl: getPublicAppUrl(env),
       });
       if (topupInvoiceBackfill?.sent || topupInvoiceBackfill?.failed) {
@@ -3450,12 +3450,19 @@ async function listRecentCreditedTopupsForInvoiceBackfill(
 
 async function runCreditedTopupInvoiceBackfill(
   env,
-  { limit = 40, publicAppUrl = "", logger = console } = {}
+  { limit = 1, publicAppUrl = "", logger = console } = {}
 ) {
   const topups = await listRecentCreditedTopupsForInvoiceBackfill(env, {
     limit,
     allowMissing: true,
-  });
+  }).then((rows) =>
+    (Array.isArray(rows) ? rows : []).filter((topup) => {
+      const metadata = topup?.metadata && typeof topup.metadata === "object" ? topup.metadata : {};
+      const invoiceKind = String(metadata?.invoice_kind || "").trim().toLowerCase();
+      const invoiceId = String(metadata?.invoice_id || "").trim();
+      return !invoiceId || invoiceKind !== "topup";
+    })
+  );
   const summary = {
     scanned: topups.length,
     attempted: 0,
@@ -12300,7 +12307,7 @@ async function handleAdminWiseSync(request, env) {
       actor: normalizeEmail(user.email || "") || user.id,
     });
     const topupInvoiceBackfill = await runCreditedTopupInvoiceBackfill(env, {
-      limit: 50,
+      limit: 1,
       publicAppUrl: getPublicAppUrl(env, request),
     });
     const receipts = await listBillingBankReceipts(env, {

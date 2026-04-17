@@ -1210,6 +1210,10 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/><path d="M4 6h4"/><path d="M16 6h4"/></svg>
                   <span>Send Top-up Test</span>
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingPreviewDocuments">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span>Preview Documents</span>
+                </button>
                 <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTestSequence">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5h14v14H5z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg>
                   <span>Send Full Sequence</span>
@@ -2363,6 +2367,45 @@
             <div class="account-reference-list wallet-history-list" id="accountReferenceHistoryList">
               <div class="account-billing-empty">No transfer references yet.</div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shopify-settings-overlay is-closed" id="documentLabModal">
+      <div class="shopify-settings-modal document-lab-modal">
+        <div class="csv-modal-header">
+          <div class="document-lab-header-copy">
+            <span class="csv-modal-title">Document Lab</span>
+            <span class="document-lab-header-note">Live template previews for receipts, monthly invoices, and top-up invoices.</span>
+          </div>
+          <button type="button" class="csv-modal-close" id="documentLabClose">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="shopify-settings-body document-lab-body">
+          <div class="document-lab-grid">
+            <section class="document-lab-card">
+              <div class="document-lab-card-head">
+                <span class="document-lab-card-title">Receipt</span>
+                <span class="document-lab-card-tag">Operational</span>
+              </div>
+              <div class="document-lab-preview" id="documentLabReceiptPreview"></div>
+            </section>
+            <section class="document-lab-card">
+              <div class="document-lab-card-head">
+                <span class="document-lab-card-title">Monthly Invoice</span>
+                <span class="document-lab-card-tag">Billing</span>
+              </div>
+              <div class="document-lab-preview" id="documentLabMonthlyInvoicePreview"></div>
+            </section>
+            <section class="document-lab-card">
+              <div class="document-lab-card-head">
+                <span class="document-lab-card-title">Top-up Invoice</span>
+                <span class="document-lab-card-tag">Wallet</span>
+              </div>
+              <div class="document-lab-preview" id="documentLabTopupInvoicePreview"></div>
+            </section>
           </div>
         </div>
       </div>

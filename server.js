@@ -5104,12 +5104,19 @@ async function listRecentCreditedTopupsForInvoiceBackfill(
 }
 
 async function runCreditedTopupInvoiceBackfill(
-  { limit = 40, publicAppUrl = "", logger = console } = {}
+  { limit = 1, publicAppUrl = "", logger = console } = {}
 ) {
   const topups = await listRecentCreditedTopupsForInvoiceBackfill({
     limit,
     allowMissing: true,
-  });
+  }).then((rows) =>
+    (Array.isArray(rows) ? rows : []).filter((topup) => {
+      const metadata = topup?.metadata && typeof topup.metadata === "object" ? topup.metadata : {};
+      const invoiceKind = String(metadata?.invoice_kind || "").trim().toLowerCase();
+      const invoiceId = String(metadata?.invoice_id || "").trim();
+      return !invoiceId || invoiceKind !== "topup";
+    })
+  );
   const summary = {
     scanned: topups.length,
     attempted: 0,
@@ -11544,7 +11551,7 @@ async function handleAdminWiseSync(req, res) {
       actor: normalizeEmail(user.email || "") || user.id,
     });
     const topupInvoiceBackfill = await runCreditedTopupInvoiceBackfill({
-      limit: 50,
+      limit: 1,
       publicAppUrl: getPublicAppUrl(req),
     });
     const receipts = await listBillingBankReceipts({

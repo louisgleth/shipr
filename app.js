@@ -1946,6 +1946,7 @@ const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTopupTestButton = document.getElementById("adminBillingSendTopupTest");
+const adminBillingPreviewDocumentsButton = document.getElementById("adminBillingPreviewDocuments");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
 const adminAgreementPreviewButton = document.getElementById("adminAgreementPreview");
@@ -2128,6 +2129,11 @@ const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
 const walletHistoryModal = document.getElementById("walletHistoryModal");
 const walletHistoryClose = document.getElementById("walletHistoryClose");
 const walletHistoryCancel = document.getElementById("walletHistoryCancel");
+const documentLabModal = document.getElementById("documentLabModal");
+const documentLabClose = document.getElementById("documentLabClose");
+const documentLabReceiptPreview = document.getElementById("documentLabReceiptPreview");
+const documentLabMonthlyInvoicePreview = document.getElementById("documentLabMonthlyInvoicePreview");
+const documentLabTopupInvoicePreview = document.getElementById("documentLabTopupInvoicePreview");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
@@ -5878,6 +5884,9 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
   if (adminBillingSendTopupTestButton) adminBillingSendTopupTestButton.disabled = adminBillingBusy;
+  if (adminBillingPreviewDocumentsButton) {
+    adminBillingPreviewDocumentsButton.disabled = adminBillingBusy;
+  }
   if (adminBillingSendTestSequenceButton) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
@@ -10524,6 +10533,7 @@ function setMainView(view, options = {}) {
     if (nextView !== "admin") {
       setClientInviteHistoryModalOpen(false);
       setAdminSettingsModalOpen(false);
+      setDocumentLabModalOpen(false);
     }
     if (nextView !== "leads") {
       setLeadCallOutcomeModalOpen(false);
@@ -10801,6 +10811,17 @@ function setIbanTopupModalOpen(open, options = {}) {
 function setWalletHistoryModalOpen(open) {
   if (!walletHistoryModal) return;
   walletHistoryModal.classList.toggle("is-closed", !open);
+}
+
+function setDocumentLabModalOpen(open) {
+  if (!documentLabModal) return;
+  documentLabModal.classList.toggle("is-closed", !open);
+  if (open) {
+    window.requestAnimationFrame(() => {
+      renderDocumentLabPreviews();
+      documentLabClose?.focus();
+    });
+  }
 }
 
 function populateIbanTopupResult(payload) {
@@ -11755,7 +11776,10 @@ function buildInvoiceViewModel(record) {
 }
 
 function canDownloadTopupInvoice(row) {
-  return String(row?.status || "").trim().toLowerCase() === "credited";
+  return (
+    String(row?.status || "").trim().toLowerCase() === "credited"
+    && Boolean(String(row?.invoice_id || "").trim())
+  );
 }
 
 function getTopupInvoiceIssuedAt(row) {
@@ -11765,29 +11789,6 @@ function getTopupInvoiceIssuedAt(row) {
     || row?.requested_at
     || null
   );
-}
-
-function getTopupInvoiceStatusCopy(row) {
-  const status = String(row?.status || "").trim().toLowerCase();
-  if (status === "credited") {
-    return {
-      statusValue: tr("Account balance credited"),
-      settlementBadge: tr("Account balance credited"),
-      settlementBadgeTone: "success",
-    };
-  }
-  if (status === "received") {
-    return {
-      statusValue: tr("Payment received"),
-      settlementBadge: tr("Received"),
-      settlementBadgeTone: "info",
-    };
-  }
-  return {
-    statusValue: tr("Pending"),
-    settlementBadge: tr("Pending"),
-    settlementBadgeTone: "warning",
-  };
 }
 
 function buildTopupInvoiceNumber(topup) {
@@ -11800,55 +11801,6 @@ function buildTopupInvoiceNumber(topup) {
   const tokenSource = String(topup?.id || topup?.reference || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
   return `TUP-${yy}${mm}${dd}-${token}`;
-}
-
-function buildTopupInvoiceViewModel(topup) {
-  const profile = buildMockAccountProfile(currentUser);
-  const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
-  const issuedDate = new Date(issuedDateRaw || Date.now());
-  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
-  const amount = Math.max(0, Number(topup?.amount_eur) || 0);
-  const reference = String(topup?.reference || topup?.id || "--").trim() || "--";
-  const invoiceNumber = buildTopupInvoiceNumber(topup);
-  const statusCopy = getTopupInvoiceStatusCopy(topup);
-
-  return {
-    issuedAt: formatInvoiceDateDisplay(resolvedIssuedDate),
-    issuedIso: resolvedIssuedDate.toISOString(),
-    dueAt: "--",
-    invoiceNumber,
-    invoiceSlug: buildInvoicePdfFilenameFromReference(invoiceNumber)
-      .replace(/^invoice-/, "")
-      .replace(/\.pdf$/, ""),
-    quantity: 1,
-    paymentMode: "wallet",
-    paymentMethodLabel: tr("Bank transfer top-up"),
-    isMonthlyBilling: false,
-    statusLabel: tr("Status"),
-    statusValue: statusCopy.statusValue,
-    settlementBadge: statusCopy.settlementBadge,
-    settlementBadgeTone: statusCopy.settlementBadgeTone,
-    settlementTitle: tr("Transfer details"),
-    settlementLines: [],
-    settlementTransferRows: [
-      { label: tr("Reference"), value: reference, mono: true },
-    ],
-    reverseVatNote: "",
-    issuer: INVOICE_ISSUER_PROFILE,
-    profile,
-    billingAddressLines: splitInvoiceAddressLines(profile?.billingAddress),
-    totals: {
-      totalIncVat: amount,
-    },
-    serviceRows: [
-      {
-        service: tr("Account balance top-up"),
-        quantity: 1,
-        rate: formatMoney(amount),
-        total: formatMoney(amount),
-      },
-    ],
-  };
 }
 
 function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
@@ -13307,6 +13259,7 @@ function buildAdminTestBillingInvoiceRecord(toEmail) {
     ? crypto.randomUUID()
     : `inv-${Date.now()}`;
   const issuedDate = new Date();
+  const invoiceProfile = buildAdminDocumentPreviewProfile(toEmail);
   return {
     id: invoiceId,
     invoice_kind: "monthly",
@@ -13321,15 +13274,7 @@ function buildAdminTestBillingInvoiceRecord(toEmail) {
     subtotal_ex_vat: 120,
     labels_count: 1,
     metadata: {
-      invoice_profile: {
-        companyName: "Atelier Meridian",
-        contactName: "Claire Dupont",
-        contactEmail: String(toEmail || "").trim(),
-        contactPhone: "+32 2 555 01 29",
-        billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
-        taxId: "BE0123456789",
-        customerId: "SHIPIDE-TEST",
-      },
+      invoice_profile: invoiceProfile,
     },
     items: [
       {
@@ -13353,6 +13298,7 @@ function buildAdminTestTopupInvoiceRecord(toEmail) {
     : `topup-${Date.now()}`;
   const issuedDate = new Date();
   const topupReference = "SHIP-TEST-TOPUP-2604";
+  const invoiceProfile = buildAdminDocumentPreviewProfile(toEmail);
   const invoiceNumber = buildTopupInvoiceNumber({
     id: topupId,
     reference: topupReference,
@@ -13382,15 +13328,7 @@ function buildAdminTestTopupInvoiceRecord(toEmail) {
       invoice_number: invoiceNumber,
       source_topup_id: topupId,
       topup_reference: topupReference,
-      invoice_profile: {
-        companyName: "Atelier Meridian",
-        contactName: "Claire Dupont",
-        contactEmail: String(toEmail || "").trim(),
-        contactPhone: "+32 2 555 01 29",
-        billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
-        taxId: "BE0123456789",
-        customerId: "SHIPIDE-TEST",
-      },
+      invoice_profile: invoiceProfile,
     },
     items: [
       {
@@ -13403,6 +13341,140 @@ function buildAdminTestTopupInvoiceRecord(toEmail) {
       },
     ],
   };
+}
+
+function buildAdminDocumentPreviewProfile(toEmail = "") {
+  return {
+    companyName: "Atelier Meridian",
+    contactName: "Claire Dupont",
+    contactEmail: String(toEmail || "").trim(),
+    contactPhone: "+32 2 555 01 29",
+    billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+    taxId: "BE0123456789",
+    customerId: "SHIPIDE-TEST",
+  };
+}
+
+function buildAdminTestReceiptRecord() {
+  const recordId = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `rcpt-${Date.now()}`;
+  const createdAt = new Date();
+  return {
+    id: recordId,
+    created_at: createdAt.toISOString(),
+    service_type: "Express",
+    quantity: 2,
+    total_price: 18.4,
+    payload: {
+      selection: {
+        type: "Express",
+        price: 9.2,
+      },
+      labels: [
+        {
+          index: 1,
+          labelId: "LBL-240417-001",
+          trackingId: "1Z84X3206801029384",
+          data: {
+            recipientName: "Maison Kepler",
+            recipientCity: "Brussels",
+            recipientCountry: "Belgium",
+          },
+        },
+        {
+          index: 2,
+          labelId: "LBL-240417-002",
+          trackingId: "1Z84X3206801029385",
+          data: {
+            recipientName: "Atelier Nord",
+            recipientCity: "Antwerp",
+            recipientCountry: "Belgium",
+          },
+        },
+      ],
+    },
+  };
+}
+
+function buildAdminTestReceiptViewModel(toEmail) {
+  const record = buildAdminTestReceiptRecord();
+  const totals = calculateRecordTotals(record);
+  const profile = buildAdminDocumentPreviewProfile(toEmail);
+  const headlineParts = formatHistoryHeadlineParts(record.created_at);
+  const receiptTracking = buildReceiptTrackingId(record?.id);
+  return {
+    record,
+    totals,
+    profile,
+    serviceType: translateServiceName(record.service_type || "--"),
+    labels: record?.payload?.labels || [],
+    issuedAt: `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " "),
+    receiptNumber: receiptTracking.display,
+    receiptSlug: receiptTracking.slug,
+    quantity: totals.quantity,
+    billingAddressLines: splitReceiptAddressLines(profile.billingAddress),
+  };
+}
+
+function getAdminDocumentPreviewEmail() {
+  return String(
+    adminBillingTestEmailInput?.value
+    || currentUser?.email
+    || "billing@shipide.com"
+  ).trim() || "billing@shipide.com";
+}
+
+function renderDocumentLabPreview(container, markup) {
+  if (!container) return;
+  container.innerHTML = `<div class="document-lab-preview-inner">${markup}</div>`;
+}
+
+function syncDocumentLabPreviewLayout() {
+  const previews = [
+    documentLabReceiptPreview,
+    documentLabMonthlyInvoicePreview,
+    documentLabTopupInvoicePreview,
+  ];
+  previews.forEach((preview) => {
+    if (!(preview instanceof HTMLElement)) return;
+    const availableWidth = Math.max(220, preview.clientWidth - 24);
+    const scale = Math.min(1, Math.max(0.24, availableWidth / 860));
+    preview.style.setProperty("--document-preview-scale", scale.toFixed(4));
+    preview.style.height = `${Math.round((860 * 297 / 210) * scale)}px`;
+  });
+}
+
+function renderDocumentLabPreviews() {
+  const previewEmail = getAdminDocumentPreviewEmail();
+  const receiptViewModel = buildAdminTestReceiptViewModel(previewEmail);
+  const monthlyInvoiceViewModel = buildAdminTestInvoiceViewModel(previewEmail);
+  const topupInvoiceViewModel = buildBillingInvoiceViewModel(
+    buildAdminTestTopupInvoiceRecord(previewEmail)
+  );
+
+  renderDocumentLabPreview(
+    documentLabReceiptPreview,
+    buildReceiptPageHtml(receiptViewModel, {
+      rowIndices: receiptViewModel.labels.map((_, index) => index),
+      showHeader: true,
+      showTableCard: true,
+      showSectionHead: true,
+      showColumnHead: true,
+      showDisclaimer: true,
+    })
+  );
+  renderDocumentLabPreview(
+    documentLabMonthlyInvoicePreview,
+    buildInvoiceDocumentHtmlFromViewModel(monthlyInvoiceViewModel)
+  );
+  renderDocumentLabPreview(
+    documentLabTopupInvoicePreview,
+    buildInvoiceDocumentHtmlFromViewModel(topupInvoiceViewModel)
+  );
+  window.requestAnimationFrame(() => {
+    syncDocumentLabPreviewLayout();
+  });
 }
 
 async function prepareInvoicePdfVariantsForEmail(invoiceRecord) {
@@ -18158,10 +18230,6 @@ function renderTopupReferenceHistory() {
   });
 }
 
-function getTopupInvoicePdfFilename(topup) {
-  return buildInvoicePdfFilenameFromReference(buildTopupInvoiceNumber(topup));
-}
-
 async function downloadTopupInvoicePdf(button, topupId) {
   const safeTopupId = String(topupId || "").trim();
   if (!safeTopupId) return;
@@ -18176,25 +18244,24 @@ async function downloadTopupInvoicePdf(button, topupId) {
     busyLabel: tr("Preparing invoice PDF..."),
   });
   try {
-    let invoiceRecord = null;
     const linkedInvoiceId = String(topup?.invoice_id || "").trim();
-    if (linkedInvoiceId) {
-      invoiceRecord = await fetchBillingInvoiceDetail(linkedInvoiceId).catch(() => null);
+    if (!linkedInvoiceId) {
+      throw new Error(tr("Invoice not available yet."));
     }
-    const viewModel = invoiceRecord?.id
-      ? buildBillingInvoiceViewModel(invoiceRecord)
-      : buildTopupInvoiceViewModel(topup);
-    const filename = invoiceRecord?.id
-      ? buildInvoicePdfFilenameFromReference(
-          String(invoiceRecord?.reference || getBillingInvoiceReferenceClient(invoiceRecord)).trim()
-        )
-      : getTopupInvoicePdfFilename(topup);
+    const invoiceRecord = await fetchBillingInvoiceDetail(linkedInvoiceId).catch(() => null);
+    if (!invoiceRecord?.id) {
+      throw new Error(tr("Could not load this invoice."));
+    }
+    const viewModel = buildBillingInvoiceViewModel(invoiceRecord);
+    const filename = buildInvoicePdfFilenameFromReference(
+      String(invoiceRecord?.reference || getBillingInvoiceReferenceClient(invoiceRecord)).trim()
+    );
     const exportData = await buildInvoicePdfExportFromViewModel(
       viewModel,
       filename,
       {
-        allowRasterFallback: !invoiceRecord?.id,
-        preferServerRender: Boolean(invoiceRecord?.id),
+        allowRasterFallback: false,
+        preferServerRender: true,
       }
     );
     if (!exportData?.blob) {
@@ -19322,6 +19389,12 @@ if (adminBillingSendTopupTestButton) {
   });
 }
 
+if (adminBillingPreviewDocumentsButton) {
+  adminBillingPreviewDocumentsButton.addEventListener("click", () => {
+    setDocumentLabModalOpen(true);
+  });
+}
+
 if (adminBillingSendTestSequenceButton) {
   adminBillingSendTestSequenceButton.addEventListener("click", async () => {
     await sendAdminBillingTestSequence();
@@ -19925,6 +19998,26 @@ if (walletHistoryModal) {
   });
 }
 
+if (documentLabClose) {
+  documentLabClose.addEventListener("click", () => {
+    setDocumentLabModalOpen(false);
+  });
+}
+
+if (documentLabModal) {
+  documentLabModal.addEventListener("click", (event) => {
+    if (event.target === documentLabModal) {
+      setDocumentLabModalOpen(false);
+    }
+  });
+}
+
+window.addEventListener("resize", () => {
+  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) {
+    syncDocumentLabPreviewLayout();
+  }
+});
+
 if (ibanTopupRequest) {
   ibanTopupRequest.addEventListener("click", (event) => {
     event.preventDefault();
@@ -19969,6 +20062,7 @@ document.addEventListener("keydown", (event) => {
   if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) return;
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) return;
+  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) return;
   if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -20004,6 +20098,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
     setAdminSettingsModalOpen(false);
+    return;
+  }
+  if (documentLabModal && !documentLabModal.classList.contains("is-closed")) {
+    setDocumentLabModalOpen(false);
     return;
   }
   if (labelConfirmModal && !labelConfirmModal.classList.contains("is-closed")) {
