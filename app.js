@@ -12493,6 +12493,93 @@ function waitForAnimationFrame() {
   return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
+function buildInvoicePageConfigsFromRowMetrics(rowMetrics = [], options = {}) {
+  const rows = Array.isArray(rowMetrics)
+    ? rowMetrics
+        .map((row, index) => ({
+          index: Number.isFinite(Number(row?.index)) ? Number(row.index) : index,
+          height: Math.max(0, Number(row?.height ?? row?.h ?? row) || 0),
+        }))
+        .filter((row) => Number.isFinite(row.index))
+    : [];
+  const firstPageBudget = Math.max(0, Number(options?.firstPageBudget) || 0);
+  const continuationBudget = Math.max(0, Number(options?.continuationBudget) || 0);
+  const settlementHeight = Math.max(0, Number(options?.settlementHeight) || 0);
+  const settlementGap = Math.max(0, Number(options?.settlementGap) || 0);
+  const settlementBudget = settlementHeight > 0 ? settlementHeight + settlementGap : 0;
+
+  if (!rows.length) {
+    return [{ firstPage: true, rows: [], hasSettlement: true }];
+  }
+
+  const pages = [];
+  let cursor = 0;
+  let currentRows = [];
+  let budget = firstPageBudget;
+
+  while (cursor < rows.length) {
+    const row = rows[cursor];
+    const rowHeight = row.height;
+    if (rowHeight <= budget || !currentRows.length) {
+      currentRows.push(row.index);
+      budget -= rowHeight;
+      cursor += 1;
+      continue;
+    }
+    pages.push({ firstPage: pages.length === 0, rows: currentRows, hasSettlement: false });
+    currentRows = [];
+    budget = continuationBudget;
+  }
+
+  if (!settlementBudget || settlementBudget <= budget) {
+    pages.push({
+      firstPage: pages.length === 0,
+      rows: currentRows,
+      hasSettlement: true,
+    });
+    return pages;
+  }
+
+  const maxRowsOnSettlementPageBudget = Math.max(0, continuationBudget - settlementBudget);
+  const settlementRows = [];
+  let settlementRowsHeight = 0;
+  const minimumRowsToKeep = pages.length === 0 ? 1 : 0;
+
+  while (currentRows.length > minimumRowsToKeep) {
+    const candidateIndex = currentRows[currentRows.length - 1];
+    const candidateMetric = rows.find((row) => row.index === candidateIndex);
+    const candidateHeight = candidateMetric?.height || 0;
+    if (
+      settlementRows.length
+      && settlementRowsHeight + candidateHeight > maxRowsOnSettlementPageBudget
+    ) {
+      break;
+    }
+    if (!settlementRows.length && candidateHeight > maxRowsOnSettlementPageBudget) {
+      break;
+    }
+    settlementRows.unshift(candidateIndex);
+    settlementRowsHeight += candidateHeight;
+    currentRows.pop();
+  }
+
+  if (currentRows.length) {
+    pages.push({
+      firstPage: pages.length === 0,
+      rows: currentRows,
+      hasSettlement: false,
+    });
+  }
+
+  pages.push({
+    firstPage: false,
+    rows: settlementRows,
+    hasSettlement: true,
+  });
+
+  return pages;
+}
+
 async function buildPaginatedInvoicePageConfigs(viewModel) {
   if (!receiptDocument || !viewModel) {
     return [
@@ -12550,33 +12637,18 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
     const theadPx = regions.theadH;
     const settlementPx = regions.disclaimer ? regions.disclaimer.h : 0;
 
-    const pages = [];
-    let rowIdx = 0;
-    let budget = contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx;
-    let pageRows = [];
-
-    while (rowIdx < regions.rows.length) {
-      const rowPx = regions.rows[rowIdx]?.h || 0;
-      if (rowPx <= budget) {
-        pageRows.push(rowIdx);
-        budget -= rowPx;
-        rowIdx += 1;
-      } else {
-        pages.push({ firstPage: pages.length === 0, rows: pageRows });
-        pageRows = [];
-        budget = contentBudget - theadPx;
+    return buildInvoicePageConfigsFromRowMetrics(
+      regions.rows.map((row, index) => ({
+        index,
+        height: row?.h || 0,
+      })),
+      {
+        firstPageBudget: contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx,
+        continuationBudget: contentBudget - theadPx,
+        settlementHeight: settlementPx,
+        settlementGap: 4,
       }
-    }
-
-    const isFirstPage = pages.length === 0;
-    if (settlementPx + 4 <= budget) {
-      pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: true });
-    } else {
-      pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: false });
-      pages.push({ firstPage: false, rows: [], hasSettlement: true });
-    }
-
-    return pages;
+    );
   } finally {
     receiptDocument.className = previousClassName;
     receiptDocument.innerHTML = previousMarkup;
@@ -12868,7 +12940,7 @@ async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt
       const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 18;
+      const margin = 0;
       const cW = pageWidth - margin * 2;
       const usableH = pageHeight - margin * 2;
 
@@ -13225,33 +13297,18 @@ async function buildInvoicePdfExportFromViewModel(viewModel, filename = "invoice
         const settlementPt = regions.disclaimer ? toPt(regions.disclaimer.h) : 0;
         const footerGap = 8;
         const contentBudget = usableH - footerPt - footerGap;
-
-        const pages = [];
-        let rowIdx = 0;
-        const rowCount = regions.rows.length;
-        let budget = contentBudget - headerPt - tableGapPt - tableSectionHeadPt - theadPt;
-        let pageRows = [];
-
-        while (rowIdx < rowCount) {
-          const rowPt = toPt(regions.rows[rowIdx].h);
-          if (rowPt <= budget) {
-            pageRows.push(rowIdx);
-            budget -= rowPt;
-            rowIdx += 1;
-          } else {
-            pages.push({ firstPage: pages.length === 0, rows: pageRows });
-            pageRows = [];
-            budget = contentBudget - theadPt;
+        const pages = buildInvoicePageConfigsFromRowMetrics(
+          regions.rows.map((row, index) => ({
+            index,
+            height: toPt(row?.h || 0),
+          })),
+          {
+            firstPageBudget: contentBudget - headerPt - tableGapPt - tableSectionHeadPt - theadPt,
+            continuationBudget: contentBudget - theadPt,
+            settlementHeight: settlementPt,
+            settlementGap: 4,
           }
-        }
-
-        const isFirstPage = pages.length === 0;
-        if (settlementPt + 4 <= budget) {
-          pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: true });
-        } else {
-          pages.push({ firstPage: isFirstPage, rows: pageRows, hasSettlement: false });
-          pages.push({ firstPage: false, rows: [], hasSettlement: true });
-        }
+        );
 
         const renderExportPage = async (pageConfig) => {
           receiptDocument.innerHTML = buildInvoicePageHtml(viewModel, {
@@ -13496,8 +13553,15 @@ function buildAdminTestReceiptViewModel(toEmail) {
 
 const ADMIN_DOCUMENT_PREVIEW_EMAIL = "louis@gleth.com";
 const ADMIN_DOCUMENT_PREVIEW_RECEIPT_COUNT = 34;
-const ADMIN_DOCUMENT_PREVIEW_MONTHLY_ITEMS = 24;
+const ADMIN_DOCUMENT_PREVIEW_MONTHLY_ITEMS = 20;
 const ADMIN_DOCUMENT_PREVIEW_TOPUP_ITEMS = 22;
+
+function buildPreviewGenerationServiceLabel(index, issuedAt = "2026-04-17T10:00:00.000Z") {
+  const baseDate = new Date(issuedAt || Date.now());
+  const resolvedBaseDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
+  const generationDate = new Date(resolvedBaseDate.getTime() + index * 17 * 60 * 1000);
+  return `Generation ${formatHistoryDate(generationDate.toISOString())}`;
+}
 
 function buildAdminDocumentPreviewLongReceiptViewModel(toEmail = ADMIN_DOCUMENT_PREVIEW_EMAIL) {
   const profile = buildAdminDocumentPreviewProfile(toEmail);
@@ -13554,19 +13618,11 @@ function buildAdminDocumentPreviewMonthlyInvoiceRecord(
 ) {
   const issuedDate = new Date("2026-04-17T10:00:00.000Z");
   const invoiceProfile = buildAdminDocumentPreviewProfile(toEmail);
-  const serviceFamilies = [
-    "Economy Batch",
-    "Priority Batch",
-    "International Express",
-    "Returns Flow",
-    "Locker Delivery",
-    "Home Dropoff",
-  ];
   const items = Array.from({ length: ADMIN_DOCUMENT_PREVIEW_MONTHLY_ITEMS }, (_, index) => {
     const quantity = (index % 4) + 1;
     const unitRate = 8.4 + index * 0.47;
     return {
-      service_type: `${serviceFamilies[index % serviceFamilies.length]} ${String(index + 1).padStart(2, "0")}`,
+      service_type: buildPreviewGenerationServiceLabel(index, issuedDate.toISOString()),
       quantity,
       amount_inc_vat: round2(quantity * unitRate),
       sort_index: index,

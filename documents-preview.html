@@ -235,7 +235,7 @@
     <script>
       const PREVIEW_TEST_EMAIL = "louis@gleth.com";
       const PREVIEW_RECEIPT_LABEL_COUNT = 34;
-      const PREVIEW_MONTHLY_ITEM_COUNT = 24;
+      const PREVIEW_MONTHLY_ITEM_COUNT = 20;
       const PREVIEW_TOPUP_ITEM_COUNT = 22;
       const STATUS_EL = document.getElementById("documentsPreviewStatus");
       const SEND_BUTTON = document.getElementById("documentsPreviewSend");
@@ -264,6 +264,19 @@
           customerId: "SHIPIDE-TEST",
           accountManager: "Shipide Billing",
         };
+      }
+
+      function buildPreviewGenerationServiceLabel(index, issuedAt = "2026-04-17T10:00:00.000Z") {
+        const baseDate = new Date(issuedAt || Date.now());
+        const resolvedBaseDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
+        const generationDate = new Date(resolvedBaseDate.getTime() + index * 17 * 60 * 1000);
+        return `Generation ${generationDate.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
       }
 
       function buildPreviewReceiptLabels(count = PREVIEW_RECEIPT_LABEL_COUNT) {
@@ -323,19 +336,12 @@
       }
 
       function buildPreviewMonthlyInvoiceItems(count = PREVIEW_MONTHLY_ITEM_COUNT) {
-        const serviceFamilies = [
-          "Economy Batch",
-          "Priority Batch",
-          "International Express",
-          "Returns Flow",
-          "Locker Delivery",
-          "Home Dropoff",
-        ];
+        const issuedAt = "2026-04-17T10:00:00.000Z";
         return Array.from({ length: count }, (_, index) => {
           const quantity = (index % 4) + 1;
           const unitRate = 8.4 + index * 0.47;
           return {
-            service_type: `${serviceFamilies[index % serviceFamilies.length]} ${String(index + 1).padStart(2, "0")}`,
+            service_type: buildPreviewGenerationServiceLabel(index, issuedAt),
             quantity,
             amount_inc_vat: roundMoney(quantity * unitRate),
             sort_index: index,

@@ -6513,10 +6513,17 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
       }
       #receiptDocument.receipt-print-pages > .receipt-document {
         width: 210mm !important;
+        height: 297mm !important;
         min-height: 297mm !important;
         margin: 0 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
         break-after: page;
         page-break-after: always;
+      }
+      #receiptDocument.receipt-print-pages > .receipt-document > .receipt-sheet {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
       }
       #receiptDocument.receipt-print-pages > .receipt-document:last-child {
         break-after: auto;
