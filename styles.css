@@ -36,6 +36,7 @@
   --radius-lg: 6px;
   --selection-underline-size: 3px;
   --preview-frame-height: clamp(390px, calc(100vh - 320px), 640px);
+  --fs-3xs: 10px;
   --fs-2xs: 11px;
   --fs-xs: 12px;
   --fs-sm: 14px;
@@ -3336,97 +3337,6 @@ body.is-auth-view {
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
-}
-
-.documents-page {
-  display: grid;
-  gap: 18px;
-}
-
-.documents-page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.documents-page-head h2 {
-  margin: 0 0 8px;
-  font-size: var(--fs-lg);
-  font-weight: 300;
-}
-
-.documents-page-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.documents-page-jump {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 999px;
-  color: var(--muted);
-  text-decoration: none;
-  font-size: var(--fs-2xs);
-  transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.documents-page-jump:hover,
-.documents-page-jump:focus-visible {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.04);
-  transform: translateY(-1px);
-}
-
-.documents-page-stack {
-  display: grid;
-  gap: 20px;
-}
-
-.documents-preview-card {
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-lg);
-  background: var(--panel-bg);
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-}
-
-.documents-preview-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.documents-preview-note {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
-.documents-preview-stage {
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.documents-preview-surface {
-  width: 860px;
-  max-width: none;
-  margin: 0 auto;
-}
-
-.documents-preview-surface .receipt-document {
-  margin: 0 auto;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
 }
 
 .admin-billing-invoices {
@@ -6743,6 +6653,12 @@ body.is-auth-view {
   -webkit-user-select: text;
   display: flex;
   flex-direction: column;
+  --doc-fs-caption: var(--fs-sm);
+  --doc-fs-body: var(--fs-sm);
+  --doc-fs-strong: var(--fs-md);
+  --doc-fs-total: var(--fs-lg);
+  --doc-fs-support: var(--fs-2xs);
+  --doc-fs-pill: 8px;
 }
 
 .receipt-sheet {
@@ -6801,12 +6717,12 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
-  padding: 0 10px;
+  min-height: 20px;
+  padding: 0 8px;
   border: 1px solid rgba(119, 71, 227, 0.25);
   background: rgba(119, 71, 227, 0.08);
   color: var(--accent);
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-pill) !important;
   font-weight: 400;
   letter-spacing: 0.04em;
   border-radius: var(--radius);
@@ -6821,7 +6737,7 @@ body.is-auth-view {
 .receipt-top-meta-lines {
   display: grid;
   gap: 3px;
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-caption);
   color: var(--invoice-muted, var(--muted));
   text-align: right;
   line-height: 1.4;
@@ -6858,7 +6774,7 @@ body.is-auth-view {
 
 .invoice-top-tag-label {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -6872,12 +6788,12 @@ body.is-auth-view {
 }
 
 .receipt-panel-title {
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);
   color: var(--invoice-muted, var(--muted));
 }
 
 .invoice-meta-value {
-  font-size: var(--fs-sm);
+  font-size: var(--doc-fs-strong);
   color: var(--text);
 }
 
@@ -6939,7 +6855,7 @@ body.is-auth-view {
 }
 
 .invoice-tax-note {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   line-height: 1.45;
   color: rgba(241, 244, 251, 0.42);
   max-width: 500px;
@@ -6966,17 +6882,17 @@ body.is-auth-view {
 }
 
 .receipt-kv-key {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
 .receipt-kv-value {
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--text);
 }
 
 .receipt-kv-value.mono {
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
 }
 
 .receipt-kv-total {
@@ -6985,7 +6901,7 @@ body.is-auth-view {
 }
 
 .receipt-kv-total .receipt-kv-value {
-  font-size: var(--fs-md);
+  font-size: var(--doc-fs-total);
 }
 
 .receipt-address {
@@ -6999,21 +6915,21 @@ body.is-auth-view {
 }
 
 .receipt-address-name {
-  font-size: var(--fs-sm);
+  font-size: var(--doc-fs-strong);
   line-height: 1.15;
 }
 
 .receipt-address-lines {
   display: grid;
   gap: 2px;
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--invoice-muted, var(--muted));
 }
 
 .receipt-address-meta {
   display: grid;
   gap: 4px;
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -7043,16 +6959,16 @@ body.is-auth-view {
 }
 
 .receipt-table-title {
-  font-size: var(--fs-sm);
+  font-size: var(--doc-fs-strong);
 }
 
 .receipt-table-sub {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
 .receipt-table-badge {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -7088,7 +7004,7 @@ body.is-auth-view {
   border-collapse: collapse;
   width: 100%;
   min-width: 680px;
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-caption);
 }
 
 .receipt-table th,
@@ -7103,7 +7019,7 @@ body.is-auth-view {
 }
 
 .receipt-table th {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
   letter-spacing: var(--letter-tight);
   font-weight: 400;
@@ -7117,11 +7033,11 @@ body.is-auth-view {
   display: inline-flex;
   align-items: baseline;
   gap: 0;
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
 }
 
 .receipt-inline-meta {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -7153,11 +7069,11 @@ body.is-auth-view {
 }
 
 .receipt-disclaimer-title {
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
 }
 
 .receipt-disclaimer-text {
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--muted);
   line-height: 1.5;
 }
@@ -7168,6 +7084,7 @@ body.is-auth-view {
   background: #141233;
   padding: 16px 0;
   border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .invoice-settlement-grid {
@@ -7180,6 +7097,10 @@ body.is-auth-view {
 
 .invoice-settlement-grid.has-transfer {
   grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.receipt-notice-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .invoice-settlement-grid > * {
@@ -7203,16 +7124,25 @@ body.is-auth-view {
   align-items: center;
   justify-content: center;
   width: fit-content;
-  min-height: 24px;
-  padding: 0 12px;
+  min-height: 22px;
+  padding: 2px 10px;
   border-radius: 999px;
   border: 1px solid rgba(119, 71, 227, 0.25);
   background: rgba(119, 71, 227, 0.12);
   color: var(--accent);
-  font-size: var(--fs-2xs);
+  font-size: 0;
   line-height: 1;
+  letter-spacing: 0;
   white-space: nowrap;
   align-self: start;
+}
+
+.invoice-payment-badge-copy {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0;
+  transform: none;
 }
 
 .invoice-payment-badge.is-success {
@@ -7253,11 +7183,15 @@ body.is-auth-view {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--invoice-muted, var(--muted));
   line-height: 1.45;
   width: 100%;
   height: 100%;
+}
+
+.invoice-transfer-lines.has-stacked-transfer {
+  justify-content: space-between;
 }
 
 .invoice-transfer-row {
@@ -7265,6 +7199,14 @@ body.is-auth-view {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.invoice-transfer-row.is-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  height: 100%;
 }
 
 .invoice-transfer-row.is-total {
@@ -7291,12 +7233,28 @@ body.is-auth-view {
   height: 100%;
 }
 
+.receipt-notice-panel-copy {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px;
+  align-content: center;
+  min-height: 50px;
+}
+
+.receipt-billing-notice-text {
+  font-size: var(--doc-fs-body);
+  line-height: 1.55;
+  color: rgba(241, 244, 251, 0.74);
+  max-width: none;
+  width: 100%;
+}
+
 .invoice-summary-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  font-size: var(--fs-xs);
+  font-size: var(--doc-fs-body);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -7310,7 +7268,7 @@ body.is-auth-view {
 }
 
 .invoice-summary-row.is-total .mono {
-  font-size: var(--fs-sm);
+  font-size: var(--doc-fs-strong);
 }
 
 .receipt-footer {
@@ -7328,7 +7286,7 @@ body.is-auth-view {
 
 .receipt-footer-left,
 .receipt-footer-right {
-  font-size: var(--fs-2xs);
+  font-size: var(--doc-fs-support);
   color: var(--invoice-muted, var(--muted));
 }
 
@@ -9257,6 +9215,15 @@ input.is-invalid {
     padding-top: 12px;
     border-top: 1px solid var(--stroke);
   }
+
+  .receipt-notice-panel-copy {
+    padding: 0;
+    min-height: 0;
+  }
+
+  .receipt-billing-notice-text {
+    max-width: none;
+  }
 }
 
 @media (max-width: 720px) {
@@ -9435,17 +9402,8 @@ input.is-invalid {
     flex-direction: column;
   }
 
-  .documents-page-head {
-    flex-direction: column;
-  }
-
   .reports-page-head {
     flex-direction: column;
-  }
-
-  .documents-page-actions {
-    width: 100%;
-    justify-content: flex-start;
   }
 
   .reports-page-actions {

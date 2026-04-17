@@ -132,7 +132,6 @@ const ROUTE_PATHS = {
   signupPreview: "/signup-preview",
   account: "/account",
   admin: "/admin",
-  documents: "/documents",
   leads: "/leads",
   history: "/history",
   reports: "/reports",
@@ -1841,7 +1840,6 @@ const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
 const openBuilderPageButton = document.getElementById("openBuilderPage");
 const openAdminPageButton = document.getElementById("openAdminPage");
-const openDocumentsPageButton = document.getElementById("openDocumentsPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
@@ -1858,7 +1856,6 @@ const openAdminSettingsModalButton = document.getElementById("openAdminSettingsM
 const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
-const documentsPageSection = document.getElementById("documentsPageSection");
 const leadsPageSection = document.getElementById("leadsPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
@@ -1949,6 +1946,7 @@ const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTopupTestButton = document.getElementById("adminBillingSendTopupTest");
+const adminBillingSendDocumentTripletButton = document.getElementById("adminBillingSendDocumentTriplet");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
 const adminAgreementPreviewButton = document.getElementById("adminAgreementPreview");
@@ -2131,9 +2129,6 @@ const ibanTopupModalNote = document.getElementById("ibanTopupModalNote");
 const walletHistoryModal = document.getElementById("walletHistoryModal");
 const walletHistoryClose = document.getElementById("walletHistoryClose");
 const walletHistoryCancel = document.getElementById("walletHistoryCancel");
-const documentsReceiptPreview = document.getElementById("documentsReceiptPreview");
-const documentsMonthlyInvoicePreview = document.getElementById("documentsMonthlyInvoicePreview");
-const documentsTopupInvoicePreview = document.getElementById("documentsTopupInvoicePreview");
 
 // Provider dropdown
 const providerDropdown = document.getElementById("providerDropdown");
@@ -2745,9 +2740,6 @@ function parseRouteFromLocation() {
   if (path === ROUTE_PATHS.admin) {
     return { view: "admin" };
   }
-  if (path === ROUTE_PATHS.documents) {
-    return { view: "documents" };
-  }
   if (path === ROUTE_PATHS.leads) {
     return { view: "leads" };
   }
@@ -2771,9 +2763,6 @@ function parseRouteFromLocation() {
   }
   if (hash === "#admin") {
     return { view: "admin" };
-  }
-  if (hash === "#documents") {
-    return { view: "documents" };
   }
   if (hash === "#leads") {
     return { view: "leads" };
@@ -2930,9 +2919,6 @@ function routeToPath(route) {
   }
   if (route.view === "admin") {
     return buildRoutePath(ROUTE_PATHS.admin);
-  }
-  if (route.view === "documents") {
-    return buildRoutePath(ROUTE_PATHS.documents);
   }
   if (route.view === "leads") {
     return buildRoutePath(ROUTE_PATHS.leads);
@@ -5745,9 +5731,6 @@ async function loadAdminAccessStatus(options = {}) {
       if (!adminAccessAllowed && currentMainView === "admin") {
         setAdminPageVisible(false, { replace: true });
       }
-      if (!adminAccessAllowed && currentMainView === "documents") {
-        setDocumentsPageVisible(false, { replace: true });
-      }
       if (!adminAccessAllowed && currentMainView === "leads") {
         setLeadsPageVisible(false, { replace: true });
       }
@@ -5792,9 +5775,6 @@ async function loadAdminDashboard(options = {}) {
     renderAdminWiseReceiptList();
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
-    }
-    if (currentMainView === "documents") {
-      setDocumentsPageVisible(false, { replace: true });
     }
     if (!quiet) {
       showToast(tr("You are not allowed to access the admin panel."), { tone: "error" });
@@ -5899,6 +5879,9 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
   if (adminBillingSendTopupTestButton) adminBillingSendTopupTestButton.disabled = adminBillingBusy;
+  if (adminBillingSendDocumentTripletButton) {
+    adminBillingSendDocumentTripletButton.disabled = adminBillingBusy;
+  }
   if (adminBillingSendTestSequenceButton) {
     adminBillingSendTestSequenceButton.disabled = adminBillingBusy;
   }
@@ -6267,6 +6250,81 @@ async function sendAdminTopupBillingTestEmail() {
     );
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send test invoice email."), {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function sendAdminDocumentPreviewTriplet() {
+  if (adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  try {
+    const receiptViewModel = buildAdminDocumentPreviewLongReceiptViewModel(
+      ADMIN_DOCUMENT_PREVIEW_EMAIL
+    );
+    const monthlyInvoiceRecord = buildAdminDocumentPreviewMonthlyInvoiceRecord(
+      ADMIN_DOCUMENT_PREVIEW_EMAIL
+    );
+    const topupInvoiceRecord = buildAdminDocumentPreviewTopupInvoiceRecord(
+      ADMIN_DOCUMENT_PREVIEW_EMAIL
+    );
+    const monthlyInvoiceViewModel = buildBillingInvoiceViewModel(monthlyInvoiceRecord, {
+      reminderStage: 0,
+    });
+    const topupInvoiceViewModel = buildBillingInvoiceViewModel(topupInvoiceRecord, {
+      reminderStage: 0,
+    });
+    const exports = await Promise.all([
+      buildReceiptPdfExportFromViewModel(
+        receiptViewModel,
+        "preview-receipt-long-list.pdf"
+      ),
+      buildInvoicePdfExportFromViewModel(
+        monthlyInvoiceViewModel,
+        "preview-monthly-invoice-long-list.pdf",
+        {
+          preferServerRender: true,
+          allowRasterFallback: true,
+        }
+      ),
+      buildInvoicePdfExportFromViewModel(
+        topupInvoiceViewModel,
+        "preview-topup-invoice-long-list.pdf",
+        {
+          preferServerRender: true,
+          allowRasterFallback: true,
+        }
+      ),
+    ]);
+    const attachments = await Promise.all(
+      exports.map(async (entry) => {
+        if (!entry?.blob || !entry?.filename) {
+          throw new Error(tr("Could not generate preview PDFs."));
+        }
+        return {
+          filename: entry.filename,
+          content: await blobToBase64(entry.blob),
+          contentType: "application/pdf",
+        };
+      })
+    );
+    await fetchApiWithAuth("/api/documents-preview/send-test-email", {
+      method: "POST",
+      timeoutMs: 180000,
+      body: JSON.stringify({
+        toEmail: ADMIN_DOCUMENT_PREVIEW_EMAIL,
+        attachments,
+      }),
+    });
+    setAdminBillingStatus(
+      tr("Preview PDFs sent to {email}.", { email: ADMIN_DOCUMENT_PREVIEW_EMAIL }),
+      { tone: "success" }
+    );
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not send preview PDFs."), {
       tone: "error",
     });
   } finally {
@@ -8454,15 +8512,6 @@ function writeCachedAdminAccess(userId, allowed) {
 function syncAdminAccessButtons() {
   const isAuthed = Boolean(currentUser);
   const shouldShow = isAuthed && adminAccessAllowed;
-  if (openDocumentsPageButton) {
-    openDocumentsPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
-    if (adminAccessLoading) {
-      openDocumentsPageButton.setAttribute("aria-busy", "true");
-    } else {
-      openDocumentsPageButton.removeAttribute("aria-busy");
-    }
-    openDocumentsPageButton.classList.toggle("is-hidden", !shouldShow);
-  }
   if (openLeadsPageButton) {
     openLeadsPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
     if (adminAccessLoading) {
@@ -10510,7 +10559,6 @@ function setMainView(view, options = {}) {
   const nextView =
     view === "account" ||
     view === "admin" ||
-    view === "documents" ||
     view === "leads" ||
     view === "history" ||
     view === "reports" ||
@@ -10532,9 +10580,6 @@ function setMainView(view, options = {}) {
     }
     if (adminPageSection) {
       adminPageSection.classList.toggle("is-hidden", nextView !== "admin");
-    }
-    if (documentsPageSection) {
-      documentsPageSection.classList.toggle("is-hidden", nextView !== "documents");
     }
     if (leadsPageSection) {
       leadsPageSection.classList.toggle("is-hidden", nextView !== "leads");
@@ -10562,9 +10607,6 @@ function setMainView(view, options = {}) {
     if (nextView !== "leads") {
       setLeadCallOutcomeModalOpen(false);
     }
-    if (nextView === "documents") {
-      renderDocumentsPagePreviews();
-    }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
       renderReportsDashboard();
@@ -10585,10 +10627,6 @@ function setMainView(view, options = {}) {
     }
     if (nextView === "admin") {
       updateRoute({ view: "admin" }, { replace });
-      return;
-    }
-    if (nextView === "documents") {
-      updateRoute({ view: "documents" }, { replace });
       return;
     }
     if (nextView === "leads") {
@@ -10615,7 +10653,6 @@ function syncTopbarNavState(view = currentMainView) {
   const nextView =
     view === "account" ||
     view === "admin" ||
-    view === "documents" ||
     view === "leads" ||
     view === "history" ||
     view === "reports" ||
@@ -10625,7 +10662,6 @@ function syncTopbarNavState(view = currentMainView) {
   const navButtons = [
     [openBuilderPageButton, "builder"],
     [openAccountPageButton, "account"],
-    [openDocumentsPageButton, "documents"],
     [openLeadsPageButton, "leads"],
     [openAdminPageButton, "admin"],
     [openHistoryPageButton, "history"],
@@ -10643,10 +10679,6 @@ function setAccountPageVisible(visible, options = {}) {
 
 function setAdminPageVisible(visible, options = {}) {
   setMainView(visible ? "admin" : "builder", options);
-}
-
-function setDocumentsPageVisible(visible, options = {}) {
-  setMainView(visible ? "documents" : "builder", options);
 }
 
 function setLeadsPageVisible(visible, options = {}) {
@@ -11722,6 +11754,7 @@ function buildReceiptViewModel(record) {
     record,
     totals,
     profile,
+    issuer: INVOICE_ISSUER_PROFILE,
     serviceType,
     labels,
     issuedAt,
@@ -11963,7 +11996,7 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
         ]
       : isTopupInvoice && transferReference
         ? [
-            { label: tr("Transfer reference"), value: transferReference, mono: true },
+            { label: tr("Transfer reference"), value: transferReference, mono: true, stacked: true },
           ]
         : [],
     reverseVatNote: isTopupInvoice
@@ -12027,99 +12060,24 @@ function buildInvoiceRowsHtml(viewModel, rowIndices = null) {
     : `<tr><td colspan="4"><span class="receipt-cell-primary" style="color:var(--muted)">--</span></td></tr>`;
 }
 
-function buildReceiptHeaderHtml(viewModel) {
-  const {
-    profile,
-    serviceType,
-    issuedAt,
-    quantity,
-    billingAddressLines,
-    totals,
-  } = viewModel;
-  const profileName = profile?.companyName || "--";
-  const contactLine = [profile?.contactName, profile?.contactEmail].filter(Boolean).join(" • ") || "--";
-  const taxLine = [profile?.taxId, profile?.customerId].filter(Boolean).join(" • ") || "--";
-  const accountManager = profile?.accountManager || "--";
-
-  return `
-    <div class="receipt-topline">
-      <div class="receipt-brand">
-        <img src="shipide_logo.png" class="receipt-brand-logo" alt="Shipide" crossorigin="anonymous" />
-      </div>
-      <div class="receipt-top-meta">
-        <span class="receipt-chip">${escapeHtml(tr("Receipt"))}</span>
-        <div class="receipt-top-meta-lines mono">
-          <span>${escapeHtml(issuedAt)}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="receipt-grid">
-      <section class="receipt-panel">
-        <div class="receipt-panel-title">${escapeHtml(tr("Issued To"))}</div>
-        <div class="receipt-address">
-          <div class="receipt-address-block">
-            <span class="receipt-address-name">${escapeHtml(profileName)}</span>
-            <div class="receipt-address-lines">
-              <span>${escapeHtml(contactLine)}</span>
-              ${billingAddressLines
-                .map((line) => `<span>${escapeHtml(line)}</span>`)
-                .join("")}
-            </div>
-          </div>
-          <div class="receipt-address-meta mono">
-            <span>${escapeHtml(taxLine)}</span>
-            <span>${escapeHtml(profile?.contactPhone || "--")}</span>
-            <span>${escapeHtml(tr("Account Manager"))}: ${escapeHtml(accountManager)}</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="receipt-panel receipt-panel-summary">
-        <div class="receipt-panel-title">${escapeHtml(tr("Summary"))}</div>
-        <div class="receipt-kv-grid receipt-kv-grid-compact">
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Service"))}</span>
-            <span class="receipt-kv-value">${escapeHtml(serviceType)}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Quantity"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(String(quantity))}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Subtotal"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalExVat))}</span>
-          </div>
-          <div class="receipt-kv receipt-kv-total">
-            <span class="receipt-kv-key">${escapeHtml(tr("Total"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.totalIncVat))}</span>
-          </div>
-          <div class="receipt-kv">
-            <span class="receipt-kv-key">${escapeHtml(tr("Average Unit Rate"))}</span>
-            <span class="receipt-kv-value mono">${escapeHtml(formatMoney(totals.unitExVat))}</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  `;
+function buildReceiptBillingNoticeCopy() {
+  return tr(
+    "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping."
+  );
 }
 
-function buildInvoiceHeaderHtml(viewModel) {
-  const {
-    profile,
-    issuedAt,
-    dueAt,
-    billingAddressLines,
-    invoiceNumber,
-    paymentMethodLabel,
-    isMonthlyBilling,
-    issuer,
-    statusLabel,
-    statusValue,
-  } = viewModel;
+function buildDocumentHeaderHtml({
+  profile,
+  issuedAt,
+  billingAddressLines,
+  issuer,
+  topTagLabel,
+  documentNumber,
+  partyToLabel,
+  partyFromLabel,
+  metaItems,
+}) {
   const profileName = profile?.companyName || "--";
-  const resolvedStatusLabel = String(statusLabel || "").trim() || (isMonthlyBilling ? "Due date" : "Status");
-  const resolvedStatusValue = String(statusValue || "").trim() || (isMonthlyBilling ? dueAt : "Paid automatically");
   const clientLines = [
     ...billingAddressLines,
     profile?.taxId ? `VAT ${profile.taxId}` : "",
@@ -12138,18 +12096,18 @@ function buildInvoiceHeaderHtml(viewModel) {
       <div class="receipt-top-meta">
         <div class="invoice-top-tag">
           <span class="invoice-top-tag-marker" aria-hidden="true"></span>
-          <span class="invoice-top-tag-label mono">${escapeHtml(tr("Invoice"))}</span>
+          <span class="invoice-top-tag-label mono">${escapeHtml(topTagLabel)}</span>
         </div>
         <div class="receipt-top-meta-lines mono">
           <span>${escapeHtml(issuedAt)}</span>
-          <span>${escapeHtml(invoiceNumber)}</span>
+          <span>${escapeHtml(documentNumber)}</span>
         </div>
       </div>
     </div>
 
     <div class="invoice-party-grid">
       <section class="invoice-party-column">
-        <div class="receipt-panel-title">${escapeHtml("Billed to")}</div>
+        <div class="receipt-panel-title">${escapeHtml(partyToLabel)}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
             <span class="receipt-address-name">${escapeHtml(profileName)}</span>
@@ -12161,7 +12119,7 @@ function buildInvoiceHeaderHtml(viewModel) {
       </section>
 
       <section class="invoice-party-column">
-        <div class="receipt-panel-title">${escapeHtml("Billed by")}</div>
+        <div class="receipt-panel-title">${escapeHtml(partyFromLabel)}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
             <span class="receipt-address-name">${escapeHtml(issuer?.legalName || "--")}</span>
@@ -12174,24 +12132,78 @@ function buildInvoiceHeaderHtml(viewModel) {
     </div>
 
     <div class="invoice-meta-strip">
-      <div class="invoice-meta-item">
-        <div class="receipt-panel-title">${escapeHtml("Invoice no.")}</div>
-        <div class="invoice-meta-value mono">${escapeHtml(invoiceNumber)}</div>
-      </div>
-      <div class="invoice-meta-item">
-        <div class="receipt-panel-title">${escapeHtml("Invoice date")}</div>
-        <div class="invoice-meta-value mono">${escapeHtml(issuedAt)}</div>
-      </div>
-      <div class="invoice-meta-item">
-        <div class="receipt-panel-title">${escapeHtml(resolvedStatusLabel)}</div>
-        <div class="invoice-meta-value">${escapeHtml(resolvedStatusValue)}</div>
-      </div>
-      <div class="invoice-meta-item">
-        <div class="receipt-panel-title">${escapeHtml("Payment")}</div>
-        <div class="invoice-meta-value">${escapeHtml(paymentMethodLabel)}</div>
-      </div>
+      ${metaItems
+        .map(
+          (item) => `
+            <div class="invoice-meta-item">
+              <div class="receipt-panel-title">${escapeHtml(item.label || "--")}</div>
+              <div class="invoice-meta-value${item.mono ? " mono" : ""}">${escapeHtml(item.value || "--")}</div>
+            </div>`
+        )
+        .join("")}
     </div>
   `;
+}
+
+function buildReceiptHeaderHtml(viewModel) {
+  const {
+    profile,
+    issuedAt,
+    billingAddressLines,
+    serviceType,
+    receiptNumber,
+    issuer,
+  } = viewModel;
+  return buildDocumentHeaderHtml({
+    profile,
+    issuedAt,
+    billingAddressLines,
+    issuer,
+    topTagLabel: tr("Receipt"),
+    documentNumber: receiptNumber,
+    partyToLabel: "Issued to",
+    partyFromLabel: "Issued by",
+    metaItems: [
+      { label: "Receipt no.", value: receiptNumber, mono: true },
+      { label: "Receipt date", value: issuedAt },
+      { label: "Status", value: "Completed" },
+      { label: "Service", value: serviceType || "--" },
+    ],
+  });
+}
+
+function buildInvoiceHeaderHtml(viewModel) {
+  const {
+    profile,
+    issuedAt,
+    dueAt,
+    billingAddressLines,
+    invoiceNumber,
+    paymentMethodLabel,
+    isMonthlyBilling,
+    issuer,
+    statusLabel,
+    statusValue,
+  } = viewModel;
+  const resolvedStatusLabel = String(statusLabel || "").trim() || (isMonthlyBilling ? "Due date" : "Status");
+  const resolvedStatusValue = String(statusValue || "").trim() || (isMonthlyBilling ? dueAt : "Paid automatically");
+
+  return buildDocumentHeaderHtml({
+    profile,
+    issuedAt,
+    billingAddressLines,
+    issuer,
+    topTagLabel: tr("Invoice"),
+    documentNumber: invoiceNumber,
+    partyToLabel: "Billed to",
+    partyFromLabel: "Billed by",
+    metaItems: [
+      { label: "Invoice no.", value: invoiceNumber, mono: true },
+      { label: "Invoice date", value: issuedAt },
+      { label: resolvedStatusLabel, value: resolvedStatusValue },
+      { label: "Payment", value: paymentMethodLabel },
+    ],
+  });
 }
 
 function buildReceiptTableCardHtml(viewModel, options = {}) {
@@ -12293,11 +12305,29 @@ function buildReceiptDisclaimerHtml() {
   `;
 }
 
+function buildReceiptNoticeHtml() {
+  return `
+    <section class="invoice-lower-stack">
+      <section class="invoice-settlement-stack">
+        <div class="invoice-settlement-panel">
+          <div class="invoice-settlement-grid receipt-notice-grid">
+            <div class="receipt-notice-panel-copy">
+              <span class="receipt-panel-title">${escapeHtml(tr("Billing Notice"))}</span>
+              <span class="receipt-billing-notice-text">${escapeHtml(buildReceiptBillingNoticeCopy())}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  `;
+}
+
 function buildInvoiceSettlementHtml(viewModel) {
   const title = viewModel.settlementTitle || "Payment & Summary";
   const transferRows = Array.isArray(viewModel.settlementTransferRows)
     ? viewModel.settlementTransferRows
     : [];
+  const hasStackedTransferRows = transferRows.some((row) => Boolean(row?.stacked));
   const summaryRows = [
     { label: "Subtotal", value: formatMoney(viewModel.totals.totalIncVat) },
     { label: "Total", value: formatMoney(viewModel.totals.totalIncVat), strong: true },
@@ -12305,22 +12335,22 @@ function buildInvoiceSettlementHtml(viewModel) {
   return `
     <section class="invoice-settlement-stack">
       <div class="invoice-settlement-panel">
-        <div class="invoice-settlement-grid${transferRows.length ? " has-transfer" : ""}">
+        <div class="invoice-settlement-grid${transferRows.length ? " has-transfer" : ""}${hasStackedTransferRows ? " has-stacked-transfer" : ""}">
           <div class="invoice-payment-block">
             <span class="receipt-panel-title">${escapeHtml(title)}</span>
             <span class="invoice-payment-badge is-${escapeHtml(
               viewModel.settlementBadgeTone || (viewModel.isMonthlyBilling ? "success" : "success")
-            )}">${escapeHtml(
+            )}"><span class="invoice-payment-badge-copy">${escapeHtml(
               viewModel.settlementBadge || (viewModel.isMonthlyBilling ? "Due in 30 days" : "Collected automatically")
-            )}</span>
+            )}</span></span>
           </div>
           ${transferRows.length
-            ? `<div class="invoice-transfer-block">
-                <div class="invoice-transfer-lines">
+            ? `<div class="invoice-transfer-block${hasStackedTransferRows ? " has-stacked-transfer" : ""}">
+                <div class="invoice-transfer-lines${hasStackedTransferRows ? " has-stacked-transfer" : ""}">
                   ${transferRows
                     .map(
                       (row, index) => `
-                        <div class="invoice-transfer-row${index === transferRows.length - 1 ? " is-total" : ""}">
+                        <div class="invoice-transfer-row${index === transferRows.length - 1 ? " is-total" : ""}${row.stacked ? " is-stacked" : ""}">
                           <span>${escapeHtml(row.label || "--")}</span>
                           <span class="invoice-transfer-value${row.mono ? " mono" : ""}">${escapeHtml(
                             row.value || "--"
@@ -12377,13 +12407,13 @@ function buildReceiptPageHtml(viewModel, options = {}) {
   } = options;
 
   return `
-    <div class="receipt-sheet">
+    <div class="receipt-sheet invoice-sheet">
       <div class="receipt-sheet-body">
         ${showHeader ? `<div class="receipt-header-region">${buildReceiptHeaderHtml(viewModel)}</div>` : ""}
         ${showTableCard ? buildReceiptTableCardHtml(viewModel, { rowIndices, showSectionHead, showColumnHead }) : ""}
-        ${showDisclaimer ? buildReceiptDisclaimerHtml() : ""}
+        ${showDisclaimer ? buildReceiptNoticeHtml(viewModel) : ""}
       </div>
-      ${buildReceiptFooterHtml(viewModel.receiptNumber)}
+      ${buildInvoiceFooterHtml(viewModel.receiptNumber)}
     </div>
   `;
 }
@@ -12606,6 +12636,13 @@ if (typeof window !== "undefined") {
     buildDocumentHtmlFromViewModel: buildInvoiceDocumentHtmlFromViewModel,
     buildViewModelFromBillingInvoice: buildBillingInvoiceViewModel,
   };
+  window.__shipideDocumentRenderer = {
+    buildInvoiceViewModelFromBillingInvoice: buildBillingInvoiceViewModel,
+    buildInvoiceDocumentHtmlFromViewModel,
+    buildReceiptPageHtml,
+    buildInvoicePdfExportFromViewModel,
+    buildReceiptPdfExportFromViewModel,
+  };
 }
 
 function renderReceiptDetails(record) {
@@ -12777,9 +12814,19 @@ function openReceiptPdfTarget(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-async function buildReceiptPdfExport() {
-  if (!accountActiveRecord) return;
-  renderReceiptDetails(accountActiveRecord);
+async function buildReceiptPdfExportFromViewModel(viewModel, filename = "receipt-shipide.pdf") {
+  if (!viewModel) return null;
+  const previousMarkup = receiptDocument ? receiptDocument.innerHTML : "";
+  if (receiptDocument) {
+    receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
+      rowIndices: Array.isArray(viewModel.labels) ? viewModel.labels.map((_, index) => index) : [],
+      showHeader: true,
+      showTableCard: true,
+      showSectionHead: true,
+      showColumnHead: true,
+      showDisclaimer: true,
+    });
+  }
 
   try {
     if (
@@ -12878,7 +12925,6 @@ async function buildReceiptPdfExport() {
           pages.push({ firstPage: false, rows: [], hasDisclaimer: true });
         }
 
-        const viewModel = buildReceiptViewModel(accountActiveRecord);
         const renderExportPage = async (pageConfig) => {
           receiptDocument.innerHTML = buildReceiptPageHtml(viewModel, {
             rowIndices: pageConfig.rows,
@@ -12912,11 +12958,10 @@ async function buildReceiptPdfExport() {
       }
       return {
         blob: pdf.output("blob"),
-        filename: getReceiptPdfFilename(),
+        filename,
       };
     }
 
-    const viewModel = buildReceiptViewModel(accountActiveRecord);
     const fallbackLines = [
       tr("Receipt"),
       `${tr("Receipt No.")}: ${viewModel.receiptNumber}`,
@@ -12926,9 +12971,7 @@ async function buildReceiptPdfExport() {
       `${tr("Subtotal")}: ${formatMoney(viewModel.totals.totalExVat)}`,
       `${tr("Total")}: ${formatMoney(viewModel.totals.totalIncVat)}`,
       "",
-      tr(
-        "This receipt is provided for operational reference only. It is not valid for tax or accounting purposes. Your invoice is the only valid billing document for bookkeeping."
-      ),
+      buildReceiptBillingNoticeCopy(),
     ];
     const blob = buildPdf(fallbackLines, {
       pageWidth: 612,
@@ -12941,15 +12984,22 @@ async function buildReceiptPdfExport() {
     });
     return {
       blob,
-      filename: getReceiptPdfFilename(),
+      filename,
     };
   } catch (error) {
     throw error;
   } finally {
     if (receiptDocument) {
       receiptDocument.classList.remove("is-exporting");
+      receiptDocument.innerHTML = previousMarkup;
     }
   }
+}
+
+async function buildReceiptPdfExport() {
+  if (!accountActiveRecord) return;
+  const viewModel = buildReceiptViewModel(accountActiveRecord);
+  return buildReceiptPdfExportFromViewModel(viewModel, getReceiptPdfFilename());
 }
 
 async function buildInvoicePdfExport() {
@@ -13433,6 +13483,7 @@ function buildAdminTestReceiptViewModel(toEmail) {
     record,
     totals,
     profile,
+    issuer: INVOICE_ISSUER_PROFILE,
     serviceType: translateServiceName(record.service_type || "--"),
     labels: record?.payload?.labels || [],
     issuedAt: `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " "),
@@ -13443,46 +13494,174 @@ function buildAdminTestReceiptViewModel(toEmail) {
   };
 }
 
+const ADMIN_DOCUMENT_PREVIEW_EMAIL = "louis@gleth.com";
+const ADMIN_DOCUMENT_PREVIEW_RECEIPT_COUNT = 34;
+const ADMIN_DOCUMENT_PREVIEW_MONTHLY_ITEMS = 24;
+const ADMIN_DOCUMENT_PREVIEW_TOPUP_ITEMS = 22;
+
+function buildAdminDocumentPreviewLongReceiptViewModel(toEmail = ADMIN_DOCUMENT_PREVIEW_EMAIL) {
+  const profile = buildAdminDocumentPreviewProfile(toEmail);
+  const issuedAt = "Apr 17, 2026 10:42";
+  const unitExVat = 9.2;
+  const unitIncVat = 11.13;
+  const recipients = [
+    ["Maison Kepler", "Brussels", "Belgium"],
+    ["Atelier Nord", "Antwerp", "Belgium"],
+    ["Studio Marais", "Paris", "France"],
+    ["Forma Atelier", "Lille", "France"],
+    ["Nordic Edit", "Rotterdam", "Netherlands"],
+    ["Maison Solis", "Luxembourg", "Luxembourg"],
+    ["Kindred Works", "Ghent", "Belgium"],
+    ["Atelier Tide", "Leuven", "Belgium"],
+  ];
+  const labels = Array.from({ length: ADMIN_DOCUMENT_PREVIEW_RECEIPT_COUNT }, (_, index) => {
+    const [recipientName, recipientCity, recipientCountry] = recipients[index % recipients.length];
+    return {
+      labelId: `LBL-240417-${String(index + 1).padStart(3, "0")}`,
+      trackingId: `1Z84X32068010${String(29384 + index).padStart(5, "0")}`,
+      data: {
+        recipientName,
+        recipientCity,
+        recipientCountry,
+      },
+    };
+  });
+  const quantity = labels.length;
+  const totals = {
+    quantity,
+    unitExVat,
+    unitIncVat,
+    totalExVat: roundMoney(quantity * unitExVat),
+    vatAmount: 0,
+    totalIncVat: roundMoney(quantity * unitIncVat),
+  };
+  return {
+    profile,
+    issuer: INVOICE_ISSUER_PROFILE,
+    serviceType: "Express",
+    labels,
+    issuedAt,
+    receiptNumber: "RCPT-5A17E1-2401",
+    receiptSlug: "5a17e1-2401",
+    quantity,
+    totals,
+    billingAddressLines: splitReceiptAddressLines(profile.billingAddress),
+  };
+}
+
+function buildAdminDocumentPreviewMonthlyInvoiceRecord(
+  toEmail = ADMIN_DOCUMENT_PREVIEW_EMAIL
+) {
+  const issuedDate = new Date("2026-04-17T10:00:00.000Z");
+  const invoiceProfile = buildAdminDocumentPreviewProfile(toEmail);
+  const serviceFamilies = [
+    "Economy Batch",
+    "Priority Batch",
+    "International Express",
+    "Returns Flow",
+    "Locker Delivery",
+    "Home Dropoff",
+  ];
+  const items = Array.from({ length: ADMIN_DOCUMENT_PREVIEW_MONTHLY_ITEMS }, (_, index) => {
+    const quantity = (index % 4) + 1;
+    const unitRate = 8.4 + index * 0.47;
+    return {
+      service_type: `${serviceFamilies[index % serviceFamilies.length]} ${String(index + 1).padStart(2, "0")}`,
+      quantity,
+      amount_inc_vat: roundMoney(quantity * unitRate),
+      sort_index: index,
+    };
+  });
+  return {
+    id: typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `inv-monthly-preview-${Date.now()}`,
+    invoice_kind: "monthly",
+    reference: "INV-F529D138",
+    company_name: "Atelier Meridian",
+    contact_name: "Claire Dupont",
+    contact_email: String(toEmail || "").trim(),
+    issued_at: issuedDate.toISOString(),
+    due_at: addDaysLocal(issuedDate, 30)?.toISOString() || null,
+    payment_mode: "invoice",
+    total_inc_vat: roundMoney(
+      items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
+    ),
+    subtotal_ex_vat: roundMoney(
+      items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
+    ),
+    labels_count: items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+    billing_address: invoiceProfile.billingAddress,
+    metadata: {
+      invoice_profile: invoiceProfile,
+    },
+    items,
+  };
+}
+
+function buildAdminDocumentPreviewTopupInvoiceRecord(
+  toEmail = ADMIN_DOCUMENT_PREVIEW_EMAIL
+) {
+  const topupId = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `topup-preview-${Date.now()}`;
+  const issuedDate = new Date("2026-04-17T10:00:00.000Z");
+  const topupReference = "SHIP-TEST-TOPUP-2604";
+  const invoiceProfile = buildAdminDocumentPreviewProfile(toEmail);
+  const invoiceNumber = buildTopupInvoiceNumber({
+    id: topupId,
+    reference: topupReference,
+    credited_at: issuedDate.toISOString(),
+  });
+  const items = Array.from({ length: ADMIN_DOCUMENT_PREVIEW_TOPUP_ITEMS }, (_, index) => ({
+    service_type: `Account funding tranche ${String(index + 1).padStart(2, "0")}`,
+    quantity: 1,
+    amount_inc_vat: roundMoney(18 + index * 2.35),
+    sort_index: index,
+    metadata: {
+      topup_reference: topupReference,
+    },
+  }));
+  return {
+    id: typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `inv-topup-preview-${Date.now()}`,
+    invoice_kind: "topup",
+    source_topup_id: topupId,
+    invoice_number: invoiceNumber,
+    reference: invoiceNumber,
+    company_name: "Atelier Meridian",
+    contact_name: "Claire Dupont",
+    contact_email: String(toEmail || "").trim(),
+    issued_at: issuedDate.toISOString(),
+    due_at: issuedDate.toISOString(),
+    paid_at: issuedDate.toISOString(),
+    payment_mode: "wallet",
+    payment_reference: topupReference,
+    total_inc_vat: roundMoney(
+      items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
+    ),
+    subtotal_ex_vat: roundMoney(
+      items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
+    ),
+    labels_count: items.length,
+    metadata: {
+      invoice_kind: "topup",
+      invoice_number: invoiceNumber,
+      source_topup_id: topupId,
+      topup_reference: topupReference,
+      invoice_profile: invoiceProfile,
+    },
+    items,
+  };
+}
+
 function getAdminDocumentPreviewEmail() {
   return String(
     adminBillingTestEmailInput?.value
     || currentUser?.email
     || "billing@shipide.com"
   ).trim() || "billing@shipide.com";
-}
-
-function renderDocumentsPagePreview(container, markup) {
-  if (!container) return;
-  container.innerHTML = markup;
-}
-
-function renderDocumentsPagePreviews() {
-  const previewEmail = getAdminDocumentPreviewEmail();
-  const receiptViewModel = buildAdminTestReceiptViewModel(previewEmail);
-  const monthlyInvoiceViewModel = buildAdminTestInvoiceViewModel(previewEmail);
-  const topupInvoiceViewModel = buildBillingInvoiceViewModel(
-    buildAdminTestTopupInvoiceRecord(previewEmail)
-  );
-
-  renderDocumentsPagePreview(
-    documentsReceiptPreview,
-    buildReceiptPageHtml(receiptViewModel, {
-      rowIndices: receiptViewModel.labels.map((_, index) => index),
-      showHeader: true,
-      showTableCard: true,
-      showSectionHead: true,
-      showColumnHead: true,
-      showDisclaimer: true,
-    })
-  );
-  renderDocumentsPagePreview(
-    documentsMonthlyInvoicePreview,
-    buildInvoiceDocumentHtmlFromViewModel(monthlyInvoiceViewModel)
-  );
-  renderDocumentsPagePreview(
-    documentsTopupInvoicePreview,
-    buildInvoiceDocumentHtmlFromViewModel(topupInvoiceViewModel)
-  );
 }
 
 async function prepareInvoicePdfVariantsForEmail(invoiceRecord) {
@@ -16812,9 +16991,6 @@ async function initializeAuth() {
     setMainView("account", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "admin") {
     setMainView("admin", { push: false, animate: false });
-  } else if (isAppAuthed && initialRoute.view === "documents") {
-    setMainView("documents", { push: false, animate: false });
-    void loadAdminAccessStatus({ quiet: true });
   } else if (isAppAuthed && initialRoute.view === "leads") {
     setMainView("leads", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "history") {
@@ -19049,17 +19225,6 @@ if (openAdminPageButton) {
   });
 }
 
-if (openDocumentsPageButton) {
-  openDocumentsPageButton.addEventListener("click", async () => {
-    const hasAccess = await loadAdminAccessStatus({ quiet: true });
-    if (!hasAccess) {
-      showToast(tr("You are not allowed to access document previews."), { tone: "error" });
-      return;
-    }
-    setDocumentsPageVisible(true);
-  });
-}
-
 if (openLeadsPageButton) {
   openLeadsPageButton.addEventListener("click", async () => {
     const hasAccess = await loadAdminAccessStatus({ quiet: true });
@@ -19408,6 +19573,12 @@ if (adminBillingSendTestButton) {
 if (adminBillingSendTopupTestButton) {
   adminBillingSendTopupTestButton.addEventListener("click", async () => {
     await sendAdminTopupBillingTestEmail();
+  });
+}
+
+if (adminBillingSendDocumentTripletButton) {
+  adminBillingSendDocumentTripletButton.addEventListener("click", async () => {
+    await sendAdminDocumentPreviewTriplet();
   });
 }
 
@@ -22094,12 +22265,6 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     if (route.view === "admin") {
       setMainView("admin", { push: false });
       loadAdminDashboard({ quiet: true });
-      return;
-    }
-
-    if (route.view === "documents") {
-      setMainView("documents", { push: false });
-      loadAdminAccessStatus({ quiet: true });
       return;
     }
 

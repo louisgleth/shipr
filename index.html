@@ -198,10 +198,6 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="4" y1="19" x2="20" y2="19"/><rect x="6" y="10" width="3" height="6"/><rect x="11" y="7" width="3" height="9"/><rect x="16" y="4" width="3" height="12"/></svg>
               <span>Reports</span>
             </button>
-            <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn is-hidden" id="openDocumentsPage">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>
-              <span>Documents</span>
-            </button>
             <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn is-hidden" id="openLeadsPage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 5h10"/><path d="M7 9h10"/><path d="M7 13h6"/><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M15.5 16.5c0 1.1-.9 2-2 2a2 2 0 0 1-2-2c0-1.9 2-2.9 4-4 .8.8 1.5 1.4 2.5 1.9-.6.8-1 1.4-1.5 2.1z"/></svg>
               <span>Leads</span>
@@ -1213,6 +1209,10 @@
                 <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTopupTest">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/><path d="M4 6h4"/><path d="M16 6h4"/></svg>
                   <span>Send Top-up Test</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendDocumentTriplet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l5 5v11H7z"/><path d="M14 4v5h5"/><path d="M5 8H4v12h10v-1"/><path d="M9 13h6"/><path d="M9 16h6"/></svg>
+                  <span>Send 3 PDF Previews</span>
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTestSequence">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5h14v14H5z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg>
@@ -2371,60 +2371,6 @@
         </div>
       </div>
     </div>
-
-      <section class="documents-page is-hidden" id="documentsPageSection">
-        <div class="documents-page-head">
-          <div>
-            <h2>Document Preview</h2>
-            <p class="panel-sub">
-              Full-size previews of the three billing documents Shipide currently produces.
-            </p>
-          </div>
-          <div class="documents-page-actions">
-            <a class="documents-page-jump" href="#documentsReceiptSection">Receipt</a>
-            <a class="documents-page-jump" href="#documentsMonthlyInvoiceSection">Monthly Invoice</a>
-            <a class="documents-page-jump" href="#documentsTopupInvoiceSection">Top-up Invoice</a>
-          </div>
-        </div>
-
-        <div class="documents-page-stack">
-          <section class="documents-preview-card" id="documentsReceiptSection">
-            <div class="documents-preview-head">
-              <div>
-                <div class="preview-title">Receipt</div>
-                <div class="documents-preview-note">Operational receipt tied to generation history.</div>
-              </div>
-            </div>
-            <div class="documents-preview-stage scroll-fade-wrap scroll-fade-wrap--card">
-              <div class="documents-preview-surface" id="documentsReceiptPreview"></div>
-            </div>
-          </section>
-
-          <section class="documents-preview-card" id="documentsMonthlyInvoiceSection">
-            <div class="documents-preview-head">
-              <div>
-                <div class="preview-title">Monthly Billing Invoice</div>
-                <div class="documents-preview-note">Invoice sent for monthly-billing accounts.</div>
-              </div>
-            </div>
-            <div class="documents-preview-stage scroll-fade-wrap scroll-fade-wrap--card">
-              <div class="documents-preview-surface" id="documentsMonthlyInvoicePreview"></div>
-            </div>
-          </section>
-
-          <section class="documents-preview-card" id="documentsTopupInvoiceSection">
-            <div class="documents-preview-head">
-              <div>
-                <div class="preview-title">Top-up Invoice</div>
-                <div class="documents-preview-note">Invoice generated after a credited wallet top-up.</div>
-              </div>
-            </div>
-            <div class="documents-preview-stage scroll-fade-wrap scroll-fade-wrap--card">
-              <div class="documents-preview-surface" id="documentsTopupInvoicePreview"></div>
-            </div>
-          </section>
-        </div>
-      </section>
 
     <!-- CSV Upload Modal (full-screen overlay) -->
     <div class="csv-modal-overlay is-closed" id="csvModal">

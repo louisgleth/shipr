@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipide Documents Preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #111111;
+      }
+
+      body {
+        color: #f4f6fb;
+      }
+
+      .documents-preview-page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .documents-preview-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 14px;
+        padding: 18px 22px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+          linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(17, 17, 17, 0.94));
+        backdrop-filter: blur(14px);
+      }
+
+      .documents-preview-title {
+        margin-right: 10px;
+        display: grid;
+        gap: 4px;
+      }
+
+      .documents-preview-title h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 500;
+      }
+
+      .documents-preview-title p,
+      .documents-preview-status {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(241, 244, 251, 0.62);
+      }
+
+      .documents-preview-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+      }
+
+      .documents-preview-action {
+        height: 38px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f4f6fb;
+        font: inherit;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+      }
+
+      .documents-preview-action:hover {
+        border-color: rgba(119, 71, 227, 0.55);
+        background: rgba(119, 71, 227, 0.12);
+        color: #ffffff;
+      }
+
+      .documents-preview-action:disabled {
+        opacity: 0.58;
+        cursor: wait;
+      }
+
+      .documents-preview-shell {
+        padding: 28px 28px 40px;
+        display: grid;
+        gap: 24px;
+      }
+
+      .documents-preview-card {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        overflow: hidden;
+      }
+
+      .documents-preview-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .documents-preview-card-head h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 400;
+      }
+
+      .documents-preview-card-head p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: rgba(241, 244, 251, 0.62);
+      }
+
+      .documents-preview-stage {
+        padding: 18px;
+        overflow: auto;
+      }
+
+      .documents-preview-surface {
+        width: 860px;
+        margin: 0 auto;
+      }
+
+      .documents-preview-surface .receipt-document {
+        width: 860px;
+        margin: 0 auto;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+      }
+
+      @media (max-width: 960px) {
+        .documents-preview-toolbar {
+          padding: 16px;
+        }
+
+        .documents-preview-shell {
+          padding: 16px 12px 28px;
+        }
+
+        .documents-preview-stage {
+          padding: 12px;
+        }
+
+        .documents-preview-surface,
+        .documents-preview-surface .receipt-document {
+          width: min(860px, calc(100vw - 48px));
+        }
+      }
+    </style>
+    <script>
+      window.__SHIPIDE_INVOICE_PRINT_MODE__ = true;
+    </script>
+  </head>
+  <body>
+    <div class="documents-preview-page">
+      <div class="documents-preview-toolbar">
+        <div class="documents-preview-title">
+          <h1>Documents Preview</h1>
+          <p>Standalone localhost preview for receipts, monthly invoices, and top-up invoices with long sample rows for pagination testing.</p>
+        </div>
+        <div class="documents-preview-status" id="documentsPreviewStatus">
+          Waiting for renderer...
+        </div>
+        <div class="documents-preview-actions">
+          <button type="button" class="documents-preview-action" id="documentsPreviewSend">
+            Send 3 PDFs to louis@gleth.com
+          </button>
+          <button type="button" class="documents-preview-action" id="documentsPreviewReload">
+            Reload now
+          </button>
+        </div>
+      </div>
+
+      <main class="documents-preview-shell">
+        <section class="documents-preview-card">
+          <div class="documents-preview-card-head">
+            <div>
+              <h2>Receipt</h2>
+              <p>Operational reference document for generated labels.</p>
+            </div>
+          </div>
+          <div class="documents-preview-stage">
+            <div class="documents-preview-surface" id="receiptPreviewSurface"></div>
+          </div>
+        </section>
+
+        <section class="documents-preview-card">
+          <div class="documents-preview-card-head">
+            <div>
+              <h2>Monthly Billing Invoice</h2>
+              <p>Invoice sent to monthly-billing clients.</p>
+            </div>
+          </div>
+          <div class="documents-preview-stage">
+            <div class="documents-preview-surface" id="monthlyInvoicePreviewSurface"></div>
+          </div>
+        </section>
+
+        <section class="documents-preview-card">
+          <div class="documents-preview-card-head">
+            <div>
+              <h2>Top-up Invoice</h2>
+              <p>Invoice generated after a credited account-balance top-up.</p>
+            </div>
+          </div>
+          <div class="documents-preview-stage">
+            <div class="documents-preview-surface" id="topupInvoicePreviewSurface"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="receipt-export-host" aria-hidden="true">
+      <div class="receipt-document" id="receiptDocument"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="/app.js"></script>
+    <script>
+      const PREVIEW_TEST_EMAIL = "louis@gleth.com";
+      const PREVIEW_RECEIPT_LABEL_COUNT = 34;
+      const PREVIEW_MONTHLY_ITEM_COUNT = 24;
+      const PREVIEW_TOPUP_ITEM_COUNT = 22;
+      const STATUS_EL = document.getElementById("documentsPreviewStatus");
+      const SEND_BUTTON = document.getElementById("documentsPreviewSend");
+      const RELOAD_BUTTON = document.getElementById("documentsPreviewReload");
+      const RECEIPT_SURFACE = document.getElementById("receiptPreviewSurface");
+      const MONTHLY_INVOICE_SURFACE = document.getElementById("monthlyInvoicePreviewSurface");
+      const TOPUP_INVOICE_SURFACE = document.getElementById("topupInvoicePreviewSurface");
+      let previewVersion = "";
+
+      function roundMoney(value) {
+        return Math.round((Number(value) || 0) * 100) / 100;
+      }
+
+      function setStatus(message) {
+        STATUS_EL.textContent = message;
+      }
+
+      function buildPreviewProfile() {
+        return {
+          companyName: "Atelier Meridian",
+          contactName: "Claire Dupont",
+          contactEmail: "billing@ateliermeridian.com",
+          contactPhone: "+32 2 555 01 29",
+          billingAddress: "Avenue Louise 120, 1050 Brussels, Belgium",
+          taxId: "BE0123456789",
+          customerId: "SHIPIDE-TEST",
+          accountManager: "Shipide Billing",
+        };
+      }
+
+      function buildPreviewReceiptLabels(count = PREVIEW_RECEIPT_LABEL_COUNT) {
+        const recipients = [
+          ["Maison Kepler", "Brussels", "Belgium"],
+          ["Atelier Nord", "Antwerp", "Belgium"],
+          ["Studio Marais", "Paris", "France"],
+          ["Forma Atelier", "Lille", "France"],
+          ["Nordic Edit", "Rotterdam", "Netherlands"],
+          ["Maison Solis", "Luxembourg", "Luxembourg"],
+          ["Kindred Works", "Ghent", "Belgium"],
+          ["Atelier Tide", "Leuven", "Belgium"],
+        ];
+        return Array.from({ length: count }, (_, index) => {
+          const [recipientName, recipientCity, recipientCountry] =
+            recipients[index % recipients.length];
+          const suffix = String(index + 1).padStart(3, "0");
+          return {
+            labelId: `LBL-240417-${suffix}`,
+            trackingId: `1Z84X32068010${String(29384 + index).padStart(5, "0")}`,
+            data: {
+              recipientName,
+              recipientCity,
+              recipientCountry,
+            },
+          };
+        });
+      }
+
+      function buildReceiptViewModel() {
+        const labels = buildPreviewReceiptLabels();
+        const unitExVat = 9.2;
+        const unitIncVat = 11.13;
+        const totals = {
+          quantity: labels.length,
+          totalExVat: roundMoney(labels.length * unitExVat),
+          vatAmount: 0,
+          totalIncVat: roundMoney(labels.length * unitIncVat),
+          unitExVat,
+          unitIncVat,
+        };
+        const profile = buildPreviewProfile();
+        return {
+          profile,
+          serviceType: "Express",
+          labels,
+          issuedAt: "Apr 17, 2026 10:42",
+          receiptNumber: "RCPT-5A17E1-2401",
+          quantity: totals.quantity,
+          billingAddressLines: [
+            "Avenue Louise 120",
+            "1050 Brussels",
+            "Belgium",
+          ],
+          totals,
+        };
+      }
+
+      function buildPreviewMonthlyInvoiceItems(count = PREVIEW_MONTHLY_ITEM_COUNT) {
+        const serviceFamilies = [
+          "Economy Batch",
+          "Priority Batch",
+          "International Express",
+          "Returns Flow",
+          "Locker Delivery",
+          "Home Dropoff",
+        ];
+        return Array.from({ length: count }, (_, index) => {
+          const quantity = (index % 4) + 1;
+          const unitRate = 8.4 + index * 0.47;
+          return {
+            service_type: `${serviceFamilies[index % serviceFamilies.length]} ${String(index + 1).padStart(2, "0")}`,
+            quantity,
+            amount_inc_vat: roundMoney(quantity * unitRate),
+            sort_index: index,
+          };
+        });
+      }
+
+      function buildPreviewTopupInvoiceItems(count = PREVIEW_TOPUP_ITEM_COUNT) {
+        return Array.from({ length: count }, (_, index) => {
+          const amount = roundMoney(18 + index * 2.35);
+          return {
+            service_type: `Account funding tranche ${String(index + 1).padStart(2, "0")}`,
+            quantity: 1,
+            amount_inc_vat: amount,
+            sort_index: index,
+          };
+        });
+      }
+
+      function buildMonthlyInvoiceRecord() {
+        const items = buildPreviewMonthlyInvoiceItems();
+        return {
+          id: "preview-monthly-invoice",
+          reference: "INV-F529D138",
+          company_name: "Atelier Meridian",
+          contact_email: "billing@ateliermeridian.com",
+          payment_mode: "invoice",
+          issued_at: "2026-04-17T10:00:00.000Z",
+          due_at: "2026-05-17T10:00:00.000Z",
+          labels_count: items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+          total_inc_vat: roundMoney(items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)),
+          billing_address: "Avenue Louise 120\n1050 Brussels\nBelgium",
+          metadata: {
+            invoice_profile: {
+              taxId: "BE0123456789",
+              billingAddress: "Avenue Louise 120\n1050 Brussels\nBelgium",
+            },
+          },
+          items,
+        };
+      }
+
+      function buildTopupInvoiceRecord() {
+        const items = buildPreviewTopupInvoiceItems();
+        return {
+          id: "preview-topup-invoice",
+          invoice_kind: "topup",
+          source_topup_id: "topup-preview-001",
+          reference: "TUP-260417-TOPU",
+          company_name: "Atelier Meridian",
+          contact_email: "billing@ateliermeridian.com",
+          payment_mode: "wallet",
+          payment_reference: "SHIP-TEST-TOPUP-2604",
+          issued_at: "2026-04-17T10:00:00.000Z",
+          due_at: "2026-04-17T10:00:00.000Z",
+          paid_at: "2026-04-17T10:03:00.000Z",
+          labels_count: items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+          total_inc_vat: roundMoney(items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)),
+          billing_address: "Avenue Louise 120\n1050 Brussels\nBelgium",
+          metadata: {
+            invoice_kind: "topup",
+            topup_reference: "SHIP-TEST-TOPUP-2604",
+            invoice_profile: {
+              taxId: "BE0123456789",
+              billingAddress: "Avenue Louise 120\n1050 Brussels\nBelgium",
+            },
+          },
+          items,
+        };
+      }
+
+      function buildPreviewDocuments(renderer) {
+        const receiptViewModel = buildReceiptViewModel();
+        const monthlyInvoiceViewModel = renderer.buildInvoiceViewModelFromBillingInvoice(
+          buildMonthlyInvoiceRecord(),
+          { reminderStage: 0 }
+        );
+        const topupInvoiceViewModel = renderer.buildInvoiceViewModelFromBillingInvoice(
+          buildTopupInvoiceRecord(),
+          { reminderStage: 0 }
+        );
+        return {
+          receiptViewModel,
+          monthlyInvoiceViewModel,
+          topupInvoiceViewModel,
+        };
+      }
+
+      function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = String(reader.result || "");
+            const base64 = result.includes(",") ? result.split(",").pop() : result;
+            resolve(base64 || "");
+          };
+          reader.onerror = () => reject(new Error("Could not encode PDF attachment."));
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      function wrapPreviewDocument(markup) {
+        return `<div class="receipt-document">${markup}</div>`;
+      }
+
+      async function waitForRenderer() {
+        for (let index = 0; index < 200; index += 1) {
+          if (window.__shipideDocumentRenderer) return window.__shipideDocumentRenderer;
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
+        throw new Error("Document renderer did not load.");
+      }
+
+      async function renderPreview() {
+        const renderer = await waitForRenderer();
+        const {
+          receiptViewModel,
+          monthlyInvoiceViewModel,
+          topupInvoiceViewModel,
+        } = buildPreviewDocuments(renderer);
+
+        RECEIPT_SURFACE.innerHTML = wrapPreviewDocument(
+          renderer.buildReceiptPageHtml(receiptViewModel, {
+            rowIndices: receiptViewModel.labels.map((_, index) => index),
+            showHeader: true,
+            showTableCard: true,
+            showSectionHead: true,
+            showColumnHead: true,
+            showDisclaimer: true,
+          })
+        );
+        MONTHLY_INVOICE_SURFACE.innerHTML = wrapPreviewDocument(
+          renderer.buildInvoiceDocumentHtmlFromViewModel(monthlyInvoiceViewModel)
+        );
+        TOPUP_INVOICE_SURFACE.innerHTML = wrapPreviewDocument(
+          renderer.buildInvoiceDocumentHtmlFromViewModel(topupInvoiceViewModel)
+        );
+        setStatus("Live preview is up to date. Long sample rows are loaded for multi-page PDF export.");
+      }
+
+      async function sendPreviewDocuments() {
+        const renderer = await waitForRenderer();
+        const {
+          receiptViewModel,
+          monthlyInvoiceViewModel,
+          topupInvoiceViewModel,
+        } = buildPreviewDocuments(renderer);
+        SEND_BUTTON.disabled = true;
+        setStatus(`Generating PDFs and sending them to ${PREVIEW_TEST_EMAIL}...`);
+
+        try {
+          const exported = await Promise.all([
+            renderer.buildReceiptPdfExportFromViewModel(
+              receiptViewModel,
+              "preview-receipt-long-list.pdf"
+            ),
+            renderer.buildInvoicePdfExportFromViewModel(
+              monthlyInvoiceViewModel,
+              "preview-monthly-invoice-long-list.pdf",
+              { preferServerRender: false, allowRasterFallback: true }
+            ),
+            renderer.buildInvoicePdfExportFromViewModel(
+              topupInvoiceViewModel,
+              "preview-topup-invoice-long-list.pdf",
+              { preferServerRender: false, allowRasterFallback: true }
+            ),
+          ]);
+
+          const attachments = await Promise.all(
+            exported.map(async (entry) => {
+              if (!entry?.blob || !entry?.filename) {
+                throw new Error("One of the preview PDFs could not be generated.");
+              }
+              return {
+                filename: entry.filename,
+                content: await blobToBase64(entry.blob),
+                contentType: "application/pdf",
+              };
+            })
+          );
+
+          const payload = typeof fetchApiWithAuth === "function"
+            ? await fetchApiWithAuth("/api/documents-preview/send-test-email", {
+                method: "POST",
+                timeoutMs: 120000,
+                body: JSON.stringify({
+                  toEmail: PREVIEW_TEST_EMAIL,
+                  attachments,
+                }),
+              })
+            : await (async () => {
+                const response = await window.fetch("/api/documents-preview/send-test-email", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    toEmail: PREVIEW_TEST_EMAIL,
+                    attachments,
+                  }),
+                });
+                const fallbackPayload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                  throw new Error(
+                    fallbackPayload?.error || `Could not send preview email (${response.status}).`
+                  );
+                }
+                return fallbackPayload;
+              })();
+          setStatus(`Sent the three preview PDFs to ${PREVIEW_TEST_EMAIL}.`);
+        } catch (error) {
+          setStatus(error?.message || "Could not send preview PDFs.");
+        } finally {
+          SEND_BUTTON.disabled = false;
+        }
+      }
+
+      async function fetchPreviewVersion() {
+        const response = await window.fetch(`/__preview-version?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`Preview version request failed (${response.status})`);
+        }
+        return response.json();
+      }
+
+      async function startPreviewPolling() {
+        try {
+          const initial = await fetchPreviewVersion();
+          previewVersion = initial.version || "";
+        } catch (_error) {
+          setStatus("Live preview is up to date.");
+          return;
+        }
+
+        window.setInterval(async () => {
+          try {
+            const next = await fetchPreviewVersion();
+            if (previewVersion && next.version && next.version !== previewVersion) {
+              STATUS_EL.textContent = "Change detected. Reloading preview...";
+              window.location.reload();
+              return;
+            }
+            previewVersion = next.version || previewVersion;
+          } catch (_error) {
+            // Ignore transient preview polling failures.
+          }
+        }, 900);
+      }
+
+      RELOAD_BUTTON?.addEventListener("click", () => {
+        window.location.reload();
+      });
+
+      SEND_BUTTON?.addEventListener("click", () => {
+        void sendPreviewDocuments();
+      });
+
+      (async () => {
+        try {
+          await renderPreview();
+          await startPreviewPolling();
+        } catch (error) {
+          setStatus(error?.message || "Documents preview failed to render.");
+        }
+      })();
+    </script>
+  </body>
+</html>

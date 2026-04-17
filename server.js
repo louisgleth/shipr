@@ -13,9 +13,10 @@ const PORT = Number(process.env.PORT) || 4173;
 const ROOT = __dirname;
 const INDEX_FILE = path.join(ROOT, "index.html");
 const INVOICE_PREVIEW_FILE = path.join(ROOT, "invoice-preview.html");
+const DOCUMENTS_PREVIEW_FILE = path.join(ROOT, "documents-preview.html");
 const IBAN_TOPUP_PREVIEW_FILE = path.join(ROOT, "iban-topup-preview.html");
 const LANDING_PLATFORM_MOCK_FILE = path.join(ROOT, "landing-platform-mock.html");
-const MAX_BODY_BYTES = 12 * 1024 * 1024;
+const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
@@ -304,6 +305,7 @@ const MIME_TYPES = {
 
 const PREVIEW_VERSION_FILES = Object.freeze([
   path.join(ROOT, "invoice-preview.html"),
+  path.join(ROOT, "documents-preview.html"),
   path.join(ROOT, "iban-topup-preview.html"),
   path.join(ROOT, "app.js"),
   path.join(ROOT, "styles.css"),
@@ -1972,6 +1974,25 @@ function getRequestIpAddress(req) {
   return "";
 }
 
+function getRemoteRequestAddress(req) {
+  const forwarded = getRequestIpAddress(req);
+  if (forwarded) return forwarded;
+  return String(req?.socket?.remoteAddress || "").trim();
+}
+
+function isLocalPreviewRequest(req) {
+  const normalized = String(getRemoteRequestAddress(req) || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .split("%")[0];
+  if (!normalized) return false;
+  if (normalized === "::1" || normalized === "::ffff:127.0.0.1" || normalized === "127.0.0.1") {
+    return true;
+  }
+  return false;
+}
+
 function buildClickwrapEvidence(req, invite, contract, agreement, createdUserId, email, options = {}) {
   const { previewRecord = null, acceptedContract = null } = options;
   const acceptedAt = agreement?.agreedAt || new Date().toISOString();
@@ -2499,6 +2520,116 @@ async function sendResendEmail(payload) {
     throw new Error(String(message).trim());
   }
   return payloadJson;
+}
+
+async function handleDocumentsPreviewSendTestEmail(req, res) {
+  if (!isLocalPreviewRequest(req)) {
+    sendJson(res, 403, { error: "Documents preview email sending is only available from localhost." });
+    return;
+  }
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to send document previews." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  const toEmail = normalizeEmail(body?.toEmail || "louis@gleth.com");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    sendJson(res, 400, { error: "A valid destination email is required." });
+    return;
+  }
+  const attachments = Array.isArray(body?.attachments)
+    ? body.attachments
+        .map((attachment) => {
+          const filename = String(attachment?.filename || "").trim();
+          const content = String(attachment?.content || "").trim();
+          if (!filename || !content) return null;
+          const contentType = String(
+            attachment?.contentType || attachment?.content_type || "application/pdf"
+          ).trim() || "application/pdf";
+          return {
+            filename,
+            content,
+            contentType,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  if (attachments.length !== 3) {
+    sendJson(res, 400, { error: "Exactly three PDF attachments are required." });
+    return;
+  }
+  if (!RESEND_API_KEY) {
+    const bearerToken = getBearerToken(req);
+    if (!bearerToken) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    try {
+      const response = await fetch(`${getPublicAppUrl()}/api/documents-preview/send-test-email`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearerToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          toEmail,
+          attachments,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      sendJson(
+        res,
+        response.status,
+        payload && typeof payload === "object"
+          ? payload
+          : { error: "Could not send preview PDFs through production mailer." }
+      );
+      return;
+    } catch (error) {
+      sendJson(
+        res,
+        502,
+        { error: error?.message || "Could not reach the production preview mailer." }
+      );
+      return;
+    }
+  }
+  try {
+    const resendResponse = await sendResendEmail({
+      to: toEmail,
+      subject: "Shipide document preview PDFs",
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.55">
+          <p>Attached are the three local document preview PDFs generated from the localhost preview page.</p>
+          <p>They include long sample rows so pagination can be reviewed across multiple pages.</p>
+        </div>
+      `,
+      text: [
+        "Attached are the three local document preview PDFs generated from the localhost preview page.",
+        "They include long sample rows so pagination can be reviewed across multiple pages.",
+      ].join("\n\n"),
+      attachments,
+    });
+    sendJson(res, 200, {
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+      attachments: attachments.map((attachment) => attachment.filename),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not send preview PDFs." });
+  }
 }
 
 function normalizeClientBillingPreference(value) {
@@ -13708,6 +13839,10 @@ async function handleApi(req, res, requestUrl) {
     await handleBillingCheckout(req, res);
     return true;
   }
+  if (pathname === "/api/documents-preview/send-test-email" && req.method === "POST") {
+    await handleDocumentsPreviewSendTestEmail(req, res);
+    return true;
+  }
   if (pathname.startsWith("/api/")) {
     sendJson(res, 404, { error: "API route not found." });
     return true;
@@ -13742,6 +13877,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/invoice-preview" || pathname === "/invoice-preview/") {
     sendFile(res, INVOICE_PREVIEW_FILE);
+    return;
+  }
+
+  if (pathname === "/documents-preview" || pathname === "/documents-preview/") {
+    sendFile(res, DOCUMENTS_PREVIEW_FILE);
     return;
   }
 

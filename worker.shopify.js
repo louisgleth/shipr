@@ -2,7 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import puppeteer from "@cloudflare/puppeteer";
 
-const MAX_BODY_BYTES = 12 * 1024 * 1024;
+const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_SHOPIFY_SCOPES = "read_orders,write_orders,read_locations";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
@@ -242,6 +242,9 @@ export default {
       }
       if (pathname === "/api/admin/agreements/preview-test" && request.method === "POST") {
         return handleAdminAgreementPreviewTest(request, env);
+      }
+      if (pathname === "/api/documents-preview/send-test-email" && request.method === "POST") {
+        return handleDocumentsPreviewSendTestEmail(request, env);
       }
       if (pathname === "/api/admin/agreements/send-test" && request.method === "POST") {
         return handleAdminAgreementSendTest(request, env);
@@ -2615,6 +2618,17 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return new Uint8Array();
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function formatClickwrapAcceptanceTimestamp(value) {
@@ -11571,6 +11585,71 @@ async function handleAdminInvoiceSend(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not send invoice." }, 500);
+  }
+}
+
+async function handleDocumentsPreviewSendTestEmail(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send document previews." }, 403);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  const toEmail = normalizeEmail(body?.toEmail || "louis@gleth.com");
+  if (!toEmail || !isValidEmailFormat(toEmail)) {
+    return jsonResponse({ error: "A valid destination email is required." }, 400);
+  }
+  const attachments = Array.isArray(body?.attachments)
+    ? body.attachments
+        .map((attachment) => {
+          const filename = String(attachment?.filename || "").trim();
+          const content = String(attachment?.content || "").trim();
+          if (!filename || !content) return null;
+          const contentType = String(
+            attachment?.contentType || attachment?.content_type || "application/pdf"
+          ).trim() || "application/pdf";
+          return {
+            filename,
+            content: base64ToBytes(content),
+            contentType,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  if (attachments.length !== 3) {
+    return jsonResponse({ error: "Exactly three PDF attachments are required." }, 400);
+  }
+  try {
+    const resendResponse = await sendResendEmail(env, {
+      to: toEmail,
+      subject: "Shipide document preview PDFs",
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.55">
+          <p>Attached are the three document preview PDFs generated from the localhost preview page.</p>
+          <p>They include long sample rows so pagination can be reviewed across multiple pages.</p>
+        </div>
+      `,
+      text: [
+        "Attached are the three document preview PDFs generated from the localhost preview page.",
+        "They include long sample rows so pagination can be reviewed across multiple pages.",
+      ].join("\n\n"),
+      attachments,
+    });
+    return jsonResponse({
+      ok: true,
+      to: toEmail,
+      resendId: resendResponse?.id || null,
+      attachments: attachments.map((attachment) => attachment.filename),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not send preview PDFs." }, 500);
   }
 }
 
