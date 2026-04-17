@@ -11958,7 +11958,7 @@ function buildBillingInvoiceViewModel(invoice = {}, options = {}) {
     invoiceKind,
   });
   const statusValue = isTopupInvoice
-    ? tr("Account balance credited")
+    ? tr("Completed")
     : isMonthlyBilling
       ? formatInvoiceDateDisplay(resolvedDueDate)
       : paymentMode === "wallet"
