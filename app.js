@@ -13531,9 +13531,9 @@ function buildAdminDocumentPreviewLongReceiptViewModel(toEmail = ADMIN_DOCUMENT_
     quantity,
     unitExVat,
     unitIncVat,
-    totalExVat: roundMoney(quantity * unitExVat),
+    totalExVat: round2(quantity * unitExVat),
     vatAmount: 0,
-    totalIncVat: roundMoney(quantity * unitIncVat),
+    totalIncVat: round2(quantity * unitIncVat),
   };
   return {
     profile,
@@ -13568,7 +13568,7 @@ function buildAdminDocumentPreviewMonthlyInvoiceRecord(
     return {
       service_type: `${serviceFamilies[index % serviceFamilies.length]} ${String(index + 1).padStart(2, "0")}`,
       quantity,
-      amount_inc_vat: roundMoney(quantity * unitRate),
+      amount_inc_vat: round2(quantity * unitRate),
       sort_index: index,
     };
   });
@@ -13584,10 +13584,10 @@ function buildAdminDocumentPreviewMonthlyInvoiceRecord(
     issued_at: issuedDate.toISOString(),
     due_at: addDaysLocal(issuedDate, 30)?.toISOString() || null,
     payment_mode: "invoice",
-    total_inc_vat: roundMoney(
+    total_inc_vat: round2(
       items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
     ),
-    subtotal_ex_vat: roundMoney(
+    subtotal_ex_vat: round2(
       items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
     ),
     labels_count: items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
@@ -13616,7 +13616,7 @@ function buildAdminDocumentPreviewTopupInvoiceRecord(
   const items = Array.from({ length: ADMIN_DOCUMENT_PREVIEW_TOPUP_ITEMS }, (_, index) => ({
     service_type: `Account funding tranche ${String(index + 1).padStart(2, "0")}`,
     quantity: 1,
-    amount_inc_vat: roundMoney(18 + index * 2.35),
+    amount_inc_vat: round2(18 + index * 2.35),
     sort_index: index,
     metadata: {
       topup_reference: topupReference,
@@ -13638,10 +13638,10 @@ function buildAdminDocumentPreviewTopupInvoiceRecord(
     paid_at: issuedDate.toISOString(),
     payment_mode: "wallet",
     payment_reference: topupReference,
-    total_inc_vat: roundMoney(
+    total_inc_vat: round2(
       items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
     ),
-    subtotal_ex_vat: roundMoney(
+    subtotal_ex_vat: round2(
       items.reduce((sum, item) => sum + (Number(item.amount_inc_vat) || 0), 0)
     ),
     labels_count: items.length,
