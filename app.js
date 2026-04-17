@@ -11824,7 +11824,7 @@ function buildTopupInvoiceViewModel(topup) {
     paymentMode: "wallet",
     paymentMethodLabel: tr("Bank transfer top-up"),
     isMonthlyBilling: false,
-    statusLabel: isMonthlyBilling ? tr("Due date") : tr("Status"),
+    statusLabel: tr("Status"),
     statusValue: statusCopy.statusValue,
     settlementBadge: statusCopy.settlementBadge,
     settlementBadgeTone: statusCopy.settlementBadgeTone,
