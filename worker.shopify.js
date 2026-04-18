@@ -6968,6 +6968,48 @@ async function renderSelectableInvoicePdfBatch(env, payloads = [], options = {})
   });
 }
 
+async function renderSelectableDocumentPdfBatch(env, jobs = [], options = {}) {
+  if (!env?.BROWSER) {
+    throw new Error("Cloudflare Browser Rendering is not configured.");
+  }
+  const variants = Array.isArray(jobs) ? jobs.filter(Boolean) : [];
+  if (!variants.length) return [];
+  if (variants.length > MAX_BILLING_INVOICE_RENDER_BATCH_VARIANTS) {
+    const error = new Error(
+      `Too many invoice variants requested. Maximum is ${MAX_BILLING_INVOICE_RENDER_BATCH_VARIANTS}.`
+    );
+    error.code = "invoice_pdf_batch_too_large";
+    throw error;
+  }
+  return enqueueInvoiceBrowserRender(async () => {
+    const browser = await launchInvoiceBrowserWithRetry(env);
+    let page = null;
+    try {
+      page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
+      const rendered = [];
+      for (const variant of variants) {
+        const kind = String(variant?.kind || "invoice").trim().toLowerCase();
+        if (kind === "receipt") {
+          rendered.push(
+            await renderSelectableReceiptPdfOnPage(page, env, variant?.payload || {}, options)
+          );
+        } else {
+          rendered.push(
+            await renderSelectableInvoicePdfOnPage(page, env, variant?.payload || {}, options)
+          );
+        }
+      }
+      return rendered;
+    } finally {
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      await browser.close().catch(() => {});
+    }
+  });
+}
+
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
   const isReminder = Boolean(options?.isReminder);
   const reminderStage = Math.max(0, Number(options?.reminderStage ?? invoice?.reminder_stage) || 0);
@@ -12138,7 +12180,26 @@ async function handleDocumentsPreviewSendTestEmail(request, env) {
   if (!toEmail || !isValidEmailFormat(toEmail)) {
     return jsonResponse({ error: "A valid destination email is required." }, 400);
   }
-  const attachments = Array.isArray(body?.attachments)
+  const previewDocuments = Array.isArray(body?.previewDocuments)
+    ? body.previewDocuments
+        .map((document) => {
+          const kind = String(document?.kind || "").trim().toLowerCase();
+          const filename = String(document?.filename || "").trim();
+          const viewModel = document?.viewModel && typeof document.viewModel === "object"
+            ? document.viewModel
+            : null;
+          if (!filename || !viewModel || !["receipt", "invoice"].includes(kind)) {
+            return null;
+          }
+          return {
+            kind,
+            filename,
+            viewModel,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  let attachments = Array.isArray(body?.attachments)
     ? body.attachments
         .map((attachment) => {
           const filename = String(attachment?.filename || "").trim();
@@ -12155,6 +12216,37 @@ async function handleDocumentsPreviewSendTestEmail(request, env) {
         })
         .filter(Boolean)
     : [];
+  if (previewDocuments.length) {
+    if (previewDocuments.length !== 3) {
+      return jsonResponse({ error: "Exactly three preview documents are required." }, 400);
+    }
+    try {
+      const renderedDocuments = await renderSelectableDocumentPdfBatch(
+        env,
+        previewDocuments.map((document) => ({
+          kind: document.kind,
+          payload: {
+            viewModel: document.viewModel,
+            filename: document.filename,
+          },
+        })),
+        { request }
+      );
+      attachments = renderedDocuments.map((document) => ({
+        filename: document.filename,
+        content: document.bytes,
+        contentType: "application/pdf",
+      }));
+    } catch (error) {
+      if (isBrowserRateLimitError(error)) {
+        return getBrowserRenderRateLimitResponse(
+          env,
+          "PDF rendering is temporarily busy. Please retry shortly."
+        );
+      }
+      return jsonResponse({ error: error?.message || "Could not generate preview PDFs." }, 500);
+    }
+  }
   if (attachments.length !== 3) {
     return jsonResponse({ error: "Exactly three PDF attachments are required." }, 400);
   }

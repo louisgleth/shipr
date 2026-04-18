@@ -6487,73 +6487,11 @@ async function sendAdminDocumentPreviewTriplet() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    const receiptViewModel = buildAdminDocumentPreviewLongReceiptViewModel(
-      ADMIN_DOCUMENT_PREVIEW_EMAIL
-    );
-    const monthlyInvoiceRecord = buildAdminDocumentPreviewMonthlyInvoiceRecord(
-      ADMIN_DOCUMENT_PREVIEW_EMAIL
-    );
-    const topupInvoiceRecord = buildAdminDocumentPreviewTopupInvoiceRecord(
-      ADMIN_DOCUMENT_PREVIEW_EMAIL
-    );
-    const monthlyInvoiceViewModel = buildBillingInvoiceViewModel(monthlyInvoiceRecord, {
-      reminderStage: 0,
-    });
-    const topupInvoiceViewModel = buildBillingInvoiceViewModel(topupInvoiceRecord, {
-      reminderStage: 0,
-    });
-    const exportJobs = [
-      () => buildReceiptPdfExportFromViewModel(
-        receiptViewModel,
-        "preview-receipt-long-list.pdf",
-        {
-          preferServerRender: true,
-          allowRasterFallback: false,
-        }
-      ),
-      () => buildInvoicePdfExportFromViewModel(
-        monthlyInvoiceViewModel,
-        "preview-monthly-invoice-long-list.pdf",
-        {
-          preferServerRender: true,
-          allowRasterFallback: false,
-        }
-      ),
-      () => buildInvoicePdfExportFromViewModel(
-        topupInvoiceViewModel,
-        "preview-topup-invoice-long-list.pdf",
-        {
-          preferServerRender: true,
-          allowRasterFallback: false,
-        }
-      ),
-    ];
-    const exports = [];
-    for (let index = 0; index < exportJobs.length; index += 1) {
-      exports.push(await exportJobs[index]());
-      if (index < exportJobs.length - 1) {
-        await delayMs(900);
-      }
-    }
-    const attachments = await Promise.all(
-      exports.map(async (entry) => {
-        if (!entry?.blob || !entry?.filename) {
-          throw new Error(tr("Could not generate preview PDFs."));
-        }
-        return {
-          filename: entry.filename,
-          content: await blobToBase64(entry.blob),
-          contentType: "application/pdf",
-        };
-      })
-    );
+    const previewPayload = buildAdminDocumentPreviewEmailPayload(ADMIN_DOCUMENT_PREVIEW_EMAIL);
     await fetchApiWithAuth("/api/documents-preview/send-test-email", {
       method: "POST",
       timeoutMs: 180000,
-      body: JSON.stringify({
-        toEmail: ADMIN_DOCUMENT_PREVIEW_EMAIL,
-        attachments,
-      }),
+      body: JSON.stringify(previewPayload),
     });
     setAdminBillingStatus(
       tr("Preview PDFs sent to {email}.", { email: ADMIN_DOCUMENT_PREVIEW_EMAIL }),
@@ -14517,6 +14455,38 @@ function buildAdminDocumentPreviewTopupInvoiceRecord(
       invoice_profile: invoiceProfile,
     },
     items,
+  };
+}
+
+function buildAdminDocumentPreviewEmailPayload(toEmail = ADMIN_DOCUMENT_PREVIEW_EMAIL) {
+  const receiptViewModel = buildAdminDocumentPreviewLongReceiptViewModel(toEmail);
+  const monthlyInvoiceRecord = buildAdminDocumentPreviewMonthlyInvoiceRecord(toEmail);
+  const topupInvoiceRecord = buildAdminDocumentPreviewTopupInvoiceRecord(toEmail);
+  const monthlyInvoiceViewModel = buildBillingInvoiceViewModel(monthlyInvoiceRecord, {
+    reminderStage: 0,
+  });
+  const topupInvoiceViewModel = buildBillingInvoiceViewModel(topupInvoiceRecord, {
+    reminderStage: 0,
+  });
+  return {
+    toEmail,
+    previewDocuments: [
+      {
+        kind: "receipt",
+        filename: "preview-receipt-long-list.pdf",
+        viewModel: receiptViewModel,
+      },
+      {
+        kind: "invoice",
+        filename: "preview-monthly-invoice-long-list.pdf",
+        viewModel: monthlyInvoiceViewModel,
+      },
+      {
+        kind: "invoice",
+        filename: "preview-topup-invoice-long-list.pdf",
+        viewModel: topupInvoiceViewModel,
+      },
+    ],
   };
 }
 

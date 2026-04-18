@@ -2548,6 +2548,25 @@ async function handleDocumentsPreviewSendTestEmail(req, res) {
     sendJson(res, 400, { error: "A valid destination email is required." });
     return;
   }
+  const previewDocuments = Array.isArray(body?.previewDocuments)
+    ? body.previewDocuments
+        .map((document) => {
+          const kind = String(document?.kind || "").trim().toLowerCase();
+          const filename = String(document?.filename || "").trim();
+          const viewModel = document?.viewModel && typeof document.viewModel === "object"
+            ? document.viewModel
+            : null;
+          if (!filename || !viewModel || !["receipt", "invoice"].includes(kind)) {
+            return null;
+          }
+          return {
+            kind,
+            filename,
+            viewModel,
+          };
+        })
+        .filter(Boolean)
+    : [];
   const attachments = Array.isArray(body?.attachments)
     ? body.attachments
         .map((attachment) => {
@@ -2565,11 +2584,11 @@ async function handleDocumentsPreviewSendTestEmail(req, res) {
         })
         .filter(Boolean)
     : [];
-  if (attachments.length !== 3) {
-    sendJson(res, 400, { error: "Exactly three PDF attachments are required." });
+  if (previewDocuments.length && previewDocuments.length !== 3) {
+    sendJson(res, 400, { error: "Exactly three preview documents are required." });
     return;
   }
-  if (!RESEND_API_KEY) {
+  if (!RESEND_API_KEY || previewDocuments.length) {
     const bearerToken = getBearerToken(req);
     if (!bearerToken) {
       sendJson(res, 401, { error: "Authentication required." });
@@ -2585,6 +2604,7 @@ async function handleDocumentsPreviewSendTestEmail(req, res) {
         body: JSON.stringify({
           toEmail,
           attachments,
+          previewDocuments,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -2604,6 +2624,10 @@ async function handleDocumentsPreviewSendTestEmail(req, res) {
       );
       return;
     }
+  }
+  if (attachments.length !== 3) {
+    sendJson(res, 400, { error: "Exactly three PDF attachments are required." });
+    return;
   }
   try {
     const resendResponse = await sendResendEmail({
