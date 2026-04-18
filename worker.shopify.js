@@ -6991,15 +6991,15 @@ async function renderSelectableDocumentPdfBatch(env, jobs = [], options = {}) {
   }
   return enqueueInvoiceBrowserRender(async () => {
     const browser = await launchInvoiceBrowserWithRetry(env);
-    let page = null;
     try {
-      page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
       const rendered = [];
       for (const variant of variants) {
         const kind = String(variant?.kind || "invoice").trim().toLowerCase();
         const filename = String(variant?.payload?.filename || `${kind || "document"}.pdf`).trim();
+        let page = null;
         try {
+          page = await browser.newPage();
+          await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
           if (kind === "receipt") {
             rendered.push(
               await renderSelectableReceiptPdfOnPage(page, env, variant?.payload || {}, options)
@@ -7013,13 +7013,14 @@ async function renderSelectableDocumentPdfBatch(env, jobs = [], options = {}) {
           throw new Error(
             `Could not render ${filename}: ${error?.message || "Unknown render error."}`
           );
+        } finally {
+          if (page) {
+            await page.close().catch(() => {});
+          }
         }
       }
       return rendered;
     } finally {
-      if (page) {
-        await page.close().catch(() => {});
-      }
       await browser.close().catch(() => {});
     }
   });
