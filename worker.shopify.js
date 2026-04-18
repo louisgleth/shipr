@@ -499,6 +499,14 @@ function getBrowserRenderRetryBaseMs(env) {
   return DEFAULT_BROWSER_RENDER_RETRY_BASE_MS;
 }
 
+function getBrowserRenderReadyTimeoutMs(env) {
+  const configured = Number(env?.BROWSER_RENDER_READY_TIMEOUT_MS);
+  if (Number.isFinite(configured) && configured >= 10_000) {
+    return Math.max(10_000, Math.floor(configured));
+  }
+  return 180_000;
+}
+
 function isBrowserRateLimitError(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return message.includes("429") || message.includes("rate limit exceeded");
@@ -6839,7 +6847,7 @@ async function renderSelectableInvoicePdfOnPage(page, env, payload = {}, options
   });
   await page.waitForFunction(
     () => window.__SHIPIDE_PRINT_READY__ === true || Boolean(window.__SHIPIDE_PRINT_ERROR__),
-    { timeout: 60000 }
+    { timeout: getBrowserRenderReadyTimeoutMs(env) }
   );
   const printError = await page.evaluate(() => String(window.__SHIPIDE_PRINT_ERROR__ || "").trim());
   if (printError) {
@@ -6871,7 +6879,7 @@ async function renderSelectableReceiptPdfOnPage(page, env, payload = {}, options
   });
   await page.waitForFunction(
     () => window.__SHIPIDE_PRINT_READY__ === true || Boolean(window.__SHIPIDE_PRINT_ERROR__),
-    { timeout: 60000 }
+    { timeout: getBrowserRenderReadyTimeoutMs(env) }
   );
   const printError = await page.evaluate(() => String(window.__SHIPIDE_PRINT_ERROR__ || "").trim());
   if (printError) {
@@ -6990,13 +6998,20 @@ async function renderSelectableDocumentPdfBatch(env, jobs = [], options = {}) {
       const rendered = [];
       for (const variant of variants) {
         const kind = String(variant?.kind || "invoice").trim().toLowerCase();
-        if (kind === "receipt") {
-          rendered.push(
-            await renderSelectableReceiptPdfOnPage(page, env, variant?.payload || {}, options)
-          );
-        } else {
-          rendered.push(
-            await renderSelectableInvoicePdfOnPage(page, env, variant?.payload || {}, options)
+        const filename = String(variant?.payload?.filename || `${kind || "document"}.pdf`).trim();
+        try {
+          if (kind === "receipt") {
+            rendered.push(
+              await renderSelectableReceiptPdfOnPage(page, env, variant?.payload || {}, options)
+            );
+          } else {
+            rendered.push(
+              await renderSelectableInvoicePdfOnPage(page, env, variant?.payload || {}, options)
+            );
+          }
+        } catch (error) {
+          throw new Error(
+            `Could not render ${filename}: ${error?.message || "Unknown render error."}`
           );
         }
       }
