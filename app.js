@@ -6883,8 +6883,8 @@ function buildAdminSalesLedgerCsv(rows = [], options = {}) {
   return lines.join("\r\n");
 }
 
-function downloadAdminLedgerCsv(filename, csvText) {
-  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+function downloadBlobAsFile(blob, filename) {
+  if (!blob) return;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -6893,6 +6893,185 @@ function downloadAdminLedgerCsv(filename, csvText) {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function parseContentDispositionFilename(headers) {
+  const raw = String(headers?.get?.("content-disposition") || "").trim();
+  if (!raw) return "";
+  const utfMatch = raw.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]).trim();
+    } catch (_error) {
+      return utfMatch[1].trim();
+    }
+  }
+  const quotedMatch = raw.match(/filename\s*=\s*"([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1].trim();
+  const plainMatch = raw.match(/filename\s*=\s*([^;]+)/i);
+  return plainMatch?.[1] ? plainMatch[1].trim() : "";
+}
+
+function sanitizeAccountingPackEntryName(value, fallback = "document.pdf") {
+  const safe = String(value || "").trim().replace(/[\\/:*?"<>|]+/g, "-");
+  return safe || fallback;
+}
+
+async function fetchAdminInvoicePdfBlob(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error(tr("Invoice id is required."));
+  }
+  const response = await fetchApiBlobWithAuth(
+    `/api/admin/invoices/pdf?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
+    { timeoutMs: 120000 }
+  );
+  return {
+    blob: response?.blob || null,
+    filename:
+      parseContentDispositionFilename(response?.headers)
+      || buildInvoicePdfFilenameFromReference(safeInvoiceId),
+  };
+}
+
+let adminAccountingZipCrcTable = null;
+
+function getAdminAccountingZipCrcTable() {
+  if (adminAccountingZipCrcTable) return adminAccountingZipCrcTable;
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    }
+    table[index] = value >>> 0;
+  }
+  adminAccountingZipCrcTable = table;
+  return table;
+}
+
+function computeAdminAccountingZipCrc32(bytes) {
+  const table = getAdminAccountingZipCrcTable();
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = table[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildAdminAccountingZipDosDateTime(dateLike) {
+  const parsed = new Date(dateLike || Date.now());
+  const safeDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const year = Math.max(1980, safeDate.getFullYear());
+  const dosTime =
+    ((safeDate.getHours() & 0x1f) << 11)
+    | ((safeDate.getMinutes() & 0x3f) << 5)
+    | Math.floor((safeDate.getSeconds() || 0) / 2);
+  const dosDate =
+    (((year - 1980) & 0x7f) << 9)
+    | (((safeDate.getMonth() + 1) & 0x0f) << 5)
+    | (safeDate.getDate() & 0x1f);
+  return { dosDate, dosTime };
+}
+
+function buildAdminAccountingZipUint16(value) {
+  const bytes = new Uint8Array(2);
+  new DataView(bytes.buffer).setUint16(0, Number(value) || 0, true);
+  return bytes;
+}
+
+function buildAdminAccountingZipUint32(value) {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, Number(value) >>> 0, true);
+  return bytes;
+}
+
+function concatAdminAccountingZipParts(parts = []) {
+  const safeParts = Array.isArray(parts) ? parts.filter(Boolean) : [];
+  const totalLength = safeParts.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  safeParts.forEach((part) => {
+    out.set(part, offset);
+    offset += part.length;
+  });
+  return out;
+}
+
+async function buildAdminAccountingPackZip(entries = []) {
+  const encoder = new TextEncoder();
+  const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const entry of safeEntries) {
+    const name = String(entry?.name || "").trim();
+    if (!name) continue;
+    const filenameBytes = encoder.encode(name);
+    const dataBytes =
+      entry?.bytes instanceof Uint8Array
+        ? entry.bytes
+        : new Uint8Array(await entry?.blob?.arrayBuffer?.());
+    const crc32 = computeAdminAccountingZipCrc32(dataBytes);
+    const { dosDate, dosTime } = buildAdminAccountingZipDosDateTime(entry?.lastModified);
+
+    const localHeader = concatAdminAccountingZipParts([
+      buildAdminAccountingZipUint32(0x04034b50),
+      buildAdminAccountingZipUint16(20),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(dosTime),
+      buildAdminAccountingZipUint16(dosDate),
+      buildAdminAccountingZipUint32(crc32),
+      buildAdminAccountingZipUint32(dataBytes.length),
+      buildAdminAccountingZipUint32(dataBytes.length),
+      buildAdminAccountingZipUint16(filenameBytes.length),
+      buildAdminAccountingZipUint16(0),
+      filenameBytes,
+    ]);
+    localParts.push(localHeader, dataBytes);
+
+    const centralHeader = concatAdminAccountingZipParts([
+      buildAdminAccountingZipUint32(0x02014b50),
+      buildAdminAccountingZipUint16(20),
+      buildAdminAccountingZipUint16(20),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(dosTime),
+      buildAdminAccountingZipUint16(dosDate),
+      buildAdminAccountingZipUint32(crc32),
+      buildAdminAccountingZipUint32(dataBytes.length),
+      buildAdminAccountingZipUint32(dataBytes.length),
+      buildAdminAccountingZipUint16(filenameBytes.length),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint16(0),
+      buildAdminAccountingZipUint32(0),
+      buildAdminAccountingZipUint32(offset),
+      filenameBytes,
+    ]);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + dataBytes.length;
+  }
+
+  const localSection = concatAdminAccountingZipParts(localParts);
+  const centralSection = concatAdminAccountingZipParts(centralParts);
+  const endOfCentralDirectory = concatAdminAccountingZipParts([
+    buildAdminAccountingZipUint32(0x06054b50),
+    buildAdminAccountingZipUint16(0),
+    buildAdminAccountingZipUint16(0),
+    buildAdminAccountingZipUint16(centralParts.length),
+    buildAdminAccountingZipUint16(centralParts.length),
+    buildAdminAccountingZipUint32(centralSection.length),
+    buildAdminAccountingZipUint32(localSection.length),
+    buildAdminAccountingZipUint16(0),
+  ]);
+
+  return new Blob([localSection, centralSection, endOfCentralDirectory], {
+    type: "application/zip",
+  });
 }
 
 async function exportAdminSalesLedger() {
@@ -6907,17 +7086,6 @@ async function exportAdminSalesLedger() {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    if (invoiceIdsToMark.length) {
-      const payload = await fetchApiWithAuth("/api/admin/invoices/accounting-export", {
-        method: "POST",
-        body: JSON.stringify({
-          invoiceIds: invoiceIdsToMark,
-          batchId,
-          format: "csv",
-        }),
-      });
-      mergeAdminInvoiceRows(Array.isArray(payload?.invoices) ? payload.invoices : []);
-    }
     const invoiceMap = new Map(
       (Array.isArray(adminBillingInvoices) ? adminBillingInvoices : []).map((invoice) => [
         String(invoice?.id || "").trim(),
@@ -6929,16 +7097,61 @@ async function exportAdminSalesLedger() {
       return invoiceMap.get(id) || invoice;
     });
     const csvText = buildAdminSalesLedgerCsv(exportRows, { batchId });
-    const filename = `sales-ledger-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.csv`;
-    downloadAdminLedgerCsv(filename, csvText);
+    const csvFilename = `sales-ledger-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.csv`;
+    const zipEntries = [
+      {
+        name: csvFilename,
+        bytes: new TextEncoder().encode(csvText),
+        lastModified: new Date(),
+      },
+    ];
+
+    for (let index = 0; index < exportRows.length; index += 1) {
+      const invoice = exportRows[index];
+      const reference = String(invoice?.reference || `invoice-${index + 1}`).trim();
+      setAdminBillingStatus(
+        `Preparing accounting pack... ${index + 1}/${exportRows.length} • ${reference}`,
+        { tone: "info" }
+      );
+      const pdfFile = await fetchAdminInvoicePdfBlob(invoice?.id);
+      if (!pdfFile?.blob) {
+        throw new Error(tr("Could not load invoice PDF."));
+      }
+      zipEntries.push({
+        name: `invoices/${sanitizeAccountingPackEntryName(
+          pdfFile.filename || buildInvoicePdfFilenameFromReference(reference),
+          buildInvoicePdfFilenameFromReference(reference)
+        )}`,
+        blob: pdfFile.blob,
+        lastModified: invoice?.updated_at || invoice?.issued_at || invoice?.created_at || new Date(),
+      });
+      if (index < exportRows.length - 1) {
+        await delayMs(300);
+      }
+    }
+
+    const zipBlob = await buildAdminAccountingPackZip(zipEntries);
+    if (invoiceIdsToMark.length) {
+      const payload = await fetchApiWithAuth("/api/admin/invoices/accounting-export", {
+        method: "POST",
+        body: JSON.stringify({
+          invoiceIds: invoiceIdsToMark,
+          batchId,
+          format: "zip",
+        }),
+      });
+      mergeAdminInvoiceRows(Array.isArray(payload?.invoices) ? payload.invoices : []);
+    }
+    const zipFilename = `accounting-pack-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.zip`;
+    downloadBlobAsFile(zipBlob, zipFilename);
     setAdminBillingStatus(
       invoiceIdsToMark.length
-        ? `Exported ${invoiceIdsToMark.length} invoice${invoiceIdsToMark.length === 1 ? "" : "s"} for accounting.`
-        : "Downloaded CSV for already-exported invoices.",
+        ? `Exported ${invoiceIdsToMark.length} invoice${invoiceIdsToMark.length === 1 ? "" : "s"} and downloaded the accounting pack.`
+        : "Downloaded accounting pack for already-exported invoices.",
       { tone: "success" }
     );
   } catch (error) {
-    setAdminBillingStatus(error?.message || "Could not export the sales ledger.", {
+    setAdminBillingStatus(error?.message || "Could not build the accounting pack.", {
       tone: "error",
     });
   } finally {

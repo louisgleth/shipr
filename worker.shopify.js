@@ -219,6 +219,9 @@ export default {
       if (pathname === "/api/admin/invoices/detail" && request.method === "GET") {
         return handleAdminInvoiceDetail(request, env, url);
       }
+      if (pathname === "/api/admin/invoices/pdf" && request.method === "GET") {
+        return handleAdminInvoicePdf(request, env, url);
+      }
       if (pathname === "/api/admin/invoices/run" && request.method === "POST") {
         return handleAdminInvoicesRun(request, env);
       }
@@ -11885,6 +11888,87 @@ async function handleAdminInvoiceAccountingExport(request, env) {
   }
 }
 
+async function getApprovedBillingInvoicePdfExport(env, invoiceId, options = {}) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error("Invoice id is required.");
+  }
+  const invoiceWithItems = await getBillingInvoiceById(env, safeInvoiceId, { withItems: true });
+  if (!invoiceWithItems?.id) {
+    throw new Error("Invoice not found.");
+  }
+  const desiredStage = normalizeInvoicePdfVariantStage(options?.reminderStage || 0);
+  const nowIso = new Date().toISOString();
+  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
+  const effectiveIssuedAt = parseIsoTimestamp(invoiceWithItems.issued_at || nowIso) || nowIso;
+  const shouldResetDueDate = manualSettlement && (!invoiceWithItems.sent_at || !invoiceWithItems.issued_at);
+  const effectiveDueAt = manualSettlement
+    ? (
+        shouldResetDueDate
+          ? addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays(env)).toISOString()
+          : parseIsoTimestamp(invoiceWithItems.due_at)
+            || addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays(env)).toISOString()
+      )
+    : null;
+  const effectivePaidAt = manualSettlement
+    ? parseIsoTimestamp(invoiceWithItems.paid_at || "")
+    : parseIsoTimestamp(invoiceWithItems.paid_at || invoiceWithItems.sent_at || effectiveIssuedAt)
+      || effectiveIssuedAt;
+  const pdfInvoice = {
+    ...invoiceWithItems,
+    issued_at: effectiveIssuedAt,
+    due_at: effectiveDueAt,
+    paid_at: effectivePaidAt,
+  };
+  const storedVariant = await loadStoredBillingInvoicePdfVariant(env, pdfInvoice, desiredStage, {
+    allowFallback: false,
+  }).catch(() => null);
+  let renderedVariant = null;
+  if (!storedVariant && env?.BROWSER) {
+    renderedVariant = await renderSelectableInvoicePdf(
+      env,
+      {
+        invoice: {
+          ...pdfInvoice,
+          items: invoiceWithItems.items || [],
+          reference: getBillingInvoiceReference(invoiceWithItems),
+        },
+        reminderStage: desiredStage,
+        filename: buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage),
+      },
+      {}
+    ).catch(() => null);
+    if (renderedVariant?.bytes) {
+      const persistedVariant = await persistBillingInvoicePdfVariant(
+        env,
+        pdfInvoice,
+        desiredStage,
+        renderedVariant.bytes,
+        renderedVariant.filename
+      );
+      const mergedMetadata = mergeBillingInvoicePdfVariantMetadata(invoiceWithItems, [persistedVariant]);
+      const metadataUpdate = await updateBillingInvoiceFields(env, invoiceWithItems.id, {
+        metadata: mergedMetadata,
+      });
+      if (metadataUpdate?.metadata) {
+        invoiceWithItems.metadata = metadataUpdate.metadata;
+      }
+    }
+  }
+  const pdfBytes = storedVariant?.bytes || renderedVariant?.bytes || null;
+  if (!pdfBytes) {
+    throw new Error("Approved invoice PDF is unavailable. Regenerate the invoice and try again.");
+  }
+  const filename =
+    String(storedVariant?.filename || renderedVariant?.filename || "").trim()
+    || buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage);
+  return {
+    invoice: invoiceWithItems,
+    bytes: pdfBytes,
+    filename,
+  };
+}
+
 async function handleAdminInvoiceDetail(request, env, url) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
@@ -11910,6 +11994,35 @@ async function handleAdminInvoiceDetail(request, env, url) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not load invoice." }, 500);
+  }
+}
+
+async function handleAdminInvoicePdf(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to download invoice PDFs." }, 403);
+  }
+  const invoiceId = String(url.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  try {
+    const pdfExport = await getApprovedBillingInvoicePdfExport(env, invoiceId, { reminderStage: 0 });
+    return new Response(pdfExport.bytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${String(pdfExport.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    const message = error?.message || "Could not load invoice PDF.";
+    const status = /not found/i.test(message) ? 404 : /unavailable|regenerate/i.test(message) ? 409 : 500;
+    return jsonResponse({ error: message }, status);
   }
 }
 

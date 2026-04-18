@@ -11154,6 +11154,31 @@ async function handleAdminInvoiceAccountingExport(req, res) {
   }
 }
 
+async function getApprovedBillingInvoicePdfExport(invoiceId, options = {}) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error("Invoice id is required.");
+  }
+  const invoiceWithItems = await getBillingInvoiceById(safeInvoiceId, { withItems: true });
+  if (!invoiceWithItems?.id) {
+    throw new Error("Invoice not found.");
+  }
+  const desiredStage = normalizeInvoicePdfVariantStage(options?.reminderStage || 0);
+  const storedVariant = await loadStoredBillingInvoicePdfVariant(invoiceWithItems, desiredStage, {
+    allowFallback: false,
+  }).catch(() => null);
+  if (!storedVariant?.bytes) {
+    throw new Error("Approved invoice PDF is unavailable in local mode. Generate or send the invoice first.");
+  }
+  return {
+    invoice: invoiceWithItems,
+    bytes: storedVariant.bytes,
+    filename:
+      String(storedVariant.filename || "").trim()
+      || buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage),
+  };
+}
+
 async function handleAdminInvoiceDetail(req, res, requestUrl) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -11183,6 +11208,35 @@ async function handleAdminInvoiceDetail(req, res, requestUrl) {
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not load invoice." });
+  }
+}
+
+async function handleAdminInvoicePdf(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to download invoice PDFs." });
+    return;
+  }
+  const invoiceId = String(requestUrl.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    sendJson(res, 400, { error: "Invoice id is required." });
+    return;
+  }
+  try {
+    const pdfExport = await getApprovedBillingInvoicePdfExport(invoiceId, { reminderStage: 0 });
+    send(res, 200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${String(pdfExport.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+      "Cache-Control": "no-store",
+    }, Buffer.from(pdfExport.bytes));
+  } catch (error) {
+    const message = error?.message || "Could not load invoice PDF.";
+    const status = /not found/i.test(message) ? 404 : /unavailable/i.test(message) ? 409 : 500;
+    sendJson(res, status, { error: message });
   }
 }
 
@@ -13883,6 +13937,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/admin/invoices/detail" && req.method === "GET") {
     await handleAdminInvoiceDetail(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/admin/invoices/pdf" && req.method === "GET") {
+    await handleAdminInvoicePdf(req, res, requestUrl);
     return true;
   }
   if (pathname === "/api/admin/invoices/run" && req.method === "POST") {
