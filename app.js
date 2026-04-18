@@ -5914,9 +5914,14 @@ function setAdminBillingStatus(message = "", options = {}) {
   const text = String(message || "").trim();
   const tone = String(options?.tone || "info").trim() || "info";
   if (adminBillingRunStatus) {
-    adminBillingRunStatus.hidden = true;
-    adminBillingRunStatus.textContent = "";
-    adminBillingRunStatus.classList.remove("is-error", "is-success");
+    adminBillingRunStatus.hidden = !text;
+    adminBillingRunStatus.textContent = text;
+    adminBillingRunStatus.classList.remove("is-error", "is-success", "is-info");
+    if (text) {
+      adminBillingRunStatus.classList.add(
+        tone === "error" ? "is-error" : tone === "success" ? "is-success" : "is-info"
+      );
+    }
   }
   if (text) {
     showStatusToast(text, { tone });
@@ -6485,12 +6490,14 @@ async function sendAdminTopupBillingTestEmail() {
 async function sendAdminDocumentPreviewTriplet() {
   if (adminBillingBusy) return;
   setAdminBillingBusy(true);
-  setAdminBillingStatus("");
+  setAdminBillingStatus(tr("Generating the 3 preview PDFs and sending them by email..."), {
+    tone: "info",
+  });
   try {
     const previewPayload = buildAdminDocumentPreviewEmailPayload(ADMIN_DOCUMENT_PREVIEW_EMAIL);
     await fetchApiWithAuth("/api/documents-preview/send-test-email", {
       method: "POST",
-      timeoutMs: 180000,
+      timeoutMs: 300000,
       body: JSON.stringify(previewPayload),
     });
     setAdminBillingStatus(

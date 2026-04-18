@@ -3342,6 +3342,10 @@ body.is-auth-view {
   color: var(--success);
 }
 
+.admin-billing-status.is-info {
+  color: #9bbcf2;
+}
+
 .admin-billing-result {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
