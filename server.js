@@ -2707,24 +2707,87 @@ function getClientPaymentMode(pref) {
   return normalized.invoice_enabled ? "invoice" : "wallet";
 }
 
-function buildAdminClientMetrics(user, historyRows, settings, billingPreference, invoiceStats) {
+function buildBillingMetricsByUser(settings, invoices = [], invoiceItems = [], walletTransactions = []) {
+  const carrierDiscountPct = normalizePercent(settings?.carrier_discount_pct, 0);
+  const out = new Map();
+  const ensureEntry = (userId) => {
+    const safeUserId = String(userId || "").trim();
+    if (!safeUserId) return null;
+    if (!out.has(safeUserId)) {
+      out.set(safeUserId, {
+        total_revenue_ex_vat: 0,
+        estimated_carrier_cost_ex_vat: 0,
+        total_profit_ex_vat: 0,
+      });
+    }
+    return out.get(safeUserId);
+  };
+  const invoiceItemsByInvoiceId = new Map();
+  (Array.isArray(invoiceItems) ? invoiceItems : []).forEach((item) => {
+    const invoiceId = String(item?.invoice_id || "").trim();
+    if (!invoiceId) return;
+    if (!invoiceItemsByInvoiceId.has(invoiceId)) invoiceItemsByInvoiceId.set(invoiceId, []);
+    invoiceItemsByInvoiceId.get(invoiceId).push(item);
+  });
+
+  (Array.isArray(invoices) ? invoices : []).forEach((invoice) => {
+    if (isTopupBillingInvoice(invoice)) return;
+    const userId = String(invoice?.user_id || "").trim();
+    const entry = ensureEntry(userId);
+    if (!entry) return;
+    entry.total_revenue_ex_vat += Math.max(0, toCents(invoice?.subtotal_ex_vat));
+    const items = invoiceItemsByInvoiceId.get(String(invoice?.id || "").trim()) || [];
+    items.forEach((item) => {
+      const estimatedRetail = getEstimatedRetailTotal(
+        item?.service_type,
+        item?.quantity,
+        Number(item?.amount_ex_vat) || 0
+      );
+      entry.estimated_carrier_cost_ex_vat += toCents(
+        estimatedRetail * (1 - carrierDiscountPct / 100)
+      );
+    });
+  });
+
+  (Array.isArray(walletTransactions) ? walletTransactions : []).forEach((row) => {
+    if (String(row?.source || "").trim().toLowerCase() !== "label_checkout") return;
+    const amountCents = Number(row?.amount_cents) || 0;
+    if (amountCents >= 0) return;
+    const userId = String(row?.user_id || "").trim();
+    const entry = ensureEntry(userId);
+    if (!entry) return;
+    const revenueExVat = fromCents(Math.abs(amountCents));
+    const checkoutMetadata =
+      row?.metadata?.checkout && typeof row.metadata.checkout === "object" ? row.metadata.checkout : {};
+    const labelsCount = Math.max(0, Number(checkoutMetadata?.labels_count) || 0);
+    const serviceType = String(checkoutMetadata?.service || row?.metadata?.service || "").trim();
+    const estimatedRetail = getEstimatedRetailTotal(serviceType, labelsCount, revenueExVat);
+    entry.total_revenue_ex_vat += toCents(revenueExVat);
+    entry.estimated_carrier_cost_ex_vat += toCents(
+      estimatedRetail * (1 - carrierDiscountPct / 100)
+    );
+  });
+
+  out.forEach((entry) => {
+    const revenue = fromCents(entry.total_revenue_ex_vat);
+    const carrierCost = fromCents(entry.estimated_carrier_cost_ex_vat);
+    entry.total_revenue_ex_vat = revenue;
+    entry.estimated_carrier_cost_ex_vat = carrierCost;
+    entry.total_profit_ex_vat = Number((revenue - carrierCost).toFixed(2));
+  });
+  return out;
+}
+
+function buildAdminClientMetrics(user, historyRows, billingMetrics, billingPreference, invoiceStats) {
   const rows = Array.isArray(historyRows) ? historyRows : [];
   const totalLabels = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.quantity) || 0), 0);
-  const totalRevenue = rows.reduce(
-    (sum, row) => sum + Math.max(0, Number(row?.total_price) || 0),
-    0
-  );
-  const estimatedRetail = rows.reduce(
-    (sum, row) =>
-      sum +
-      getEstimatedRetailTotal(row?.service_type, row?.quantity, Number(row?.total_price) || 0),
-    0
-  );
-  const carrierDiscountPct = normalizePercent(settings?.carrier_discount_pct, 0);
+  const normalizedBillingMetrics =
+    billingMetrics && typeof billingMetrics === "object" ? billingMetrics : null;
+  const totalRevenue = Number(normalizedBillingMetrics?.total_revenue_ex_vat || 0);
   const estimatedCarrierCost = Number(
-    (estimatedRetail * (1 - carrierDiscountPct / 100)).toFixed(2)
+    normalizedBillingMetrics?.estimated_carrier_cost_ex_vat || 0
   );
-  const totalProfit = Number((totalRevenue - estimatedCarrierCost).toFixed(2));
+  const totalProfit = Number(normalizedBillingMetrics?.total_profit_ex_vat || 0);
   const activeMonths = monthsBetweenInclusive(user?.created_at || Date.now(), Date.now());
   const mrr = Number((totalRevenue / activeMonths).toFixed(2));
   const mrp = Number((totalProfit / activeMonths).toFixed(2));
@@ -7496,15 +7559,55 @@ async function buildAdminDashboard(baseUrl) {
   const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts] = await Promise.all([
     getAdminSettings(),
     listRegistrationInvites({ limit: 50 }),
-    listSupabaseUsers(250),
+    listSupabaseUsers(1000),
     listGenerationHistoryRows(10000),
     listClientBillingPreferences(2000),
-    listBillingInvoices({ limit: 500, allowMissing: true }),
+    fetchAllSupabaseRows(
+      BILLING_INVOICES_TABLE,
+      {
+        select: BILLING_INVOICE_SELECT_FIELDS,
+        order: "updated_at.desc,created_at.desc",
+      },
+      { pageSize: 500, allowMissingSchema: true }
+    ).catch(() => []),
     listBillingBankReceipts({
       limit: 80,
       statuses: ["manual_review", "pending"],
       allowMissing: true,
     }),
+  ]);
+  const nonTopupInvoiceIds = invoices
+    .filter((invoice) => !isTopupBillingInvoice(invoice))
+    .map((invoice) => String(invoice?.id || "").trim())
+    .filter(Boolean);
+  const [invoiceItems, walletCheckoutTransactions] = await Promise.all([
+    (async () => {
+      const items = [];
+      for (const invoiceIdChunk of chunkArray(nonTopupInvoiceIds, 100)) {
+        const inFilter = buildSupabaseInFilter(invoiceIdChunk);
+        if (!inFilter) continue;
+        const rows = await fetchAllSupabaseRows(
+          BILLING_INVOICE_ITEMS_TABLE,
+          {
+            select:
+              "invoice_id,service_type,quantity,amount_ex_vat",
+            invoice_id: inFilter,
+          },
+          { pageSize: 500, allowMissingSchema: true }
+        ).catch(() => []);
+        items.push(...rows);
+      }
+      return items;
+    })(),
+    fetchAllSupabaseRows(
+      BILLING_WALLET_TRANSACTIONS_TABLE,
+      {
+        select: "user_id,source,amount_cents,metadata",
+        source: "eq.label_checkout",
+        amount_cents: "lt.0",
+      },
+      { pageSize: 500, allowMissingSchema: true }
+    ).catch(() => []),
   ]);
 
   const historyByUserId = new Map();
@@ -7524,6 +7627,12 @@ async function buildAdminDashboard(baseUrl) {
     billingByUserId.set(userId, normalizeClientBillingPreference(row));
   });
   const invoiceStatsByUserId = buildInvoiceStatsByUser(invoices);
+  const billingMetricsByUserId = buildBillingMetricsByUser(
+    settings,
+    invoices,
+    invoiceItems,
+    walletCheckoutTransactions
+  );
 
   const clients = users
     .filter(shouldIncludeAdminClient)
@@ -7538,7 +7647,7 @@ async function buildAdminDashboard(baseUrl) {
       metrics: buildAdminClientMetrics(
         user,
         historyByUserId.get(user.id) || [],
-        settings,
+        billingMetricsByUserId.get(user.id) || null,
         billingByUserId.get(user.id) || DEFAULT_CLIENT_BILLING_PREF,
         invoiceStatsByUserId.get(user.id) || null
       ),
