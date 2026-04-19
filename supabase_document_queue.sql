@@ -33,6 +33,14 @@ create index if not exists billing_document_jobs_invoice_idx
 create index if not exists billing_document_jobs_user_idx
   on public.billing_document_jobs (user_id, created_at desc);
 
+alter table public.billing_document_jobs enable row level security;
+
+revoke all on public.billing_document_jobs from public;
+revoke all on public.billing_document_jobs from anon;
+revoke all on public.billing_document_jobs from authenticated;
+
+grant select, insert, update, delete on public.billing_document_jobs to service_role;
+
 create or replace function public.enqueue_billing_document_job(
   p_job_type text,
   p_job_key text,
@@ -42,185 +50,228 @@ create or replace function public.enqueue_billing_document_job(
   p_priority integer default 100,
   p_max_attempts integer default 4
 )
-returns public.billing_document_jobs
-language plpgsql
+returns jsonb
+language sql
 security definer
 set search_path = public
 as $$
-declare
-  v_existing public.billing_document_jobs%rowtype;
-  v_now timestamptz := timezone('utc', now());
-begin
-  if nullif(trim(coalesce(p_job_type, '')), '') is null then
-    raise exception 'Job type is required.';
-  end if;
-  if nullif(trim(coalesce(p_job_key, '')), '') is null then
-    raise exception 'Job key is required.';
-  end if;
-
-  perform pg_advisory_xact_lock(hashtext('billing_document_queue')::bigint);
-
-  select *
-  into v_existing
-  from public.billing_document_jobs
-  where job_key = p_job_key
-  limit 1
-  for update;
-
-  if found then
-    if v_existing.status = 'completed' then
-      return v_existing;
-    end if;
-
-    update public.billing_document_jobs
+  with
+  _lock as (
+    select pg_advisory_xact_lock(hashtext('billing_document_queue')::bigint)
+  ),
+  existing as (
+    select j.id, j.status, j.lease_expires_at
+    from public.billing_document_jobs j
+    where j.job_key = nullif(trim(coalesce(p_job_key, '')), '')
+    limit 1
+    for update
+  ),
+  completed_existing as (
+    select to_jsonb(j) as payload
+    from public.billing_document_jobs j
+    where j.id = (
+      select e.id
+      from existing e
+      where e.status = 'completed'
+      limit 1
+    )
+  ),
+  updated as (
+    update public.billing_document_jobs j
     set
-      job_type = p_job_type,
-      invoice_id = coalesce(p_invoice_id, invoice_id),
-      user_id = coalesce(p_user_id, user_id),
-      priority = coalesce(p_priority, priority),
-      max_attempts = greatest(1, coalesce(p_max_attempts, max_attempts)),
-      payload = coalesce(p_payload, payload, '{}'::jsonb),
-      result = case
-        when status = 'completed' then result
-        else '{}'::jsonb
-      end,
+      job_type = lower(trim(coalesce(p_job_type, j.job_type))),
+      invoice_id = coalesce(p_invoice_id, j.invoice_id),
+      user_id = coalesce(p_user_id, j.user_id),
+      priority = coalesce(p_priority, j.priority),
+      max_attempts = greatest(1, coalesce(p_max_attempts, j.max_attempts)),
+      payload = coalesce(p_payload, j.payload, '{}'::jsonb),
+      result = '{}'::jsonb,
       error_message = null,
       status = case
-        when status = 'processing' and lease_expires_at is not null and lease_expires_at > v_now then status
-        when status = 'completed' then status
+        when e.status = 'processing'
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > timezone('utc', now()) then 'processing'
         else 'queued'
       end,
       available_at = case
-        when status = 'processing' and lease_expires_at is not null and lease_expires_at > v_now
-          then available_at
-        else v_now
+        when e.status = 'processing'
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > timezone('utc', now()) then j.available_at
+        else timezone('utc', now())
       end,
       claimed_at = case
-        when status = 'processing' and lease_expires_at is not null and lease_expires_at > v_now
-          then claimed_at
+        when e.status = 'processing'
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > timezone('utc', now()) then j.claimed_at
         else null
       end,
       claimed_by = case
-        when status = 'processing' and lease_expires_at is not null and lease_expires_at > v_now
-          then claimed_by
+        when e.status = 'processing'
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > timezone('utc', now()) then j.claimed_by
         else null
       end,
       lease_expires_at = case
-        when status = 'processing' and lease_expires_at is not null and lease_expires_at > v_now
-          then lease_expires_at
+        when e.status = 'processing'
+          and e.lease_expires_at is not null
+          and e.lease_expires_at > timezone('utc', now()) then j.lease_expires_at
         else null
       end,
-      completed_at = case
-        when status = 'completed' then completed_at
-        else null
-      end,
-      updated_at = v_now
-    where id = v_existing.id
-    returning * into v_existing;
-
-    return v_existing;
-  end if;
-
-  insert into public.billing_document_jobs (
-    job_type,
-    job_key,
-    invoice_id,
-    user_id,
-    status,
-    priority,
-    attempts,
-    max_attempts,
-    payload,
-    result,
-    available_at,
-    created_at,
-    updated_at
+      completed_at = null,
+      updated_at = timezone('utc', now())
+    from existing e
+    where j.id = e.id
+      and e.status <> 'completed'
+    returning to_jsonb(j) as payload
+  ),
+  inserted as (
+    insert into public.billing_document_jobs as j (
+      job_type,
+      job_key,
+      invoice_id,
+      user_id,
+      status,
+      priority,
+      attempts,
+      max_attempts,
+      payload,
+      result,
+      available_at,
+      created_at,
+      updated_at
+    )
+    select
+      lower(trim(coalesce(p_job_type, ''))),
+      trim(coalesce(p_job_key, '')),
+      p_invoice_id,
+      p_user_id,
+      'queued',
+      coalesce(p_priority, 100),
+      0,
+      greatest(1, coalesce(p_max_attempts, 4)),
+      coalesce(p_payload, '{}'::jsonb),
+      '{}'::jsonb,
+      timezone('utc', now()),
+      timezone('utc', now()),
+      timezone('utc', now())
+    where not exists (select 1 from existing)
+      and nullif(trim(coalesce(p_job_type, '')), '') is not null
+      and nullif(trim(coalesce(p_job_key, '')), '') is not null
+    returning to_jsonb(j) as payload
   )
-  values (
-    p_job_type,
-    p_job_key,
-    p_invoice_id,
-    p_user_id,
-    'queued',
-    coalesce(p_priority, 100),
-    0,
-    greatest(1, coalesce(p_max_attempts, 4)),
-    coalesce(p_payload, '{}'::jsonb),
-    '{}'::jsonb,
-    v_now,
-    v_now,
-    v_now
-  )
-  returning * into v_existing;
-
-  return v_existing;
-end;
+  select payload
+  from (
+    select payload from completed_existing
+    union all
+    select payload from updated
+    union all
+    select payload from inserted
+  ) queue_result
+  limit 1;
 $$;
+
+revoke all on function public.enqueue_billing_document_job(
+  text,
+  text,
+  jsonb,
+  uuid,
+  uuid,
+  integer,
+  integer
+) from public;
+revoke all on function public.enqueue_billing_document_job(
+  text,
+  text,
+  jsonb,
+  uuid,
+  uuid,
+  integer,
+  integer
+) from anon;
+revoke all on function public.enqueue_billing_document_job(
+  text,
+  text,
+  jsonb,
+  uuid,
+  uuid,
+  integer,
+  integer
+) from authenticated;
+grant execute on function public.enqueue_billing_document_job(
+  text,
+  text,
+  jsonb,
+  uuid,
+  uuid,
+  integer,
+  integer
+) to service_role;
 
 create or replace function public.claim_billing_document_job(
   p_worker_id text,
   p_lease_seconds integer default 180
 )
-returns public.billing_document_jobs
-language plpgsql
+returns jsonb
+language sql
 security definer
 set search_path = public
 as $$
-declare
-  v_claimed public.billing_document_jobs%rowtype;
-  v_now timestamptz := timezone('utc', now());
-  v_lease interval := make_interval(secs => greatest(30, coalesce(p_lease_seconds, 180)));
-begin
-  if nullif(trim(coalesce(p_worker_id, '')), '') is null then
-    raise exception 'Worker id is required.';
-  end if;
-
-  perform pg_advisory_xact_lock(hashtext('billing_document_queue')::bigint);
-
-  update public.billing_document_jobs
-  set
-    status = 'queued',
-    available_at = v_now,
-    claimed_at = null,
-    claimed_by = null,
-    lease_expires_at = null,
-    updated_at = v_now
-  where status = 'processing'
-    and lease_expires_at is not null
-    and lease_expires_at < v_now;
-
-  if exists (
+  with
+  _lock as (
+    select pg_advisory_xact_lock(hashtext('billing_document_queue')::bigint)
+  ),
+  expired as (
+    update public.billing_document_jobs
+    set
+      status = 'queued',
+      available_at = timezone('utc', now()),
+      claimed_at = null,
+      claimed_by = null,
+      lease_expires_at = null,
+      updated_at = timezone('utc', now())
+    where status = 'processing'
+      and lease_expires_at is not null
+      and lease_expires_at < timezone('utc', now())
+    returning id
+  ),
+  active_processing as (
     select 1
     from public.billing_document_jobs
     where status = 'processing'
       and lease_expires_at is not null
-      and lease_expires_at >= v_now
-  ) then
-    return null;
-  end if;
-
-  with next_job as (
-    select id
-    from public.billing_document_jobs
-    where status in ('queued', 'failed')
-      and coalesce(available_at, v_now) <= v_now
-      and attempts < greatest(1, max_attempts)
-    order by priority asc, created_at asc
+      and lease_expires_at >= timezone('utc', now())
+    limit 1
+  ),
+  next_job as (
+    select j.id
+    from public.billing_document_jobs j
+    where not exists (select 1 from active_processing)
+      and j.status in ('queued', 'failed')
+      and coalesce(j.available_at, timezone('utc', now())) <= timezone('utc', now())
+      and j.attempts < greatest(1, j.max_attempts)
+    order by j.priority asc, j.created_at asc
     limit 1
     for update skip locked
+  ),
+  claimed as (
+    update public.billing_document_jobs j
+    set
+      status = 'processing',
+      attempts = j.attempts + 1,
+      claimed_at = timezone('utc', now()),
+      claimed_by = trim(coalesce(p_worker_id, '')),
+      lease_expires_at = timezone('utc', now()) + make_interval(secs => greatest(30, coalesce(p_lease_seconds, 180))),
+      error_message = null,
+      updated_at = timezone('utc', now())
+    where j.id in (select id from next_job)
+    returning to_jsonb(j) as payload
   )
-  update public.billing_document_jobs
-  set
-    status = 'processing',
-    attempts = attempts + 1,
-    claimed_at = v_now,
-    claimed_by = p_worker_id,
-    lease_expires_at = v_now + v_lease,
-    error_message = null,
-    updated_at = v_now
-  where id in (select id from next_job)
-  returning * into v_claimed;
-
-  return v_claimed;
-end;
+  select payload
+  from claimed
+  limit 1;
 $$;
+
+revoke all on function public.claim_billing_document_job(text, integer) from public;
+revoke all on function public.claim_billing_document_job(text, integer) from anon;
+revoke all on function public.claim_billing_document_job(text, integer) from authenticated;
+grant execute on function public.claim_billing_document_job(text, integer) to service_role;
