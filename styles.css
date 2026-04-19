@@ -7315,7 +7315,7 @@ body.is-auth-view {
 .receipt-notice-panel-copy {
   display: grid;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 18px;
   align-content: center;
   min-height: 50px;
 }
