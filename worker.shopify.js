@@ -13018,20 +13018,25 @@ async function getApprovedBillingInvoicePdfExport(env, invoiceId, options = {}) 
     allowFallback: false,
   }).catch(() => null);
   let renderedVariant = null;
+  let renderError = null;
   if (!storedVariant && env?.BROWSER) {
-    renderedVariant = await renderSelectableInvoicePdf(
-      env,
-      {
-        invoice: {
-          ...pdfInvoice,
-          items: invoiceWithItems.items || [],
-          reference: getBillingInvoiceReference(invoiceWithItems),
+    try {
+      renderedVariant = await renderSelectableInvoicePdf(
+        env,
+        {
+          invoice: {
+            ...pdfInvoice,
+            items: invoiceWithItems.items || [],
+            reference: getBillingInvoiceReference(invoiceWithItems),
+          },
+          reminderStage: desiredStage,
+          filename: buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage),
         },
-        reminderStage: desiredStage,
-        filename: buildInvoiceVariantPdfFilename(invoiceWithItems, desiredStage),
-      },
-      {}
-    ).catch(() => null);
+        {}
+      );
+    } catch (error) {
+      renderError = error;
+    }
     if (renderedVariant?.bytes) {
       const persistedVariant = await persistBillingInvoicePdfVariant(
         env,
@@ -13051,7 +13056,12 @@ async function getApprovedBillingInvoicePdfExport(env, invoiceId, options = {}) 
   }
   const pdfBytes = storedVariant?.bytes || renderedVariant?.bytes || null;
   if (!pdfBytes) {
-    throw new Error("Approved invoice PDF is unavailable. Regenerate the invoice and try again.");
+    if (renderError) {
+      throw new Error(
+        `Could not render approved invoice PDF for ${getBillingInvoiceReference(invoiceWithItems)}: ${renderError?.message || "Unknown render error."}`
+      );
+    }
+    throw new Error(`Approved invoice PDF is unavailable for ${getBillingInvoiceReference(invoiceWithItems)}. Regenerate the invoice and try again.`);
   }
   const filename =
     String(storedVariant?.filename || renderedVariant?.filename || "").trim()
