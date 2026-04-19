@@ -2525,12 +2525,20 @@ async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, o
     throw new Error(`Could not load stored invoice PDF (${response.status}) ${details}`.trim());
   }
   const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
-  if (!contentType.includes("application/pdf")) {
-    const details = await response.text().catch(() => "");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const isPdfBytes =
+    bytes.length >= 5
+    && bytes[0] === 0x25
+    && bytes[1] === 0x50
+    && bytes[2] === 0x44
+    && bytes[3] === 0x46
+    && bytes[4] === 0x2d;
+  if (!contentType.includes("application/pdf") && !isPdfBytes) {
+    const details = new TextDecoder().decode(bytes.slice(0, 400));
     throw new Error(`Stored invoice PDF returned unexpected content (${contentType || "unknown"}) ${details}`.trim());
   }
   return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
+    bytes,
     filename:
       String(variant.filename || buildInvoiceVariantPdfFilename(invoice, reminderStage)).trim()
       || buildInvoiceVariantPdfFilename(invoice, reminderStage),
@@ -2614,12 +2622,20 @@ async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.
     throw new Error(`Could not load queued document PDF (${response.status}) ${details}`.trim());
   }
   const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
-  if (!contentType.includes("application/pdf")) {
-    const details = await response.text().catch(() => "");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const isPdfBytes =
+    bytes.length >= 5
+    && bytes[0] === 0x25
+    && bytes[1] === 0x50
+    && bytes[2] === 0x44
+    && bytes[3] === 0x46
+    && bytes[4] === 0x2d;
+  if (!contentType.includes("application/pdf") && !isPdfBytes) {
+    const details = new TextDecoder().decode(bytes.slice(0, 400));
     throw new Error(`Queued document PDF returned unexpected content (${contentType || "unknown"}) ${details}`.trim());
   }
   return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
+    bytes,
     filename: sanitizeQueuedDocumentFilename(filename, "document.pdf"),
     objectPath: storagePath,
   };
