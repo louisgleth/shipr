@@ -1954,6 +1954,7 @@ const adminAgreementSendTestButton = document.getElementById("adminAgreementSend
 const adminInvoiceList = document.getElementById("adminInvoiceList");
 const adminInvoiceEmpty = document.getElementById("adminInvoiceEmpty");
 const adminLedgerMonthFilterSelect = document.getElementById("adminLedgerMonthFilter");
+const adminLedgerSearchInput = document.getElementById("adminLedgerSearchInput");
 const adminLedgerKindFilterSelect = document.getElementById("adminLedgerKindFilter");
 const adminLedgerPaidFilterSelect = document.getElementById("adminLedgerPaidFilter");
 const adminLedgerExportFilterSelect = document.getElementById("adminLedgerExportFilter");
@@ -2347,6 +2348,7 @@ let adminBillingInvoices = [];
 let adminWiseReceipts = [];
 let adminWiseConfigured = false;
 let adminLedgerMonthFilter = "all";
+let adminLedgerSearchQuery = "";
 let adminLedgerKindFilter = "all";
 let adminLedgerPaidFilter = "all";
 let adminLedgerExportFilter = "all";
@@ -6096,7 +6098,19 @@ function getAdminSalesLedgerRows() {
     const kind = String(invoice?.invoice_kind || "").trim().toLowerCase();
     const isPaid = isAdminLedgerInvoicePaid(invoice);
     const exportState = getAdminLedgerExportState(invoice);
+    const searchHaystack = [
+      String(invoice?.reference || ""),
+      String(invoice?.invoice_number || ""),
+      String(invoice?.company_name || ""),
+      String(invoice?.contact_name || ""),
+      String(invoice?.contact_email || ""),
+      String(invoice?.accounting_export_batch_id || ""),
+      String(invoice?.tracking_label || ""),
+    ]
+      .join(" ")
+      .toLowerCase();
     if (adminLedgerMonthFilter !== "all" && monthKey !== adminLedgerMonthFilter) return false;
+    if (adminLedgerSearchQuery && !searchHaystack.includes(adminLedgerSearchQuery)) return false;
     if (adminLedgerKindFilter !== "all" && kind !== adminLedgerKindFilter) return false;
     if (adminLedgerPaidFilter === "paid" && !isPaid) return false;
     if (adminLedgerPaidFilter === "unpaid" && isPaid) return false;
@@ -6133,6 +6147,10 @@ function renderAdminLedgerMonthOptions() {
 function syncAdminLedgerFilterControls() {
   renderAdminLedgerMonthOptions();
   if (adminLedgerMonthFilterSelect) adminLedgerMonthFilterSelect.disabled = adminBillingBusy;
+  if (adminLedgerSearchInput) {
+    adminLedgerSearchInput.value = adminLedgerSearchQuery;
+    adminLedgerSearchInput.disabled = adminBillingBusy;
+  }
   if (adminLedgerKindFilterSelect) {
     adminLedgerKindFilterSelect.value = adminLedgerKindFilter;
     adminLedgerKindFilterSelect.disabled = adminBillingBusy;
@@ -6173,6 +6191,7 @@ function renderAdminSalesLedger() {
   rows.forEach((invoice) => {
     const status = String(invoice?.status || "draft").trim().toLowerCase();
     const exportState = getAdminLedgerExportState(invoice);
+    const invoiceId = String(invoice?.id || "").trim();
     const row = document.createElement("article");
     row.className = "admin-billing-item admin-ledger-item";
     row.innerHTML = `
@@ -6208,9 +6227,44 @@ function renderAdminSalesLedger() {
     )}</span>
         </div>
       </div>
+      <div class="admin-billing-item-actions">
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm admin-ledger-download-btn"
+          data-admin-ledger-download="${escapeHtml(invoiceId)}"
+          title="${escapeHtml(tr("Download invoice PDF"))}"
+          aria-label="${escapeHtml(tr("Download invoice PDF"))}"
+          ${adminBillingBusy || !invoiceId ? "disabled" : ""}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/></svg>
+        </button>
+      </div>
     `;
     adminLedgerList.appendChild(row);
   });
+}
+
+async function downloadAdminLedgerInvoice(invoiceId, triggerButton = null) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    showToast(tr("Invoice id is required."), { tone: "error" });
+    return;
+  }
+  const restoreButton = setPdfActionBusy(triggerButton, true, {
+    idleLabel: "",
+    busyLabel: "",
+  });
+  try {
+    const result = await fetchAdminInvoicePdfBlob(safeInvoiceId);
+    if (!result?.blob) {
+      throw new Error(tr("Could not download invoice PDF."));
+    }
+    downloadBlobAsFile(result.blob, result.filename || buildInvoicePdfFilenameFromReference(safeInvoiceId));
+  } catch (error) {
+    showToast(error?.message || tr("Could not download invoice PDF."), { tone: "error" });
+  } finally {
+    restoreButton();
+  }
 }
 
 function getAdminWiseReceiptStatusClass(status) {
@@ -20456,6 +20510,13 @@ if (adminLedgerMonthFilterSelect) {
   });
 }
 
+if (adminLedgerSearchInput) {
+  adminLedgerSearchInput.addEventListener("input", () => {
+    adminLedgerSearchQuery = String(adminLedgerSearchInput.value || "").trim().toLowerCase();
+    renderAdminSalesLedger();
+  });
+}
+
 if (adminLedgerKindFilterSelect) {
   adminLedgerKindFilterSelect.addEventListener("change", () => {
     adminLedgerKindFilter = String(adminLedgerKindFilterSelect.value || "all").trim() || "all";
@@ -20480,6 +20541,17 @@ if (adminLedgerExportFilterSelect) {
 if (adminLedgerExportButton) {
   adminLedgerExportButton.addEventListener("click", async () => {
     await exportAdminSalesLedger();
+  });
+}
+
+if (adminLedgerList) {
+  adminLedgerList.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const downloadButton = target.closest("[data-admin-ledger-download]");
+    if (downloadButton instanceof HTMLElement) {
+      await downloadAdminLedgerInvoice(downloadButton.dataset.adminLedgerDownload, downloadButton);
+    }
   });
 }
 

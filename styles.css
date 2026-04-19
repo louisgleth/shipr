@@ -3416,8 +3416,16 @@ body.is-auth-view {
 
 .admin-ledger-filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.admin-ledger-filter-search {
+  grid-column: span 1;
+}
+
+.admin-ledger-filter-search input {
+  width: 100%;
 }
 
 .admin-ledger-filter select {
@@ -3429,7 +3437,7 @@ body.is-auth-view {
 }
 
 .admin-ledger-item {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .admin-ledger-row-meta {
@@ -3441,6 +3449,21 @@ body.is-auth-view {
 .admin-ledger-row-meta strong {
   color: var(--text);
   font-weight: 500;
+}
+
+.admin-ledger-download-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-ledger-download-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .admin-billing-item {
