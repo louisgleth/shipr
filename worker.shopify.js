@@ -73,12 +73,19 @@ const CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL = "/assets/contracts/commAgreement-v1-
 const CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL = "/assets/fonts/PTMono-Regular.ttf";
 const CLICKWRAP_STORAGE_BUCKET = "clickwrap-contracts";
 const BILLING_INVOICE_STORAGE_BUCKET = "billing-invoices";
+const BILLING_DOCUMENT_JOBS_TABLE = "billing_document_jobs";
+const BILLING_DOCUMENT_JOB_ENQUEUE_RPC = "enqueue_billing_document_job";
+const BILLING_DOCUMENT_JOB_CLAIM_RPC = "claim_billing_document_job";
+const BILLING_DOCUMENT_ARTIFACT_PREFIX = "queued-documents";
 const CLICKWRAP_PREVIEW_TTL_MS = 60 * 60 * 1000;
 const ADMIN_SETTINGS_SCOPE = "global";
 const DEFAULT_BILLING_TERMS_DAYS = 30;
 const DEFAULT_INVOICE_EMAIL_QUEUE_DELAY_MS = 1200;
 const DEFAULT_BROWSER_RENDER_RETRY_ATTEMPTS = 4;
 const DEFAULT_BROWSER_RENDER_RETRY_BASE_MS = 1500;
+const DEFAULT_BILLING_DOCUMENT_JOB_LEASE_SECONDS = 180;
+const DEFAULT_BILLING_DOCUMENT_JOB_POLL_MS = 2500;
+const DEFAULT_BILLING_DOCUMENT_QUEUE_PROCESS_LIMIT = 4;
 const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BILLING_INVOICE_RENDER_BATCH_VARIANTS = 5;
 const DEFAULT_VAT_RATE = 0;
@@ -184,6 +191,7 @@ const textEncoder = new TextEncoder();
 let clickwrapTemplateBytesPromise = null;
 let clickwrapFontBytesPromise = null;
 let invoiceBrowserRenderQueue = Promise.resolve();
+let billingDocumentQueuePump = Promise.resolve();
 
 export default {
   async fetch(request, env, ctx) {
@@ -220,7 +228,7 @@ export default {
         return handleAdminInvoiceDetail(request, env, url);
       }
       if (pathname === "/api/admin/invoices/pdf" && request.method === "GET") {
-        return handleAdminInvoicePdf(request, env, url);
+        return handleAdminInvoicePdf(request, env, url, ctx);
       }
       if (pathname === "/api/admin/invoices/run" && request.method === "POST") {
         return handleAdminInvoicesRun(request, env);
@@ -250,7 +258,10 @@ export default {
         return handleAdminAgreementPreviewTest(request, env);
       }
       if (pathname === "/api/documents-preview/send-test-email" && request.method === "POST") {
-        return handleDocumentsPreviewSendTestEmail(request, env);
+        return handleDocumentsPreviewSendTestEmail(request, env, ctx);
+      }
+      if (pathname === "/api/document-jobs/status" && request.method === "GET") {
+        return handleBillingDocumentJobStatus(request, env, url, ctx);
       }
       if (pathname === "/api/admin/agreements/send-test" && request.method === "POST") {
         return handleAdminAgreementSendTest(request, env);
@@ -395,10 +406,10 @@ export default {
         return handleBillingOverview(request, env);
       }
       if (pathname === "/api/billing/render-invoice-pdf" && request.method === "POST") {
-        return handleBillingInvoicePdfRender(request, env);
+        return handleBillingInvoicePdfRender(request, env, ctx);
       }
       if (pathname === "/api/billing/render-receipt-pdf" && request.method === "POST") {
-        return handleBillingReceiptPdfRender(request, env);
+        return handleBillingReceiptPdfRender(request, env, ctx);
       }
       if (pathname === "/api/billing/render-invoice-pdf-batch" && request.method === "POST") {
         return handleBillingInvoicePdfRenderBatch(request, env);
@@ -459,6 +470,18 @@ export default {
     } catch (error) {
       console.error("[scheduled privacy maintenance]", error);
     }
+    try {
+      await processBillingDocumentJobQueue(env, {
+        limit: Math.max(
+          getBillingDocumentQueueProcessLimit(env),
+          getMonthlyBillingMaxSends(env),
+          25
+        ),
+        publicAppUrl: getPublicAppUrl(env),
+      });
+    } catch (error) {
+      console.error("[scheduled document queue]", error);
+    }
   },
 };
 
@@ -505,6 +528,229 @@ function getBrowserRenderReadyTimeoutMs(env) {
     return Math.max(10_000, Math.floor(configured));
   }
   return 180_000;
+}
+
+function getBillingDocumentJobLeaseSeconds(env) {
+  const configured = Number(env?.BILLING_DOCUMENT_JOB_LEASE_SECONDS);
+  if (Number.isFinite(configured) && configured >= 30) {
+    return Math.max(30, Math.floor(configured));
+  }
+  return DEFAULT_BILLING_DOCUMENT_JOB_LEASE_SECONDS;
+}
+
+function getBillingDocumentJobPollMs(env) {
+  const configured = Number(env?.BILLING_DOCUMENT_JOB_POLL_MS);
+  if (Number.isFinite(configured) && configured >= 500) {
+    return Math.max(500, Math.floor(configured));
+  }
+  return DEFAULT_BILLING_DOCUMENT_JOB_POLL_MS;
+}
+
+function getBillingDocumentQueueProcessLimit(env) {
+  const configured = Number(env?.BILLING_DOCUMENT_QUEUE_PROCESS_LIMIT);
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return DEFAULT_BILLING_DOCUMENT_QUEUE_PROCESS_LIMIT;
+}
+
+function normalizeBillingDocumentJobStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["queued", "processing", "completed", "failed"].includes(normalized)) {
+    return normalized;
+  }
+  return "queued";
+}
+
+function isRetryableBillingDocumentJobError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    isBrowserRateLimitError(error)
+    || message.includes("temporarily busy")
+    || message.includes("request timed out")
+    || message.includes("timed out")
+    || message.includes("target closed")
+    || message.includes("session closed")
+    || message.includes("navigation failed")
+  );
+}
+
+function buildBillingDocumentJobWorkerId(prefix = "worker") {
+  return `${prefix}:${Date.now()}:${crypto.randomUUID()}`;
+}
+
+function isBillingDocumentQueueSchemaMissingDetails(details = "") {
+  const text = String(details || "").toLowerCase();
+  return (
+    text.includes(BILLING_DOCUMENT_JOBS_TABLE)
+    || text.includes(BILLING_DOCUMENT_JOB_ENQUEUE_RPC)
+    || text.includes(BILLING_DOCUMENT_JOB_CLAIM_RPC)
+    || text.includes("\"code\":\"42p01\"")
+    || text.includes("\"code\":\"42883\"")
+    || text.includes("schema cache")
+  );
+}
+
+function coerceBillingDocumentJobRow(payload) {
+  if (Array.isArray(payload)) return payload[0] || null;
+  return payload && typeof payload === "object" ? payload : null;
+}
+
+async function enqueueBillingDocumentJob(
+  env,
+  { jobType = "", jobKey = "", payload = {}, invoiceId = null, userId = null, priority = 100, maxAttempts = 4 } = {}
+) {
+  const response = await supabaseServiceRequest(env, `/rest/v1/rpc/${BILLING_DOCUMENT_JOB_ENQUEUE_RPC}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_job_type: String(jobType || "").trim().toLowerCase(),
+      p_job_key: String(jobKey || "").trim(),
+      p_payload: payload && typeof payload === "object" ? payload : {},
+      p_invoice_id: invoiceId ? String(invoiceId || "").trim() : null,
+      p_user_id: userId ? String(userId || "").trim() : null,
+      p_priority: Math.max(1, Number(priority) || 100),
+      p_max_attempts: Math.max(1, Number(maxAttempts) || 4),
+    }),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (isBillingDocumentQueueSchemaMissingDetails(details)) {
+      throw new Error(
+        "Document queue schema missing. Run supabase_document_queue.sql in Supabase SQL editor."
+      );
+    }
+    throw new Error(`Could not enqueue document job (${response.status}) ${details}`.trim());
+  }
+  return coerceBillingDocumentJobRow(await response.json().catch(() => null));
+}
+
+async function claimBillingDocumentJob(env, { workerId = "", leaseSeconds = 180 } = {}) {
+  const response = await supabaseServiceRequest(env, `/rest/v1/rpc/${BILLING_DOCUMENT_JOB_CLAIM_RPC}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_worker_id: String(workerId || "").trim() || buildBillingDocumentJobWorkerId("claim"),
+      p_lease_seconds: Math.max(30, Number(leaseSeconds) || 180),
+    }),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (isBillingDocumentQueueSchemaMissingDetails(details)) {
+      throw new Error(
+        "Document queue schema missing. Run supabase_document_queue.sql in Supabase SQL editor."
+      );
+    }
+    throw new Error(`Could not claim document job (${response.status}) ${details}`.trim());
+  }
+  return coerceBillingDocumentJobRow(await response.json().catch(() => null));
+}
+
+async function getBillingDocumentJobById(env, jobId) {
+  const safeJobId = String(jobId || "").trim();
+  if (!safeJobId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,job_type,job_key,invoice_id,user_id,status,priority,attempts,max_attempts,payload,result,error_message,available_at,claimed_at,claimed_by,lease_expires_at,completed_at,created_at,updated_at"
+  );
+  params.set("id", `eq.${safeJobId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_DOCUMENT_JOBS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (isBillingDocumentQueueSchemaMissingDetails(details)) {
+      throw new Error(
+        "Document queue schema missing. Run supabase_document_queue.sql in Supabase SQL editor."
+      );
+    }
+    throw new Error(`Could not load document job (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function updateBillingDocumentJobFields(env, jobId, patch = {}) {
+  const safeJobId = String(jobId || "").trim();
+  if (!safeJobId) {
+    throw new Error("Document job id is required.");
+  }
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_DOCUMENT_JOBS_TABLE}?id=eq.${encodeURIComponent(safeJobId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        ...patch,
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not update document job (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function requeueCompletedBillingDocumentJob(env, job, patch = {}) {
+  const safeJobId = String(job?.id || "").trim();
+  if (!safeJobId) {
+    throw new Error("Document job id is required.");
+  }
+  return updateBillingDocumentJobFields(env, safeJobId, {
+    status: "queued",
+    result: {},
+    error_message: null,
+    available_at: new Date().toISOString(),
+    claimed_at: null,
+    claimed_by: null,
+    lease_expires_at: null,
+    completed_at: null,
+    ...patch,
+  });
+}
+
+function buildBillingDocumentJobAcceptedResponse(env, job, message = "") {
+  const retryAfterSeconds = Math.max(1, Math.ceil(getBillingDocumentJobPollMs(env) / 1000));
+  return jsonResponse(
+    {
+      queued: true,
+      job: job || null,
+      error: String(message || "").trim() || "Document job queued.",
+      poll_after_ms: getBillingDocumentJobPollMs(env),
+    },
+    202,
+    {
+      "Retry-After": String(retryAfterSeconds),
+    }
+  );
+}
+
+function queueBillingDocumentJobPump(env, ctx = null, options = {}) {
+  const run = billingDocumentQueuePump
+    .catch(() => {})
+    .then(() => processBillingDocumentJobQueue(env, options));
+  billingDocumentQueuePump = run.catch(() => {});
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(run);
+  } else {
+    run.catch(() => {});
+  }
+  return run;
 }
 
 function isBrowserRateLimitError(error) {
@@ -2285,6 +2531,87 @@ async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, o
       || buildInvoiceVariantPdfFilename(invoice, reminderStage),
     stage: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage),
     exact: normalizeInvoicePdfVariantStage(variant?.stage || reminderStage) === normalizeInvoicePdfVariantStage(reminderStage),
+  };
+}
+
+function sanitizeQueuedDocumentFilename(value, fallback = "document.pdf") {
+  const safe = String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+  return safe || fallback;
+}
+
+function buildQueuedDocumentArtifactPath(kind = "document", hash = "", filename = "document.pdf") {
+  const safeKind = String(kind || "document")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    || "document";
+  const safeHash = String(hash || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-f0-9]+/g, "")
+    .slice(0, 64)
+    || "artifact";
+  return `${BILLING_DOCUMENT_ARTIFACT_PREFIX}/${safeKind}/${safeHash}/${sanitizeQueuedDocumentFilename(filename)}`;
+}
+
+async function persistQueuedDocumentArtifact(env, kind, hash, pdfBytes, filename) {
+  const safeFilename = sanitizeQueuedDocumentFilename(filename, `${String(kind || "document")}.pdf`);
+  const storagePath = buildQueuedDocumentArtifactPath(kind, hash, safeFilename);
+  await ensureBillingInvoiceStorageBucket(env);
+  const uploadUrl = `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${BILLING_INVOICE_STORAGE_BUCKET}/${storagePath}`;
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+      "cache-control": "3600",
+    },
+    body: pdfBytes,
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not store queued document PDF (${response.status}) ${details}`.trim());
+  }
+  return {
+    bucket: BILLING_INVOICE_STORAGE_BUCKET,
+    objectPath: storagePath,
+    filename: safeFilename,
+    sha256: await sha256HexBytes(pdfBytes),
+    sizeBytes: pdfBytes.byteLength,
+    storedAt: new Date().toISOString(),
+  };
+}
+
+async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.pdf") {
+  const storagePath = buildQueuedDocumentArtifactPath(kind, hash, filename);
+  const response = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(BILLING_INVOICE_STORAGE_BUCKET)}/${storagePath}`,
+    {
+      method: "GET",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not load queued document PDF (${response.status}) ${details}`.trim());
+  }
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    filename: sanitizeQueuedDocumentFilename(filename, "document.pdf"),
+    objectPath: storagePath,
   };
 }
 
@@ -4703,18 +5030,18 @@ async function ensureBillingTopupInvoiceAndSend(env, topupId, options = {}) {
   if (alreadySent) {
     return { skipped: true, reason: "Top-up invoice already sent.", invoice, topup: linkedTopup };
   }
-  const sendResult = await sendBillingInvoiceById(env, invoice.id, {
+  const job = await enqueueInvoiceEmailDocumentJob(env, invoice, {
+    invoiceId: invoice.id,
     publicAppUrl: options?.publicAppUrl,
+    priority: 8,
   });
-  const finalInvoice = sendResult?.invoice || invoice;
-  const finalTopup = await linkBillingTopupInvoice(env, linkedTopup || topup, finalInvoice).catch(
-    () => linkedTopup || topup
-  );
   return {
-    skipped: Boolean(sendResult?.skipped),
-    reason: sendResult?.reason || "",
-    invoice: finalInvoice,
-    topup: finalTopup,
+    skipped: false,
+    queued: true,
+    reason: "Top-up invoice queued for delivery.",
+    invoice,
+    topup: linkedTopup,
+    job: buildBillingDocumentJobResponseRow(job),
   };
 }
 
@@ -5138,6 +5465,10 @@ async function processWiseWebhookAcceptedEvent(env, accepted) {
       summary = fallbackSummary;
     }
 
+    await processBillingDocumentJobQueue(env, {
+      limit: Math.max(getBillingDocumentQueueProcessLimit(env), 10),
+      publicAppUrl: getPublicAppUrl(env),
+    }).catch(() => {});
     await updateWiseWebhookEventStatus(env, deliveryId, "processed", "");
     return summary;
   } catch (error) {
@@ -7072,6 +7403,315 @@ async function renderSelectableDocumentPdfBatch(env, jobs = [], options = {}) {
       await browser.close().catch(() => {});
     }
   });
+}
+
+async function buildBillingDocumentRenderHash(kind, userId, payload = {}) {
+  return sha256Hex(
+    JSON.stringify({
+      kind: String(kind || "").trim().toLowerCase(),
+      userId: String(userId || "").trim(),
+      payload: payload && typeof payload === "object" ? payload : {},
+    })
+  );
+}
+
+async function ensureQueuedInvoiceRenderArtifact(env, payload = {}, options = {}) {
+  const hash = String(payload?.hash || "").trim() || await buildBillingDocumentRenderHash(
+    "invoice",
+    payload?.userId,
+    payload?.viewModel || {}
+  );
+  const filename =
+    String(payload?.filename || "invoice-shipide.pdf").trim()
+    || "invoice-shipide.pdf";
+  const stored = await loadQueuedDocumentArtifact(env, "invoice", hash, filename).catch(() => null);
+  if (stored?.bytes) {
+    return {
+      hash,
+      filename: stored.filename,
+      bytes: stored.bytes,
+      stored: true,
+    };
+  }
+  const rendered = await renderSelectableInvoicePdf(
+    env,
+    {
+      viewModel: payload?.viewModel || null,
+      filename,
+    },
+    options
+  );
+  const persisted = await persistQueuedDocumentArtifact(
+    env,
+    "invoice",
+    hash,
+    rendered.bytes,
+    rendered.filename || filename
+  );
+  return {
+    hash,
+    filename: persisted.filename,
+    bytes: rendered.bytes,
+    stored: false,
+    artifact: persisted,
+  };
+}
+
+async function ensureQueuedReceiptRenderArtifact(env, payload = {}, options = {}) {
+  const hash = String(payload?.hash || "").trim() || await buildBillingDocumentRenderHash(
+    "receipt",
+    payload?.userId,
+    payload?.viewModel || {}
+  );
+  const filename =
+    String(payload?.filename || "receipt-shipide.pdf").trim()
+    || "receipt-shipide.pdf";
+  const stored = await loadQueuedDocumentArtifact(env, "receipt", hash, filename).catch(() => null);
+  if (stored?.bytes) {
+    return {
+      hash,
+      filename: stored.filename,
+      bytes: stored.bytes,
+      stored: true,
+    };
+  }
+  const rendered = await renderSelectableReceiptPdf(
+    env,
+    {
+      viewModel: payload?.viewModel || null,
+      filename,
+    },
+    options
+  );
+  const persisted = await persistQueuedDocumentArtifact(
+    env,
+    "receipt",
+    hash,
+    rendered.bytes,
+    rendered.filename || filename
+  );
+  return {
+    hash,
+    filename: persisted.filename,
+    bytes: rendered.bytes,
+    stored: false,
+    artifact: persisted,
+  };
+}
+
+function buildInvoicePdfJobKey(invoiceId, reminderStage = 0) {
+  return `invoice-pdf:${String(invoiceId || "").trim()}:${normalizeInvoicePdfVariantStage(reminderStage)}`;
+}
+
+function buildInvoiceEmailJobKey(invoiceId, options = {}) {
+  const mode = options?.isReminder ? "reminder" : "send";
+  const stage = options?.isReminder ? normalizeInvoicePdfVariantStage(options?.reminderStage || 0) : "0";
+  if (options?.manual === true) {
+    return `invoice-email:${mode}:manual:${String(invoiceId || "").trim()}:${Date.now()}:${crypto.randomUUID()}`;
+  }
+  return `invoice-email:${mode}:${String(invoiceId || "").trim()}:${stage}`;
+}
+
+async function enqueueInvoicePdfDocumentJob(env, invoice, options = {}) {
+  const safeInvoiceId = String(options?.invoiceId || invoice?.id || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error("Invoice id is required.");
+  }
+  return enqueueBillingDocumentJob(env, {
+    jobType: "invoice_pdf",
+    jobKey: buildInvoicePdfJobKey(safeInvoiceId, options?.reminderStage || 0),
+    invoiceId: safeInvoiceId,
+    userId: String(invoice?.user_id || options?.userId || "").trim() || null,
+    priority: Number(options?.priority) || 20,
+    maxAttempts: Number(options?.maxAttempts) || 5,
+    payload: {
+      invoiceId: safeInvoiceId,
+      reminderStage: normalizeInvoicePdfVariantStage(options?.reminderStage || 0),
+    },
+  });
+}
+
+async function enqueueInvoiceEmailDocumentJob(env, invoice, options = {}) {
+  const safeInvoiceId = String(options?.invoiceId || invoice?.id || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error("Invoice id is required.");
+  }
+  return enqueueBillingDocumentJob(env, {
+    jobType: "invoice_email",
+    jobKey: buildInvoiceEmailJobKey(safeInvoiceId, options),
+    invoiceId: safeInvoiceId,
+    userId: String(invoice?.user_id || options?.userId || "").trim() || null,
+    priority: Number(options?.priority) || (options?.isReminder ? 18 : 10),
+    maxAttempts: Number(options?.maxAttempts) || 5,
+    payload: {
+      invoiceId: safeInvoiceId,
+      isReminder: options?.isReminder === true,
+      reminderStage: options?.isReminder ? Number(options?.reminderStage) || 0 : 0,
+      reminderTitle: String(options?.reminderTitle || "").trim() || null,
+      publicAppUrl: String(options?.publicAppUrl || "").trim() || null,
+      manual: options?.manual === true,
+    },
+  });
+}
+
+async function processBillingDocumentJob(env, job, options = {}) {
+  const payload = job?.payload && typeof job.payload === "object" ? job.payload : {};
+  const publicAppUrl =
+    String(payload?.publicAppUrl || options?.publicAppUrl || getPublicAppUrl(env)).trim()
+    || getPublicAppUrl(env);
+  const invoiceId = String(job?.invoice_id || payload?.invoiceId || "").trim();
+  switch (String(job?.job_type || "").trim().toLowerCase()) {
+    case "invoice_pdf": {
+      const reminderStage = normalizeInvoicePdfVariantStage(payload?.reminderStage || 0);
+      const pdfExport = await getApprovedBillingInvoicePdfExport(env, invoiceId, { reminderStage });
+      return {
+        invoice_id: invoiceId,
+        reminder_stage: reminderStage,
+        filename: pdfExport?.filename || null,
+      };
+    }
+    case "invoice_email": {
+      const sendResult = await sendBillingInvoiceById(env, invoiceId, {
+        isReminder: payload?.isReminder === true,
+        reminderStage: payload?.isReminder ? Number(payload?.reminderStage) || 0 : 0,
+        reminderTitle: String(payload?.reminderTitle || "").trim(),
+        requireApprovedPdf: true,
+        publicAppUrl,
+      });
+      return {
+        invoice_id: invoiceId,
+        skipped: Boolean(sendResult?.skipped),
+        status: sendResult?.invoice?.status || null,
+        reference: getBillingInvoiceReference(sendResult?.invoice || payload?.invoice || {}),
+      };
+    }
+    case "invoice_render": {
+      const rendered = await ensureQueuedInvoiceRenderArtifact(
+        env,
+        {
+          hash: payload?.hash,
+          userId: payload?.userId || job?.user_id,
+          filename: payload?.filename,
+          viewModel: payload?.viewModel || null,
+        },
+        options
+      );
+      return {
+        hash: rendered.hash,
+        filename: rendered.filename,
+      };
+    }
+    case "receipt_render": {
+      const rendered = await ensureQueuedReceiptRenderArtifact(
+        env,
+        {
+          hash: payload?.hash,
+          userId: payload?.userId || job?.user_id,
+          filename: payload?.filename,
+          viewModel: payload?.viewModel || null,
+        },
+        options
+      );
+      return {
+        hash: rendered.hash,
+        filename: rendered.filename,
+      };
+    }
+    case "preview_email": {
+      const previewDocuments = Array.isArray(payload?.previewDocuments) ? payload.previewDocuments : [];
+      if (previewDocuments.length !== 3) {
+        throw new Error("Exactly three preview documents are required.");
+      }
+      const renderedDocuments = await renderSelectableDocumentPdfBatch(
+        env,
+        previewDocuments.map((document) => ({
+          kind: String(document?.kind || "invoice").trim().toLowerCase(),
+          payload: {
+            viewModel: document?.viewModel || null,
+            filename: document?.filename || "document.pdf",
+          },
+        })),
+        options
+      );
+      const resendResponse = await sendResendEmail(env, {
+        to: normalizeEmail(payload?.toEmail || "louis@gleth.com"),
+        subject: "Shipide document preview PDFs",
+        html: `
+          <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.55">
+            <p>Attached are the three document preview PDFs generated from the preview renderer.</p>
+            <p>They include long sample rows so pagination can be reviewed across multiple pages.</p>
+          </div>
+        `,
+        text: [
+          "Attached are the three document preview PDFs generated from the preview renderer.",
+          "They include long sample rows so pagination can be reviewed across multiple pages.",
+        ].join("\n\n"),
+        attachments: renderedDocuments.map((document) => ({
+          filename: document.filename,
+          content: document.bytes,
+          contentType: "application/pdf",
+        })),
+      });
+      return {
+        resend_id: resendResponse?.id || null,
+        attachments: renderedDocuments.map((document) => document.filename),
+      };
+    }
+    default:
+      throw new Error("Unsupported document job type.");
+  }
+}
+
+async function processBillingDocumentJobQueue(env, options = {}) {
+  const safeLimit = Math.max(1, Number(options?.limit) || getBillingDocumentQueueProcessLimit(env));
+  const workerId = buildBillingDocumentJobWorkerId("queue");
+  const processed = [];
+  for (let index = 0; index < safeLimit; index += 1) {
+    const job = await claimBillingDocumentJob(env, {
+      workerId,
+      leaseSeconds: getBillingDocumentJobLeaseSeconds(env),
+    });
+    if (!job?.id) break;
+    try {
+      const result = await processBillingDocumentJob(env, job, options);
+      const completed = await updateBillingDocumentJobFields(env, job.id, {
+        status: "completed",
+        result: result && typeof result === "object" ? result : {},
+        error_message: null,
+        completed_at: new Date().toISOString(),
+        claimed_at: null,
+        claimed_by: null,
+        lease_expires_at: null,
+      });
+      processed.push(completed || job);
+    } catch (error) {
+      const attempts = Number(job?.attempts) || 0;
+      const maxAttempts = Math.max(1, Number(job?.max_attempts) || 4);
+      if (isRetryableBillingDocumentJobError(error) && attempts < maxAttempts) {
+        const retryAt = new Date(
+          Date.now() + Math.max(getBillingDocumentJobPollMs(env), getBrowserRenderRetryBaseMs(env) * attempts)
+        ).toISOString();
+        await updateBillingDocumentJobFields(env, job.id, {
+          status: "queued",
+          error_message: String(error?.message || "Document job failed.").trim(),
+          available_at: retryAt,
+          claimed_at: null,
+          claimed_by: null,
+          lease_expires_at: null,
+        });
+      } else {
+        await updateBillingDocumentJobFields(env, job.id, {
+          status: "failed",
+          error_message: String(error?.message || "Document job failed.").trim(),
+          completed_at: null,
+          claimed_at: null,
+          claimed_by: null,
+          lease_expires_at: null,
+        });
+      }
+    }
+  }
+  return processed;
 }
 
 function buildInvoiceEmailHtml(invoice, items = [], options = {}) {
@@ -11258,7 +11898,6 @@ async function runInvoiceReminders(env, options = {}) {
   });
   const nowMs = Date.now();
   const out = [];
-  let hasQueuedReminderSend = false;
   for (const invoice of candidateInvoices) {
     const dueAt = invoice?.due_at;
     const desiredStage = getReminderStageForDueDate(dueAt, nowMs);
@@ -11266,21 +11905,18 @@ async function runInvoiceReminders(env, options = {}) {
     if (desiredStage <= currentStage) continue;
     const reminderTitle = getReminderTitleByStage(desiredStage, dueAt);
     try {
-      if (hasQueuedReminderSend) {
-        await waitMs(getInvoiceEmailQueueDelayMs(env));
-      }
-      const result = await sendBillingInvoiceById(env, invoice.id, {
+      const job = await enqueueInvoiceEmailDocumentJob(env, invoice, {
         isReminder: true,
         reminderStage: desiredStage,
         reminderTitle,
-        requireApprovedPdf: true,
         publicAppUrl: options?.publicAppUrl,
+        priority: 16,
       });
-      hasQueuedReminderSend = true;
       out.push({
         invoice_id: invoice.id,
         reminder_stage: desiredStage,
-        status: result?.invoice?.status || invoice.status,
+        status: "queued",
+        job_id: job?.id || null,
       });
     } catch (error) {
       await insertBillingInvoiceEvent(env, invoice.id, {
@@ -11358,27 +11994,18 @@ async function runScheduledMonthlyBillingAutomation(env, options = {}) {
   const sendSummary = {
     attempted: invoicesToSend.length,
     sent: 0,
+    queued: 0,
     skipped: 0,
     failed: 0,
     failures: [],
   };
-  let hasQueuedInvoiceSend = false;
   for (const invoice of invoicesToSend) {
     try {
-      if (hasQueuedInvoiceSend) {
-        await waitMs(getInvoiceEmailQueueDelayMs(env));
-      }
-      const sendResult = await sendBillingInvoiceById(env, invoice.id, {
-        isReminder: false,
-        requireApprovedPdf: true,
+      await enqueueInvoiceEmailDocumentJob(env, invoice, {
         publicAppUrl,
+        priority: 12,
       });
-      hasQueuedInvoiceSend = true;
-      if (sendResult?.skipped) {
-        sendSummary.skipped += 1;
-      } else {
-        sendSummary.sent += 1;
-      }
+      sendSummary.queued += 1;
     } catch (error) {
       sendSummary.failed += 1;
       sendSummary.failures.push({
@@ -11477,8 +12104,6 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
       carrier_discount_pct: normalizePercent(settings?.carrier_discount_pct, DEFAULT_ADMIN_SETTINGS.carrier_discount_pct),
     },
   };
-  let hasQueuedInvoiceSend = false;
-
   for (const [userId, userRows] of rowsByUser.entries()) {
     const billingPref = billingByUserId.get(userId) || { ...DEFAULT_CLIENT_BILLING_PREF };
     const paymentMode = getClientPaymentMode(billingPref);
@@ -11661,19 +12286,15 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
     let finalInvoice = persisted;
     if (mode === "send") {
       try {
-        if (hasQueuedInvoiceSend) {
-          await waitMs(getInvoiceEmailQueueDelayMs(env));
-        }
-        const sendResult = await sendBillingInvoiceById(env, persisted.id, {
-          isReminder: false,
-          requireApprovedPdf: true,
+        const job = await enqueueInvoiceEmailDocumentJob(env, persisted, {
           publicAppUrl: options?.publicAppUrl,
+          priority: 12,
         });
-        hasQueuedInvoiceSend = true;
-        if (!sendResult?.skipped) {
-          result.invoices_sent += 1;
-        }
-        finalInvoice = sendResult?.invoice || persisted;
+        result.invoices_sent += 1;
+        finalInvoice = {
+          ...persisted,
+          queued_send_job_id: job?.id || null,
+        };
       } catch (error) {
         await insertBillingInvoiceEvent(env, persisted.id, {
           event_type: "failed",
@@ -12075,6 +12696,55 @@ async function getApprovedBillingInvoicePdfExport(env, invoiceId, options = {}) 
   };
 }
 
+function buildBillingDocumentJobResponseRow(job = {}) {
+  return {
+    id: String(job?.id || "").trim() || null,
+    job_type: String(job?.job_type || "").trim().toLowerCase() || null,
+    status: normalizeBillingDocumentJobStatus(job?.status),
+    attempts: Number(job?.attempts) || 0,
+    max_attempts: Number(job?.max_attempts) || 0,
+    error_message: String(job?.error_message || "").trim() || null,
+    created_at: String(job?.created_at || "").trim() || null,
+    updated_at: String(job?.updated_at || "").trim() || null,
+    completed_at: String(job?.completed_at || "").trim() || null,
+    result: job?.result && typeof job.result === "object" ? job.result : {},
+  };
+}
+
+async function handleBillingDocumentJobStatus(request, env, url, ctx) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  const jobId = String(url.searchParams.get("jobId") || "").trim();
+  if (!jobId) {
+    return jsonResponse({ error: "Document job id is required." }, 400);
+  }
+  try {
+    const job = await getBillingDocumentJobById(env, jobId);
+    if (!job?.id) {
+      return jsonResponse({ error: "Document job not found." }, 404);
+    }
+    const isAdmin = canManageRegistrationInvites(user, env);
+    if (!isAdmin && String(job?.user_id || "").trim() !== String(user.id || "").trim()) {
+      return jsonResponse({ error: "Document job not found." }, 404);
+    }
+    const status = normalizeBillingDocumentJobStatus(job?.status);
+    if (status === "queued" || status === "processing") {
+      queueBillingDocumentJobPump(env, ctx, {
+        limit: 1,
+        publicAppUrl: getPublicAppUrl(env, request),
+      });
+    }
+    return jsonResponse({
+      job: buildBillingDocumentJobResponseRow(job),
+      poll_after_ms: getBillingDocumentJobPollMs(env),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load document job." }, 500);
+  }
+}
+
 async function handleAdminInvoiceDetail(request, env, url) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
@@ -12103,7 +12773,7 @@ async function handleAdminInvoiceDetail(request, env, url) {
   }
 }
 
-async function handleAdminInvoicePdf(request, env, url) {
+async function handleAdminInvoicePdf(request, env, url, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -12116,15 +12786,45 @@ async function handleAdminInvoicePdf(request, env, url) {
     return jsonResponse({ error: "Invoice id is required." }, 400);
   }
   try {
-    const pdfExport = await getApprovedBillingInvoicePdfExport(env, invoiceId, { reminderStage: 0 });
-    return new Response(pdfExport.bytes, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${String(pdfExport.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
-        "Cache-Control": "no-store",
-      },
+    const invoice = await getBillingInvoiceById(env, invoiceId);
+    if (!invoice?.id) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    const storedVariant = await loadStoredBillingInvoicePdfVariant(env, invoice, 0, {
+      allowFallback: false,
+    }).catch(() => null);
+    if (storedVariant?.bytes) {
+      return new Response(storedVariant.bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${String(storedVariant.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    let job = await enqueueInvoicePdfDocumentJob(env, invoice, {
+      invoiceId,
+      reminderStage: 0,
+      priority: 12,
     });
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      job = await requeueCompletedBillingDocumentJob(env, job, {
+        payload: {
+          invoiceId,
+          reminderStage: 0,
+        },
+      });
+    }
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Invoice PDF queued. Retry after it finishes."
+    );
   } catch (error) {
     const message = error?.message || "Could not load invoice PDF.";
     const status = /not found/i.test(message) ? 404 : /unavailable|regenerate/i.test(message) ? 409 : 500;
@@ -12211,22 +12911,31 @@ async function handleAdminInvoiceSend(request, env) {
     return jsonResponse({ error: "Invoice id is required." }, 400);
   }
   try {
-    const result = await sendBillingInvoiceById(env, invoiceId, {
-      isReminder: false,
-      requireApprovedPdf: true,
+    const invoice = await getBillingInvoiceById(env, invoiceId);
+    if (!invoice?.id) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    const job = await enqueueInvoiceEmailDocumentJob(env, invoice, {
+      invoiceId,
+      publicAppUrl: getPublicAppUrl(env, request),
+      manual: true,
+      priority: 8,
+    });
+    queueBillingDocumentJobPump(env, null, {
+      limit: 1,
       publicAppUrl: getPublicAppUrl(env, request),
     });
-    return jsonResponse({
-      ok: true,
-      skipped: Boolean(result?.skipped),
-      invoice: buildInvoiceListResponseRows([result?.invoice || {}])[0] || null,
-    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Invoice email queued."
+    );
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not send invoice." }, 500);
   }
 }
 
-async function handleDocumentsPreviewSendTestEmail(request, env) {
+async function handleDocumentsPreviewSendTestEmail(request, env, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -12284,32 +12993,32 @@ async function handleDocumentsPreviewSendTestEmail(request, env) {
     if (previewDocuments.length !== 3) {
       return jsonResponse({ error: "Exactly three preview documents are required." }, 400);
     }
-    try {
-      const renderedDocuments = await renderSelectableDocumentPdfBatch(
-        env,
-        previewDocuments.map((document) => ({
-          kind: document.kind,
-          payload: {
-            viewModel: document.viewModel,
-            filename: document.filename,
-          },
-        })),
-        { request }
-      );
-      attachments = renderedDocuments.map((document) => ({
-        filename: document.filename,
-        content: document.bytes,
-        contentType: "application/pdf",
-      }));
-    } catch (error) {
-      if (isBrowserRateLimitError(error)) {
-        return getBrowserRenderRateLimitResponse(
-          env,
-          "PDF rendering is temporarily busy. Please retry shortly."
-        );
-      }
-      return jsonResponse({ error: error?.message || "Could not generate preview PDFs." }, 500);
-    }
+    const previewHash = await sha256Hex(
+      JSON.stringify({
+        toEmail,
+        previewDocuments,
+      })
+    );
+    const job = await enqueueBillingDocumentJob(env, {
+      jobType: "preview_email",
+      jobKey: `preview-email:${previewHash}:${Date.now()}:${crypto.randomUUID()}`,
+      userId: user.id,
+      priority: 6,
+      maxAttempts: 5,
+      payload: {
+        toEmail,
+        previewDocuments,
+      },
+    });
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Preview email queued."
+    );
   }
   if (attachments.length !== 3) {
     return jsonResponse({ error: "Exactly three PDF attachments are required." }, 400);
@@ -13077,6 +13786,10 @@ async function handleAdminWiseSync(request, env) {
       limit: 1,
       publicAppUrl: getPublicAppUrl(env, request),
     });
+    await processBillingDocumentJobQueue(env, {
+      limit: Math.max(getBillingDocumentQueueProcessLimit(env), 10),
+      publicAppUrl: getPublicAppUrl(env, request),
+    }).catch(() => {});
     const receipts = await listBillingBankReceipts(env, {
       limit: 80,
       statuses: ["manual_review", "pending"],
@@ -13362,7 +14075,7 @@ async function handleBillingTopupRequest(request, env) {
   }
 }
 
-async function handleBillingInvoicePdfRender(request, env) {
+async function handleBillingInvoicePdfRender(request, env, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -13379,21 +14092,49 @@ async function handleBillingInvoicePdfRender(request, env) {
     return jsonResponse({ error: "Invoice view model is required." }, 400);
   }
   try {
-    const rendered = await renderSelectableInvoicePdf(
-      env,
-      {
-        viewModel,
+    const documentHash = await buildBillingDocumentRenderHash("invoice", user.id, viewModel);
+    const stored = await loadQueuedDocumentArtifact(env, "invoice", documentHash, filename).catch(() => null);
+    if (stored?.bytes) {
+      return new Response(stored.bytes, {
+        status: 200,
+        headers: noStoreHeaders({
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${stored.filename}"`,
+        }),
+      });
+    }
+    let job = await enqueueBillingDocumentJob(env, {
+      jobType: "invoice_render",
+      jobKey: `invoice-render:${user.id}:${documentHash}`,
+      userId: user.id,
+      priority: 25,
+      maxAttempts: 5,
+      payload: {
+        userId: user.id,
+        hash: documentHash,
         filename,
+        viewModel,
       },
-      { request }
-    );
-    return new Response(rendered.bytes, {
-      status: 200,
-      headers: noStoreHeaders({
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${rendered.filename}"`,
-      }),
     });
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      job = await requeueCompletedBillingDocumentJob(env, job, {
+        payload: {
+          userId: user.id,
+          hash: documentHash,
+          filename,
+          viewModel,
+        },
+      });
+    }
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Invoice PDF queued."
+    );
   } catch (error) {
     if (isBrowserRateLimitError(error)) {
       return getBrowserRenderRateLimitResponse(env, "PDF rendering is temporarily busy. Please retry shortly.");
@@ -13402,7 +14143,7 @@ async function handleBillingInvoicePdfRender(request, env) {
   }
 }
 
-async function handleBillingReceiptPdfRender(request, env) {
+async function handleBillingReceiptPdfRender(request, env, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -13419,21 +14160,49 @@ async function handleBillingReceiptPdfRender(request, env) {
     return jsonResponse({ error: "Receipt view model is required." }, 400);
   }
   try {
-    const rendered = await renderSelectableReceiptPdf(
-      env,
-      {
-        viewModel,
+    const documentHash = await buildBillingDocumentRenderHash("receipt", user.id, viewModel);
+    const stored = await loadQueuedDocumentArtifact(env, "receipt", documentHash, filename).catch(() => null);
+    if (stored?.bytes) {
+      return new Response(stored.bytes, {
+        status: 200,
+        headers: noStoreHeaders({
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${stored.filename}"`,
+        }),
+      });
+    }
+    let job = await enqueueBillingDocumentJob(env, {
+      jobType: "receipt_render",
+      jobKey: `receipt-render:${user.id}:${documentHash}`,
+      userId: user.id,
+      priority: 25,
+      maxAttempts: 5,
+      payload: {
+        userId: user.id,
+        hash: documentHash,
         filename,
+        viewModel,
       },
-      { request }
-    );
-    return new Response(rendered.bytes, {
-      status: 200,
-      headers: noStoreHeaders({
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${rendered.filename}"`,
-      }),
     });
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      job = await requeueCompletedBillingDocumentJob(env, job, {
+        payload: {
+          userId: user.id,
+          hash: documentHash,
+          filename,
+          viewModel,
+        },
+      });
+    }
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Receipt PDF queued."
+    );
   } catch (error) {
     if (isBrowserRateLimitError(error)) {
       return getBrowserRenderRateLimitResponse(env, "PDF rendering is temporarily busy. Please retry shortly.");

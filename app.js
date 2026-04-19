@@ -4705,6 +4705,164 @@ async function fetchApiBlobWithAuth(path, options = {}) {
   }
 }
 
+async function fetchApiBinaryOrQueuedWithAuth(path, options = {}) {
+  const { timeoutMs = 15000, ...requestOptions } = options;
+  const sendWithToken = async (token) => {
+    if (!token) {
+      throw new Error(tr("You must be signed in."));
+    }
+    const headers = new Headers(requestOptions.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    if (requestOptions.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort("request-timeout");
+    }, Math.max(3000, Number(timeoutMs) || 15000));
+    try {
+      const response = await fetch(path, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
+      const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
+      if (!response.ok) {
+        const payload = contentType.includes("application/json")
+          ? await response.json().catch(() => ({}))
+          : await response.text().catch(() => "");
+        const message =
+          (payload && typeof payload === "object" && payload.error) ||
+          (typeof payload === "string" ? payload : "") ||
+          tr("Request failed ({status})", { status: response.status });
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
+      }
+      if (contentType.includes("application/json")) {
+        return {
+          queued: true,
+          payload: await response.json().catch(() => ({})),
+          headers: response.headers,
+          status: response.status,
+        };
+      }
+      return {
+        queued: false,
+        blob: await response.blob(),
+        headers: response.headers,
+        status: response.status,
+      };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(tr("Request timed out. Please try again."));
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  let token = await getAuthAccessToken();
+  try {
+    return await sendWithToken(token);
+  } catch (error) {
+    if (Number(error?.status) !== 401) {
+      throw error;
+    }
+    token = await refreshAuthAccessToken();
+    if (!token) {
+      cachedAuthAccessToken = "";
+      throw new Error(tr("You must be signed in."));
+    }
+    return sendWithToken(token);
+  }
+}
+
+function isQueuedDocumentPayload(payload) {
+  return Boolean(payload && typeof payload === "object" && payload.queued && payload?.job?.id);
+}
+
+async function waitForBillingDocumentJob(jobId, options = {}) {
+  const safeJobId = String(jobId || "").trim();
+  if (!safeJobId) {
+    throw new Error(tr("Document job id is required."));
+  }
+  const timeoutMs = Math.max(10_000, Number(options?.timeoutMs) || 300_000);
+  const startedAt = Date.now();
+  const onProgress = typeof options?.onProgress === "function" ? options.onProgress : null;
+  let pollMs = Math.max(500, Number(options?.pollMs) || 2000);
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const payload = await fetchApiWithAuth(
+      `/api/document-jobs/status?jobId=${encodeURIComponent(safeJobId)}`,
+      { timeoutMs: Math.min(30_000, pollMs + 10_000) }
+    );
+    const job = payload?.job && typeof payload.job === "object" ? payload.job : null;
+    if (!job?.id) {
+      throw new Error(tr("Document job not found."));
+    }
+    if (onProgress) {
+      onProgress(job, payload);
+    }
+    const status = String(job?.status || "").trim().toLowerCase();
+    if (status === "completed") {
+      return job;
+    }
+    if (status === "failed") {
+      throw new Error(job?.error_message || tr("Document generation failed."));
+    }
+    pollMs = Math.max(500, Number(payload?.poll_after_ms) || pollMs);
+    await delayMs(pollMs);
+  }
+
+  throw new Error(tr("Document generation timed out. Please try again."));
+}
+
+async function fetchQueuedPdfWithAuth(path, options = {}) {
+  const timeoutMs = Math.max(15_000, Number(options?.timeoutMs) || 120_000);
+  const queueTimeoutMs = Math.max(timeoutMs, Number(options?.queueTimeoutMs) || 300_000);
+  const onProgress = typeof options?.onProgress === "function" ? options.onProgress : null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetchApiBinaryOrQueuedWithAuth(path, {
+      ...options,
+      timeoutMs,
+    });
+    if (!response?.queued) {
+      return response;
+    }
+    if (!isQueuedDocumentPayload(response.payload)) {
+      throw new Error(response?.payload?.error || tr("Document generation was queued but no job id was returned."));
+    }
+    if (onProgress) {
+      onProgress(response.payload.job, response.payload);
+    }
+    await waitForBillingDocumentJob(response.payload.job.id, {
+      timeoutMs: queueTimeoutMs,
+      pollMs: response.payload?.poll_after_ms,
+      onProgress,
+    });
+  }
+  throw new Error(tr("Document generation did not complete in time. Please try again."));
+}
+
+async function performQueuedJsonAction(path, options = {}) {
+  const payload = await fetchApiWithAuth(path, options);
+  if (!isQueuedDocumentPayload(payload)) {
+    return payload;
+  }
+  const finalJob = await waitForBillingDocumentJob(payload.job.id, {
+    timeoutMs: Math.max(20_000, Number(options?.queueTimeoutMs) || 300_000),
+    pollMs: payload?.poll_after_ms,
+    onProgress: options?.onProgress,
+  });
+  return {
+    queued: true,
+    job: finalJob,
+    result: finalJob?.result && typeof finalJob.result === "object" ? finalJob.result : {},
+  };
+}
+
 function isValidEmailFormat(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
@@ -6402,14 +6560,16 @@ async function loadAdminWiseReceipts(options = {}) {
   }
 }
 
-async function sendAdminInvoiceWithRenderer(invoiceId) {
+async function sendAdminInvoiceWithRenderer(invoiceId, options = {}) {
   const safeInvoiceId = String(invoiceId || "").trim();
   if (!safeInvoiceId) {
     throw new Error(tr("Invoice id is required."));
   }
-  return fetchApiWithAuth("/api/admin/invoices/send", {
+  return performQueuedJsonAction("/api/admin/invoices/send", {
     method: "POST",
     timeoutMs: 120000,
+    queueTimeoutMs: 300000,
+    onProgress: options?.onProgress,
     body: JSON.stringify({
       invoiceId: safeInvoiceId,
     }),
@@ -6549,10 +6709,23 @@ async function sendAdminDocumentPreviewTriplet() {
   });
   try {
     const previewPayload = buildAdminDocumentPreviewEmailPayload(ADMIN_DOCUMENT_PREVIEW_EMAIL);
-    await fetchApiWithAuth("/api/documents-preview/send-test-email", {
+    await performQueuedJsonAction("/api/documents-preview/send-test-email", {
       method: "POST",
       timeoutMs: 300000,
+      queueTimeoutMs: 420000,
       body: JSON.stringify(previewPayload),
+      onProgress: (job) => {
+        const status = String(job?.status || "").trim().toLowerCase();
+        if (status === "queued") {
+          setAdminBillingStatus(tr("Preview PDFs are queued and waiting their turn..."), {
+            tone: "info",
+          });
+        } else if (status === "processing") {
+          setAdminBillingStatus(tr("Rendering and emailing the 3 preview PDFs..."), {
+            tone: "info",
+          });
+        }
+      },
     });
     setAdminBillingStatus(
       tr("Preview PDFs sent to {email}.", { email: ADMIN_DOCUMENT_PREVIEW_EMAIL }),
@@ -6791,7 +6964,16 @@ async function sendAdminInvoice(invoiceId) {
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    await sendAdminInvoiceWithRenderer(safeInvoiceId);
+    await sendAdminInvoiceWithRenderer(safeInvoiceId, {
+      onProgress: (job) => {
+        const status = String(job?.status || "").trim().toLowerCase();
+        if (status === "queued") {
+          setAdminBillingStatus(tr("Invoice email queued."), { tone: "info" });
+        } else if (status === "processing") {
+          setAdminBillingStatus(tr("Sending invoice email..."), { tone: "info" });
+        }
+      },
+    });
     setAdminBillingStatus(tr("Invoice sent."), { tone: "success" });
     await loadAdminInvoices({ quiet: true });
     await loadAdminDashboard({ quiet: true });
@@ -6921,9 +7103,9 @@ async function fetchAdminInvoicePdfBlob(invoiceId) {
   if (!safeInvoiceId) {
     throw new Error(tr("Invoice id is required."));
   }
-  const response = await fetchApiBlobWithAuth(
+  const response = await fetchQueuedPdfWithAuth(
     `/api/admin/invoices/pdf?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
-    { timeoutMs: 120000 }
+    { timeoutMs: 120000, queueTimeoutMs: 300000 }
   );
   return {
     blob: response?.blob || null,
@@ -13865,9 +14047,10 @@ async function requestSelectableInvoicePdf(viewModel, filename) {
   ) {
     return null;
   }
-  const response = await fetchApiBlobWithAuth("/api/billing/render-invoice-pdf", {
+  const response = await fetchQueuedPdfWithAuth("/api/billing/render-invoice-pdf", {
     method: "POST",
     timeoutMs: 120000,
+    queueTimeoutMs: 300000,
     body: JSON.stringify({
       viewModel,
       filename,
@@ -13889,9 +14072,10 @@ async function requestSelectableReceiptPdf(viewModel, filename) {
   ) {
     return null;
   }
-  const response = await fetchApiBlobWithAuth("/api/billing/render-receipt-pdf", {
+  const response = await fetchQueuedPdfWithAuth("/api/billing/render-receipt-pdf", {
     method: "POST",
     timeoutMs: 120000,
+    queueTimeoutMs: 300000,
     body: JSON.stringify({
       viewModel,
       filename,

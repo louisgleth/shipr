@@ -511,7 +511,25 @@
             },
           ];
 
-          const payload = typeof fetchApiWithAuth === "function"
+          const payload = typeof performQueuedJsonAction === "function"
+            ? await performQueuedJsonAction("/api/documents-preview/send-test-email", {
+                method: "POST",
+                timeoutMs: 180000,
+                queueTimeoutMs: 420000,
+                body: JSON.stringify({
+                  toEmail: PREVIEW_TEST_EMAIL,
+                  previewDocuments,
+                }),
+                onProgress: (job) => {
+                  const status = String(job?.status || "").trim().toLowerCase();
+                  if (status === "queued") {
+                    setStatus(`Queued the 3 preview PDFs for ${PREVIEW_TEST_EMAIL}...`);
+                  } else if (status === "processing") {
+                    setStatus(`Rendering and emailing the 3 preview PDFs to ${PREVIEW_TEST_EMAIL}...`);
+                  }
+                },
+              })
+            : typeof fetchApiWithAuth === "function"
             ? await fetchApiWithAuth("/api/documents-preview/send-test-email", {
                 method: "POST",
                 timeoutMs: 120000,

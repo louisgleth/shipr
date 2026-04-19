@@ -2710,6 +2710,72 @@ async function proxyAuthenticatedPdfRender(req, res, targetPath) {
   }
 }
 
+async function proxyAuthenticatedApi(req, res, targetPathWithQuery) {
+  const bearerToken = getBearerToken(req);
+  if (!bearerToken) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let rawBody = "";
+  if (!["GET", "HEAD"].includes(String(req.method || "").toUpperCase())) {
+    try {
+      rawBody = await readTextBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: error?.message || "Invalid request body." });
+      return;
+    }
+  }
+  try {
+    const response = await fetch(`${getPublicAppUrl(req)}${targetPathWithQuery}`, {
+      method: req.method || "GET",
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        ...(rawBody
+          ? {
+              "Content-Type": "application/json",
+            }
+          : {}),
+      },
+      ...(rawBody
+        ? {
+            body: rawBody,
+          }
+        : {}),
+    });
+    const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
+    if (contentType.includes("application/json")) {
+      const payload = await response.json().catch(() => ({}));
+      sendJson(
+        res,
+        response.status,
+        payload && typeof payload === "object"
+          ? payload
+          : { error: "Could not proxy API response." }
+      );
+      return;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    send(
+      res,
+      response.status,
+      {
+        "Content-Type": contentType || "application/octet-stream",
+        "Content-Disposition":
+          String(response.headers.get("content-disposition") || "").trim()
+          || 'inline; filename="document.pdf"',
+        "Cache-Control":
+          String(response.headers.get("cache-control") || "").trim()
+          || "no-store",
+      },
+      Buffer.from(arrayBuffer)
+    );
+  } catch (error) {
+    sendJson(res, 502, {
+      error: error?.message || "Could not reach the production API.",
+    });
+  }
+}
+
 function normalizeClientBillingPreference(value) {
   const raw = value && typeof value === "object" ? value : {};
   const invoiceEnabled = raw.invoice_enabled === true;
@@ -13964,7 +14030,7 @@ async function handleApi(req, res, requestUrl) {
     return true;
   }
   if (pathname === "/api/admin/invoices/pdf" && req.method === "GET") {
-    await handleAdminInvoicePdf(req, res, requestUrl);
+    await proxyAuthenticatedApi(req, res, `/api/admin/invoices/pdf${requestUrl.search}`);
     return true;
   }
   if (pathname === "/api/admin/invoices/run" && req.method === "POST") {
@@ -13976,7 +14042,7 @@ async function handleApi(req, res, requestUrl) {
     return true;
   }
   if (pathname === "/api/admin/invoices/send" && req.method === "POST") {
-    await handleAdminInvoiceSend(req, res);
+    await proxyAuthenticatedApi(req, res, "/api/admin/invoices/send");
     return true;
   }
   if (pathname === "/api/admin/invoices/accounting-export" && req.method === "POST") {
@@ -14198,6 +14264,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/render-receipt-pdf" && req.method === "POST") {
     await proxyAuthenticatedPdfRender(req, res, "/api/billing/render-receipt-pdf");
+    return true;
+  }
+  if (pathname === "/api/document-jobs/status" && req.method === "GET") {
+    await proxyAuthenticatedApi(req, res, `/api/document-jobs/status${requestUrl.search}`);
     return true;
   }
   if (pathname === "/api/billing/topups/request" && req.method === "POST") {
