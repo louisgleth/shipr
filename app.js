@@ -4707,6 +4707,29 @@ async function fetchApiBlobWithAuth(path, options = {}) {
 
 async function fetchApiBinaryOrQueuedWithAuth(path, options = {}) {
   const { timeoutMs = 15000, ...requestOptions } = options;
+  const parseQueuedPayloadFromBytes = (bytes) => {
+    if (!(bytes instanceof Uint8Array) || !bytes.length) return null;
+    const firstMeaningful = bytes.find((byte) => ![9, 10, 13, 32].includes(byte));
+    if (firstMeaningful !== 0x7b && firstMeaningful !== 0x5b) {
+      return null;
+    }
+    try {
+      const text = new TextDecoder().decode(bytes);
+      const payload = JSON.parse(text);
+      return payload && typeof payload === "object" ? payload : null;
+    } catch (_error) {
+      return null;
+    }
+  };
+  const looksLikePdfBytes = (bytes) => (
+    bytes instanceof Uint8Array
+    && bytes.length >= 5
+    && bytes[0] === 0x25
+    && bytes[1] === 0x50
+    && bytes[2] === 0x44
+    && bytes[3] === 0x46
+    && bytes[4] === 0x2d
+  );
   const sendWithToken = async (token) => {
     if (!token) {
       throw new Error(tr("You must be signed in."));
@@ -4727,6 +4750,10 @@ async function fetchApiBinaryOrQueuedWithAuth(path, options = {}) {
         signal: controller.signal,
       });
       const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
+      const expectsPdf = (
+        String(requestOptions?.method || "GET").trim().toUpperCase() !== "GET"
+        || String(path || "").includes("/pdf")
+      );
       if (!response.ok) {
         const payload = contentType.includes("application/json")
           ? await response.json().catch(() => ({}))
@@ -4746,6 +4773,21 @@ async function fetchApiBinaryOrQueuedWithAuth(path, options = {}) {
           headers: response.headers,
           status: response.status,
         };
+      }
+      if (response.status === 202 || (expectsPdf && !contentType.includes("application/pdf"))) {
+        const probeBytes = new Uint8Array(await response.clone().arrayBuffer().catch(() => new ArrayBuffer(0)));
+        const queuedPayload = parseQueuedPayloadFromBytes(probeBytes);
+        if (queuedPayload) {
+          return {
+            queued: true,
+            payload: queuedPayload,
+            headers: response.headers,
+            status: response.status,
+          };
+        }
+        if (expectsPdf && probeBytes.length && !looksLikePdfBytes(probeBytes)) {
+          throw new Error(tr("Could not load a valid PDF file."));
+        }
       }
       return {
         queued: false,

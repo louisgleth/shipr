@@ -2509,7 +2509,7 @@ async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, o
   const objectPath = String(variant.objectPath || variant.fullPath || "").trim();
   if (!objectPath) return null;
   const response = await fetch(
-    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/authenticated/${encodeURIComponent(
       String(variant.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET
     )}/${objectPath}`,
     {
@@ -2523,6 +2523,11 @@ async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, o
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     throw new Error(`Could not load stored invoice PDF (${response.status}) ${details}`.trim());
+  }
+  const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
+  if (!contentType.includes("application/pdf")) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Stored invoice PDF returned unexpected content (${contentType || "unknown"}) ${details}`.trim());
   }
   return {
     bytes: new Uint8Array(await response.arrayBuffer()),
@@ -2592,7 +2597,7 @@ async function persistQueuedDocumentArtifact(env, kind, hash, pdfBytes, filename
 async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.pdf") {
   const storagePath = buildQueuedDocumentArtifactPath(kind, hash, filename);
   const response = await fetch(
-    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(BILLING_INVOICE_STORAGE_BUCKET)}/${storagePath}`,
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/authenticated/${encodeURIComponent(BILLING_INVOICE_STORAGE_BUCKET)}/${storagePath}`,
     {
       method: "GET",
       headers: {
@@ -2607,6 +2612,11 @@ async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     throw new Error(`Could not load queued document PDF (${response.status}) ${details}`.trim());
+  }
+  const contentType = String(response.headers.get("content-type") || "").trim().toLowerCase();
+  if (!contentType.includes("application/pdf")) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Queued document PDF returned unexpected content (${contentType || "unknown"}) ${details}`.trim());
   }
   return {
     bytes: new Uint8Array(await response.arrayBuffer()),
