@@ -7180,6 +7180,8 @@ body.is-auth-view {
 
 .receipt-notice-grid {
   grid-template-columns: minmax(0, 1fr);
+  padding: 0 18px;
+  box-sizing: border-box;
 }
 
 .invoice-settlement-grid > * {
@@ -7315,7 +7317,7 @@ body.is-auth-view {
 .receipt-notice-panel-copy {
   display: grid;
   gap: 8px;
-  padding: 0 18px;
+  padding: 0;
   align-content: center;
   min-height: 50px;
 }

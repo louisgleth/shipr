@@ -6828,6 +6828,8 @@ function buildReceiptPrintDocumentHtml(env, payload = {}, options = {}) {
       }
       .invoice-native-print-view .receipt-notice-grid {
         grid-template-columns: minmax(0, 1fr) !important;
+        padding: 0 18px !important;
+        box-sizing: border-box !important;
       }
       .invoice-native-print-view .invoice-lower-stack {
         margin-top: auto !important;
