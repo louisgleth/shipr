@@ -7302,79 +7302,43 @@ async function exportAdminSalesLedger() {
   const visibleRows = getAdminSalesLedgerRows();
   if (!visibleRows.length) return;
   const batchId = buildAdminLedgerBatchId();
-  const invoiceIdsToMark = visibleRows
-    .filter((invoice) => getAdminLedgerExportState(invoice) === "pending")
+  const invoiceIds = visibleRows
     .map((invoice) => String(invoice?.id || "").trim())
     .filter(Boolean);
   setAdminBillingBusy(true);
   setAdminBillingStatus("");
   try {
-    const invoiceMap = new Map(
-      (Array.isArray(adminBillingInvoices) ? adminBillingInvoices : []).map((invoice) => [
-        String(invoice?.id || "").trim(),
-        invoice,
-      ])
-    );
-    const exportRows = visibleRows.map((invoice) => {
-      const id = String(invoice?.id || "").trim();
-      return invoiceMap.get(id) || invoice;
-    });
-    const csvText = buildAdminSalesLedgerCsv(exportRows, { batchId });
-    const csvFilename = `sales-ledger-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.csv`;
-    const zipEntries = [
-      {
-        name: csvFilename,
-        bytes: new TextEncoder().encode(csvText),
-        lastModified: new Date(),
+    const result = await performQueuedJsonAction("/api/admin/invoices/accounting-export", {
+      method: "POST",
+      timeoutMs: 30000,
+      queueTimeoutMs: 900000,
+      body: JSON.stringify({
+        invoiceIds,
+        batchId,
+        format: "email",
+      }),
+      onProgress: (job) => {
+        const status = String(job?.status || "").trim().toLowerCase();
+        if (status === "queued") {
+          setAdminBillingStatus("Accounting pack queued for email.", { tone: "info" });
+        } else if (status === "processing") {
+          setAdminBillingStatus("Building and emailing accounting pack...", { tone: "info" });
+        }
       },
-    ];
-
-    for (let index = 0; index < exportRows.length; index += 1) {
-      const invoice = exportRows[index];
-      const reference = String(invoice?.reference || `invoice-${index + 1}`).trim();
-      setAdminBillingStatus(
-        `Preparing accounting pack... ${index + 1}/${exportRows.length} • ${reference}`,
-        { tone: "info" }
-      );
-      const pdfFile = await fetchAdminInvoicePdfBlob(invoice?.id);
-      if (!pdfFile?.blob) {
-        throw new Error(tr("Could not load invoice PDF."));
-      }
-      zipEntries.push({
-        name: `invoices/${sanitizeAccountingPackEntryName(
-          pdfFile.filename || buildInvoicePdfFilenameFromReference(reference),
-          buildInvoicePdfFilenameFromReference(reference)
-        )}`,
-        blob: pdfFile.blob,
-        lastModified: invoice?.updated_at || invoice?.issued_at || invoice?.created_at || new Date(),
-      });
-      if (index < exportRows.length - 1) {
-        await delayMs(300);
-      }
-    }
-
-    const zipBlob = await buildAdminAccountingPackZip(zipEntries);
-    if (invoiceIdsToMark.length) {
-      const payload = await fetchApiWithAuth("/api/admin/invoices/accounting-export", {
-        method: "POST",
-        body: JSON.stringify({
-          invoiceIds: invoiceIdsToMark,
-          batchId,
-          format: "zip",
-        }),
-      });
-      mergeAdminInvoiceRows(Array.isArray(payload?.invoices) ? payload.invoices : []);
-    }
-    const zipFilename = `accounting-pack-${adminLedgerMonthFilter === "all" ? "all" : adminLedgerMonthFilter}-${batchId}.zip`;
-    downloadBlobAsFile(zipBlob, zipFilename);
+    });
+    await loadAdminInvoices({ quiet: true });
+    await loadAdminDashboard({ quiet: true });
+    const deliveredTo =
+      String(result?.result?.to_email || result?.to_email || "").trim();
+    const invoiceCount = Math.max(0, Number(result?.result?.invoice_count || result?.invoice_count) || invoiceIds.length);
     setAdminBillingStatus(
-      invoiceIdsToMark.length
-        ? `Exported ${invoiceIdsToMark.length} invoice${invoiceIdsToMark.length === 1 ? "" : "s"} and downloaded the accounting pack.`
-        : "Downloaded accounting pack for already-exported invoices.",
+      deliveredTo
+        ? `Emailed accounting pack for ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"} to ${deliveredTo}.`
+        : `Emailed accounting pack for ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}.`,
       { tone: "success" }
     );
   } catch (error) {
-    setAdminBillingStatus(error?.message || "Could not build the accounting pack.", {
+    setAdminBillingStatus(error?.message || "Could not email the accounting pack.", {
       tone: "error",
     });
   } finally {

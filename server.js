@@ -14046,7 +14046,7 @@ async function handleApi(req, res, requestUrl) {
     return true;
   }
   if (pathname === "/api/admin/invoices/accounting-export" && req.method === "POST") {
-    await handleAdminInvoiceAccountingExport(req, res);
+    await proxyAuthenticatedApi(req, res, "/api/admin/invoices/accounting-export");
     return true;
   }
   if (pathname === "/api/admin/invoices/send-test" && req.method === "POST") {

@@ -7538,6 +7538,15 @@ function buildInvoiceEmailJobKey(invoiceId, options = {}) {
   return `invoice-email:${mode}:${String(invoiceId || "").trim()}:${stage}`;
 }
 
+function buildAccountingPackEmailJobKey(userId, batchId, options = {}) {
+  const safeUserId = String(userId || "").trim() || "unknown";
+  const safeBatchId = String(batchId || "").trim() || buildAccountingExportBatchId();
+  if (options?.manual === true) {
+    return `accounting-pack-email:manual:${safeUserId}:${safeBatchId}:${Date.now()}:${crypto.randomUUID()}`;
+  }
+  return `accounting-pack-email:${safeUserId}:${safeBatchId}`;
+}
+
 async function enqueueInvoicePdfDocumentJob(env, invoice, options = {}) {
   const safeInvoiceId = String(options?.invoiceId || invoice?.id || "").trim();
   if (!safeInvoiceId) {
@@ -7641,6 +7650,93 @@ async function processBillingDocumentJob(env, job, options = {}) {
       return {
         hash: rendered.hash,
         filename: rendered.filename,
+      };
+    }
+    case "accounting_pack_email": {
+      const invoiceIds = Array.from(
+        new Set(
+          (Array.isArray(payload?.invoiceIds) ? payload.invoiceIds : [])
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (!invoiceIds.length) {
+        throw new Error("Select at least one invoice to export.");
+      }
+      const toEmail = normalizeEmail(payload?.toEmail || "");
+      if (!toEmail) {
+        throw new Error("A valid destination email is required.");
+      }
+      const exportBatchId =
+        String(payload?.batchId || "").trim() || buildAccountingExportBatchId();
+      const actor = String(payload?.actor || "").trim() || toEmail;
+      const exportedAt = String(payload?.exportedAt || new Date().toISOString()).trim() || new Date().toISOString();
+      const invoices = [];
+      for (const invoiceId of invoiceIds) {
+        const invoice = await getBillingInvoiceById(env, invoiceId);
+        if (invoice?.id) {
+          invoices.push(invoice);
+        }
+      }
+      if (!invoices.length) {
+        throw new Error("No invoices were found for this accounting pack.");
+      }
+      const csvText = buildAccountingPackCsv(invoices, { batchId: exportBatchId });
+      const zipEntries = [
+        {
+          name: `sales-ledger-${exportBatchId}.csv`,
+          bytes: new TextEncoder().encode(csvText),
+          lastModified: exportedAt,
+        },
+      ];
+      for (const invoice of invoices) {
+        const pdfFile = await getApprovedBillingInvoicePdfExport(env, invoice.id, { reminderStage: 0 });
+        if (!pdfFile?.bytes) {
+          throw new Error(`Could not load invoice PDF for ${getBillingInvoiceReference(invoice)}.`);
+        }
+        zipEntries.push({
+          name: `invoices/${sanitizeAccountingPackEntryName(
+            pdfFile.filename || buildInvoicePdfFilenameFromReference(getBillingInvoiceReference(invoice)),
+            buildInvoicePdfFilenameFromReference(getBillingInvoiceReference(invoice))
+          )}`,
+          bytes: pdfFile.bytes,
+          lastModified: invoice?.updated_at || invoice?.issued_at || invoice?.created_at || exportedAt,
+        });
+      }
+      const zipBytes = buildAccountingPackZip(zipEntries);
+      const zipFilename = `accounting-pack-${exportBatchId}.zip`;
+      const resendResponse = await sendResendEmail(env, {
+        to: toEmail,
+        subject: `Shipide Accounting Pack ${exportBatchId}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.55">
+            <p>Your accounting pack is attached as a zip archive.</p>
+            <p>It includes the visible sales ledger export and ${invoiceIds.length} invoice PDF${invoiceIds.length === 1 ? "" : "s"}.</p>
+          </div>
+        `,
+        text: [
+          "Your accounting pack is attached as a zip archive.",
+          `It includes the visible sales ledger export and ${invoiceIds.length} invoice PDF${invoiceIds.length === 1 ? "" : "s"}.`,
+        ].join("\n\n"),
+        attachments: [
+          {
+            filename: zipFilename,
+            content: zipBytes,
+            contentType: "application/zip",
+          },
+        ],
+      });
+      const updatedInvoices = await applyAccountingExportState(env, invoices, {
+        actor,
+        exportBatchId,
+        exportedAt,
+        requestedFormat: "email",
+      });
+      return {
+        resend_id: resendResponse?.id || null,
+        to_email: toEmail,
+        batch_id: exportBatchId,
+        invoice_count: updatedInvoices.length || invoices.length,
       };
     }
     case "preview_email": {
@@ -12561,6 +12657,237 @@ function buildAccountingExportBatchId(now = new Date()) {
   return `acct-${iso.slice(0, 10).replace(/-/g, "")}-${iso.slice(11, 19).replace(/:/g, "")}`;
 }
 
+function escapeAccountingCsvValue(value) {
+  const text = String(value == null ? "" : value);
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildAccountingExportMetadata(invoice, { actor = "", exportBatchId = "", exportedAt = "", requestedFormat = "email" } = {}) {
+  const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
+  const currentExport =
+    metadata?.accounting_export && typeof metadata.accounting_export === "object"
+      ? metadata.accounting_export
+      : {};
+  return {
+    metadata,
+    nextExport: {
+      exported_at: String(currentExport?.exported_at || "").trim() || exportedAt,
+      exported_by: String(currentExport?.exported_by || "").trim() || actor,
+      export_batch_id: String(currentExport?.export_batch_id || "").trim() || exportBatchId,
+      export_format: String(currentExport?.export_format || "").trim().toLowerCase() || requestedFormat,
+    },
+  };
+}
+
+function buildAccountingPackCsv(invoices = [], options = {}) {
+  const batchId = String(options?.batchId || "").trim();
+  const headers = [
+    "Invoice Number",
+    "Type",
+    "Company",
+    "Contact Email",
+    "Issue Date",
+    "Due Date",
+    "Paid Date",
+    "Status",
+    "Payment Mode",
+    "Subtotal Ex VAT",
+    "VAT",
+    "Total Inc VAT",
+    "Accounting Exported",
+    "Accounting Exported At",
+    "Accounting Export Batch",
+    "Accounting Exported By",
+  ];
+  const lines = [headers.join(",")];
+  (Array.isArray(invoices) ? invoices : []).forEach((invoice) => {
+    const exportMeta =
+      invoice?.metadata?.accounting_export && typeof invoice.metadata.accounting_export === "object"
+        ? invoice.metadata.accounting_export
+        : {};
+    lines.push(
+      [
+        getBillingInvoiceReference(invoice),
+        String(invoice?.invoice_kind || "").trim() || "monthly",
+        invoice?.company_name || "",
+        invoice?.contact_email || "",
+        invoice?.issued_at || invoice?.sent_at || invoice?.created_at || "",
+        invoice?.due_at || "",
+        invoice?.paid_at || "",
+        invoice?.status || "",
+        invoice?.payment_mode || "",
+        Number(invoice?.subtotal_ex_vat || 0).toFixed(2),
+        Number(invoice?.vat_amount || 0).toFixed(2),
+        Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0).toFixed(2),
+        exportMeta?.exported_at ? "yes" : "no",
+        exportMeta?.exported_at || "",
+        exportMeta?.export_batch_id || batchId,
+        exportMeta?.exported_by || "",
+      ].map(escapeAccountingCsvValue).join(",")
+    );
+  });
+  return lines.join("\r\n");
+}
+
+function sanitizeAccountingPackEntryName(value, fallback = "document.pdf") {
+  const safe = String(value || "").trim().replace(/[\\/:*?"<>|]+/g, "-");
+  return safe || fallback;
+}
+
+function buildAccountingZipUint16(value) {
+  const bytes = new Uint8Array(2);
+  new DataView(bytes.buffer).setUint16(0, Number(value) || 0, true);
+  return bytes;
+}
+
+function buildAccountingZipUint32(value) {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, Number(value) >>> 0, true);
+  return bytes;
+}
+
+function concatAccountingZipParts(parts = []) {
+  const safeParts = Array.isArray(parts) ? parts.filter(Boolean) : [];
+  const totalLength = safeParts.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  safeParts.forEach((part) => {
+    out.set(part, offset);
+    offset += part.length;
+  });
+  return out;
+}
+
+function computeAccountingZipCrc32(bytes) {
+  let crc = 0xffffffff;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc ^= bytes[index];
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildAccountingZipDosDateTime(dateLike) {
+  const parsed = new Date(dateLike || Date.now());
+  const safeDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const year = Math.max(1980, safeDate.getFullYear());
+  const dosTime =
+    ((safeDate.getHours() & 0x1f) << 11)
+    | ((safeDate.getMinutes() & 0x3f) << 5)
+    | Math.floor((safeDate.getSeconds() || 0) / 2);
+  const dosDate =
+    (((year - 1980) & 0x7f) << 9)
+    | (((safeDate.getMonth() + 1) & 0x0f) << 5)
+    | (safeDate.getDate() & 0x1f);
+  return { dosDate, dosTime };
+}
+
+function buildAccountingPackZip(entries = []) {
+  const encoder = new TextEncoder();
+  const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const entry of safeEntries) {
+    const name = String(entry?.name || "").trim();
+    if (!name) continue;
+    const filenameBytes = encoder.encode(name);
+    const dataBytes =
+      entry?.bytes instanceof Uint8Array
+        ? entry.bytes
+        : new Uint8Array(entry?.bytes || []);
+    const crc32 = computeAccountingZipCrc32(dataBytes);
+    const { dosDate, dosTime } = buildAccountingZipDosDateTime(entry?.lastModified);
+    const localHeader = concatAccountingZipParts([
+      buildAccountingZipUint32(0x04034b50),
+      buildAccountingZipUint16(20),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(dosTime),
+      buildAccountingZipUint16(dosDate),
+      buildAccountingZipUint32(crc32),
+      buildAccountingZipUint32(dataBytes.length),
+      buildAccountingZipUint32(dataBytes.length),
+      buildAccountingZipUint16(filenameBytes.length),
+      buildAccountingZipUint16(0),
+      filenameBytes,
+    ]);
+    localParts.push(localHeader, dataBytes);
+    const centralHeader = concatAccountingZipParts([
+      buildAccountingZipUint32(0x02014b50),
+      buildAccountingZipUint16(20),
+      buildAccountingZipUint16(20),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(dosTime),
+      buildAccountingZipUint16(dosDate),
+      buildAccountingZipUint32(crc32),
+      buildAccountingZipUint32(dataBytes.length),
+      buildAccountingZipUint32(dataBytes.length),
+      buildAccountingZipUint16(filenameBytes.length),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint16(0),
+      buildAccountingZipUint32(0),
+      buildAccountingZipUint32(offset),
+      filenameBytes,
+    ]);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + dataBytes.length;
+  }
+  const localSection = concatAccountingZipParts(localParts);
+  const centralSection = concatAccountingZipParts(centralParts);
+  const endOfCentralDirectory = concatAccountingZipParts([
+    buildAccountingZipUint32(0x06054b50),
+    buildAccountingZipUint16(0),
+    buildAccountingZipUint16(0),
+    buildAccountingZipUint16(centralParts.length),
+    buildAccountingZipUint16(centralParts.length),
+    buildAccountingZipUint32(centralSection.length),
+    buildAccountingZipUint32(localSection.length),
+    buildAccountingZipUint16(0),
+  ]);
+  return concatAccountingZipParts([localSection, centralSection, endOfCentralDirectory]);
+}
+
+async function applyAccountingExportState(env, invoices = [], options = {}) {
+  const actor = String(options?.actor || "").trim();
+  const exportBatchId = String(options?.exportBatchId || "").trim();
+  const exportedAt = String(options?.exportedAt || new Date().toISOString()).trim();
+  const requestedFormat = String(options?.requestedFormat || "email").trim().toLowerCase() || "email";
+  const updatedInvoices = [];
+  for (const invoice of Array.isArray(invoices) ? invoices : []) {
+    if (!invoice?.id) continue;
+    const { metadata, nextExport } = buildAccountingExportMetadata(invoice, {
+      actor,
+      exportBatchId,
+      exportedAt,
+      requestedFormat,
+    });
+    const updated = await updateBillingInvoiceFields(env, invoice.id, {
+      metadata: {
+        ...metadata,
+        accounting_export: nextExport,
+      },
+    });
+    await insertBillingInvoiceEvent(env, invoice.id, {
+      event_type: "updated",
+      actor,
+      channel: "accounting",
+      message: "Exported to accounting ledger.",
+      metadata: {
+        accounting_export: nextExport,
+      },
+    });
+    updatedInvoices.push(updated || invoice);
+  }
+  return updatedInvoices;
+}
+
 async function handleAdminInvoiceAccountingExport(request, env) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
@@ -12595,39 +12922,53 @@ async function handleAdminInvoiceAccountingExport(request, env) {
   const actor = normalizeEmail(user.email || "") || user.id;
   const exportBatchId =
     String(body?.batchId || "").trim() || buildAccountingExportBatchId(exportedAtDate);
+  if (requestedFormat === "email") {
+    const toEmail = normalizeEmail(body?.toEmail || user.email || "");
+    if (!toEmail || !isValidEmailFormat(toEmail)) {
+      return jsonResponse({ error: "A valid destination email is required." }, 400);
+    }
+    try {
+      const job = await enqueueBillingDocumentJob(env, {
+        jobType: "accounting_pack_email",
+        jobKey: buildAccountingPackEmailJobKey(user.id, exportBatchId, { manual: true }),
+        userId: user.id,
+        priority: 14,
+        maxAttempts: 4,
+        payload: {
+          invoiceIds,
+          toEmail,
+          actor,
+          batchId: exportBatchId,
+          exportedAt,
+        },
+      });
+      queueBillingDocumentJobPump(env, null, {
+        limit: 1,
+        publicAppUrl: getPublicAppUrl(env, request),
+      });
+      return buildBillingDocumentJobAcceptedResponse(
+        env,
+        buildBillingDocumentJobResponseRow(job),
+        "Accounting pack email queued."
+      );
+    } catch (error) {
+      return jsonResponse({ error: error?.message || "Could not queue accounting pack email." }, 500);
+    }
+  }
   try {
-    const updatedInvoices = [];
+    const invoices = [];
     for (const invoiceId of invoiceIds) {
       const invoice = await getBillingInvoiceById(env, invoiceId);
-      if (!invoice?.id) continue;
-      const metadata = invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {};
-      const currentExport =
-        metadata?.accounting_export && typeof metadata.accounting_export === "object"
-          ? metadata.accounting_export
-          : {};
-      const nextExport = {
-        exported_at: String(currentExport?.exported_at || "").trim() || exportedAt,
-        exported_by: String(currentExport?.exported_by || "").trim() || actor,
-        export_batch_id: String(currentExport?.export_batch_id || "").trim() || exportBatchId,
-        export_format: String(currentExport?.export_format || "").trim().toLowerCase() || requestedFormat,
-      };
-      const updated = await updateBillingInvoiceFields(env, invoice.id, {
-        metadata: {
-          ...metadata,
-          accounting_export: nextExport,
-        },
-      });
-      await insertBillingInvoiceEvent(env, invoice.id, {
-        event_type: "updated",
-        actor,
-        channel: "accounting",
-        message: "Exported to accounting ledger.",
-        metadata: {
-          accounting_export: nextExport,
-        },
-      });
-      updatedInvoices.push(updated || invoice);
+      if (invoice?.id) {
+        invoices.push(invoice);
+      }
     }
+    const updatedInvoices = await applyAccountingExportState(env, invoices, {
+      actor,
+      exportBatchId,
+      exportedAt,
+      requestedFormat,
+    });
     if (!updatedInvoices.length) {
       return jsonResponse({ error: "No invoices were updated." }, 404);
     }
