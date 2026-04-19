@@ -2509,7 +2509,7 @@ async function loadStoredBillingInvoicePdfVariant(env, invoice, reminderStage, o
   const objectPath = String(variant.objectPath || variant.fullPath || "").trim();
   if (!objectPath) return null;
   const response = await fetch(
-    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/authenticated/${encodeURIComponent(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(
       String(variant.bucket || BILLING_INVOICE_STORAGE_BUCKET).trim() || BILLING_INVOICE_STORAGE_BUCKET
     )}/${objectPath}`,
     {
@@ -2605,7 +2605,7 @@ async function persistQueuedDocumentArtifact(env, kind, hash, pdfBytes, filename
 async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.pdf") {
   const storagePath = buildQueuedDocumentArtifactPath(kind, hash, filename);
   const response = await fetch(
-    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/authenticated/${encodeURIComponent(BILLING_INVOICE_STORAGE_BUCKET)}/${storagePath}`,
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/storage/v1/object/${encodeURIComponent(BILLING_INVOICE_STORAGE_BUCKET)}/${storagePath}`,
     {
       method: "GET",
       headers: {
