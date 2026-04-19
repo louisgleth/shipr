@@ -6746,26 +6746,25 @@ body.is-auth-view {
   grid-template-rows: 1fr auto;
   gap: 0;
   flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .invoice-sheet {
   grid-template-rows: minmax(0, 1fr) auto;
   align-content: stretch;
   --invoice-muted: var(--muted);
-}
-
-.invoice-sheet .receipt-sheet-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
   min-height: 0;
+  height: 100%;
 }
 
 .receipt-sheet-body {
   padding: 36px 40px 0;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  align-content: start;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .receipt-header-region {

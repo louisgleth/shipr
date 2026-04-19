@@ -13190,6 +13190,11 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
     const tableSectionHeadPx = regions.tableSectionHeadH;
     const theadPx = regions.theadH;
     const settlementPx = regions.disclaimer ? regions.disclaimer.h : 0;
+    const rowCount = regions.rows.length;
+    if (rowCount <= 1) {
+      return [{ firstPage: true, rows: allRows, hasSettlement: true }];
+    }
+    const pageSafetyPx = 16;
 
     return buildInvoicePageConfigsFromRowMetrics(
       regions.rows.map((row, index) => ({
@@ -13197,11 +13202,12 @@ async function buildPaginatedInvoicePageConfigs(viewModel) {
         height: row?.h || 0,
       })),
       {
-        firstPageBudget: contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx,
-        continuationBudget: contentBudget - theadPx,
+        firstPageBudget:
+          contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx - pageSafetyPx,
+        continuationBudget: contentBudget - theadPx - pageSafetyPx,
         settlementHeight: settlementPx,
-        settlementGap: 4,
-        rebalanceFinalPage: Boolean(viewModel?.isMonthlyBilling),
+        settlementGap: 8,
+        rebalanceFinalPage: true,
       }
     );
   } finally {
@@ -13262,35 +13268,31 @@ async function buildPaginatedReceiptPageConfigs(viewModel) {
     const tableSectionHeadPx = regions.tableSectionHeadH;
     const theadPx = regions.theadH;
     const disclaimerPx = regions.disclaimer ? regions.disclaimer.h : 0;
-    const pages = [];
-    let rowIdx = 0;
     const rowCount = regions.rows.length;
-    let budget = contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx;
-    let pageRows = [];
-
-    while (rowIdx < rowCount) {
-      const rowPx = regions.rows[rowIdx]?.h || 0;
-      if (rowPx <= budget) {
-        pageRows.push(rowIdx);
-        budget -= rowPx;
-        rowIdx += 1;
-      } else {
-        pages.push({ firstPage: pages.length === 0, rows: pageRows, hasDisclaimer: false });
-        pageRows = [];
-        budget = contentBudget - theadPx;
+    if (rowCount <= 1) {
+      return [{ firstPage: true, rows: allRows, hasDisclaimer: true }];
+    }
+    const pageSafetyPx = 16;
+    const pageConfigs = buildInvoicePageConfigsFromRowMetrics(
+      regions.rows.map((row, index) => ({
+        index,
+        height: row?.h || 0,
+      })),
+      {
+        firstPageBudget:
+          contentBudget - headerPx - tableGapPx - tableSectionHeadPx - theadPx - pageSafetyPx,
+        continuationBudget: contentBudget - theadPx - pageSafetyPx,
+        settlementHeight: disclaimerPx,
+        settlementGap: 8,
+        rebalanceFinalPage: false,
       }
-    }
+    );
 
-    const isFirstPage = pages.length === 0;
-    const forceInlineDisclaimer = rowCount <= 1 && isFirstPage;
-    if (forceInlineDisclaimer || disclaimerPx + 4 <= budget) {
-      pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: true });
-    } else {
-      pages.push({ firstPage: isFirstPage, rows: pageRows, hasDisclaimer: false });
-      pages.push({ firstPage: false, rows: [], hasDisclaimer: true });
-    }
-
-    return pages;
+    return pageConfigs.map((pageConfig) => ({
+      firstPage: Boolean(pageConfig?.firstPage),
+      rows: Array.isArray(pageConfig?.rows) ? pageConfig.rows : [],
+      hasDisclaimer: Boolean(pageConfig?.hasSettlement),
+    }));
   } finally {
     receiptDocument.className = previousClassName;
     receiptDocument.innerHTML = previousMarkup;

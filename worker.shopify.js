@@ -6620,8 +6620,11 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
         page-break-after: always;
       }
       #receiptDocument.receipt-print-pages > .receipt-document > .receipt-sheet {
+        display: grid !important;
+        grid-template-rows: minmax(0, 1fr) auto !important;
         flex: 1 1 auto !important;
         min-height: 0 !important;
+        height: 100% !important;
       }
       #receiptDocument.receipt-print-pages > .receipt-document:last-child {
         break-after: auto;
@@ -6668,6 +6671,9 @@ function buildInvoicePrintDocumentHtml(env, payload = {}, options = {}) {
         flex-direction: row !important;
         justify-content: space-between !important;
         align-items: center !important;
+      }
+      .invoice-native-print-view .receipt-sheet-body {
+        flex: 1 1 auto !important;
       }
       @page {
         size: A4;
@@ -6783,8 +6789,11 @@ function buildReceiptPrintDocumentHtml(env, payload = {}, options = {}) {
         page-break-after: always;
       }
       #receiptDocument.receipt-print-pages > .receipt-document > .receipt-sheet {
+        display: grid !important;
+        grid-template-rows: minmax(0, 1fr) auto !important;
         flex: 1 1 auto !important;
         min-height: 0 !important;
+        height: 100% !important;
       }
       #receiptDocument.receipt-print-pages > .receipt-document:last-child {
         break-after: auto;
@@ -6793,6 +6802,43 @@ function buildReceiptPrintDocumentHtml(env, payload = {}, options = {}) {
       #receiptDocument .receipt-table-wrap {
         overflow: visible !important;
         max-height: none !important;
+      }
+      .invoice-native-print-view .receipt-sheet-body {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 14px !important;
+        min-height: 0 !important;
+      }
+      .invoice-native-print-view .invoice-party-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+      .invoice-native-print-view .invoice-meta-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      }
+      .invoice-native-print-view .receipt-topline {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+      }
+      .invoice-native-print-view .receipt-top-meta {
+        justify-items: end !important;
+      }
+      .invoice-native-print-view .receipt-top-meta-lines {
+        text-align: right !important;
+      }
+      .invoice-native-print-view .receipt-notice-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      .invoice-native-print-view .invoice-lower-stack {
+        margin-top: auto !important;
+      }
+      .invoice-native-print-view .receipt-footer {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+      }
+      .invoice-native-print-view .receipt-sheet-body {
+        flex: 1 1 auto !important;
       }
       @page {
         size: A4;
