@@ -19,10 +19,26 @@ create table if not exists public.billing_document_jobs (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   constraint billing_document_jobs_job_type_check
-    check (job_type in ('invoice_pdf', 'invoice_email', 'invoice_render', 'receipt_render', 'preview_email')),
+    check (job_type in ('invoice_pdf', 'invoice_email', 'invoice_render', 'receipt_render', 'preview_email', 'accounting_pack_email')),
   constraint billing_document_jobs_status_check
     check (status in ('queued', 'processing', 'completed', 'failed'))
 );
+
+alter table public.billing_document_jobs
+  drop constraint if exists billing_document_jobs_job_type_check;
+
+alter table public.billing_document_jobs
+  add constraint billing_document_jobs_job_type_check
+  check (
+    job_type in (
+      'invoice_pdf',
+      'invoice_email',
+      'invoice_render',
+      'receipt_render',
+      'preview_email',
+      'accounting_pack_email'
+    )
+  );
 
 create index if not exists billing_document_jobs_status_priority_idx
   on public.billing_document_jobs (status, priority asc, available_at asc, created_at asc);

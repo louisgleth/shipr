@@ -237,10 +237,10 @@ export default {
         return handleAdminPrivacyMaintenanceRun(request, env);
       }
       if (pathname === "/api/admin/invoices/send" && request.method === "POST") {
-        return handleAdminInvoiceSend(request, env);
+        return handleAdminInvoiceSend(request, env, ctx);
       }
       if (pathname === "/api/admin/invoices/accounting-export" && request.method === "POST") {
-        return handleAdminInvoiceAccountingExport(request, env);
+        return handleAdminInvoiceAccountingExport(request, env, ctx);
       }
       if (pathname === "/api/admin/invoices/send-test" && request.method === "POST") {
         return handleAdminInvoiceSendTest(request, env);
@@ -12888,7 +12888,7 @@ async function applyAccountingExportState(env, invoices = [], options = {}) {
   return updatedInvoices;
 }
 
-async function handleAdminInvoiceAccountingExport(request, env) {
+async function handleAdminInvoiceAccountingExport(request, env, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -12942,7 +12942,7 @@ async function handleAdminInvoiceAccountingExport(request, env) {
           exportedAt,
         },
       });
-      queueBillingDocumentJobPump(env, null, {
+      queueBillingDocumentJobPump(env, ctx, {
         limit: 1,
         publicAppUrl: getPublicAppUrl(env, request),
       });
@@ -13259,7 +13259,7 @@ async function handleAdminInvoicesRun(request, env) {
   }
 }
 
-async function handleAdminInvoiceSend(request, env) {
+async function handleAdminInvoiceSend(request, env, ctx) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
@@ -13288,7 +13288,7 @@ async function handleAdminInvoiceSend(request, env) {
       manual: true,
       priority: 8,
     });
-    queueBillingDocumentJobPump(env, null, {
+    queueBillingDocumentJobPump(env, ctx, {
       limit: 1,
       publicAppUrl: getPublicAppUrl(env, request),
     });
