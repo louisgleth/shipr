@@ -1961,20 +1961,20 @@ body.is-auth-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .account-overview-bento > * {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .account-info-panel {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .account-info-head {
@@ -1982,13 +1982,13 @@ body.is-auth-view {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .account-info-head > .preview-title,
 .account-billing-head > .preview-title,
 .warehouse-head > .preview-title {
-  min-height: 40px;
+  min-height: 34px;
   display: flex;
   align-items: center;
 }
@@ -1997,7 +1997,7 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .language-control-label {
@@ -2061,7 +2061,7 @@ body.is-auth-view {
   font-size: var(--fs-xs);
   color: var(--muted);
   border-top: 1px solid var(--stroke);
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .invite-panel {
@@ -2234,9 +2234,9 @@ body.is-auth-view {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   justify-self: stretch;
 }
@@ -2246,7 +2246,7 @@ body.is-auth-view {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .account-billing-head .panel-sub {
@@ -2261,16 +2261,11 @@ body.is-auth-view {
 }
 
 .account-balance-hero {
-  min-height: 170px;
-  padding: 4px 2px 2px;
+  min-height: 132px;
+  padding: 0 2px 2px;
   display: grid;
-  gap: 10px;
-  align-content: center;
-}
-
-.account-balance-label {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
+  gap: 8px;
+  align-content: start;
 }
 
 .account-balance-value {
@@ -2568,9 +2563,9 @@ body.is-auth-view {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--panel-bg);
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .admin-summary-grid {
@@ -3849,7 +3844,7 @@ body.is-auth-view {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .warehouse-toolbar-actions {
@@ -3857,7 +3852,7 @@ body.is-auth-view {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .warehouse-status {
@@ -3867,7 +3862,7 @@ body.is-auth-view {
 
 .warehouse-status-row {
   border-top: 1px solid var(--stroke);
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .warehouse-status.is-error {

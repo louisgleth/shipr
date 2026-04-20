@@ -1005,12 +1005,11 @@ const TRANSLATIONS = {
   "Back to Builder": { fr: "Retour au builder", nl: "Terug naar builder" },
   "Sign Out": { fr: "Se déconnecter", nl: "Uitloggen" },
   "Account Information": { fr: "Informations du compte", nl: "Accountinformatie" },
-  "Billing & Balance": { fr: "Facturation & Solde", nl: "Facturatie & Saldo" },
+  "Balance": { fr: "Solde", nl: "Saldo" },
   "Track wallet funding, invoice status, and payment readiness.": {
     fr: "Suivez le financement du solde, le statut des factures et la disponibilité au paiement.",
     nl: "Volg saldo-opwaarderingen, factuurstatus en betaalgereedheid.",
   },
-  "Available Balance": { fr: "Solde disponible", nl: "Beschikbaar saldo" },
   "Pending Top-ups": { fr: "Recharges en attente", nl: "Open opwaarderingen" },
   "Open Invoices": { fr: "Factures ouvertes", nl: "Open facturen" },
   "Paid Invoices": { fr: "Factures payées", nl: "Betaalde facturen" },
