@@ -86,6 +86,8 @@ const DEFAULT_BROWSER_RENDER_RETRY_BASE_MS = 1500;
 const DEFAULT_BILLING_DOCUMENT_JOB_LEASE_SECONDS = 180;
 const DEFAULT_BILLING_DOCUMENT_JOB_POLL_MS = 2500;
 const DEFAULT_BILLING_DOCUMENT_QUEUE_PROCESS_LIMIT = 4;
+const DEFAULT_BILLING_DOCUMENT_COMPLETED_RETENTION_DAYS = 21;
+const DEFAULT_BILLING_DOCUMENT_FAILED_RETENTION_DAYS = 60;
 const DEFAULT_INVOICE_VIEW_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BILLING_INVOICE_RENDER_BATCH_VARIANTS = 5;
 const DEFAULT_VAT_RATE = 0;
@@ -482,6 +484,14 @@ export default {
     } catch (error) {
       console.error("[scheduled document queue]", error);
     }
+    try {
+      const pruned = await pruneBillingDocumentJobs(env, { now: scheduledNow });
+      if ((pruned?.completed_deleted || 0) > 0 || (pruned?.failed_deleted || 0) > 0) {
+        console.log("[scheduled document queue prune]", JSON.stringify(pruned));
+      }
+    } catch (error) {
+      console.error("[scheduled document queue prune]", error);
+    }
   },
 };
 
@@ -552,6 +562,22 @@ function getBillingDocumentQueueProcessLimit(env) {
     return Math.max(1, Math.floor(configured));
   }
   return DEFAULT_BILLING_DOCUMENT_QUEUE_PROCESS_LIMIT;
+}
+
+function getBillingDocumentCompletedRetentionDays(env) {
+  const configured = Number(env?.BILLING_DOCUMENT_COMPLETED_RETENTION_DAYS);
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return DEFAULT_BILLING_DOCUMENT_COMPLETED_RETENTION_DAYS;
+}
+
+function getBillingDocumentFailedRetentionDays(env) {
+  const configured = Number(env?.BILLING_DOCUMENT_FAILED_RETENTION_DAYS);
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return DEFAULT_BILLING_DOCUMENT_FAILED_RETENTION_DAYS;
 }
 
 function normalizeBillingDocumentJobStatus(value) {
@@ -722,6 +748,66 @@ async function requeueCompletedBillingDocumentJob(env, job, patch = {}) {
     completed_at: null,
     ...patch,
   });
+}
+
+async function touchBillingDocumentJobProgress(env, job, patch = {}) {
+  const safeJobId = String(job?.id || "").trim();
+  if (!safeJobId) return null;
+  const nextLease = new Date(
+    Date.now() + getBillingDocumentJobLeaseSeconds(env) * 1000
+  ).toISOString();
+  return updateBillingDocumentJobFields(env, safeJobId, {
+    lease_expires_at: nextLease,
+    ...patch,
+  });
+}
+
+async function pruneBillingDocumentJobs(env, options = {}) {
+  const now = options?.now instanceof Date ? options.now : new Date();
+  const completedCutoff = new Date(
+    now.getTime() - getBillingDocumentCompletedRetentionDays(env) * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const failedCutoff = new Date(
+    now.getTime() - getBillingDocumentFailedRetentionDays(env) * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  async function deleteMatchingJobs(filters = "") {
+    const response = await supabaseServiceRequest(
+      env,
+      `/rest/v1/${BILLING_DOCUMENT_JOBS_TABLE}?select=id&${filters}`,
+      {
+        method: "DELETE",
+        headers: {
+          Prefer: "return=representation",
+        },
+      }
+    );
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      if (isBillingDocumentQueueSchemaMissingDetails(details)) {
+        throw new Error(
+          "Document queue schema missing. Run supabase_document_queue.sql in Supabase SQL editor."
+        );
+      }
+      throw new Error(`Could not prune document jobs (${response.status}) ${details}`.trim());
+    }
+    const rows = await response.json().catch(() => []);
+    return Array.isArray(rows) ? rows.length : 0;
+  }
+
+  const deletedCompleted = await deleteMatchingJobs(
+    `status=eq.completed&completed_at=lt.${encodeURIComponent(completedCutoff)}`
+  );
+  const deletedFailed = await deleteMatchingJobs(
+    `status=eq.failed&updated_at=lt.${encodeURIComponent(failedCutoff)}`
+  );
+
+  return {
+    completed_deleted: deletedCompleted,
+    failed_deleted: deletedFailed,
+    completed_cutoff: completedCutoff,
+    failed_cutoff: failedCutoff,
+  };
 }
 
 function buildBillingDocumentJobAcceptedResponse(env, job, message = "") {
@@ -7681,6 +7767,23 @@ async function processBillingDocumentJob(env, job, options = {}) {
       if (!invoices.length) {
         throw new Error("No invoices were found for this accounting pack.");
       }
+      const updateProgress = async (progress = {}) => {
+        const nextResult = {
+          phase: String(progress?.phase || "accounting_pack").trim() || "accounting_pack",
+          total_invoices: invoices.length,
+          batch_id: exportBatchId,
+          to_email: toEmail,
+          ...(progress && typeof progress === "object" ? progress : {}),
+        };
+        await touchBillingDocumentJobProgress(env, job, {
+          result: nextResult,
+          error_message: null,
+        });
+      };
+      await updateProgress({
+        phase: "loading_invoices",
+        ready: 0,
+      });
       const csvText = buildAccountingPackCsv(invoices, { batchId: exportBatchId });
       const zipEntries = [
         {
@@ -7689,7 +7792,14 @@ async function processBillingDocumentJob(env, job, options = {}) {
           lastModified: exportedAt,
         },
       ];
-      const pdfFiles = await ensureApprovedBillingInvoicePdfExports(env, invoices, { reminderStage: 0 });
+      await updateProgress({
+        phase: "preparing_invoice_pdfs",
+        ready: 0,
+      });
+      const pdfFiles = await ensureApprovedBillingInvoicePdfExports(env, invoices, {
+        reminderStage: 0,
+        touchProgress: updateProgress,
+      });
       for (let index = 0; index < invoices.length; index += 1) {
         const invoice = invoices[index];
         const pdfFile = pdfFiles[index];
@@ -7705,8 +7815,17 @@ async function processBillingDocumentJob(env, job, options = {}) {
           lastModified: invoice?.updated_at || invoice?.issued_at || invoice?.created_at || exportedAt,
         });
       }
+      await updateProgress({
+        phase: "building_zip",
+        ready: invoices.length,
+      });
       const zipBytes = buildAccountingPackZip(zipEntries);
       const zipFilename = `accounting-pack-${exportBatchId}.zip`;
+      await updateProgress({
+        phase: "sending_email",
+        ready: invoices.length,
+        attachment_name: zipFilename,
+      });
       const resendResponse = await sendResendEmail(env, {
         to: toEmail,
         subject: `Shipide Accounting Pack ${exportBatchId}`,
@@ -7733,6 +7852,11 @@ async function processBillingDocumentJob(env, job, options = {}) {
         exportBatchId,
         exportedAt,
         requestedFormat: "email",
+      });
+      await updateProgress({
+        phase: "sent",
+        ready: invoices.length,
+        resend_id: resendResponse?.id || null,
       });
       return {
         resend_id: resendResponse?.id || null,
@@ -13016,6 +13140,7 @@ function buildApprovedBillingInvoicePdfContext(invoiceWithItems = {}, env, optio
 }
 
 async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], options = {}) {
+  const touchProgress = typeof options?.touchProgress === "function" ? options.touchProgress : null;
   const contexts = [];
   for (const invoice of Array.isArray(invoices) ? invoices : []) {
     const invoiceId = String(invoice?.id || invoice || "").trim();
@@ -13054,6 +13179,15 @@ async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], option
     missing.push({ index, context });
   }
 
+  if (touchProgress) {
+    await touchProgress({
+      phase: "invoice_pdf_scan",
+      total: contexts.length,
+      ready: contexts.length - missing.length,
+      missing: missing.length,
+    });
+  }
+
   if (missing.length) {
     if (!env?.BROWSER) {
       const firstMissing = missing[0]?.context?.invoiceWithItems || {};
@@ -13067,6 +13201,15 @@ async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], option
         for (const entry of missing) {
           const context = entry.context;
           const invoiceReference = getBillingInvoiceReference(context.invoiceWithItems);
+          if (touchProgress) {
+            await touchProgress({
+              phase: "invoice_pdf_render",
+              total: contexts.length,
+              ready: exports.filter((value) => Boolean(value?.bytes)).length,
+              missing: missing.length,
+              current_reference: invoiceReference,
+            });
+          }
           let page = null;
           try {
             page = await browser.newPage();
@@ -13110,6 +13253,15 @@ async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], option
                 String(renderedVariant.filename || "").trim()
                 || buildInvoiceVariantPdfFilename(context.invoiceWithItems, context.desiredStage),
             };
+            if (touchProgress) {
+              await touchProgress({
+                phase: "invoice_pdf_render",
+                total: contexts.length,
+                ready: exports.filter((value) => Boolean(value?.bytes)).length,
+                missing: missing.length,
+                current_reference: invoiceReference,
+              });
+            }
           } catch (error) {
             throw new Error(
               `Could not render approved invoice PDF for ${invoiceReference}: ${error?.message || "Unknown render error."}`
@@ -13133,6 +13285,15 @@ async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], option
       );
     }
   });
+
+  if (touchProgress) {
+    await touchProgress({
+      phase: "invoice_pdf_ready",
+      total: contexts.length,
+      ready: exports.length,
+      missing: 0,
+    });
+  }
 
   return exports;
 }
