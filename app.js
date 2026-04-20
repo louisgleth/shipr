@@ -7112,13 +7112,8 @@ function buildAdminSalesLedgerCsv(rows = [], options = {}) {
 function downloadBlobAsFile(blob, filename) {
   if (!blob) return;
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  triggerFileDownload(url, filename);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function parseContentDispositionFilename(headers) {
