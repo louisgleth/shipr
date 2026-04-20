@@ -7177,6 +7177,46 @@ async function fetchBillingInvoicePdfBlob(invoiceId) {
   };
 }
 
+function applyRepairedTopupRowToBillingOverview(topupRow = null) {
+  if (!topupRow || typeof topupRow !== "object") return;
+  if (!billingOverview || typeof billingOverview !== "object") return;
+  const safeTopupId = String(topupRow?.id || "").trim();
+  if (!safeTopupId) return;
+  const rows = Array.isArray(billingOverview.recent_topups) ? billingOverview.recent_topups.slice() : [];
+  const index = rows.findIndex((entry) => String(entry?.id || "").trim() === safeTopupId);
+  if (index >= 0) {
+    rows[index] = {
+      ...(rows[index] && typeof rows[index] === "object" ? rows[index] : {}),
+      ...topupRow,
+    };
+  } else {
+    rows.unshift(topupRow);
+  }
+  billingOverview.recent_topups = rows;
+}
+
+async function repairBillingTopupInvoice(topupId) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) {
+    throw new Error(tr("Top-up id is required."));
+  }
+  const payload = await fetchApiWithAuth("/api/billing/topups/repair-invoice", {
+    method: "POST",
+    timeoutMs: 120000,
+    body: JSON.stringify({
+      topupId: safeTopupId,
+    }),
+  });
+  if (payload?.topup && typeof payload.topup === "object") {
+    applyRepairedTopupRowToBillingOverview(payload.topup);
+  }
+  return {
+    topup: payload?.topup && typeof payload.topup === "object" ? payload.topup : null,
+    invoice: payload?.invoice && typeof payload.invoice === "object" ? payload.invoice : null,
+    result: payload?.result && typeof payload.result === "object" ? payload.result : {},
+  };
+}
+
 let adminAccountingZipCrcTable = null;
 
 function getAdminAccountingZipCrcTable() {
@@ -19538,11 +19578,27 @@ async function downloadTopupInvoicePdf(button, topupId) {
     busyLabel: tr("Preparing invoice PDF..."),
   });
   try {
-    const linkedInvoiceId = String(topup?.invoice_id || "").trim();
+    let linkedInvoiceId = String(topup?.invoice_id || "").trim();
+    let repairAttempted = false;
     if (!linkedInvoiceId) {
-      throw new Error(tr("Invoice not available yet."));
+      const repaired = await repairBillingTopupInvoice(safeTopupId);
+      repairAttempted = true;
+      linkedInvoiceId = String(repaired?.topup?.invoice_id || repaired?.invoice?.id || "").trim();
+      if (!linkedInvoiceId) {
+        throw new Error(tr("Invoice not available yet."));
+      }
     }
-    const result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
+    let result = null;
+    try {
+      result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
+    } catch (error) {
+      if (repairAttempted) throw error;
+      const repaired = await repairBillingTopupInvoice(safeTopupId);
+      const repairedInvoiceId = String(repaired?.topup?.invoice_id || repaired?.invoice?.id || linkedInvoiceId).trim();
+      if (!repairedInvoiceId) throw error;
+      linkedInvoiceId = repairedInvoiceId;
+      result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
+    }
     if (!result?.blob) {
       throw new Error(tr("Could not load this invoice PDF."));
     }

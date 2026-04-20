@@ -5468,14 +5468,7 @@ async function runCreditedTopupInvoiceBackfill(
   const topups = await listRecentCreditedTopupsForInvoiceBackfill({
     limit,
     allowMissing: true,
-  }).then((rows) =>
-    (Array.isArray(rows) ? rows : []).filter((topup) => {
-      const metadata = topup?.metadata && typeof topup.metadata === "object" ? topup.metadata : {};
-      const invoiceKind = String(metadata?.invoice_kind || "").trim().toLowerCase();
-      const invoiceId = String(metadata?.invoice_id || "").trim();
-      return !invoiceId || invoiceKind !== "topup";
-    })
-  );
+  }).then((rows) => (Array.isArray(rows) ? rows : []));
   const summary = {
     scanned: topups.length,
     attempted: 0,
@@ -5491,6 +5484,7 @@ async function runCreditedTopupInvoiceBackfill(
     try {
       const result = await ensureBillingTopupInvoiceAndSend(topupId, {
         publicAppUrl,
+        ensurePdf: true,
       });
       if (result?.skipped) {
         summary.skipped += 1;
@@ -6578,23 +6572,42 @@ async function ensureBillingTopupInvoiceAndSend(topupId, options = {}) {
     throw new Error("Could not create top-up invoice.");
   }
   const linkedTopup = await linkBillingTopupInvoice(topup, invoice).catch(() => topup);
+  const shouldEnsurePdf = options?.ensurePdf !== false;
   const alreadySent =
     Boolean(String(invoice?.sent_at || "").trim())
     || Boolean(String(invoice?.email_message_id || "").trim());
   if (alreadySent) {
-    return { skipped: true, reason: "Top-up invoice already sent.", invoice, topup: linkedTopup };
+    let finalInvoice =
+      await getBillingInvoiceById(invoice.id, { withItems: true }).catch(() => invoice)
+      || invoice;
+    if (shouldEnsurePdf) {
+      await getApprovedBillingInvoicePdfExport(finalInvoice.id, { reminderStage: 0 });
+      finalInvoice =
+        await getBillingInvoiceById(invoice.id, { withItems: true }).catch(() => finalInvoice)
+        || finalInvoice;
+    }
+    const finalTopup = await linkBillingTopupInvoice(linkedTopup || topup, finalInvoice).catch(
+      () => linkedTopup || topup
+    );
+    return { skipped: true, reason: "Top-up invoice already sent.", invoice: finalInvoice, topup: finalTopup };
   }
   const sendResult = await sendBillingInvoiceById(invoice.id, {
     publicAppUrl: options?.publicAppUrl,
   });
   const finalInvoice = sendResult?.invoice || invoice;
-  const finalTopup = await linkBillingTopupInvoice(linkedTopup || topup, finalInvoice).catch(
+  if (shouldEnsurePdf) {
+    await getApprovedBillingInvoicePdfExport(finalInvoice.id, { reminderStage: 0 });
+  }
+  const readyInvoice =
+    await getBillingInvoiceById(invoice.id, { withItems: true }).catch(() => finalInvoice)
+    || finalInvoice;
+  const finalTopup = await linkBillingTopupInvoice(linkedTopup || topup, readyInvoice).catch(
     () => linkedTopup || topup
   );
   return {
     skipped: Boolean(sendResult?.skipped),
     reason: sendResult?.reason || "",
-    invoice: finalInvoice,
+    invoice: readyInvoice,
     topup: finalTopup,
   };
 }
@@ -14269,6 +14282,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/topups" && req.method === "GET") {
     await handleBillingTopups(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/billing/topups/repair-invoice" && req.method === "POST") {
+    await proxyAuthenticatedApi(req, res, "/api/billing/topups/repair-invoice");
     return true;
   }
   if (pathname === "/api/billing/invoices/detail" && req.method === "GET") {
