@@ -7696,8 +7696,8 @@ async function processBillingDocumentJob(env, job, options = {}) {
         }
         zipEntries.push({
           name: `invoices/${sanitizeAccountingPackEntryName(
-            pdfFile.filename || buildInvoicePdfFilenameFromReference(getBillingInvoiceReference(invoice)),
-            buildInvoicePdfFilenameFromReference(getBillingInvoiceReference(invoice))
+            pdfFile.filename || buildInvoicePdfFilename(invoice),
+            buildInvoicePdfFilename(invoice)
           )}`,
           bytes: pdfFile.bytes,
           lastModified: invoice?.updated_at || invoice?.issued_at || invoice?.created_at || exportedAt,
