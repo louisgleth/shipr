@@ -6145,6 +6145,9 @@ function renderAdminBillingRunResult(payload = null) {
     `CREATED ${Number(run.invoices_created || 0)}`,
     `UPDATED ${Number(run.invoices_updated || 0)}`,
     `SENT ${Number(run.invoices_sent || 0)}`,
+    ...(run && Object.prototype.hasOwnProperty.call(run, "invoices_queued")
+      ? [`QUEUED ${Number(run.invoices_queued || 0)}`]
+      : []),
     `REMINDERS ${reminders.length}`,
     `TOTAL ${formatMoney(Number(run?.totals?.total_inc_vat || run?.totals?.subtotal_ex_vat || 0))}`,
   ];
@@ -7147,6 +7150,23 @@ async function fetchAdminInvoicePdfBlob(invoiceId) {
   }
   const response = await fetchQueuedPdfWithAuth(
     `/api/admin/invoices/pdf?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
+    { timeoutMs: 120000, queueTimeoutMs: 300000 }
+  );
+  return {
+    blob: response?.blob || null,
+    filename:
+      parseContentDispositionFilename(response?.headers)
+      || buildInvoicePdfFilenameFromReference(safeInvoiceId),
+  };
+}
+
+async function fetchBillingInvoicePdfBlob(invoiceId) {
+  const safeInvoiceId = String(invoiceId || "").trim();
+  if (!safeInvoiceId) {
+    throw new Error(tr("Invoice id is required."));
+  }
+  const response = await fetchQueuedPdfWithAuth(
+    `/api/billing/invoices/pdf?invoiceId=${encodeURIComponent(safeInvoiceId)}`,
     { timeoutMs: 120000, queueTimeoutMs: 300000 }
   );
   return {
@@ -19522,31 +19542,17 @@ async function downloadTopupInvoicePdf(button, topupId) {
     if (!linkedInvoiceId) {
       throw new Error(tr("Invoice not available yet."));
     }
-    const invoiceRecord = await fetchBillingInvoiceDetail(linkedInvoiceId).catch(() => null);
-    if (!invoiceRecord?.id) {
-      throw new Error(tr("Could not load this invoice."));
+    const result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
+    if (!result?.blob) {
+      throw new Error(tr("Could not load this invoice PDF."));
     }
-    const viewModel = buildBillingInvoiceViewModel(invoiceRecord);
-    const filename = buildInvoicePdfFilenameFromReference(
-      String(invoiceRecord?.reference || getBillingInvoiceReferenceClient(invoiceRecord)).trim()
+    downloadBlobAsFile(
+      result.blob,
+      result.filename || buildInvoicePdfFilenameFromReference(linkedInvoiceId)
     );
-    const exportData = await buildInvoicePdfExportFromViewModel(
-      viewModel,
-      filename,
-      {
-        allowRasterFallback: false,
-        preferServerRender: true,
-      }
-    );
-    if (!exportData?.blob) {
-      throw new Error(tr("Could not generate invoice PDF."));
-    }
-    const url = URL.createObjectURL(exportData.blob);
-    triggerFileDownload(url, exportData.filename);
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     showToast(tr("Invoice PDF ready."), { tone: "success" });
   } catch (error) {
-    showToast(error?.message || tr("Could not generate invoice PDF."), { tone: "error" });
+    showToast(error?.message || tr("Could not load invoice PDF."), { tone: "error" });
   } finally {
     restoreButton();
   }

@@ -422,6 +422,9 @@ export default {
       if (pathname === "/api/billing/invoices/detail" && request.method === "GET") {
         return handleBillingInvoiceDetail(request, env, url);
       }
+      if (pathname === "/api/billing/invoices/pdf" && request.method === "GET") {
+        return handleBillingInvoicePdf(request, env, url, ctx);
+      }
       if (pathname === "/api/billing/topups/request" && request.method === "POST") {
         return handleBillingTopupRequest(request, env);
       }
@@ -5142,18 +5145,60 @@ async function ensureBillingTopupInvoiceAndSend(env, topupId, options = {}) {
   if (alreadySent) {
     return { skipped: true, reason: "Top-up invoice already sent.", invoice, topup: linkedTopup };
   }
-  const job = await enqueueInvoiceEmailDocumentJob(env, invoice, {
+  let job = await enqueueInvoiceEmailDocumentJob(env, invoice, {
     invoiceId: invoice.id,
     publicAppUrl: options?.publicAppUrl,
-    priority: 8,
+    priority: 4,
   });
+  const safePublicAppUrl =
+    String(options?.publicAppUrl || "").trim()
+    || getPublicAppUrl(env);
+  for (let pass = 0; pass < 6; pass += 1) {
+    const currentJob = await getBillingDocumentJobById(env, job.id).catch(() => job);
+    const jobStatus = normalizeBillingDocumentJobStatus(currentJob?.status);
+    if (jobStatus === "completed") {
+      job = currentJob;
+      break;
+    }
+    if (jobStatus === "failed") {
+      throw new Error(
+        String(currentJob?.error_message || "Top-up invoice email failed.").trim()
+        || "Top-up invoice email failed."
+      );
+    }
+    await processBillingDocumentJobQueue(env, {
+      limit: 1,
+      publicAppUrl: safePublicAppUrl,
+    });
+    job = await getBillingDocumentJobById(env, job.id).catch(() => currentJob || job);
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      break;
+    }
+  }
+  const refreshedJob = await getBillingDocumentJobById(env, job.id).catch(() => job);
+  const refreshedStatus = normalizeBillingDocumentJobStatus(refreshedJob?.status);
+  if (refreshedStatus === "failed") {
+    throw new Error(
+      String(refreshedJob?.error_message || "Top-up invoice email failed.").trim()
+      || "Top-up invoice email failed."
+    );
+  }
+  const finalInvoice =
+    await getBillingInvoiceById(env, invoice.id, { withItems: true }).catch(() => invoice)
+    || invoice;
+  const finalTopup = await linkBillingTopupInvoice(env, linkedTopup || topup, finalInvoice).catch(
+    () => linkedTopup || topup
+  );
   return {
     skipped: false,
-    queued: true,
-    reason: "Top-up invoice queued for delivery.",
-    invoice,
-    topup: linkedTopup,
-    job: buildBillingDocumentJobResponseRow(job),
+    queued: refreshedStatus !== "completed",
+    reason:
+      refreshedStatus === "completed"
+        ? "Top-up invoice sent."
+        : "Top-up invoice queued for delivery.",
+    invoice: finalInvoice,
+    topup: finalTopup,
+    job: buildBillingDocumentJobResponseRow(refreshedJob || job),
   };
 }
 
@@ -11923,11 +11968,20 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
     throw new Error("Invoice not found.");
   }
   const currentStatus = normalizeInvoiceStatus(invoiceWithItems.status);
+  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
   const topupPaidButUnsent =
     isTopupBillingInvoice(invoiceWithItems)
     && currentStatus === "paid"
     && !String(invoiceWithItems?.sent_at || "").trim();
-  if ((currentStatus === "paid" && !topupPaidButUnsent) || currentStatus === "cancelled") {
+  const monthlyPaidButUnsent =
+    !isTopupBillingInvoice(invoiceWithItems)
+    && manualSettlement
+    && currentStatus === "paid"
+    && !String(invoiceWithItems?.sent_at || "").trim();
+  if (
+    (currentStatus === "paid" && !topupPaidButUnsent && !monthlyPaidButUnsent)
+    || currentStatus === "cancelled"
+  ) {
     return {
       skipped: true,
       reason: `Invoice is already ${currentStatus}.`,
@@ -11956,7 +12010,6 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
   const reminderStage = Number(options?.reminderStage) || 0;
   const reminderTitle = String(options?.reminderTitle || "").trim();
   const nowIso = new Date().toISOString();
-  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
   const effectiveIssuedAt = parseIsoTimestamp(invoiceWithItems.issued_at || nowIso) || nowIso;
   const shouldResetDueDate = manualSettlement && (!invoiceWithItems.sent_at || !invoiceWithItems.issued_at);
   const effectiveDueAt = manualSettlement
@@ -12083,11 +12136,13 @@ async function sendBillingInvoiceById(env, invoiceId, options = {}) {
   });
 
   const dueMs = Date.parse(effectiveDueAt || 0);
-  const nextStatus = manualSettlement
-    ? Number.isFinite(dueMs) && dueMs < Date.now() && currentStatus !== "paid"
-      ? "overdue"
-      : "sent"
-    : "paid";
+  const nextStatus = currentStatus === "paid"
+    ? "paid"
+    : manualSettlement
+      ? Number.isFinite(dueMs) && dueMs < Date.now()
+        ? "overdue"
+        : "sent"
+      : "paid";
   const patch = {
     status: nextStatus,
     email_message_id: String(emailPayload?.id || "").trim() || null,
@@ -12299,7 +12354,6 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
   const mode = normalizeInvoiceRunMode(options?.mode);
   const billingWindow = options?.window || getPreviousMonthWindow();
   const onlyUserId = String(options?.userId || "").trim();
-  const freezeIssuedInvoices = options?.freezeIssuedInvoices === true;
   const runTimestamp = new Date().toISOString();
   const termsDays = getInvoiceTermsDays(env);
   const settings = await getAdminSettings(env);
@@ -12339,6 +12393,7 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
     invoices_created: 0,
     invoices_updated: 0,
     invoices_sent: 0,
+    invoices_queued: 0,
     rows_marked_billed: 0,
     skipped: [],
     invoices: [],
@@ -12391,19 +12446,14 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
     const existingAlreadyIssued =
       Boolean(String(existing?.sent_at || "").trim())
       || ["sent", "overdue", "paid", "cancelled"].includes(existingStatus);
-    if (existing && freezeIssuedInvoices && existingAlreadyIssued) {
+    if (existing && existingAlreadyIssued) {
       result.skipped.push({
         user_id: userId,
         invoice_id: existing.id,
-        reason: `Invoice already issued (${existingStatus}).`,
-      });
-      continue;
-    }
-    if (existing && ["paid", "cancelled"].includes(existingStatus)) {
-      result.skipped.push({
-        user_id: userId,
-        invoice_id: existing.id,
-        reason: `Invoice already ${existingStatus}.`,
+        reason:
+          ["paid", "cancelled"].includes(existingStatus)
+            ? `Invoice already ${existingStatus}.`
+            : `Invoice already issued (${existingStatus}).`,
       });
       continue;
     }
@@ -12538,7 +12588,7 @@ async function buildInvoicesFromLabelHistory(env, options = {}) {
           publicAppUrl: options?.publicAppUrl,
           priority: 12,
         });
-        result.invoices_sent += 1;
+        result.invoices_queued += 1;
         finalInvoice = {
           ...persisted,
           queued_send_job_id: job?.id || null,
@@ -13500,6 +13550,62 @@ async function handleAdminInvoicePdf(request, env, url, ctx) {
       invoiceId,
       reminderStage: 0,
       priority: 12,
+    });
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      job = await requeueCompletedBillingDocumentJob(env, job, {
+        payload: {
+          invoiceId,
+          reminderStage: 0,
+        },
+      });
+    }
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Invoice PDF queued. Retry after it finishes."
+    );
+  } catch (error) {
+    const message = error?.message || "Could not load invoice PDF.";
+    const status = /not found/i.test(message) ? 404 : /unavailable|regenerate/i.test(message) ? 409 : 500;
+    return jsonResponse({ error: message }, status);
+  }
+}
+
+async function handleBillingInvoicePdf(request, env, url, ctx) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  const invoiceId = String(url.searchParams.get("invoiceId") || "").trim();
+  if (!invoiceId) {
+    return jsonResponse({ error: "Invoice id is required." }, 400);
+  }
+  try {
+    const invoice = await getBillingInvoiceById(env, invoiceId);
+    if (!invoice?.id || String(invoice?.user_id || "").trim() !== String(user.id || "").trim()) {
+      return jsonResponse({ error: "Invoice not found." }, 404);
+    }
+    const storedVariant = await loadStoredBillingInvoicePdfVariant(env, invoice, 0, {
+      allowFallback: false,
+    }).catch(() => null);
+    if (storedVariant?.bytes) {
+      return new Response(storedVariant.bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${String(storedVariant.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    let job = await enqueueInvoicePdfDocumentJob(env, invoice, {
+      invoiceId,
+      reminderStage: 0,
+      priority: 10,
     });
     if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
       job = await requeueCompletedBillingDocumentJob(env, job, {

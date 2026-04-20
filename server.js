@@ -7017,11 +7017,20 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
     throw new Error("Invoice not found.");
   }
   const currentStatus = normalizeInvoiceStatus(invoiceWithItems.status);
+  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
   const topupPaidButUnsent =
     isTopupBillingInvoice(invoiceWithItems)
     && currentStatus === "paid"
     && !String(invoiceWithItems?.sent_at || "").trim();
-  if ((currentStatus === "paid" && !topupPaidButUnsent) || currentStatus === "cancelled") {
+  const monthlyPaidButUnsent =
+    !isTopupBillingInvoice(invoiceWithItems)
+    && manualSettlement
+    && currentStatus === "paid"
+    && !String(invoiceWithItems?.sent_at || "").trim();
+  if (
+    (currentStatus === "paid" && !topupPaidButUnsent && !monthlyPaidButUnsent)
+    || currentStatus === "cancelled"
+  ) {
     return {
       skipped: true,
       reason: `Invoice is already ${currentStatus}.`,
@@ -7050,7 +7059,6 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
   const reminderStage = Number(options?.reminderStage) || 0;
   const reminderTitle = String(options?.reminderTitle || "").trim();
   const nowIso = new Date().toISOString();
-  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
   const effectiveIssuedAt = parseIsoTimestamp(invoiceWithItems.issued_at || nowIso) || nowIso;
   const shouldResetDueDate = manualSettlement && (!invoiceWithItems.sent_at || !invoiceWithItems.issued_at);
   const effectiveDueAt = manualSettlement
@@ -7138,11 +7146,13 @@ async function sendBillingInvoiceById(invoiceId, options = {}) {
   });
 
   const dueMs = Date.parse(effectiveDueAt || 0);
-  const nextStatus = manualSettlement
-    ? Number.isFinite(dueMs) && dueMs < Date.now() && currentStatus !== "paid"
-      ? "overdue"
-      : "sent"
-    : "paid";
+  const nextStatus = currentStatus === "paid"
+    ? "paid"
+    : manualSettlement
+      ? Number.isFinite(dueMs) && dueMs < Date.now()
+        ? "overdue"
+        : "sent"
+      : "paid";
   const patch = {
     status: nextStatus,
     email_message_id: String(emailPayload?.id || "").trim() || null,
@@ -7325,11 +7335,18 @@ async function buildInvoicesFromLabelHistory(options = {}) {
       billingWindow.startIsoDate,
       billingWindow.endIsoDate
     );
-    if (existing && ["paid", "cancelled"].includes(normalizeInvoiceStatus(existing.status))) {
+    const existingStatus = normalizeInvoiceStatus(existing?.status);
+    const existingAlreadyIssued =
+      Boolean(String(existing?.sent_at || "").trim())
+      || ["sent", "overdue", "paid", "cancelled"].includes(existingStatus);
+    if (existing && existingAlreadyIssued) {
       result.skipped.push({
         user_id: userId,
         invoice_id: existing.id,
-        reason: `Invoice already ${normalizeInvoiceStatus(existing.status)}.`,
+        reason:
+          ["paid", "cancelled"].includes(existingStatus)
+            ? `Invoice already ${existingStatus}.`
+            : `Invoice already issued (${existingStatus}).`,
       });
       continue;
     }
@@ -14256,6 +14273,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/invoices/detail" && req.method === "GET") {
     await handleBillingInvoiceDetail(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/billing/invoices/pdf" && req.method === "GET") {
+    await proxyAuthenticatedApi(req, res, `/api/billing/invoices/pdf${requestUrl.search}`);
     return true;
   }
   if (pathname === "/api/billing/render-invoice-pdf" && req.method === "POST") {
