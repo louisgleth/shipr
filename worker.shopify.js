@@ -7689,8 +7689,10 @@ async function processBillingDocumentJob(env, job, options = {}) {
           lastModified: exportedAt,
         },
       ];
-      for (const invoice of invoices) {
-        const pdfFile = await getApprovedBillingInvoicePdfExport(env, invoice.id, { reminderStage: 0 });
+      const pdfFiles = await ensureApprovedBillingInvoicePdfExports(env, invoices, { reminderStage: 0 });
+      for (let index = 0; index < invoices.length; index += 1) {
+        const invoice = invoices[index];
+        const pdfFile = pdfFiles[index];
         if (!pdfFile?.bytes) {
           throw new Error(`Could not load invoice PDF for ${getBillingInvoiceReference(invoice)}.`);
         }
@@ -12980,6 +12982,159 @@ async function handleAdminInvoiceAccountingExport(request, env, ctx) {
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not export invoices for accounting." }, 500);
   }
+}
+
+function buildApprovedBillingInvoicePdfContext(invoiceWithItems = {}, env, options = {}) {
+  const desiredStage = normalizeInvoicePdfVariantStage(options?.reminderStage || 0);
+  const nowIso = new Date().toISOString();
+  const manualSettlement = invoiceRequiresManualSettlement(invoiceWithItems);
+  const effectiveIssuedAt = parseIsoTimestamp(invoiceWithItems.issued_at || nowIso) || nowIso;
+  const shouldResetDueDate = manualSettlement && (!invoiceWithItems.sent_at || !invoiceWithItems.issued_at);
+  const effectiveDueAt = manualSettlement
+    ? (
+        shouldResetDueDate
+          ? addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays(env)).toISOString()
+          : parseIsoTimestamp(invoiceWithItems.due_at)
+            || addUtcDays(new Date(effectiveIssuedAt), getInvoiceTermsDays(env)).toISOString()
+      )
+    : null;
+  const effectivePaidAt = manualSettlement
+    ? parseIsoTimestamp(invoiceWithItems.paid_at || "")
+    : parseIsoTimestamp(invoiceWithItems.paid_at || invoiceWithItems.sent_at || effectiveIssuedAt)
+      || effectiveIssuedAt;
+  const pdfInvoice = {
+    ...invoiceWithItems,
+    issued_at: effectiveIssuedAt,
+    due_at: effectiveDueAt,
+    paid_at: effectivePaidAt,
+  };
+  return {
+    invoiceWithItems,
+    pdfInvoice,
+    desiredStage,
+  };
+}
+
+async function ensureApprovedBillingInvoicePdfExports(env, invoices = [], options = {}) {
+  const contexts = [];
+  for (const invoice of Array.isArray(invoices) ? invoices : []) {
+    const invoiceId = String(invoice?.id || invoice || "").trim();
+    if (!invoiceId) continue;
+    const invoiceWithItems =
+      invoice?.items && Array.isArray(invoice.items)
+        ? invoice
+        : await getBillingInvoiceById(env, invoiceId, { withItems: true });
+    if (!invoiceWithItems?.id) continue;
+    contexts.push(buildApprovedBillingInvoicePdfContext(invoiceWithItems, env, options));
+  }
+  if (!contexts.length) {
+    throw new Error("No invoices were found for PDF export.");
+  }
+
+  const exports = new Array(contexts.length);
+  const missing = [];
+  for (let index = 0; index < contexts.length; index += 1) {
+    const context = contexts[index];
+    const storedVariant = await loadStoredBillingInvoicePdfVariant(
+      env,
+      context.pdfInvoice,
+      context.desiredStage,
+      { allowFallback: false }
+    ).catch(() => null);
+    if (storedVariant?.bytes) {
+      exports[index] = {
+        invoice: context.invoiceWithItems,
+        bytes: storedVariant.bytes,
+        filename:
+          String(storedVariant.filename || "").trim()
+          || buildInvoiceVariantPdfFilename(context.invoiceWithItems, context.desiredStage),
+      };
+      continue;
+    }
+    missing.push({ index, context });
+  }
+
+  if (missing.length) {
+    if (!env?.BROWSER) {
+      const firstMissing = missing[0]?.context?.invoiceWithItems || {};
+      throw new Error(
+        `Approved invoice PDF is unavailable for ${getBillingInvoiceReference(firstMissing)}. Regenerate the invoice and try again.`
+      );
+    }
+    await enqueueInvoiceBrowserRender(async () => {
+      const browser = await launchInvoiceBrowserWithRetry(env);
+      try {
+        for (const entry of missing) {
+          const context = entry.context;
+          const invoiceReference = getBillingInvoiceReference(context.invoiceWithItems);
+          let page = null;
+          try {
+            page = await browser.newPage();
+            await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
+            const renderedVariant = await renderSelectableInvoicePdfOnPage(
+              page,
+              env,
+              {
+                invoice: {
+                  ...context.pdfInvoice,
+                  items: context.invoiceWithItems.items || [],
+                  reference: invoiceReference,
+                },
+                reminderStage: context.desiredStage,
+                filename: buildInvoiceVariantPdfFilename(context.invoiceWithItems, context.desiredStage),
+              },
+              options
+            );
+            if (!renderedVariant?.bytes) {
+              throw new Error("Rendered invoice PDF is empty.");
+            }
+            const persistedVariant = await persistBillingInvoicePdfVariant(
+              env,
+              context.pdfInvoice,
+              context.desiredStage,
+              renderedVariant.bytes,
+              renderedVariant.filename
+            );
+            const mergedMetadata = mergeBillingInvoicePdfVariantMetadata(context.invoiceWithItems, [persistedVariant]);
+            const metadataUpdate = await updateBillingInvoiceFields(env, context.invoiceWithItems.id, {
+              metadata: mergedMetadata,
+            });
+            if (metadataUpdate?.metadata) {
+              context.invoiceWithItems.metadata = metadataUpdate.metadata;
+              context.pdfInvoice.metadata = metadataUpdate.metadata;
+            }
+            exports[entry.index] = {
+              invoice: context.invoiceWithItems,
+              bytes: renderedVariant.bytes,
+              filename:
+                String(renderedVariant.filename || "").trim()
+                || buildInvoiceVariantPdfFilename(context.invoiceWithItems, context.desiredStage),
+            };
+          } catch (error) {
+            throw new Error(
+              `Could not render approved invoice PDF for ${invoiceReference}: ${error?.message || "Unknown render error."}`
+            );
+          } finally {
+            if (page) {
+              await page.close().catch(() => {});
+            }
+          }
+        }
+      } finally {
+        await browser.close().catch(() => {});
+      }
+    });
+  }
+
+  contexts.forEach((context, index) => {
+    if (!exports[index]?.bytes) {
+      throw new Error(
+        `Approved invoice PDF is unavailable for ${getBillingInvoiceReference(context.invoiceWithItems)}. Regenerate the invoice and try again.`
+      );
+    }
+  });
+
+  return exports;
 }
 
 async function getApprovedBillingInvoicePdfExport(env, invoiceId, options = {}) {
