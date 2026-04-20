@@ -2115,7 +2115,6 @@ const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalC
 const openIbanTopupFromAccount = document.getElementById("openIbanTopupFromAccount");
 const openWalletHistoryFromAccount = document.getElementById("openWalletHistoryFromAccount");
 const accountWalletBalance = document.getElementById("accountWalletBalance");
-const accountPendingTopups = document.getElementById("accountPendingTopups");
 const accountReferenceHistoryList = document.getElementById("accountReferenceHistoryList");
 const ibanTopupModal = document.getElementById("ibanTopupModal");
 const ibanTopupClose = document.getElementById("ibanTopupClose");
@@ -2383,7 +2382,7 @@ let reportsGeoLoadPromise = null;
 let historyLoadRequestToken = 0;
 let billingOverview = null;
 let checkoutPaymentMethod = "invoice";
-const IBAN_TOPUP_EXPIRY_MS = 48 * 60 * 60 * 1000;
+const IBAN_TOPUP_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 let ibanTopupDraft = null;
 let ibanTopupRequestInFlight = false;
 let ibanTopupRequestPromise = null;
@@ -7111,8 +7110,14 @@ function buildAdminSalesLedgerCsv(rows = [], options = {}) {
 
 function downloadBlobAsFile(blob, filename) {
   if (!blob) return;
+  const safeFilename = String(filename || "").trim() || "document";
+  const blobType = String(blob?.type || "").trim().toLowerCase();
+  if (blobType.includes("application/pdf") || /\.pdf$/i.test(safeFilename)) {
+    openReceiptPdfTarget(blob, safeFilename);
+    return;
+  }
   const url = URL.createObjectURL(blob);
-  triggerFileDownload(url, filename);
+  triggerFileDownload(url, safeFilename);
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
@@ -13713,8 +13718,6 @@ function triggerFileDownload(url, filename) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
-  anchor.target = "_blank";
-  anchor.rel = "noopener";
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -19597,6 +19600,9 @@ async function downloadTopupInvoicePdf(button, topupId) {
     if (!result?.blob) {
       throw new Error(tr("Could not load this invoice PDF."));
     }
+    if (!(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
+      throw new Error(tr("Could not load a valid invoice PDF."));
+    }
     downloadBlobAsFile(
       result.blob,
       result.filename || buildInvoicePdfFilenameFromReference(linkedInvoiceId)
@@ -19611,12 +19617,8 @@ async function downloadTopupInvoicePdf(button, topupId) {
 
 function renderAccountBillingOverview() {
   const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
-  const pendingTopups = Number(billingOverview?.wallet_pending_topups_eur || 0);
   if (accountWalletBalance) {
     accountWalletBalance.textContent = formatMoney(walletBalance);
-  }
-  if (accountPendingTopups) {
-    accountPendingTopups.textContent = formatMoney(pendingTopups);
   }
   renderTopupReferenceHistory();
 }
