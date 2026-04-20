@@ -19629,6 +19629,9 @@ async function downloadTopupInvoicePdf(button, topupId) {
       return loadInvoiceDetail(linkedInvoiceId);
     });
 
+    const fallbackFilename = buildInvoicePdfFilenameFromReference(
+      invoiceRecord?.reference || linkedInvoiceId,
+    );
     let result = null;
     if (hasStoredInvoicePdf(invoiceRecord)) {
       result = await fetchBillingInvoicePdfBlob(linkedInvoiceId, {
@@ -19637,12 +19640,13 @@ async function downloadTopupInvoicePdf(button, topupId) {
       }).catch(() => null);
     }
     if (!result?.blob) {
-      result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
+      const viewModel = buildBillingInvoiceViewModel(invoiceRecord);
+      result = await requestSelectableInvoicePdf(viewModel, fallbackFilename).catch(() => null);
     }
     if (!result?.blob || !(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
       throw new Error(tr("Could not load a valid invoice PDF."));
     }
-    downloadPdfBlobAsFile(result.blob, result.filename || buildInvoicePdfFilenameFromReference(linkedInvoiceId));
+    downloadPdfBlobAsFile(result.blob, result.filename || fallbackFilename);
     showToast(tr("Invoice PDF ready."), { tone: "success" });
   } catch (error) {
     showToast(error?.message || tr("Could not load invoice PDF."), { tone: "error" });
