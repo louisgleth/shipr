@@ -2114,6 +2114,7 @@ const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalC
 const openIbanTopupFromAccount = document.getElementById("openIbanTopupFromAccount");
 const openWalletHistoryFromAccount = document.getElementById("openWalletHistoryFromAccount");
 const accountWalletBalance = document.getElementById("accountWalletBalance");
+const accountWalletBalanceAmount = document.getElementById("accountWalletBalanceAmount");
 const accountReferenceHistoryList = document.getElementById("accountReferenceHistoryList");
 const ibanTopupModal = document.getElementById("ibanTopupModal");
 const ibanTopupClose = document.getElementById("ibanTopupClose");
@@ -19656,8 +19657,11 @@ async function downloadTopupInvoicePdf(button, topupId) {
 
 function renderAccountBillingOverview() {
   const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
-  if (accountWalletBalance) {
-    accountWalletBalance.textContent = formatMoney(walletBalance);
+  const formattedBalance = formatMoney(walletBalance);
+  if (accountWalletBalanceAmount) {
+    accountWalletBalanceAmount.textContent = formattedBalance.replace(/^€\s*/, "") || "0.00";
+  } else if (accountWalletBalance) {
+    accountWalletBalance.textContent = formattedBalance;
   }
   renderTopupReferenceHistory();
 }

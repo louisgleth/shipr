@@ -2269,10 +2269,23 @@ body.is-auth-view {
 }
 
 .account-balance-value {
-  font-size: clamp(42px, 4.6vw, 52px);
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
   line-height: 1;
   font-weight: 300;
   color: var(--text);
+}
+
+.account-balance-currency {
+  font-size: clamp(42px, 4.6vw, 52px);
+  line-height: 1;
+}
+
+.account-balance-amount {
+  font-size: clamp(58px, 6.1vw, 74px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
 }
 
 .account-balance-sub {
@@ -2293,7 +2306,7 @@ body.is-auth-view {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding-top: 2px;
+  padding-top: 10px;
 }
 
 .account-balance-actions .btn {
@@ -4255,7 +4268,7 @@ body.is-auth-view {
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 12px;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #434c5f transparent;
 }
@@ -9231,8 +9244,12 @@ input.is-invalid {
     min-height: 0;
   }
 
-  .account-balance-value {
+  .account-balance-currency {
     font-size: clamp(38px, 9vw, 46px);
+  }
+
+  .account-balance-amount {
+    font-size: clamp(50px, 12vw, 62px);
   }
 
   .warehouse-field.is-wide {
