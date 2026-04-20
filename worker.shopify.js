@@ -223,6 +223,12 @@ export default {
       if (pathname === "/api/admin/client-billing" && request.method === "POST") {
         return handleAdminClientBillingSave(request, env);
       }
+      if (pathname === "/api/admin/client-wallet" && request.method === "GET") {
+        return handleAdminClientWalletDetail(request, env, url);
+      }
+      if (pathname === "/api/admin/client-wallet/credit" && request.method === "POST") {
+        return handleAdminClientWalletCredit(request, env);
+      }
       if (pathname === "/api/admin/invoices" && request.method === "GET") {
         return handleAdminInvoicesList(request, env, url);
       }
@@ -3775,6 +3781,20 @@ function buildTopupReference(userId = "") {
   return `SHIP-${userChunk}-${timeChunk}-${randChunk}`;
 }
 
+function buildWalletManualCreditReference(userId = "") {
+  const userChunk = String(userId || "")
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(0, 6)
+    .toUpperCase() || "SHIPID";
+  const timeChunk = Date.now().toString(36).toUpperCase();
+  const randChunk = Math.floor(Math.random() * 0xffffff)
+    .toString(36)
+    .padStart(4, "0")
+    .slice(0, 4)
+    .toUpperCase();
+  return `CREDIT-${userChunk}-${timeChunk}-${randChunk}`;
+}
+
 function buildTopupInstructions(ibanConfig, row, amountCents = null) {
   const rowAmountCents = Number(row?.amount_cents);
   const safeAmountCents = Number.isFinite(rowAmountCents)
@@ -3870,6 +3890,14 @@ function mapBillingWalletTransactionRow(row) {
     reference: String(row?.reference || "").trim(),
     created_at: row?.created_at || null,
     metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+  };
+}
+
+function mapBillingWalletSummaryRow(row) {
+  return {
+    balance_eur: fromCents(Math.max(0, Number(row?.balance_cents) || 0)),
+    currency: String(row?.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    updated_at: row?.updated_at || null,
   };
 }
 
@@ -4267,6 +4295,103 @@ async function debitWalletForCheckout(env, user, amountEur, metadata = {}) {
     wallet: updatedWallet,
     transaction_reference: reference,
   };
+}
+
+async function creditBillingWalletManually(
+  env,
+  {
+    userId = "",
+    amountEur = 0,
+    actor = "admin",
+    reason = "",
+    note = "",
+  } = {}
+) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  const reasonText = String(reason || "").trim();
+  if (!reasonText) {
+    throw new Error("A reason is required.");
+  }
+  const numericAmount = Number(amountEur);
+  const creditCents = Number.isFinite(numericAmount) ? toCents(numericAmount) : 0;
+  if (!Number.isFinite(creditCents) || creditCents <= 0) {
+    throw new Error("A valid credit amount is required.");
+  }
+  const wallet = await getOrCreateBillingWallet(env, safeUserId);
+  const currentBalanceCents = Math.max(0, Number(wallet?.balance_cents) || 0);
+  const nextBalanceCents = currentBalanceCents + creditCents;
+  const updatedAt = new Date().toISOString();
+  const updateResponse = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(safeUserId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        balance_cents: nextBalanceCents,
+        updated_at: updatedAt,
+      }),
+    }
+  );
+  if (!updateResponse.ok) {
+    const details = await updateResponse.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TABLE);
+    if (walletIssue) throw new Error(walletIssue.message);
+    throw new Error(`Could not update wallet balance (${updateResponse.status}) ${details}`.trim());
+  }
+  const updatedRows = await updateResponse.json().catch(() => []);
+  const updatedWallet =
+    Array.isArray(updatedRows) && updatedRows.length
+      ? updatedRows[0]
+      : {
+          user_id: safeUserId,
+          balance_cents: nextBalanceCents,
+          currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
+          updated_at: updatedAt,
+        };
+  const reference = buildWalletManualCreditReference(safeUserId);
+  try {
+    const transaction = await saveWalletTransaction(env, {
+      user_id: safeUserId,
+      source: "manual_credit",
+      amount_cents: creditCents,
+      balance_after_cents: nextBalanceCents,
+      reference,
+      metadata: {
+        actor: String(actor || "admin").trim() || "admin",
+        reason: reasonText,
+        note: String(note || "").trim() || null,
+        channel: "admin_client_workspace",
+      },
+    });
+    return {
+      wallet: updatedWallet,
+      transaction,
+      reference,
+    };
+  } catch (error) {
+    await supabaseServiceRequest(
+      env,
+      `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(safeUserId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          balance_cents: currentBalanceCents,
+          updated_at: new Date().toISOString(),
+        }),
+      }
+    ).catch(() => {});
+    throw error;
+  }
 }
 
 function mapBillingOverviewInvoiceRow(invoice) {
@@ -8621,7 +8746,7 @@ function shouldIncludeAdminClient(user, env) {
 }
 
 async function buildAdminDashboard(request, env) {
-  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts] = await Promise.all([
+  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
     listSupabaseUsers(env, 1000),
@@ -8641,6 +8766,14 @@ async function buildAdminDashboard(request, env) {
       statuses: ["manual_review", "pending"],
       allowMissing: true,
     }),
+    fetchAllSupabaseRows(
+      env,
+      BILLING_WALLET_TABLE,
+      {
+        select: "user_id,balance_cents,currency,updated_at",
+      },
+      { pageSize: 500, allowMissingSchema: true }
+    ).catch(() => []),
   ]);
   const nonTopupInvoiceIds = invoices
     .filter((invoice) => !isTopupBillingInvoice(invoice))
@@ -8693,6 +8826,12 @@ async function buildAdminDashboard(request, env) {
     if (!userId) return;
     billingByUserId.set(userId, normalizeClientBillingPreference(row));
   });
+  const walletsByUserId = new Map();
+  (Array.isArray(wallets) ? wallets : []).forEach((row) => {
+    const userId = String(row?.user_id || "").trim();
+    if (!userId) return;
+    walletsByUserId.set(userId, mapBillingWalletSummaryRow(row));
+  });
   const invoiceStatsByUserId = buildInvoiceStatsByUser(invoices);
   const billingMetricsByUserId = buildBillingMetricsByUser(
     settings,
@@ -8712,6 +8851,7 @@ async function buildAdminDashboard(request, env) {
           user.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {},
       },
       billing: billingByUserId.get(user.id) || { ...DEFAULT_CLIENT_BILLING_PREF },
+      wallet: walletsByUserId.get(user.id) || mapBillingWalletSummaryRow(null),
       metrics: buildAdminClientMetrics(
         user,
         historyByUserId.get(user.id) || [],
@@ -8742,6 +8882,44 @@ async function buildAdminDashboard(request, env) {
         receipts: wiseReceipts.map(mapBillingBankReceiptRow).filter(Boolean),
       },
     },
+  };
+}
+
+async function buildAdminClientWalletWorkspace(env, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  const [wallet, transactions, topups] = await Promise.all([
+    getOrCreateBillingWallet(env, safeUserId),
+    listBillingWalletTransactions(env, {
+      userId: safeUserId,
+      limit: 12,
+      allowMissing: true,
+    }),
+    listBillingTopups(env, {
+      userId: safeUserId,
+      limit: 8,
+      allowMissing: true,
+    }),
+  ]);
+  const pendingTopupsCents = topups.reduce((sum, row) => {
+    const status = getEffectiveTopupStatus(row);
+    if (status === "pending" || status === "received") {
+      return sum + Math.max(0, Number(row?.amount_cents) || 0);
+    }
+    return sum;
+  }, 0);
+  return {
+    userId: safeUserId,
+    wallet: mapBillingWalletSummaryRow(wallet),
+    summary: {
+      pending_topups_eur: fromCents(pendingTopupsCents),
+      transaction_count: Array.isArray(transactions) ? transactions.length : 0,
+      topup_count: Array.isArray(topups) ? topups.length : 0,
+    },
+    transactions: (Array.isArray(transactions) ? transactions : []).map(mapBillingWalletTransactionRow),
+    topups: (Array.isArray(topups) ? topups : []).map(mapBillingTopupRow),
   };
 }
 
@@ -12810,6 +12988,89 @@ async function handleAdminClientBillingSave(request, env) {
       { error: error?.message || "Could not update client billing settings." },
       500
     );
+  }
+}
+
+async function handleAdminClientWalletDetail(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to access client wallets." }, 403);
+  }
+  const targetUserId = String(url.searchParams.get("userId") || "").trim();
+  if (!targetUserId) {
+    return jsonResponse({ error: "Client id is required." }, 400);
+  }
+  try {
+    const targetUser = await getSupabaseUserById(env, targetUserId);
+    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env)) {
+      return jsonResponse({ error: "Client account not found." }, 404);
+    }
+    const workspace = await buildAdminClientWalletWorkspace(env, targetUserId);
+    return jsonResponse({
+      ok: true,
+      ...workspace,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load client wallet." }, 500);
+  }
+}
+
+async function handleAdminClientWalletCredit(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to credit client wallets." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+
+  const targetUserId = String(body?.userId || "").trim();
+  const amount = body?.amount ?? body?.amountEur ?? null;
+  const reason = String(body?.reason || "").trim();
+  const note = String(body?.note || "").trim();
+  if (!targetUserId) {
+    return jsonResponse({ error: "Client id is required." }, 400);
+  }
+  if (!reason) {
+    return jsonResponse({ error: "A reason is required." }, 400);
+  }
+
+  try {
+    const targetUser = await getSupabaseUserById(env, targetUserId);
+    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env)) {
+      return jsonResponse({ error: "Client account not found." }, 404);
+    }
+    const result = await creditBillingWalletManually(env, {
+      userId: targetUserId,
+      amountEur: amount,
+      actor: normalizeEmail(user.email || "") || user.id,
+      reason,
+      note,
+    });
+    const workspace = await buildAdminClientWalletWorkspace(env, targetUserId);
+    return jsonResponse({
+      ok: true,
+      message: "Manual credit applied.",
+      wallet: workspace.wallet,
+      summary: workspace.summary,
+      transactions: workspace.transactions,
+      topups: workspace.topups,
+      transaction: result?.transaction ? mapBillingWalletTransactionRow(result.transaction) : null,
+      reference: result?.reference || null,
+      userId: targetUserId,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not apply manual credit." }, 500);
   }
 }
 

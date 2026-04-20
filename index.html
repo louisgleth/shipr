@@ -1538,6 +1538,86 @@
             </div>
           </div>
         </div>
+
+        <div class="shopify-settings-overlay is-closed" id="adminClientWalletModal">
+          <div class="shopify-settings-modal admin-workspace-modal admin-client-wallet-modal">
+            <div class="csv-modal-header">
+              <div class="admin-client-wallet-head">
+                <span class="csv-modal-title" id="adminClientWalletTitle">Client Balance</span>
+                <span class="admin-client-wallet-subtitle mono" id="adminClientWalletSubtitle"></span>
+              </div>
+              <button type="button" class="csv-modal-close" id="adminClientWalletClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body admin-client-wallet-body">
+              <div class="admin-client-wallet-summary">
+                <article class="admin-client-wallet-summary-card">
+                  <span class="admin-client-wallet-key">Current balance</span>
+                  <div class="admin-client-wallet-balance" id="adminClientWalletBalance">€0.00</div>
+                  <div class="admin-client-wallet-meta mono" id="adminClientWalletMeta">No wallet activity yet.</div>
+                </article>
+                <article class="admin-client-wallet-summary-card is-secondary">
+                  <span class="admin-client-wallet-key">Pending top-ups</span>
+                  <div class="admin-client-wallet-balance is-compact" id="adminClientWalletPending">€0.00</div>
+                  <div class="admin-client-wallet-meta mono" id="adminClientWalletCounts">0 transactions • 0 top-ups</div>
+                </article>
+              </div>
+
+              <div class="admin-client-wallet-grid">
+                <section class="admin-client-wallet-card">
+                  <div class="admin-client-wallet-section-head">
+                    <div>
+                      <div class="preview-title">Manual Credit</div>
+                      <p class="panel-sub admin-panel-sub">
+                        Add balance with a required reason so the adjustment remains auditable.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="admin-client-wallet-form">
+                    <label class="field">
+                      <span>Amount (EUR)</span>
+                      <input type="number" id="adminClientWalletAmount" min="0.01" step="0.01" placeholder="25.00" />
+                    </label>
+                    <label class="field">
+                      <span>Reason</span>
+                      <input type="text" id="adminClientWalletReason" maxlength="120" placeholder="Manual funding adjustment" />
+                    </label>
+                    <label class="field">
+                      <span>Note / Reference (optional)</span>
+                      <textarea id="adminClientWalletNote" rows="4" placeholder="Bank transfer note, goodwill context, internal reference..."></textarea>
+                    </label>
+                  </div>
+                  <div class="admin-client-wallet-status" id="adminClientWalletStatus"></div>
+                  <div class="panel-actions">
+                    <button type="button" class="btn btn-ghost" id="adminClientWalletCancel">
+                      <span>Close</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="adminClientWalletSubmit">
+                      <span>Apply credit</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="admin-client-wallet-card">
+                  <div class="admin-client-wallet-section-head">
+                    <div class="preview-title">Recent Wallet Activity</div>
+                    <div class="admin-client-wallet-inline-note mono">Newest entries first</div>
+                  </div>
+                  <div class="admin-client-wallet-empty" id="adminClientWalletTransactionsEmpty">No wallet activity yet.</div>
+                  <div class="admin-client-wallet-list" id="adminClientWalletTransactionsList"></div>
+
+                  <div class="admin-client-wallet-section-head is-topups">
+                    <div class="preview-title">Recent Top-ups</div>
+                    <div class="admin-client-wallet-inline-note mono">Latest references and statuses</div>
+                  </div>
+                  <div class="admin-client-wallet-empty" id="adminClientWalletTopupsEmpty">No top-ups yet.</div>
+                  <div class="admin-client-wallet-list" id="adminClientWalletTopupsList"></div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="account-page is-hidden" id="leadsPageSection">

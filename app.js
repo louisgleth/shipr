@@ -2015,6 +2015,24 @@ const adminClientsClose = document.getElementById("adminClientsClose");
 const adminClientsCancel = document.getElementById("adminClientsCancel");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
 const adminClientsList = document.getElementById("adminClientsList");
+const adminClientWalletModal = document.getElementById("adminClientWalletModal");
+const adminClientWalletClose = document.getElementById("adminClientWalletClose");
+const adminClientWalletCancel = document.getElementById("adminClientWalletCancel");
+const adminClientWalletTitle = document.getElementById("adminClientWalletTitle");
+const adminClientWalletSubtitle = document.getElementById("adminClientWalletSubtitle");
+const adminClientWalletBalance = document.getElementById("adminClientWalletBalance");
+const adminClientWalletMeta = document.getElementById("adminClientWalletMeta");
+const adminClientWalletPending = document.getElementById("adminClientWalletPending");
+const adminClientWalletCounts = document.getElementById("adminClientWalletCounts");
+const adminClientWalletAmountInput = document.getElementById("adminClientWalletAmount");
+const adminClientWalletReasonInput = document.getElementById("adminClientWalletReason");
+const adminClientWalletNoteInput = document.getElementById("adminClientWalletNote");
+const adminClientWalletStatus = document.getElementById("adminClientWalletStatus");
+const adminClientWalletSubmit = document.getElementById("adminClientWalletSubmit");
+const adminClientWalletTransactionsEmpty = document.getElementById("adminClientWalletTransactionsEmpty");
+const adminClientWalletTransactionsList = document.getElementById("adminClientWalletTransactionsList");
+const adminClientWalletTopupsEmpty = document.getElementById("adminClientWalletTopupsEmpty");
+const adminClientWalletTopupsList = document.getElementById("adminClientWalletTopupsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
 const accountHistoryList = document.getElementById("accountHistoryList");
 const accountPreviewMeta = document.getElementById("accountPreviewMeta");
@@ -2375,6 +2393,11 @@ let adminDashboardLoading = false;
 let adminDashboardLoaded = false;
 let adminDashboardState = null;
 let adminClients = [];
+let adminClientWalletUserId = "";
+let adminClientWalletData = null;
+let adminClientWalletLoading = false;
+let adminClientWalletCreditBusy = false;
+let adminClientWalletRequestToken = 0;
 let leadProspects = [];
 let leadProspectsLoading = false;
 let leadProspectsLoaded = false;
@@ -5590,6 +5613,7 @@ function renderAdminClientsList() {
     const profile = getAdminClientProfile(client);
     const metrics = client?.metrics || {};
     const billing = normalizeAdminClientBilling(client);
+    const wallet = normalizeAdminClientWallet(client?.wallet || null);
     const paymentMode = metrics.payment_mode || getAdminClientPaymentMode(client);
     const activityStatus = normalizeAdminActivityStatus(metrics.activity_status);
     const paymentTrackingLabel =
@@ -5602,6 +5626,7 @@ function renderAdminClientsList() {
           : "--";
     const userId = String(client?.user?.id || "").trim();
     const billingBusy = isAdminClientBillingBusy(userId);
+    const walletActionDisabled = adminMockModeEnabled || !userId;
     const safeProfile = {
       companyName: escapeHtml(profile.companyName),
       contactName: escapeHtml(profile.contactName),
@@ -5712,10 +5737,119 @@ function renderAdminClientsList() {
             )}</span>
           </div>
         </div>
+        <div class="admin-client-metric">
+          <span class="admin-client-key">${tr("Balance")}</span>
+          <span class="${getAdminClientValueClass(wallet.balance_eur)}">${escapeHtml(
+            formatMoney(wallet.balance_eur || 0)
+          )}</span>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm admin-client-wallet-button"
+            data-admin-wallet-open="${escapeHtml(userId)}"
+            ${walletActionDisabled ? "disabled" : ""}
+          >
+            <span>${tr("Manage balance")}</span>
+          </button>
+        </div>
       </div>
     `;
     adminClientsList.appendChild(row);
   });
+}
+
+async function openAdminClientWalletWorkspace(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return;
+  if (adminMockModeEnabled) {
+    showToast(tr("Wallet workspace is unavailable while mock data is active."), { tone: "error" });
+    return;
+  }
+  adminClientWalletUserId = safeUserId;
+  adminClientWalletData = null;
+  adminClientWalletLoading = true;
+  adminClientWalletCreditBusy = false;
+  setAdminClientWalletStatus("");
+  renderAdminClientWalletModal();
+  setAdminClientWalletModalOpen(true);
+  const requestToken = ++adminClientWalletRequestToken;
+  try {
+    const payload = await fetchApiWithAuth(
+      `/api/admin/client-wallet?userId=${encodeURIComponent(safeUserId)}`,
+      { timeoutMs: 20000 }
+    );
+    if (requestToken !== adminClientWalletRequestToken || adminClientWalletUserId !== safeUserId) {
+      return;
+    }
+    adminClientWalletData = payload && typeof payload === "object" ? payload : {};
+    updateAdminClientWalletState(safeUserId, adminClientWalletData?.wallet || null);
+    renderAdminClientsList();
+    renderAdminClientWalletModal();
+  } catch (error) {
+    if (requestToken !== adminClientWalletRequestToken || adminClientWalletUserId !== safeUserId) {
+      return;
+    }
+    adminClientWalletData = null;
+    setAdminClientWalletStatus(error?.message || tr("Could not load client wallet."), "error");
+    renderAdminClientWalletModal();
+  } finally {
+    if (requestToken === adminClientWalletRequestToken && adminClientWalletUserId === safeUserId) {
+      adminClientWalletLoading = false;
+      renderAdminClientWalletModal();
+    }
+  }
+}
+
+async function submitAdminClientWalletCredit() {
+  const safeUserId = String(adminClientWalletUserId || "").trim();
+  if (!safeUserId || adminClientWalletLoading || adminClientWalletCreditBusy) return;
+  const amount = Number(adminClientWalletAmountInput?.value || 0);
+  const reason = String(adminClientWalletReasonInput?.value || "").trim();
+  const note = String(adminClientWalletNoteInput?.value || "").trim();
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setAdminClientWalletStatus(tr("Enter a valid credit amount."), "error");
+    return;
+  }
+  if (!reason) {
+    setAdminClientWalletStatus(tr("A reason is required."), "error");
+    return;
+  }
+  adminClientWalletCreditBusy = true;
+  setAdminClientWalletStatus("", "");
+  renderAdminClientWalletModal();
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/client-wallet/credit", {
+      method: "POST",
+      timeoutMs: 20000,
+      body: JSON.stringify({
+        userId: safeUserId,
+        amount,
+        reason,
+        note,
+      }),
+    });
+    adminClientWalletData = payload && typeof payload === "object" ? payload : {};
+    updateAdminClientWalletState(safeUserId, adminClientWalletData?.wallet || null);
+    renderAdminClientsList();
+    if (adminClientWalletAmountInput) adminClientWalletAmountInput.value = "";
+    if (adminClientWalletReasonInput) adminClientWalletReasonInput.value = "";
+    if (adminClientWalletNoteInput) adminClientWalletNoteInput.value = "";
+    setAdminClientWalletStatus(
+      payload?.reference
+        ? tr("Credit applied. Reference: {reference}", {
+            reference: payload.reference,
+          })
+        : tr("Credit applied."),
+      "success"
+    );
+    renderAdminClientWalletModal();
+    showToast(payload?.message || tr("Manual credit applied."), { tone: "success" });
+  } catch (error) {
+    setAdminClientWalletStatus(error?.message || tr("Could not apply manual credit."), "error");
+    renderAdminClientWalletModal();
+  } finally {
+    adminClientWalletCreditBusy = false;
+    renderAdminClientWalletModal();
+  }
 }
 
 function buildAdminSummaryFromClients(clients = [], openInvites = 0) {
@@ -5786,6 +5920,219 @@ function updateAdminClientBillingState(userId, billing) {
     };
   }
   return updated;
+}
+
+function getAdminClientById(userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return null;
+  return (
+    (Array.isArray(adminClients) ? adminClients : []).find(
+      (client) => String(client?.user?.id || "").trim() === safeUserId
+    ) || null
+  );
+}
+
+function normalizeAdminClientWallet(wallet) {
+  const raw = wallet && typeof wallet === "object" ? wallet : {};
+  return {
+    balance_eur: Number(raw?.balance_eur || 0),
+    currency: String(raw?.currency || "EUR").trim() || "EUR",
+    updated_at: raw?.updated_at || null,
+  };
+}
+
+function updateAdminClientWalletState(userId, wallet) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) return false;
+  const normalizedWallet = normalizeAdminClientWallet(wallet);
+  let updated = false;
+  const applyUpdate = (client) => {
+    if (String(client?.user?.id || "").trim() !== safeUserId) {
+      return client;
+    }
+    updated = true;
+    return {
+      ...client,
+      wallet: normalizedWallet,
+    };
+  };
+  adminClients = adminClients.map(applyUpdate);
+  if (adminDashboardState && Array.isArray(adminDashboardState.clients)) {
+    adminDashboardState = {
+      ...adminDashboardState,
+      clients: adminDashboardState.clients.map(applyUpdate),
+    };
+  }
+  return updated;
+}
+
+function setAdminClientWalletStatus(message = "", tone = "") {
+  if (!adminClientWalletStatus) return;
+  const text = String(message || "").trim();
+  adminClientWalletStatus.textContent = text;
+  adminClientWalletStatus.classList.toggle("is-visible", Boolean(text));
+  adminClientWalletStatus.dataset.tone = text ? String(tone || "neutral").trim() || "neutral" : "";
+}
+
+function getAdminClientWalletTransactionLabel(entry = {}) {
+  const source = String(entry?.source || "").trim().toLowerCase();
+  if (source === "manual_credit") {
+    return String(entry?.metadata?.reason || "").trim() || tr("Manual credit");
+  }
+  if (source === "label_checkout") {
+    return tr("Label checkout");
+  }
+  return source
+    ? source
+        .split(/[_\s-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+    : tr("Wallet activity");
+}
+
+function renderAdminClientWalletModal() {
+  if (!adminClientWalletTitle || !adminClientWalletBalance || !adminClientWalletTransactionsList) return;
+  const client = getAdminClientById(adminClientWalletUserId);
+  const profile = getAdminClientProfile(client);
+  const walletDetails =
+    adminClientWalletData && typeof adminClientWalletData === "object" ? adminClientWalletData : {};
+  const walletSummary = normalizeAdminClientWallet(walletDetails?.wallet || client?.wallet || null);
+  const transactions = Array.isArray(walletDetails?.transactions) ? walletDetails.transactions : [];
+  const topups = Array.isArray(walletDetails?.topups) ? walletDetails.topups : [];
+  const transactionCount = Math.max(
+    0,
+    Number(walletDetails?.summary?.transaction_count ?? transactions.length) || 0
+  );
+  const topupCount = Math.max(0, Number(walletDetails?.summary?.topup_count ?? topups.length) || 0);
+  const pendingTopups = Number(
+    walletDetails?.summary?.pending_topups_eur
+    ?? topups.reduce((sum, entry) => {
+      const status = String(entry?.status || "").trim().toLowerCase();
+      if (status === "pending" || status === "received") {
+        return sum + Math.max(0, Number(entry?.amount_eur || 0));
+      }
+      return sum;
+    }, 0)
+  );
+  const loading = adminClientWalletLoading;
+  const busy = adminClientWalletCreditBusy;
+
+  adminClientWalletTitle.textContent = profile.companyName || tr("Client Balance");
+  if (adminClientWalletSubtitle) {
+    adminClientWalletSubtitle.textContent = [
+      profile.contactEmail || "--",
+      profile.customerId || "--",
+    ]
+      .filter(Boolean)
+      .join(" • ");
+  }
+  adminClientWalletBalance.textContent = loading && !walletDetails?.wallet
+    ? tr("Loading...")
+    : formatMoney(walletSummary.balance_eur || 0);
+  if (adminClientWalletMeta) {
+    adminClientWalletMeta.textContent = loading && !walletDetails?.wallet
+      ? tr("Loading wallet activity...")
+      : walletSummary.updated_at
+        ? tr("Updated {date}", {
+            date: formatHistoryDate(walletSummary.updated_at),
+          })
+        : tr("No wallet activity yet.");
+  }
+  if (adminClientWalletPending) {
+    adminClientWalletPending.textContent = loading && !walletDetails?.wallet
+      ? tr("Loading...")
+      : formatMoney(pendingTopups || 0);
+  }
+  if (adminClientWalletCounts) {
+    adminClientWalletCounts.textContent = loading && !walletDetails?.wallet
+      ? tr("Loading wallet activity...")
+      : tr("{transactions} transactions • {topups} top-ups", {
+          transactions: transactionCount,
+          topups: topupCount,
+        });
+  }
+  if (adminClientWalletAmountInput) {
+    adminClientWalletAmountInput.disabled = busy || loading;
+  }
+  if (adminClientWalletReasonInput) {
+    adminClientWalletReasonInput.disabled = busy || loading;
+  }
+  if (adminClientWalletNoteInput) {
+    adminClientWalletNoteInput.disabled = busy || loading;
+  }
+  if (adminClientWalletSubmit) {
+    adminClientWalletSubmit.disabled = busy || loading || !adminClientWalletUserId;
+    const label = adminClientWalletSubmit.querySelector("span");
+    if (label) {
+      label.textContent = busy ? tr("Applying credit...") : tr("Apply credit");
+    }
+  }
+
+  adminClientWalletTransactionsList.innerHTML = "";
+  if (adminClientWalletTransactionsEmpty) {
+    adminClientWalletTransactionsEmpty.textContent = loading
+      ? tr("Loading wallet activity...")
+      : tr("No wallet activity yet.");
+    adminClientWalletTransactionsEmpty.classList.toggle(
+      "is-hidden",
+      loading ? false : transactions.length > 0
+    );
+  }
+  if (!loading) {
+    transactions.forEach((entry) => {
+      const row = document.createElement("article");
+      row.className = "admin-client-wallet-entry";
+      row.innerHTML = `
+        <div class="admin-client-wallet-entry-copy">
+          <div class="admin-client-wallet-entry-title">${escapeHtml(
+            getAdminClientWalletTransactionLabel(entry)
+          )}</div>
+          <div class="admin-client-wallet-entry-meta mono">${escapeHtml(
+            [
+              entry?.reference || "--",
+              entry?.created_at ? formatHistoryDate(entry.created_at) : "--",
+            ].join(" • ")
+          )}</div>
+        </div>
+        <div class="admin-client-wallet-entry-amount${entry?.direction === "credit" ? " is-credit" : " is-debit"}">
+          ${escapeHtml(
+            `${entry?.direction === "credit" ? "+" : "-"}${formatMoney(Number(entry?.amount_eur || 0))}`
+          )}
+        </div>
+      `;
+      adminClientWalletTransactionsList.appendChild(row);
+    });
+  }
+
+  if (adminClientWalletTopupsList) {
+    adminClientWalletTopupsList.innerHTML = "";
+  }
+  if (adminClientWalletTopupsEmpty) {
+    adminClientWalletTopupsEmpty.textContent = loading ? tr("Loading top-ups...") : tr("No top-ups yet.");
+    adminClientWalletTopupsEmpty.classList.toggle("is-hidden", loading ? false : topups.length > 0);
+  }
+  if (!loading && adminClientWalletTopupsList) {
+    topups.forEach((entry) => {
+      const row = document.createElement("article");
+      row.className = "admin-client-wallet-entry";
+      row.innerHTML = `
+        <div class="admin-client-wallet-entry-copy">
+          <div class="admin-client-wallet-entry-title">${escapeHtml(entry?.reference || "--")}</div>
+          <div class="admin-client-wallet-entry-meta mono">${escapeHtml(
+            [
+              entry?.status ? tr(String(entry.status)) : "--",
+              entry?.requested_at ? formatHistoryDate(entry.requested_at) : "--",
+            ].join(" • ")
+          )}</div>
+        </div>
+        <div class="admin-client-wallet-entry-amount is-credit">${escapeHtml(
+          formatMoney(Number(entry?.amount_eur || 0))
+        )}</div>
+      `;
+      adminClientWalletTopupsList.appendChild(row);
+    });
+  }
 }
 
 function formatAdminTrackingStatus(status) {
@@ -6107,6 +6454,7 @@ async function loadAdminDashboard(options = {}) {
     renderAdminInvoiceList();
     renderAdminSalesLedger();
     renderAdminWiseReceiptList();
+    setAdminClientWalletModalOpen(false);
     if (currentMainView === "admin") {
       setAdminPageVisible(false, { replace: true });
     }
@@ -6149,6 +6497,7 @@ async function loadAdminDashboard(options = {}) {
     renderAdminInvoiceList();
     renderAdminSalesLedger();
     renderAdminWiseReceiptList();
+    setAdminClientWalletModalOpen(false);
     if (!quiet) {
       showToast(error?.message || tr("Could not load admin dashboard."), { tone: "error" });
     }
@@ -11688,6 +12037,26 @@ function setAdminWiseModalOpen(open) {
 function setAdminClientsModalOpen(open) {
   if (!adminClientsModal) return;
   adminClientsModal.classList.toggle("is-closed", !open);
+  if (!open) {
+    setAdminClientWalletModalOpen(false);
+  }
+}
+
+function setAdminClientWalletModalOpen(open) {
+  if (!adminClientWalletModal) return;
+  if (!open) {
+    adminClientWalletRequestToken += 1;
+    adminClientWalletUserId = "";
+    adminClientWalletData = null;
+    adminClientWalletLoading = false;
+    adminClientWalletCreditBusy = false;
+    if (adminClientWalletAmountInput) adminClientWalletAmountInput.value = "";
+    if (adminClientWalletReasonInput) adminClientWalletReasonInput.value = "";
+    if (adminClientWalletNoteInput) adminClientWalletNoteInput.value = "";
+    setAdminClientWalletStatus("");
+    renderAdminClientWalletModal();
+  }
+  adminClientWalletModal.classList.toggle("is-closed", !open);
 }
 
 function setLabelConfirmModalOpen(open) {
@@ -17965,6 +18334,7 @@ function setAuthView(session, options = {}) {
     setAdminLedgerModalOpen(false);
     setAdminWiseModalOpen(false);
     setAdminClientsModalOpen(false);
+    setAdminClientWalletModalOpen(false);
     setLeadCallOutcomeModalOpen(false);
     wixSavedImportSettings = normalizeWixImportSettings(null);
     wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
@@ -20993,6 +21363,32 @@ if (adminClientsModal) {
   });
 }
 
+if (adminClientWalletClose) {
+  adminClientWalletClose.addEventListener("click", () => {
+    setAdminClientWalletModalOpen(false);
+  });
+}
+
+if (adminClientWalletCancel) {
+  adminClientWalletCancel.addEventListener("click", () => {
+    setAdminClientWalletModalOpen(false);
+  });
+}
+
+if (adminClientWalletModal) {
+  adminClientWalletModal.addEventListener("click", (event) => {
+    if (event.target === adminClientWalletModal) {
+      setAdminClientWalletModalOpen(false);
+    }
+  });
+}
+
+if (adminClientWalletSubmit) {
+  adminClientWalletSubmit.addEventListener("click", async () => {
+    await submitAdminClientWalletCredit();
+  });
+}
+
 if (adminClientSearchInput) {
   bindCompositionAwareInput(adminClientSearchInput, (event) => {
     const target = event.target;
@@ -21193,6 +21589,11 @@ if (adminClientsList) {
   adminClientsList.addEventListener("click", async (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    const walletButton = target.closest("[data-admin-wallet-open]");
+    if (walletButton instanceof HTMLElement) {
+      await openAdminClientWalletWorkspace(walletButton.dataset.adminWalletOpen);
+      return;
+    }
     const toggle = target.closest("[data-admin-billing-toggle]");
     if (!(toggle instanceof HTMLElement)) return;
     const clientId = String(toggle.dataset.adminClientId || "").trim();
@@ -21766,6 +22167,7 @@ document.addEventListener("keydown", (event) => {
   if (adminLedgerModal && !adminLedgerModal.classList.contains("is-closed")) return;
   if (adminWiseModal && !adminWiseModal.classList.contains("is-closed")) return;
   if (adminClientsModal && !adminClientsModal.classList.contains("is-closed")) return;
+  if (adminClientWalletModal && !adminClientWalletModal.classList.contains("is-closed")) return;
   if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -21817,6 +22219,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (adminWiseModal && !adminWiseModal.classList.contains("is-closed")) {
     setAdminWiseModalOpen(false);
+    return;
+  }
+  if (adminClientWalletModal && !adminClientWalletModal.classList.contains("is-closed")) {
+    setAdminClientWalletModalOpen(false);
     return;
   }
   if (adminClientsModal && !adminClientsModal.classList.contains("is-closed")) {

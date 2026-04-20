@@ -3901,6 +3901,11 @@ body.is-auth-view {
   margin-top: 2px;
 }
 
+.admin-client-wallet-button {
+  margin-top: 6px;
+  justify-self: flex-start;
+}
+
 .shopify-settings-modal.admin-workspace-modal {
   width: min(1120px, calc(100vw - 48px));
   max-width: 1120px;
@@ -3909,6 +3914,11 @@ body.is-auth-view {
 .shopify-settings-modal.admin-client-workspace-modal {
   width: min(1320px, calc(100vw - 48px));
   max-width: 1320px;
+}
+
+.shopify-settings-modal.admin-client-wallet-modal {
+  width: min(980px, calc(100vw - 48px));
+  max-width: 980px;
 }
 
 .admin-workspace-modal-body {
@@ -3935,6 +3945,168 @@ body.is-auth-view {
 .admin-workspace-modal-body .panel-actions {
   margin-top: 2px;
   justify-content: flex-end;
+}
+
+.admin-client-wallet-head {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-client-wallet-subtitle {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.admin-client-wallet-body {
+  gap: 16px;
+}
+
+.admin-client-wallet-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-client-wallet-summary-card {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-client-wallet-summary-card.is-secondary {
+  background: var(--card-bg);
+}
+
+.admin-client-wallet-key {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-tight);
+}
+
+.admin-client-wallet-balance {
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 0.95;
+  color: var(--text);
+  font-weight: 300;
+}
+
+.admin-client-wallet-balance.is-compact {
+  font-size: clamp(24px, 3.2vw, 34px);
+}
+
+.admin-client-wallet-meta {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.admin-client-wallet-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.92fr) minmax(360px, 1.08fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-client-wallet-card {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-client-wallet-form {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-client-wallet-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-client-wallet-section-head.is-topups {
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.admin-client-wallet-inline-note {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.admin-client-wallet-status {
+  min-height: 20px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.admin-client-wallet-status.is-visible[data-tone="error"] {
+  color: #e29f9f;
+}
+
+.admin-client-wallet-status.is-visible[data-tone="success"] {
+  color: var(--success);
+}
+
+.admin-client-wallet-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-client-wallet-empty {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.admin-client-wallet-entry {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-client-wallet-entry-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-client-wallet-entry-title {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.admin-client-wallet-entry-meta {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.admin-client-wallet-entry-amount {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.admin-client-wallet-entry-amount.is-credit {
+  color: var(--success);
+}
+
+.admin-client-wallet-entry-amount.is-debit {
+  color: #e29f9f;
 }
 
 .warehouse-head {
@@ -9308,6 +9480,11 @@ input.is-invalid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-client-wallet-summary,
+  .admin-client-wallet-grid {
+    grid-template-columns: 1fr;
+  }
+
   .warehouse-list {
     grid-template-columns: 1fr;
   }
@@ -9584,6 +9761,14 @@ input.is-invalid {
 
   .admin-client-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-client-wallet-section-head {
+    flex-direction: column;
+  }
+
+  .admin-client-wallet-inline-note {
+    white-space: normal;
   }
 
   .warehouse-grid {
