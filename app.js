@@ -6461,7 +6461,10 @@ async function downloadAdminLedgerInvoice(invoiceId, triggerButton = null) {
     if (!result?.blob) {
       throw new Error(tr("Could not download invoice PDF."));
     }
-    downloadBlobAsFile(result.blob, result.filename || buildInvoicePdfFilenameFromReference(safeInvoiceId));
+    downloadPdfBlobAsFile(
+      result.blob,
+      result.filename || buildInvoicePdfFilenameFromReference(safeInvoiceId)
+    );
   } catch (error) {
     showToast(error?.message || tr("Could not download invoice PDF."), { tone: "error" });
   } finally {
@@ -7111,12 +7114,18 @@ function buildAdminSalesLedgerCsv(rows = [], options = {}) {
 function downloadBlobAsFile(blob, filename) {
   if (!blob) return;
   const safeFilename = String(filename || "").trim() || "document";
-  const blobType = String(blob?.type || "").trim().toLowerCase();
-  if (blobType.includes("application/pdf") || /\.pdf$/i.test(safeFilename)) {
-    openReceiptPdfTarget(blob, safeFilename);
-    return;
-  }
   const url = URL.createObjectURL(blob);
+  triggerFileDownload(url, safeFilename);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function downloadPdfBlobAsFile(blob, filename) {
+  if (!(blob instanceof Blob)) return;
+  const safeFilename = String(filename || "").trim() || "document.pdf";
+  const normalizedBlob = String(blob?.type || "").trim().toLowerCase().includes("application/pdf")
+    ? blob
+    : new Blob([blob], { type: "application/pdf" });
+  const url = URL.createObjectURL(normalizedBlob);
   triggerFileDownload(url, safeFilename);
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
@@ -19603,7 +19612,7 @@ async function downloadTopupInvoicePdf(button, topupId) {
     if (!(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
       throw new Error(tr("Could not load a valid invoice PDF."));
     }
-    downloadBlobAsFile(
+    downloadPdfBlobAsFile(
       result.blob,
       result.filename || buildInvoicePdfFilenameFromReference(linkedInvoiceId)
     );
