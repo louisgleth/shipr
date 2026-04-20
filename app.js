@@ -650,9 +650,33 @@ const TRANSLATIONS = {
   "History": { fr: "Historique", nl: "Historiek" },
   "Reports": { fr: "Rapports", nl: "Rapporten" },
   "Admin Panel": { fr: "Panneau admin", nl: "Adminpaneel" },
+  "Billing Tools": { fr: "Outils de facturation", nl: "Facturatietools" },
   "Language": { fr: "Langue", nl: "Taal" },
   "Fill Mock Data": { fr: "Charger des données fictives", nl: "Mockdata laden" },
   "Restore Live Data": { fr: "Restaurer les données live", nl: "Live data herstellen" },
+  "Open Queue": { fr: "Ouvrir la file", nl: "Open wachtrij" },
+  "Open Ledger": { fr: "Ouvrir le grand livre", nl: "Open grootboek" },
+  "Open Reconciliation": { fr: "Ouvrir le rapprochement", nl: "Open reconciliatie" },
+  "Open Client Workspace": { fr: "Ouvrir l’espace client", nl: "Open klantwerkruimte" },
+  "Loading invoices...": { fr: "Chargement des factures...", nl: "Facturen laden..." },
+  "Loading sales ledger...": { fr: "Chargement du grand livre...", nl: "Grootboek laden..." },
+  "{count} invoices ready to review.": {
+    fr: "{count} factures prêtes à vérifier.",
+    nl: "{count} facturen klaar om te bekijken.",
+  },
+  "{count} issued invoices in the ledger.": {
+    fr: "{count} factures émises dans le grand livre.",
+    nl: "{count} uitgereikte facturen in het grootboek.",
+  },
+  "{count} receipts awaiting review.": {
+    fr: "{count} reçus en attente de vérification.",
+    nl: "{count} ontvangsten wachten op controle.",
+  },
+  "{count} clients • {active} active • {quiet} quiet • {dormant} dormant": {
+    fr: "{count} clients • {active} actifs • {quiet} calmes • {dormant} dormants",
+    nl: "{count} klanten • {active} actief • {quiet} rustig • {dormant} slapend",
+  },
+  "No client accounts yet.": { fr: "Aucun compte client pour l’instant.", nl: "Nog geen klantaccounts." },
   "Mock data loaded (frontend only).": {
     fr: "Données fictives chargées (frontend uniquement).",
     nl: "Mockdata geladen (alleen frontend).",
@@ -1895,6 +1919,10 @@ const adminSummaryInvites = document.getElementById("adminSummaryInvites");
 const adminSummaryRevenue = document.getElementById("adminSummaryRevenue");
 const adminSummaryProfit = document.getElementById("adminSummaryProfit");
 const adminSummaryProfitMeta = document.getElementById("adminSummaryProfitMeta");
+const openAdminBillingToolsModalButton = document.getElementById("openAdminBillingToolsModal");
+const adminBillingToolsModal = document.getElementById("adminBillingToolsModal");
+const adminBillingToolsClose = document.getElementById("adminBillingToolsClose");
+const adminBillingToolsCancel = document.getElementById("adminBillingToolsCancel");
 const adminSettingsModal = document.getElementById("adminSettingsModal");
 const adminSettingsClose = document.getElementById("adminSettingsClose");
 const adminSettingsCancel = document.getElementById("adminSettingsCancel");
@@ -1902,6 +1930,21 @@ const adminCarrierDiscountInput = document.getElementById("adminCarrierDiscount"
 const adminClientDiscountInput = document.getElementById("adminClientDiscount");
 const adminSettingsPreview = document.getElementById("adminSettingsPreview");
 const adminSettingsSaveButton = document.getElementById("adminSettingsSaveButton");
+const adminInvoiceWorkspaceSummary = document.getElementById("adminInvoiceWorkspaceSummary");
+const openAdminInvoicesModalButton = document.getElementById("openAdminInvoicesModal");
+const adminInvoicesModal = document.getElementById("adminInvoicesModal");
+const adminInvoicesClose = document.getElementById("adminInvoicesClose");
+const adminInvoicesCancel = document.getElementById("adminInvoicesCancel");
+const adminLedgerWorkspaceSummary = document.getElementById("adminLedgerWorkspaceSummary");
+const openAdminLedgerModalButton = document.getElementById("openAdminLedgerModal");
+const adminLedgerModal = document.getElementById("adminLedgerModal");
+const adminLedgerClose = document.getElementById("adminLedgerClose");
+const adminLedgerCancel = document.getElementById("adminLedgerCancel");
+const adminWiseWorkspaceSummary = document.getElementById("adminWiseWorkspaceSummary");
+const openAdminWiseModalButton = document.getElementById("openAdminWiseModal");
+const adminWiseModal = document.getElementById("adminWiseModal");
+const adminWiseClose = document.getElementById("adminWiseClose");
+const adminWiseCancel = document.getElementById("adminWiseCancel");
 const leadsReadyCount = document.getElementById("leadsReadyCount");
 const leadsFollowUpCount = document.getElementById("leadsFollowUpCount");
 const leadsNotInterestedCount = document.getElementById("leadsNotInterestedCount");
@@ -1965,6 +2008,11 @@ const adminWiseRefreshButton = document.getElementById("adminWiseRefresh");
 const adminWiseSyncButton = document.getElementById("adminWiseSync");
 const adminWiseReceiptList = document.getElementById("adminWiseReceiptList");
 const adminWiseReceiptEmpty = document.getElementById("adminWiseReceiptEmpty");
+const adminClientsWorkspaceSummary = document.getElementById("adminClientsWorkspaceSummary");
+const openAdminClientsModalButton = document.getElementById("openAdminClientsModal");
+const adminClientsModal = document.getElementById("adminClientsModal");
+const adminClientsClose = document.getElementById("adminClientsClose");
+const adminClientsCancel = document.getElementById("adminClientsCancel");
 const adminClientsEmpty = document.getElementById("adminClientsEmpty");
 const adminClientsList = document.getElementById("adminClientsList");
 const accountHistoryStatus = document.getElementById("accountHistoryStatus");
@@ -5320,6 +5368,77 @@ function renderAdminSummary(summary = {}) {
   }
 }
 
+function renderAdminInvoiceWorkspaceSummary() {
+  if (!adminInvoiceWorkspaceSummary) return;
+  const rows = Array.isArray(adminBillingInvoices) ? adminBillingInvoices : [];
+  if (!rows.length) {
+    adminInvoiceWorkspaceSummary.textContent = adminDashboardLoading
+      ? tr("Loading invoices...")
+      : tr("No invoices yet.");
+    return;
+  }
+  adminInvoiceWorkspaceSummary.textContent = tr("{count} invoices ready to review.", {
+    count: rows.length,
+  });
+}
+
+function renderAdminLedgerWorkspaceSummary() {
+  if (!adminLedgerWorkspaceSummary) return;
+  const rows = getAdminSalesLedgerBaseRows();
+  if (!rows.length) {
+    adminLedgerWorkspaceSummary.textContent = adminDashboardLoading
+      ? tr("Loading sales ledger...")
+      : tr("No issued invoices yet.");
+    return;
+  }
+  adminLedgerWorkspaceSummary.textContent = tr("{count} issued invoices in the ledger.", {
+    count: rows.length,
+  });
+}
+
+function renderAdminWiseWorkspaceSummary() {
+  if (!adminWiseWorkspaceSummary) return;
+  const rows = Array.isArray(adminWiseReceipts) ? adminWiseReceipts : [];
+  if (!rows.length) {
+    adminWiseWorkspaceSummary.textContent = adminWiseConfigured
+      ? tr("No unmatched bank receipts.")
+      : tr("Wise API is not configured yet.");
+    return;
+  }
+  adminWiseWorkspaceSummary.textContent = tr("{count} receipts awaiting review.", {
+    count: rows.length,
+  });
+}
+
+function renderAdminClientsWorkspaceSummary() {
+  if (!adminClientsWorkspaceSummary) return;
+  const rows = Array.isArray(adminClients) ? adminClients : [];
+  if (!rows.length) {
+    adminClientsWorkspaceSummary.textContent = adminDashboardLoading
+      ? tr("Loading client accounts...")
+      : tr("No client accounts yet.");
+    return;
+  }
+  const activeCount = rows.filter(
+    (client) => normalizeAdminActivityStatus(client?.metrics?.activity_status) === "active"
+  ).length;
+  const quietCount = rows.filter(
+    (client) => normalizeAdminActivityStatus(client?.metrics?.activity_status) === "quiet"
+  ).length;
+  const dormantCount = rows.filter(
+    (client) => normalizeAdminActivityStatus(client?.metrics?.activity_status) === "dormant"
+  ).length;
+  adminClientsWorkspaceSummary.textContent = tr(
+    "{count} clients • {active} active • {quiet} quiet • {dormant} dormant",
+    {
+      count: rows.length,
+      active: activeCount,
+      quiet: quietCount,
+      dormant: dormantCount,
+    }
+  );
+}
+
 function getAdminClientProfile(client) {
   return buildMockAccountProfile(client?.user || null) || {
     companyName: "--",
@@ -5411,6 +5530,7 @@ function renderAdminMockDataButton() {
 
 function renderAdminClientsList() {
   if (!adminClientsList || !adminClientsEmpty) return;
+  renderAdminClientsWorkspaceSummary();
   adminClientsList.innerHTML = "";
   let filtered = Array.isArray(adminClients) ? adminClients.slice() : [];
 
@@ -6161,6 +6281,7 @@ function getAdminInvoiceStatusClass(status) {
 
 function renderAdminInvoiceList() {
   if (!adminInvoiceList || !adminInvoiceEmpty) return;
+  renderAdminInvoiceWorkspaceSummary();
   adminInvoiceList.innerHTML = "";
   const rows = Array.isArray(adminBillingInvoices) ? adminBillingInvoices : [];
   if (!rows.length) {
@@ -6369,6 +6490,7 @@ function syncAdminLedgerFilterControls() {
 
 function renderAdminSalesLedger() {
   if (!adminLedgerList || !adminLedgerEmpty || !adminLedgerSummary || !adminLedgerExportButton) return;
+  renderAdminLedgerWorkspaceSummary();
   syncAdminLedgerFilterControls();
   const baseRows = getAdminSalesLedgerBaseRows();
   const rows = getAdminSalesLedgerRows();
@@ -6494,6 +6616,7 @@ function formatAdminWiseReceiptDate(rawDate) {
 
 function renderAdminWiseReceiptList() {
   if (!adminWiseReceiptList || !adminWiseReceiptEmpty) return;
+  renderAdminWiseWorkspaceSummary();
   adminWiseReceiptList.innerHTML = "";
   const rows = Array.isArray(adminWiseReceipts) ? adminWiseReceipts : [];
   if (!rows.length) {
@@ -11429,8 +11552,13 @@ function setMainView(view, options = {}) {
       setIbanTopupModalOpen(false);
     }
     if (nextView !== "admin") {
+      setAdminBillingToolsModalOpen(false);
       setClientInviteHistoryModalOpen(false);
       setAdminSettingsModalOpen(false);
+      setAdminInvoicesModalOpen(false);
+      setAdminLedgerModalOpen(false);
+      setAdminWiseModalOpen(false);
+      setAdminClientsModalOpen(false);
     }
     if (nextView !== "leads") {
       setLeadCallOutcomeModalOpen(false);
@@ -11532,9 +11660,34 @@ function setClientInviteHistoryModalOpen(open) {
   clientInviteHistoryModal.classList.toggle("is-closed", !open);
 }
 
+function setAdminBillingToolsModalOpen(open) {
+  if (!adminBillingToolsModal) return;
+  adminBillingToolsModal.classList.toggle("is-closed", !open);
+}
+
 function setAdminSettingsModalOpen(open) {
   if (!adminSettingsModal) return;
   adminSettingsModal.classList.toggle("is-closed", !open);
+}
+
+function setAdminInvoicesModalOpen(open) {
+  if (!adminInvoicesModal) return;
+  adminInvoicesModal.classList.toggle("is-closed", !open);
+}
+
+function setAdminLedgerModalOpen(open) {
+  if (!adminLedgerModal) return;
+  adminLedgerModal.classList.toggle("is-closed", !open);
+}
+
+function setAdminWiseModalOpen(open) {
+  if (!adminWiseModal) return;
+  adminWiseModal.classList.toggle("is-closed", !open);
+}
+
+function setAdminClientsModalOpen(open) {
+  if (!adminClientsModal) return;
+  adminClientsModal.classList.toggle("is-closed", !open);
 }
 
 function setLabelConfirmModalOpen(open) {
@@ -17805,8 +17958,13 @@ function setAuthView(session, options = {}) {
     setShopifySettingsModalOpen(false);
     setIbanTopupModalOpen(false);
     setLabelConfirmModalOpen(false);
+    setAdminBillingToolsModalOpen(false);
     setClientInviteHistoryModalOpen(false);
     setAdminSettingsModalOpen(false);
+    setAdminInvoicesModalOpen(false);
+    setAdminLedgerModalOpen(false);
+    setAdminWiseModalOpen(false);
+    setAdminClientsModalOpen(false);
     setLeadCallOutcomeModalOpen(false);
     wixSavedImportSettings = normalizeWixImportSettings(null);
     wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
@@ -20518,6 +20676,32 @@ if (clientInviteHistoryModal) {
   });
 }
 
+if (openAdminBillingToolsModalButton) {
+  openAdminBillingToolsModalButton.addEventListener("click", () => {
+    setAdminBillingToolsModalOpen(true);
+  });
+}
+
+if (adminBillingToolsClose) {
+  adminBillingToolsClose.addEventListener("click", () => {
+    setAdminBillingToolsModalOpen(false);
+  });
+}
+
+if (adminBillingToolsCancel) {
+  adminBillingToolsCancel.addEventListener("click", () => {
+    setAdminBillingToolsModalOpen(false);
+  });
+}
+
+if (adminBillingToolsModal) {
+  adminBillingToolsModal.addEventListener("click", (event) => {
+    if (event.target === adminBillingToolsModal) {
+      setAdminBillingToolsModalOpen(false);
+    }
+  });
+}
+
 if (leadsSearchInput) {
   bindCompositionAwareInput(leadsSearchInput, (event) => {
     const target = event.target;
@@ -20698,6 +20882,113 @@ if (adminSettingsModal) {
   adminSettingsModal.addEventListener("click", (event) => {
     if (event.target === adminSettingsModal) {
       setAdminSettingsModalOpen(false);
+    }
+  });
+}
+
+if (openAdminInvoicesModalButton) {
+  openAdminInvoicesModalButton.addEventListener("click", () => {
+    setAdminInvoicesModalOpen(true);
+    void loadAdminInvoices({ quiet: adminBillingInvoices.length > 0 });
+  });
+}
+
+if (adminInvoicesClose) {
+  adminInvoicesClose.addEventListener("click", () => {
+    setAdminInvoicesModalOpen(false);
+  });
+}
+
+if (adminInvoicesCancel) {
+  adminInvoicesCancel.addEventListener("click", () => {
+    setAdminInvoicesModalOpen(false);
+  });
+}
+
+if (adminInvoicesModal) {
+  adminInvoicesModal.addEventListener("click", (event) => {
+    if (event.target === adminInvoicesModal) {
+      setAdminInvoicesModalOpen(false);
+    }
+  });
+}
+
+if (openAdminLedgerModalButton) {
+  openAdminLedgerModalButton.addEventListener("click", () => {
+    setAdminLedgerModalOpen(true);
+    void loadAdminInvoices({ quiet: adminBillingInvoices.length > 0 });
+  });
+}
+
+if (adminLedgerClose) {
+  adminLedgerClose.addEventListener("click", () => {
+    setAdminLedgerModalOpen(false);
+  });
+}
+
+if (adminLedgerCancel) {
+  adminLedgerCancel.addEventListener("click", () => {
+    setAdminLedgerModalOpen(false);
+  });
+}
+
+if (adminLedgerModal) {
+  adminLedgerModal.addEventListener("click", (event) => {
+    if (event.target === adminLedgerModal) {
+      setAdminLedgerModalOpen(false);
+    }
+  });
+}
+
+if (openAdminWiseModalButton) {
+  openAdminWiseModalButton.addEventListener("click", () => {
+    setAdminWiseModalOpen(true);
+    void loadAdminWiseReceipts({ quiet: adminWiseReceipts.length > 0 || !adminWiseConfigured });
+  });
+}
+
+if (adminWiseClose) {
+  adminWiseClose.addEventListener("click", () => {
+    setAdminWiseModalOpen(false);
+  });
+}
+
+if (adminWiseCancel) {
+  adminWiseCancel.addEventListener("click", () => {
+    setAdminWiseModalOpen(false);
+  });
+}
+
+if (adminWiseModal) {
+  adminWiseModal.addEventListener("click", (event) => {
+    if (event.target === adminWiseModal) {
+      setAdminWiseModalOpen(false);
+    }
+  });
+}
+
+if (openAdminClientsModalButton) {
+  openAdminClientsModalButton.addEventListener("click", () => {
+    setAdminClientsModalOpen(true);
+  });
+}
+
+if (adminClientsClose) {
+  adminClientsClose.addEventListener("click", () => {
+    setAdminClientsModalOpen(false);
+  });
+}
+
+if (adminClientsCancel) {
+  adminClientsCancel.addEventListener("click", () => {
+    setAdminClientsModalOpen(false);
+  });
+}
+
+if (adminClientsModal) {
+  adminClientsModal.addEventListener("click", (event) => {
+    if (event.target === adminClientsModal) {
+      setAdminClientsModalOpen(false);
     }
   });
 }
@@ -21468,8 +21759,13 @@ document.addEventListener("keydown", (event) => {
   if (shopifySettingsModal && !shopifySettingsModal.classList.contains("is-closed")) return;
   if (ibanTopupModal && !ibanTopupModal.classList.contains("is-closed")) return;
   if (walletHistoryModal && !walletHistoryModal.classList.contains("is-closed")) return;
+  if (adminBillingToolsModal && !adminBillingToolsModal.classList.contains("is-closed")) return;
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) return;
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) return;
+  if (adminInvoicesModal && !adminInvoicesModal.classList.contains("is-closed")) return;
+  if (adminLedgerModal && !adminLedgerModal.classList.contains("is-closed")) return;
+  if (adminWiseModal && !adminWiseModal.classList.contains("is-closed")) return;
+  if (adminClientsModal && !adminClientsModal.classList.contains("is-closed")) return;
   if (leadCallOutcomeModal && !leadCallOutcomeModal.classList.contains("is-closed")) return;
 
   const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -21499,12 +21795,32 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (adminBillingToolsModal && !adminBillingToolsModal.classList.contains("is-closed")) {
+    setAdminBillingToolsModalOpen(false);
+    return;
+  }
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) {
     setClientInviteHistoryModalOpen(false);
     return;
   }
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
     setAdminSettingsModalOpen(false);
+    return;
+  }
+  if (adminInvoicesModal && !adminInvoicesModal.classList.contains("is-closed")) {
+    setAdminInvoicesModalOpen(false);
+    return;
+  }
+  if (adminLedgerModal && !adminLedgerModal.classList.contains("is-closed")) {
+    setAdminLedgerModalOpen(false);
+    return;
+  }
+  if (adminWiseModal && !adminWiseModal.classList.contains("is-closed")) {
+    setAdminWiseModalOpen(false);
+    return;
+  }
+  if (adminClientsModal && !adminClientsModal.classList.contains("is-closed")) {
+    setAdminClientsModalOpen(false);
     return;
   }
   if (labelConfirmModal && !labelConfirmModal.classList.contains("is-closed")) {

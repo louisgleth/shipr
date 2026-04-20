@@ -1177,6 +1177,12 @@
                   Run billing cycles, send invoice emails through Resend, and track payment status.
                 </p>
               </div>
+              <div class="admin-settings-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="openAdminBillingToolsModal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12h14"/><path d="M12 5v14"/><circle cx="12" cy="12" r="9"/></svg>
+                  <span>Billing Tools</span>
+                </button>
+              </div>
             </div>
             <div class="admin-billing-actions">
               <button type="button" class="btn btn-secondary btn-sm" id="adminBillingRunPreview">
@@ -1194,120 +1200,37 @@
             </div>
             <div class="admin-billing-status" id="adminBillingRunStatus"></div>
             <div class="admin-billing-result mono" id="adminBillingRunResult">No billing runs yet.</div>
-            <div class="admin-billing-test">
-              <label class="field">
-                <span>Test Email Destination</span>
-                <input type="email" id="adminBillingTestEmail" placeholder="billing@shipide.com" />
-              </label>
-              <div class="admin-billing-test-actions">
-                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTest">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-                  <span>Send Test Email</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTopupTest">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/><path d="M4 6h4"/><path d="M16 6h4"/></svg>
-                  <span>Send Top-up Test</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendDocumentTriplet">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l5 5v11H7z"/><path d="M14 4v5h5"/><path d="M5 8H4v12h10v-1"/><path d="M9 13h6"/><path d="M9 16h6"/></svg>
-                  <span>Send 3 PDF Previews</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTestSequence">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5h14v14H5z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg>
-                  <span>Send Full Sequence</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminReportsSendTest">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4h16v16H4z"/><path d="M8 15h2"/><path d="M12 11h2"/><path d="M16 8h2"/></svg>
-                  <span>Send Reports Test</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminAgreementPreview">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-                  <span>Preview Welcome</span>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm" id="adminAgreementSendTest">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-                  <span>Send Welcome Test</span>
-                </button>
-              </div>
-            </div>
-            <div class="admin-billing-invoices">
-              <div class="invite-result-label">Recent invoices</div>
-              <div class="admin-billing-empty" id="adminInvoiceEmpty">No invoices yet.</div>
-              <div class="admin-billing-list" id="adminInvoiceList"></div>
-            </div>
-            <div class="admin-billing-invoices">
-              <div class="admin-billing-headline">
-                <div>
-                  <div class="invite-result-label">Sales ledger</div>
-                  <div class="admin-ledger-summary" id="adminLedgerSummary">No issued invoices yet.</div>
-                </div>
-                <div class="admin-billing-inline-actions">
-                  <button type="button" class="btn btn-secondary btn-sm" id="adminLedgerExportButton">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/></svg>
-                    <span>Email Accounting Pack</span>
+            <div class="admin-billing-workspace-grid">
+              <article class="admin-workspace-card">
+                <div class="admin-workspace-card-title">Recent invoices</div>
+                <div class="admin-workspace-summary mono" id="adminInvoiceWorkspaceSummary">No invoices yet.</div>
+                <div class="admin-workspace-card-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="openAdminInvoicesModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>
+                    <span>Open Queue</span>
                   </button>
                 </div>
-              </div>
-              <div class="admin-ledger-filters">
-                <label class="field admin-ledger-filter admin-ledger-filter-search">
-                  <span>Search</span>
-                  <input
-                    type="search"
-                    id="adminLedgerSearchInput"
-                    placeholder="Invoice, client, email, batch..."
-                    autocomplete="off"
-                  />
-                </label>
-                <label class="field admin-ledger-filter">
-                  <span>Month</span>
-                  <select id="adminLedgerMonthFilter">
-                    <option value="all">All months</option>
-                  </select>
-                </label>
-                <label class="field admin-ledger-filter">
-                  <span>Type</span>
-                  <select id="adminLedgerKindFilter">
-                    <option value="all">All invoices</option>
-                    <option value="monthly">Monthly billing</option>
-                    <option value="topup">Top-up</option>
-                  </select>
-                </label>
-                <label class="field admin-ledger-filter">
-                  <span>Paid status</span>
-                  <select id="adminLedgerPaidFilter">
-                    <option value="all">All statuses</option>
-                    <option value="paid">Paid</option>
-                    <option value="unpaid">Unpaid</option>
-                  </select>
-                </label>
-                <label class="field admin-ledger-filter">
-                  <span>Accounting</span>
-                  <select id="adminLedgerExportFilter">
-                    <option value="all">All exports</option>
-                    <option value="pending">Not exported</option>
-                    <option value="exported">Exported</option>
-                  </select>
-                </label>
-              </div>
-              <div class="admin-billing-empty" id="adminLedgerEmpty">No issued invoices yet.</div>
-              <div class="admin-billing-list admin-ledger-list" id="adminLedgerList"></div>
-            </div>
-            <div class="admin-billing-invoices">
-              <div class="admin-billing-headline">
-                <div class="invite-result-label">Wise reconciliation</div>
-                <div class="admin-billing-inline-actions">
-                  <button type="button" class="btn btn-secondary btn-sm" id="adminWiseRefresh">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-                    <span>Refresh</span>
+              </article>
+              <article class="admin-workspace-card">
+                <div class="admin-workspace-card-title">Sales ledger</div>
+                <div class="admin-workspace-summary mono" id="adminLedgerWorkspaceSummary">No issued invoices yet.</div>
+                <div class="admin-workspace-card-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="openAdminLedgerModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19h16"/><rect x="6" y="10" width="3" height="6"/><rect x="11" y="7" width="3" height="9"/><rect x="16" y="4" width="3" height="12"/></svg>
+                    <span>Open Ledger</span>
                   </button>
-                  <button type="button" class="btn btn-primary btn-sm" id="adminWiseSync">
+                </div>
+              </article>
+              <article class="admin-workspace-card">
+                <div class="admin-workspace-card-title">Wise reconciliation</div>
+                <div class="admin-workspace-summary mono" id="adminWiseWorkspaceSummary">No unmatched bank receipts.</div>
+                <div class="admin-workspace-card-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="openAdminWiseModal">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 16"/><path d="M8 20H4v-4"/></svg>
-                    <span>Sync Wise</span>
+                    <span>Open Reconciliation</span>
                   </button>
                 </div>
-              </div>
-              <div class="admin-billing-empty" id="adminWiseReceiptEmpty">No unmatched bank receipts.</div>
-              <div class="admin-billing-list" id="adminWiseReceiptList"></div>
+              </article>
             </div>
           </div>
         </div>
@@ -1371,6 +1294,180 @@
           </div>
         </div>
 
+        <div class="shopify-settings-overlay is-closed" id="adminBillingToolsModal">
+          <div class="shopify-settings-modal admin-workspace-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Billing Tools</span>
+              <button type="button" class="csv-modal-close" id="adminBillingToolsClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body">
+              <div class="admin-billing-test">
+                <label class="field">
+                  <span>Test Email Destination</span>
+                  <input type="email" id="adminBillingTestEmail" placeholder="billing@shipide.com" />
+                </label>
+                <div class="admin-billing-test-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                    <span>Send Test Email</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTopupTest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/><path d="M4 6h4"/><path d="M16 6h4"/></svg>
+                    <span>Send Top-up Test</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendDocumentTriplet">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4h7l5 5v11H7z"/><path d="M14 4v5h5"/><path d="M5 8H4v12h10v-1"/><path d="M9 13h6"/><path d="M9 16h6"/></svg>
+                    <span>Send 3 PDF Previews</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminBillingSendTestSequence">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5h14v14H5z"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h4"/></svg>
+                    <span>Send Full Sequence</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminReportsSendTest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4h16v16H4z"/><path d="M8 15h2"/><path d="M12 11h2"/><path d="M16 8h2"/></svg>
+                    <span>Send Reports Test</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminAgreementPreview">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Preview Welcome</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminAgreementSendTest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                    <span>Send Welcome Test</span>
+                  </button>
+                </div>
+              </div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="adminBillingToolsCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shopify-settings-overlay is-closed" id="adminInvoicesModal">
+          <div class="shopify-settings-modal admin-workspace-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Recent invoices</span>
+              <button type="button" class="csv-modal-close" id="adminInvoicesClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body">
+              <div class="admin-billing-empty" id="adminInvoiceEmpty">No invoices yet.</div>
+              <div class="admin-billing-list" id="adminInvoiceList"></div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="adminInvoicesCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shopify-settings-overlay is-closed" id="adminLedgerModal">
+          <div class="shopify-settings-modal admin-workspace-modal admin-ledger-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Sales ledger</span>
+              <button type="button" class="csv-modal-close" id="adminLedgerClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body">
+              <div class="admin-billing-headline">
+                <div class="admin-ledger-summary" id="adminLedgerSummary">No issued invoices yet.</div>
+                <div class="admin-billing-inline-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="adminLedgerExportButton">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v9"/><path d="M8.5 9.5 12 13l3.5-3.5"/><path d="M5 18h14"/></svg>
+                    <span>Email Accounting Pack</span>
+                  </button>
+                </div>
+              </div>
+              <div class="admin-ledger-filters">
+                <label class="field admin-ledger-filter admin-ledger-filter-search">
+                  <span>Search</span>
+                  <input
+                    type="search"
+                    id="adminLedgerSearchInput"
+                    placeholder="Invoice, client, email, batch..."
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Month</span>
+                  <select id="adminLedgerMonthFilter">
+                    <option value="all">All months</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Type</span>
+                  <select id="adminLedgerKindFilter">
+                    <option value="all">All invoices</option>
+                    <option value="monthly">Monthly billing</option>
+                    <option value="topup">Top-up</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Paid status</span>
+                  <select id="adminLedgerPaidFilter">
+                    <option value="all">All statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                  </select>
+                </label>
+                <label class="field admin-ledger-filter">
+                  <span>Accounting</span>
+                  <select id="adminLedgerExportFilter">
+                    <option value="all">All exports</option>
+                    <option value="pending">Not exported</option>
+                    <option value="exported">Exported</option>
+                  </select>
+                </label>
+              </div>
+              <div class="admin-billing-empty" id="adminLedgerEmpty">No issued invoices yet.</div>
+              <div class="admin-billing-list admin-ledger-list" id="adminLedgerList"></div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="adminLedgerCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shopify-settings-overlay is-closed" id="adminWiseModal">
+          <div class="shopify-settings-modal admin-workspace-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Wise reconciliation</span>
+              <button type="button" class="csv-modal-close" id="adminWiseClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body">
+              <div class="admin-billing-inline-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="adminWiseRefresh">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                  <span>Refresh</span>
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="adminWiseSync">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 16"/><path d="M8 20H4v-4"/></svg>
+                  <span>Sync Wise</span>
+                </button>
+              </div>
+              <div class="admin-billing-empty" id="adminWiseReceiptEmpty">No unmatched bank receipts.</div>
+              <div class="admin-billing-list" id="adminWiseReceiptList"></div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="adminWiseCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="admin-clients-panel admin-panel-card">
           <div class="admin-clients-head">
             <div>
@@ -1379,39 +1476,67 @@
                 Financial metrics are computed from portal label history and current discount settings. Payment tracking adapts to each client billing mode.
               </p>
             </div>
-            <div class="admin-clients-toolbar">
+            <div class="admin-clients-head-actions">
               <button type="button" class="btn btn-secondary btn-sm admin-mock-button" id="adminMockDataButton">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v16"/><path d="M4 12h16"/><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
                 <span>Fill Mock Data</span>
               </button>
-              <label class="field admin-toolbar-field">
-                <span>Search</span>
-                <input type="text" id="adminClientSearch" placeholder="Company, contact, email, customer ID" />
-              </label>
-              <label class="field admin-toolbar-field admin-toolbar-field-compact">
-                <span>Activity</span>
-                <select id="adminClientFilter" class="invite-select">
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="quiet">Quiet</option>
-                  <option value="dormant">Dormant</option>
-                </select>
-              </label>
-              <label class="field admin-toolbar-field admin-toolbar-field-compact">
-                <span>Sort</span>
-                <select id="adminClientSort" class="invite-select">
-                  <option value="recent">Latest generation</option>
-                  <option value="revenue">Revenue</option>
-                  <option value="profit">Profit</option>
-                  <option value="mrr">MRR</option>
-                  <option value="signup">Registration date</option>
-                  <option value="volume">Parcels / month</option>
-                </select>
-              </label>
+              <button type="button" class="btn btn-primary btn-sm" id="openAdminClientsModal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 10h8"/><path d="M8 14h6"/></svg>
+                <span>Open Client Workspace</span>
+              </button>
             </div>
           </div>
-          <div class="admin-clients-empty" id="adminClientsEmpty">No client accounts yet.</div>
-          <div class="admin-clients-list" id="adminClientsList"></div>
+          <div class="admin-workspace-card">
+            <div class="admin-workspace-card-title">Client Overview</div>
+            <div class="admin-workspace-summary mono" id="adminClientsWorkspaceSummary">No client accounts yet.</div>
+          </div>
+        </div>
+
+        <div class="shopify-settings-overlay is-closed" id="adminClientsModal">
+          <div class="shopify-settings-modal admin-workspace-modal admin-client-workspace-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Client Overview</span>
+              <button type="button" class="csv-modal-close" id="adminClientsClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body admin-workspace-modal-body admin-clients-modal-body">
+              <div class="admin-clients-toolbar">
+                <label class="field admin-toolbar-field">
+                  <span>Search</span>
+                  <input type="text" id="adminClientSearch" placeholder="Company, contact, email, customer ID" />
+                </label>
+                <label class="field admin-toolbar-field admin-toolbar-field-compact">
+                  <span>Activity</span>
+                  <select id="adminClientFilter" class="invite-select">
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="quiet">Quiet</option>
+                    <option value="dormant">Dormant</option>
+                  </select>
+                </label>
+                <label class="field admin-toolbar-field admin-toolbar-field-compact">
+                  <span>Sort</span>
+                  <select id="adminClientSort" class="invite-select">
+                    <option value="recent">Latest generation</option>
+                    <option value="revenue">Revenue</option>
+                    <option value="profit">Profit</option>
+                    <option value="mrr">MRR</option>
+                    <option value="signup">Registration date</option>
+                    <option value="volume">Parcels / month</option>
+                  </select>
+                </label>
+              </div>
+              <div class="admin-clients-empty" id="adminClientsEmpty">No client accounts yet.</div>
+              <div class="admin-clients-list" id="adminClientsList"></div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="adminClientsCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
