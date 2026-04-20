@@ -19616,30 +19616,8 @@ async function downloadTopupInvoicePdf(button, topupId) {
         && String(variant?.objectPath || variant?.fullPath || "").trim()
       );
     };
-    const renderInvoiceFromDetail = async (invoiceRecord) => {
-      const filenameReference = String(
-        invoiceRecord?.reference
-        || invoiceRecord?.invoice_number
-        || invoiceRecord?.id
-      ).trim() || String(invoiceRecord?.id || "").trim();
-      const exportData = await buildInvoicePdfExportFromViewModel(
-        buildBillingInvoiceViewModel(invoiceRecord, { reminderStage: 0 }),
-        buildInvoiceVariantPdfFilename(filenameReference, 0),
-        {
-          preferServerRender: false,
-          allowRasterFallback: true,
-        }
-      );
-      if (!exportData?.blob || !(exportData.blob instanceof Blob) || Number(exportData.blob.size || 0) <= 0) {
-        throw new Error(tr("Could not load a valid invoice PDF."));
-      }
-      return {
-        blob: exportData.blob,
-        filename: exportData.filename || buildInvoicePdfFilenameFromReference(filenameReference),
-      };
-    };
 
-    let invoiceRecord = await loadInvoiceDetail(linkedInvoiceId).catch(async (error) => {
+    const invoiceRecord = await loadInvoiceDetail(linkedInvoiceId).catch(async (error) => {
       const repaired = await repairBillingTopupInvoice(safeTopupId);
       const repairedInvoiceId = String(
         repaired?.topup?.invoice_id || repaired?.invoice?.id || linkedInvoiceId
@@ -19659,7 +19637,7 @@ async function downloadTopupInvoicePdf(button, topupId) {
       }).catch(() => null);
     }
     if (!result?.blob) {
-      result = await renderInvoiceFromDetail(invoiceRecord);
+      result = await fetchBillingInvoicePdfBlob(linkedInvoiceId);
     }
     if (!result?.blob || !(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
       throw new Error(tr("Could not load a valid invoice PDF."));
