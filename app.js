@@ -19069,21 +19069,26 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
 
+function parseHexChannel(channel, fallback) {
+  const parsed = Number.parseInt(channel, 16);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function parseHexColorToRgb(value) {
   const hex = String(value || "").trim().replace(/^#/, "");
   if (!hex) return { r: 119, g: 71, b: 227 };
   if (hex.length === 3 || hex.length === 4) {
     return {
-      r: Number.parseInt(hex[0] + hex[0], 16) || 119,
-      g: Number.parseInt(hex[1] + hex[1], 16) || 71,
-      b: Number.parseInt(hex[2] + hex[2], 16) || 227,
+      r: parseHexChannel(hex[0] + hex[0], 119),
+      g: parseHexChannel(hex[1] + hex[1], 71),
+      b: parseHexChannel(hex[2] + hex[2], 227),
     };
   }
   if (hex.length === 6 || hex.length === 8) {
     return {
-      r: Number.parseInt(hex.slice(0, 2), 16) || 119,
-      g: Number.parseInt(hex.slice(2, 4), 16) || 71,
-      b: Number.parseInt(hex.slice(4, 6), 16) || 227,
+      r: parseHexChannel(hex.slice(0, 2), 119),
+      g: parseHexChannel(hex.slice(2, 4), 71),
+      b: parseHexChannel(hex.slice(4, 6), 227),
     };
   }
   return { r: 119, g: 71, b: 227 };
