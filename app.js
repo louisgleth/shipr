@@ -469,6 +469,7 @@ const POST_TEMPLATE_ACCENT_HEX = "#7747E3";
 const POST_TEMPLATE_TEXT_HEX = "#F8F7FF";
 const POST_TEMPLATE_MONO_HEX = "#8E909B";
 const POST_TEMPLATE_AMOUNT_HEX = "#88EA84";
+const POST_COLLAB_SHIPIDE_LOCKUP_ASSET = "assets/shipide-collab-lockup.svg";
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
@@ -20373,6 +20374,11 @@ async function ensureCurrentPostStudioAssetsReady() {
       studio.partnerLogo.dataUrl
     ).catch(() => null);
   }
+  if (studio.template === "collab") {
+    await loadPostStudioImageResource("post-collab-shipide-lockup", POST_COLLAB_SHIPIDE_LOCKUP_ASSET).catch(
+      () => null
+    );
+  }
 }
 
 function syncPostStudioTemplateChips() {
@@ -20603,6 +20609,17 @@ function postDrawImageContain(ctx, image, x, y, boxWidth, boxHeight) {
   return { width: drawWidth, height: drawHeight, x: drawX, y: drawY };
 }
 
+function postMeasureImageFit(image, maxWidth, maxHeight) {
+  if (!image || !image.naturalWidth || !image.naturalHeight) {
+    return { width: 0, height: 0 };
+  }
+  const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight, 1);
+  return {
+    width: image.naturalWidth * scale,
+    height: image.naturalHeight * scale,
+  };
+}
+
 function drawPostStudioTitlePost1(ctx, data) {
   postDrawEyebrowGroup(ctx, {
     text: data.eyebrow,
@@ -20683,104 +20700,95 @@ function drawPostStudioEarnings(ctx, data) {
 
 function drawPostStudioWithText(ctx, data) {
   const titleText = postFitSingleLineText(ctx, data.title, {
-    fontSize: 50,
-    minFontSize: 24,
-    maxWidth: 480,
+    fontSize: 56,
+    minFontSize: 28,
+    maxWidth: 500,
     fontWeight: 400,
+    fontFamily: '"Creato Display Regular", "Creato Display Light", sans-serif',
   });
   const timeText = postFitSingleLineText(ctx, data.time, {
-    fontSize: 44,
+    fontSize: 48,
     minFontSize: 22,
     maxWidth: 190,
     fontWeight: 300,
+    fontFamily: '"Creato Display Light", sans-serif',
   });
   const descriptionText = postFitSingleLineText(ctx, data.description, {
-    fontSize: 32,
+    fontSize: 35,
     minFontSize: 20,
     maxWidth: 540,
-    fontWeight: 400,
+    fontWeight: 300,
+    fontFamily: '"Creato Display Light", sans-serif',
   });
   ctx.save();
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
   ctx.font = titleText.font;
   ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
-  ctx.fillText(titleText.text, 294, 122);
+  ctx.fillText(titleText.text, 294, 182);
   ctx.font = descriptionText.font;
-  ctx.fillText(descriptionText.text, 294, 173);
+  ctx.fillText(descriptionText.text, 294, 231);
   ctx.font = timeText.font;
   ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#D6D0F4"), 0.5);
   ctx.textAlign = "right";
-  ctx.fillText(timeText.text, 1064, 116);
+  ctx.fillText(timeText.text, 1064, 178);
   ctx.restore();
 }
 
 function drawPostStudioCollab(ctx, studio, width, height) {
+  const shipideLockup = getLoadedPostStudioImage("post-collab-shipide-lockup");
   const partnerLogoKey = studio.partnerLogo?.dataUrl ? `partner:${studio.partnerLogo.dataUrl}` : "";
   const partnerLogo = partnerLogoKey ? getLoadedPostStudioImage(partnerLogoKey) : null;
-  const groupCenterY = 154;
-  const markSize = 80;
-  const wordGap = 20;
+  const groupCenterY = Math.round(height * 0.46);
   const separatorGapLeft = 44;
   const separatorGapRight = 42;
-  const partnerBounds = { width: 300, height: 110 };
-  let partnerDisplayWidth = 214;
-  let partnerDisplayHeight = 92;
-  if (partnerLogo?.naturalWidth && partnerLogo?.naturalHeight) {
-    const scale = Math.min(
-      partnerBounds.width / partnerLogo.naturalWidth,
-      partnerBounds.height / partnerLogo.naturalHeight,
-      1
-    );
-    partnerDisplayWidth = partnerLogo.naturalWidth * scale;
-    partnerDisplayHeight = partnerLogo.naturalHeight * scale;
-  }
+  const shipideBounds = { width: 360, height: 74 };
+  const shipideDisplay = shipideLockup
+    ? postMeasureImageFit(shipideLockup, shipideBounds.width, shipideBounds.height)
+    : { width: 316, height: 74 };
+  const partnerBounds = { width: 280, height: shipideDisplay.height };
+  const partnerDisplay = partnerLogo
+    ? postMeasureImageFit(partnerLogo, partnerBounds.width, partnerBounds.height)
+    : { width: 214, height: shipideDisplay.height };
 
   ctx.save();
-  ctx.font = '400 86px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  const shipideMetrics = postMeasureText(ctx, "Shipide");
-  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
   const separatorMetrics = postMeasureText(ctx, "×");
 
   const totalWidth =
-    markSize +
-    wordGap +
-    shipideMetrics.width +
+    shipideDisplay.width +
     separatorGapLeft +
     separatorMetrics.width +
     separatorGapRight +
-    partnerDisplayWidth;
+    partnerDisplay.width;
   const startX = Math.round((width - totalWidth) / 2);
 
-  const markX = startX;
-  const markY = groupCenterY - markSize / 2;
-  postDrawShipideMark(ctx, markX, markY, markSize, POST_TEMPLATE_TEXT_HEX, 1);
+  const shipideX = startX;
+  const shipideY = groupCenterY - shipideDisplay.height / 2;
+  if (shipideLockup) {
+    ctx.drawImage(shipideLockup, shipideX, shipideY, shipideDisplay.width, shipideDisplay.height);
+  } else {
+    postDrawShipideMark(ctx, shipideX, shipideY, shipideDisplay.height, POST_TEMPLATE_TEXT_HEX, 1);
+  }
 
-  ctx.font = '400 86px "Creato Display Regular", "Creato Display Light", sans-serif';
-  ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
-  const shipideBaselineY = groupCenterY + shipideMetrics.ascent / 2 - shipideMetrics.descent / 2;
-  const shipideX = markX + markSize + wordGap;
-  ctx.fillText("Shipide", shipideX, shipideBaselineY);
-
-  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
   ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.28);
-  const separatorX = shipideX + shipideMetrics.width + separatorGapLeft;
+  const separatorX = shipideX + shipideDisplay.width + separatorGapLeft;
   const separatorBaselineY =
     groupCenterY + separatorMetrics.ascent / 2 - separatorMetrics.descent / 2;
   ctx.fillText("×", separatorX, separatorBaselineY);
 
   const partnerX = separatorX + separatorMetrics.width + separatorGapRight;
-  const partnerY = groupCenterY - partnerDisplayHeight / 2;
+  const partnerY = groupCenterY - partnerDisplay.height / 2;
   if (partnerLogo) {
-    ctx.drawImage(partnerLogo, partnerX, partnerY, partnerDisplayWidth, partnerDisplayHeight);
+    ctx.drawImage(partnerLogo, partnerX, partnerY, partnerDisplay.width, partnerDisplay.height);
   } else {
     ctx.save();
     ctx.strokeStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_ACCENT_HEX), 0.48);
     ctx.setLineDash([10, 8]);
     ctx.lineWidth = 2;
-    postRoundRectPath(ctx, partnerX, partnerY, partnerDisplayWidth, partnerDisplayHeight, 18);
+    postRoundRectPath(ctx, partnerX, partnerY, partnerDisplay.width, partnerDisplay.height, 18);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.font = '400 24px "PT Mono", monospace';
@@ -20789,8 +20797,8 @@ function drawPostStudioCollab(ctx, studio, width, height) {
     ctx.textBaseline = "middle";
     ctx.fillText(
       "Partner logo",
-      partnerX + partnerDisplayWidth / 2,
-      partnerY + partnerDisplayHeight / 2
+      partnerX + partnerDisplay.width / 2,
+      partnerY + partnerDisplay.height / 2
     );
     ctx.restore();
   }
