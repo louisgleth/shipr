@@ -1629,19 +1629,11 @@
           <div>
             <h2>Post</h2>
             <p class="panel-sub">
-              Build the LinkedIn visual first: preview the final 1200 x 627 export, tune the animated background, then freeze and export a static PNG.
+              Build the LinkedIn visual from fixed base templates: place the text in the right composition, preview the final 1200 x 627 export, and export a clean static PNG.
             </p>
           </div>
           <div class="reports-page-actions post-page-actions">
             <div class="post-page-format-pill">1200 x 627 export</div>
-            <button type="button" class="btn btn-secondary btn-sm" id="postShuffleButton">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-              <span>Shuffle</span>
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" id="postPreviewToggle">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
-              <span>Pause</span>
-            </button>
             <button type="button" class="btn btn-primary btn-sm" id="postExportButton">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>
               <span>Export PNG</span>
@@ -1658,9 +1650,9 @@
             <div class="post-stage-card-head">
               <div>
                 <div class="preview-title">Visual Preview</div>
-                <div class="post-stage-meta mono" id="postStageMeta">Live canvas at exact export resolution.</div>
+                <div class="post-stage-meta mono" id="postStageMeta">Template preview at exact export resolution.</div>
               </div>
-              <div class="post-stage-status" id="postStageStatus">Live preview enabled</div>
+              <div class="post-stage-status" id="postStageStatus">Ready for export</div>
             </div>
             <div class="post-stage-shell">
               <div class="post-stage-frame">
@@ -1668,7 +1660,7 @@
               </div>
             </div>
             <div class="post-stage-foot mono">
-              The canvas below is the real export surface. Pausing freezes the exact frame that will be exported.
+              The canvas below is the real export surface. Base artwork, text placement, and logo overlays are all rendered directly on the export canvas.
             </div>
           </section>
 
@@ -1676,75 +1668,58 @@
             <article class="reports-card post-control-card">
               <div class="post-control-head">
                 <div>
-                  <div class="preview-title">Post Content</div>
+                  <div class="preview-title">Template System</div>
                   <p class="panel-sub post-control-sub">
-                    Shape the static artwork now. LinkedIn generation and posting can plug into this later.
+                    Each template keeps its own composition rules, so text and decorative elements stay locked to the right visual system.
                   </p>
                 </div>
               </div>
-              <div class="post-control-grid">
-                <label class="field">
-                  <span>Brand</span>
-                  <input type="text" id="postBrandInput" maxlength="48" placeholder="Shipide" />
-                </label>
-                <label class="field">
-                  <span>Eyebrow</span>
-                  <input type="text" id="postEyebrowInput" maxlength="64" placeholder="Outbound engine" />
-                </label>
-                <label class="field post-field-wide">
-                  <span>Headline</span>
-                  <textarea id="postHeadlineInput" rows="3" placeholder="The line that carries the visual."></textarea>
-                </label>
-                <label class="field post-field-wide">
-                  <span>Support Copy</span>
-                  <textarea id="postBodyInput" rows="4" placeholder="Short supporting copy under the headline."></textarea>
-                </label>
-                <label class="field">
-                  <span>Footer</span>
-                  <input type="text" id="postFooterInput" maxlength="80" placeholder="shipide.com" />
-                </label>
-                <label class="field">
-                  <span>Text Alignment</span>
-                  <select id="postTextAlignInput">
-                    <option value="left">Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
-                  </select>
-                </label>
+              <div class="post-template-switch" id="postTemplateSwitch" role="tablist" aria-label="Post template">
+                <button type="button" class="post-template-chip is-active" data-post-template="titlepost1">Title Post 1</button>
+                <button type="button" class="post-template-chip" data-post-template="titlepost2">Title Post 2</button>
+                <button type="button" class="post-template-chip" data-post-template="earnings">Earnings</button>
+                <button type="button" class="post-template-chip" data-post-template="withtext1">Notification</button>
+                <button type="button" class="post-template-chip" data-post-template="collab">Collab</button>
+              </div>
+              <div class="post-template-description mono" id="postTemplateDescription">
+                Left-aligned headline composition with a PT Mono header above the main title.
               </div>
             </article>
 
             <article class="reports-card post-control-card">
               <div class="post-control-head">
-                <div class="preview-title">Background System</div>
-                <div class="post-control-inline mono">ReactBits-inspired modes</div>
+                <div>
+                  <div class="preview-title">Template Content</div>
+                  <p class="panel-sub post-control-sub">
+                    Only the fields that belong to the active layout appear here, so each design keeps its intended spacing and hierarchy.
+                  </p>
+                </div>
               </div>
-              <div class="post-mode-switch" id="postModeSwitch" role="tablist" aria-label="Background mode">
-                <button type="button" class="post-mode-chip is-active" data-post-mode="pixelSnow">Pixel Snow</button>
-                <button type="button" class="post-mode-chip" data-post-mode="particles">Particles</button>
-                <button type="button" class="post-mode-chip" data-post-mode="dither">Dither</button>
-                <button type="button" class="post-mode-chip" data-post-mode="shapeGrid">Shape Grid</button>
-                <button type="button" class="post-mode-chip" data-post-mode="pixelBlast">Pixel Blast</button>
+              <div class="post-template-fields" id="postTemplateFields"></div>
+            </article>
+
+            <article class="reports-card post-control-card" id="postPartnerLogoCard">
+              <div class="post-control-head">
+                <div>
+                  <div class="preview-title">Partner Logo</div>
+                  <p class="panel-sub post-control-sub">
+                    The collab template centers one lockup: Shipide, the separator, and the uploaded partner logo.
+                  </p>
+                </div>
+                <div class="post-control-inline mono">Collab only</div>
               </div>
-              <div class="post-color-grid">
-                <label class="field">
-                  <span>Backdrop</span>
-                  <input type="color" id="postBackgroundColorInput" value="#0f172a" />
+              <div class="post-upload-shell">
+                <label class="btn btn-secondary btn-sm post-upload-button">
+                  <input type="file" id="postPartnerLogoInput" accept="image/*" hidden />
+                  <span>Upload Logo</span>
                 </label>
-                <label class="field">
-                  <span>Accent</span>
-                  <input type="color" id="postAccentColorInput" value="#8ec5ff" />
-                </label>
-                <label class="field">
-                  <span>Text</span>
-                  <input type="color" id="postTextColorInput" value="#f8fafc" />
-                </label>
-                <label class="field">
-                  <span>Overlay</span>
-                  <input type="range" id="postOverlayOpacityInput" min="0" max="100" step="1" value="84" />
-                </label>
+                <button type="button" class="btn btn-ghost btn-sm" id="postPartnerLogoClear">Clear</button>
               </div>
-              <div class="post-mode-controls" id="postModeControls"></div>
+              <div class="post-upload-preview is-empty" id="postPartnerLogoPreviewWrap">
+                <img id="postPartnerLogoPreview" alt="Partner logo preview" />
+                <div class="post-upload-preview-empty mono">No partner logo selected</div>
+              </div>
+              <div class="post-upload-meta mono" id="postPartnerLogoMeta">Use a transparent PNG or SVG-style raster export for the cleanest lockup.</div>
             </article>
 
             <article class="reports-card post-control-card">
@@ -1761,7 +1736,7 @@
                 <textarea id="postCaptionInput" rows="8" placeholder="Draft the caption, hook, and CTA here."></textarea>
               </label>
               <div class="post-caption-note mono">
-                Nothing posts yet. This page is the visual studio + content draft skeleton for the automation that comes next.
+                Nothing posts yet. This page is now the template-driven visual studio + caption draft skeleton for the automation that comes next.
               </div>
             </article>
           </div>

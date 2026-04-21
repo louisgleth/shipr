@@ -329,6 +329,146 @@ const POST_MODE_CONTROL_DEFS = Object.freeze({
     { key: "edgeFade", label: "Edge Fade", type: "range", min: 0, max: 0.5, step: 0.01, format: "percent" },
   ],
 });
+const POST_TEMPLATE_DEFS = Object.freeze({
+  titlepost1: {
+    label: "Title Post 1",
+    asset: "assets/titlepost1-without.png",
+    description: "Left-aligned headline composition with the header group and title pinned to the lower-left block.",
+    fields: [
+      {
+        key: "eyebrow",
+        label: "Header",
+        type: "text",
+        maxLength: 72,
+        placeholder: "Header Here",
+      },
+      {
+        key: "headline",
+        label: "Title",
+        type: "textarea",
+        rows: 3,
+        maxLength: 120,
+        placeholder: "Title of the Post Here",
+        wide: true,
+      },
+    ],
+  },
+  titlepost2: {
+    label: "Title Post 2",
+    asset: "assets/titlepost2-without.png",
+    description: "Centered headline composition where the purple square and PT Mono header stay centered as one group above the title.",
+    fields: [
+      {
+        key: "eyebrow",
+        label: "Header",
+        type: "text",
+        maxLength: 72,
+        placeholder: "Header Here",
+      },
+      {
+        key: "headline",
+        label: "Title",
+        type: "textarea",
+        rows: 3,
+        maxLength: 120,
+        placeholder: "Title of the Post Here",
+        wide: true,
+      },
+    ],
+  },
+  earnings: {
+    label: "Earnings",
+    asset: "assets/earnings-without.png",
+    description: "Savings metric layout with a small PT Mono header and one oversized amount locked to the left safe area.",
+    fields: [
+      {
+        key: "eyebrow",
+        label: "Header",
+        type: "text",
+        maxLength: 72,
+        placeholder: "February 2026 Savings",
+        wide: true,
+      },
+      {
+        key: "amount",
+        label: "Amount",
+        type: "text",
+        maxLength: 40,
+        placeholder: "€96.000,50",
+        wide: true,
+      },
+    ],
+  },
+  withtext1: {
+    label: "Notification",
+    asset: "assets/withtext1-without.png",
+    description: "Notification card composition with a fixed left icon, a text block in the middle, and a right-aligned time label.",
+    fields: [
+      {
+        key: "title",
+        label: "Title",
+        type: "text",
+        maxLength: 64,
+        placeholder: "Title here",
+      },
+      {
+        key: "time",
+        label: "Time",
+        type: "text",
+        maxLength: 24,
+        placeholder: "9:41 AM",
+      },
+      {
+        key: "description",
+        label: "Description",
+        type: "text",
+        maxLength: 80,
+        placeholder: "Description here",
+        wide: true,
+      },
+    ],
+  },
+  collab: {
+    label: "Collab",
+    asset: "assets/collabost-without.png",
+    description: "Centered collaboration lockup with the Shipide brand block, separator, and uploaded partner logo measured as one group.",
+    fields: [],
+  },
+});
+const POST_TEMPLATE_TEXT_DEFAULTS = Object.freeze({
+  titlepost1: {
+    eyebrow: "Header Here",
+    headline: "Title of the Post Here",
+  },
+  titlepost2: {
+    eyebrow: "Header Here",
+    headline: "Title of the Post Here",
+  },
+  earnings: {
+    eyebrow: "February 2026 Savings",
+    amount: "€96.000,50",
+  },
+  withtext1: {
+    title: "Title here",
+    description: "Description here",
+    time: "9:41 AM",
+  },
+  collab: {},
+});
+const POST_STUDIO_TEMPLATE_DEFAULTS = Object.freeze({
+  template: "titlepost1",
+  templates: POST_TEMPLATE_TEXT_DEFAULTS,
+  partnerLogo: {
+    name: "",
+    dataUrl: "",
+  },
+  caption:
+    "Hook: what makes the post worth stopping for?\n\nInsight: what is the single takeaway?\n\nCTA: what should happen next?",
+});
+const POST_TEMPLATE_ACCENT_HEX = "#7747E3";
+const POST_TEMPLATE_TEXT_HEX = "#F8F7FF";
+const POST_TEMPLATE_MONO_HEX = "#8E909B";
+const POST_TEMPLATE_AMOUNT_HEX = "#88EA84";
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
@@ -2062,20 +2202,16 @@ const reportsPageSection = document.getElementById("reportsPageSection");
 const postVisualCanvas = document.getElementById("postVisualCanvas");
 const postStageMeta = document.getElementById("postStageMeta");
 const postStageStatus = document.getElementById("postStageStatus");
-const postPreviewToggleButton = document.getElementById("postPreviewToggle");
 const postExportButton = document.getElementById("postExportButton");
-const postShuffleButton = document.getElementById("postShuffleButton");
-const postModeSwitch = document.getElementById("postModeSwitch");
-const postModeControls = document.getElementById("postModeControls");
-const postBrandInput = document.getElementById("postBrandInput");
-const postEyebrowInput = document.getElementById("postEyebrowInput");
-const postHeadlineInput = document.getElementById("postHeadlineInput");
-const postBodyInput = document.getElementById("postBodyInput");
-const postFooterInput = document.getElementById("postFooterInput");
-const postTextAlignInput = document.getElementById("postTextAlignInput");
-const postBackgroundColorInput = document.getElementById("postBackgroundColorInput");
-const postAccentColorInput = document.getElementById("postAccentColorInput");
-const postTextColorInput = document.getElementById("postTextColorInput");
+const postTemplateSwitch = document.getElementById("postTemplateSwitch");
+const postTemplateDescription = document.getElementById("postTemplateDescription");
+const postTemplateFields = document.getElementById("postTemplateFields");
+const postPartnerLogoCard = document.getElementById("postPartnerLogoCard");
+const postPartnerLogoInput = document.getElementById("postPartnerLogoInput");
+const postPartnerLogoClearButton = document.getElementById("postPartnerLogoClear");
+const postPartnerLogoPreviewWrap = document.getElementById("postPartnerLogoPreviewWrap");
+const postPartnerLogoPreview = document.getElementById("postPartnerLogoPreview");
+const postPartnerLogoMeta = document.getElementById("postPartnerLogoMeta");
 const postOverlayOpacityInput = document.getElementById("postOverlayOpacityInput");
 const postCaptionInput = document.getElementById("postCaptionInput");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
@@ -2588,6 +2724,8 @@ let postStudioLastRenderMs = 0;
 let postStudioPointer = { x: 0.5, y: 0.5, active: false };
 let postStudioRipples = [];
 let postStudioState = null;
+let postStudioBaseAssetPromise = null;
+let postStudioImageCache = new Map();
 let postBackgroundRenderer = null;
 let postBackgroundRendererPromise = null;
 let postBackgroundModulePromise = null;
@@ -20143,6 +20281,690 @@ function initializePostStudio() {
       postBackgroundRenderer?.renderOnce?.();
     }
     drawPostStudioFrame();
+  });
+}
+
+function clonePostStudioState() {
+  return JSON.parse(JSON.stringify(POST_STUDIO_TEMPLATE_DEFAULTS));
+}
+
+function getPostStudioState() {
+  if (!postStudioState) {
+    postStudioState = clonePostStudioState();
+  }
+  return postStudioState;
+}
+
+function getPostStudioTemplateConfig(templateKey = getPostStudioState().template) {
+  return POST_TEMPLATE_DEFS[templateKey] || POST_TEMPLATE_DEFS.titlepost1;
+}
+
+function getPostStudioTemplateData(templateKey = getPostStudioState().template) {
+  const studio = getPostStudioState();
+  if (!studio.templates || typeof studio.templates !== "object") {
+    studio.templates = {};
+  }
+  if (!studio.templates[templateKey]) {
+    studio.templates[templateKey] = JSON.parse(
+      JSON.stringify(POST_TEMPLATE_TEXT_DEFAULTS[templateKey] || {})
+    );
+  }
+  return studio.templates[templateKey];
+}
+
+function loadPostStudioImageResource(cacheKey, src) {
+  if (!cacheKey || !src) return Promise.resolve(null);
+  const existing = postStudioImageCache.get(cacheKey);
+  if (existing?.image) return Promise.resolve(existing.image);
+  if (existing?.promise) return existing.promise;
+  const promise = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      postStudioImageCache.set(cacheKey, { image });
+      if (postStudioInitialized) {
+        drawPostStudioFrame();
+      }
+      resolve(image);
+    };
+    image.onerror = () => {
+      postStudioImageCache.delete(cacheKey);
+      reject(new Error(`Could not load post image: ${src}`));
+    };
+    image.src = src;
+  });
+  postStudioImageCache.set(cacheKey, { promise });
+  return promise;
+}
+
+function getLoadedPostStudioImage(cacheKey) {
+  return postStudioImageCache.get(cacheKey)?.image || null;
+}
+
+function ensurePostStudioBaseAssets() {
+  if (postStudioBaseAssetPromise) return postStudioBaseAssetPromise;
+  postStudioBaseAssetPromise = Promise.all(
+    Object.entries(POST_TEMPLATE_DEFS).map(([templateKey, config]) =>
+      loadPostStudioImageResource(templateKey, config.asset).catch(() => null)
+    )
+  ).then(() => true);
+  return postStudioBaseAssetPromise;
+}
+
+function ensurePostStudioFontsReady() {
+  if (document.fonts?.ready) {
+    return document.fonts.ready.catch(() => undefined);
+  }
+  return Promise.resolve();
+}
+
+async function ensureCurrentPostStudioAssetsReady() {
+  const studio = getPostStudioState();
+  await Promise.all([ensurePostStudioFontsReady(), ensurePostStudioBaseAssets()]);
+  await loadPostStudioImageResource(studio.template, getPostStudioTemplateConfig(studio.template).asset).catch(
+    () => null
+  );
+  if (studio.template === "collab" && studio.partnerLogo?.dataUrl) {
+    await loadPostStudioImageResource(
+      `partner:${studio.partnerLogo.dataUrl}`,
+      studio.partnerLogo.dataUrl
+    ).catch(() => null);
+  }
+}
+
+function syncPostStudioTemplateChips() {
+  if (!postTemplateSwitch) return;
+  const activeTemplate = getPostStudioState().template;
+  postTemplateSwitch.querySelectorAll("[data-post-template]").forEach((button) => {
+    const isActive = String(button.getAttribute("data-post-template") || "") === activeTemplate;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+function renderPostStudioTemplateFields() {
+  if (!postTemplateFields) return;
+  const templateKey = getPostStudioState().template;
+  const config = getPostStudioTemplateConfig(templateKey);
+  const data = getPostStudioTemplateData(templateKey);
+  if (!config.fields.length) {
+    postTemplateFields.innerHTML = `
+      <div class="post-template-helper">
+        This layout uses only the uploaded partner logo. The lockup is centered automatically on the canvas.
+      </div>
+    `;
+    return;
+  }
+  postTemplateFields.innerHTML = config.fields
+    .map((field) => {
+      const value = String(data[field.key] || "");
+      const fieldClass = field.wide ? "field post-template-field-wide" : "field";
+      const maxLength = Number(field.maxLength) > 0 ? ` maxlength="${Number(field.maxLength)}"` : "";
+      if (field.type === "textarea") {
+        return `
+          <label class="${fieldClass}">
+            <span>${escapeHtml(field.label)}</span>
+            <textarea
+              data-post-field-key="${escapeHtml(field.key)}"
+              rows="${Number(field.rows) || 3}"
+              placeholder="${escapeHtml(field.placeholder || "")}"${maxLength}
+            >${escapeHtml(value)}</textarea>
+          </label>
+        `;
+      }
+      return `
+        <label class="${fieldClass}">
+          <span>${escapeHtml(field.label)}</span>
+          <input
+            type="text"
+            data-post-field-key="${escapeHtml(field.key)}"
+            value="${escapeHtml(value)}"
+            placeholder="${escapeHtml(field.placeholder || "")}"${maxLength}
+          />
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function refreshPostStudioPartnerLogoCard() {
+  const studio = getPostStudioState();
+  const collabActive = studio.template === "collab";
+  postPartnerLogoCard?.classList.toggle("is-hidden", !collabActive);
+  const hasLogo = Boolean(studio.partnerLogo?.dataUrl);
+  if (postPartnerLogoPreviewWrap) {
+    postPartnerLogoPreviewWrap.classList.toggle("is-ready", hasLogo);
+    postPartnerLogoPreviewWrap.classList.toggle("is-empty", !hasLogo);
+  }
+  if (postPartnerLogoPreview instanceof HTMLImageElement) {
+    postPartnerLogoPreview.src = hasLogo ? studio.partnerLogo.dataUrl : "";
+  }
+  if (postPartnerLogoMeta) {
+    postPartnerLogoMeta.textContent = hasLogo
+      ? `${studio.partnerLogo.name || "Partner logo ready"}`
+      : "Use a transparent PNG or SVG-style raster export for the cleanest lockup.";
+  }
+  if (postPartnerLogoClearButton instanceof HTMLButtonElement) {
+    postPartnerLogoClearButton.disabled = !hasLogo;
+  }
+}
+
+function refreshPostStudioStatusUi() {
+  const studio = getPostStudioState();
+  const config = getPostStudioTemplateConfig(studio.template);
+  const needsPartnerLogo = studio.template === "collab" && !studio.partnerLogo?.dataUrl;
+  if (postStageMeta) {
+    postStageMeta.textContent = config.description;
+  }
+  if (postTemplateDescription) {
+    postTemplateDescription.textContent = config.description;
+  }
+  if (postStageStatus) {
+    postStageStatus.textContent = needsPartnerLogo ? "Partner logo required" : "Ready for export";
+    postStageStatus.classList.toggle("is-warning", needsPartnerLogo);
+  }
+}
+
+function updatePostStudioInputsFromState() {
+  if (postCaptionInput) {
+    postCaptionInput.value = String(getPostStudioState().caption || "");
+  }
+  syncPostStudioTemplateChips();
+  renderPostStudioTemplateFields();
+  refreshPostStudioPartnerLogoCard();
+  refreshPostStudioStatusUi();
+}
+
+function updatePostStudioCopyFromInputs() {
+  if (postCaptionInput) {
+    getPostStudioState().caption = String(postCaptionInput.value || "");
+  }
+}
+
+function syncPostStudioAnimation() {
+  if (!postStudioInitialized) return;
+  refreshPostStudioStatusUi();
+  if (currentMainView === "post") {
+    drawPostStudioFrame();
+  }
+}
+
+function setPostStudioTemplate(templateKey) {
+  if (!POST_TEMPLATE_DEFS[templateKey]) return;
+  getPostStudioState().template = templateKey;
+  updatePostStudioInputsFromState();
+  void ensureCurrentPostStudioAssetsReady();
+  drawPostStudioFrame();
+}
+
+function postGetFontPixelSize(font) {
+  const match = /(\d+(?:\.\d+)?)px/.exec(String(font || ""));
+  return match ? Number(match[1]) : 16;
+}
+
+function postMeasureText(ctx, text) {
+  const metrics = ctx.measureText(String(text || ""));
+  const fontSize = postGetFontPixelSize(ctx.font);
+  const ascent = metrics.actualBoundingBoxAscent || fontSize * 0.78;
+  const descent = metrics.actualBoundingBoxDescent || fontSize * 0.22;
+  return {
+    width: metrics.width,
+    ascent,
+    descent,
+    height: ascent + descent,
+  };
+}
+
+function postFitSingleLineText(ctx, text, options = {}) {
+  const {
+    fontFamily = '"Creato Display Regular", "Creato Display Light", sans-serif',
+    fontWeight = 400,
+    fontSize = 64,
+    minFontSize = 20,
+    maxWidth = 480,
+  } = options;
+  const safeText = String(text || "").trim();
+  let size = fontSize;
+  let fittedText = safeText;
+  while (size >= minFontSize) {
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    if (ctx.measureText(fittedText).width <= maxWidth) {
+      break;
+    }
+    size -= 2;
+  }
+  ctx.font = `${fontWeight} ${Math.max(size, minFontSize)}px ${fontFamily}`;
+  if (ctx.measureText(fittedText).width > maxWidth) {
+    fittedText = postTrimLineToWidth(ctx, fittedText, maxWidth);
+  }
+  const metrics = postMeasureText(ctx, fittedText);
+  return {
+    text: fittedText,
+    font: ctx.font,
+    metrics,
+    fontSize: postGetFontPixelSize(ctx.font),
+  };
+}
+
+function postDrawEyebrowGroup(ctx, options = {}) {
+  const {
+    text = "",
+    align = "left",
+    top = 0,
+    left = 0,
+    centerX = POST_VISUAL_DIMENSIONS.width / 2,
+    squareSize = 11,
+    gap = 14,
+    fontSize = 28,
+    squareColor = POST_TEMPLATE_ACCENT_HEX,
+    textColor = POST_TEMPLATE_MONO_HEX,
+  } = options;
+  const copy = String(text || "").trim();
+  if (!copy) return;
+  ctx.save();
+  ctx.font = `400 ${fontSize}px "PT Mono", monospace`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const metrics = postMeasureText(ctx, copy);
+  const groupHeight = Math.max(squareSize, metrics.height);
+  const totalWidth = squareSize + gap + metrics.width;
+  const groupLeft = align === "center" ? Math.round(centerX - totalWidth / 2) : left;
+  const squareY = top + (groupHeight - squareSize) / 2;
+  ctx.fillStyle = squareColor;
+  ctx.fillRect(groupLeft, squareY, squareSize, squareSize);
+  ctx.fillStyle = textColor;
+  ctx.fillText(copy, groupLeft + squareSize + gap, top + metrics.ascent);
+  ctx.restore();
+}
+
+function postDrawShipideMark(ctx, x, y, size, color, alpha = 1) {
+  const side = size * 0.62;
+  const offset = size * 0.24;
+  const lineWidth = Math.max(2, size * 0.055);
+  ctx.save();
+  ctx.strokeStyle = postRgbToCss(parseHexColorToRgb(color), alpha);
+  ctx.lineWidth = lineWidth;
+  ctx.strokeRect(x, y + offset, side, side);
+  ctx.strokeRect(x + offset, y, side, side);
+  ctx.restore();
+}
+
+function postDrawImageContain(ctx, image, x, y, boxWidth, boxHeight) {
+  if (!image || !image.naturalWidth || !image.naturalHeight) return { width: 0, height: 0 };
+  const scale = Math.min(boxWidth / image.naturalWidth, boxHeight / image.naturalHeight, 1);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (boxWidth - drawWidth) / 2;
+  const drawY = y + (boxHeight - drawHeight) / 2;
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  return { width: drawWidth, height: drawHeight, x: drawX, y: drawY };
+}
+
+function drawPostStudioTitlePost1(ctx, data) {
+  postDrawEyebrowGroup(ctx, {
+    text: data.eyebrow,
+    align: "left",
+    left: 58,
+    top: 419,
+  });
+  const headline = postFitTextBlock(ctx, data.headline, {
+    maxWidth: 930,
+    maxLines: 2,
+    fontSize: 92,
+    minFontSize: 52,
+    fontWeight: 400,
+    lineHeight: 1.02,
+  });
+  ctx.save();
+  ctx.font = headline.font;
+  ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  let cursorY = 484;
+  headline.lines.forEach((line) => {
+    ctx.fillText(line, 58, cursorY);
+    cursorY += headline.lineHeight;
+  });
+  ctx.restore();
+}
+
+function drawPostStudioTitlePost2(ctx, data, width) {
+  postDrawEyebrowGroup(ctx, {
+    text: data.eyebrow,
+    align: "center",
+    centerX: width / 2,
+    top: 224,
+  });
+  const headline = postFitTextBlock(ctx, data.headline, {
+    maxWidth: 980,
+    maxLines: 2,
+    fontSize: 90,
+    minFontSize: 50,
+    fontWeight: 400,
+    lineHeight: 1.02,
+  });
+  ctx.save();
+  ctx.font = headline.font;
+  ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  let cursorY = 276;
+  headline.lines.forEach((line) => {
+    ctx.fillText(line, width / 2, cursorY);
+    cursorY += headline.lineHeight;
+  });
+  ctx.restore();
+}
+
+function drawPostStudioEarnings(ctx, data) {
+  postDrawEyebrowGroup(ctx, {
+    text: data.eyebrow,
+    align: "left",
+    left: 70,
+    top: 71,
+  });
+  const amount = postFitSingleLineText(ctx, data.amount, {
+    fontSize: 136,
+    minFontSize: 68,
+    maxWidth: 770,
+    fontWeight: 400,
+  });
+  ctx.save();
+  ctx.font = amount.font;
+  ctx.fillStyle = POST_TEMPLATE_AMOUNT_HEX;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(amount.text, 70, 122);
+  ctx.restore();
+}
+
+function drawPostStudioWithText(ctx, data) {
+  const titleText = postFitSingleLineText(ctx, data.title, {
+    fontSize: 50,
+    minFontSize: 24,
+    maxWidth: 480,
+    fontWeight: 400,
+  });
+  const timeText = postFitSingleLineText(ctx, data.time, {
+    fontSize: 44,
+    minFontSize: 22,
+    maxWidth: 190,
+    fontWeight: 300,
+  });
+  const descriptionText = postFitSingleLineText(ctx, data.description, {
+    fontSize: 32,
+    minFontSize: 20,
+    maxWidth: 540,
+    fontWeight: 400,
+  });
+  ctx.save();
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  ctx.font = titleText.font;
+  ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
+  ctx.fillText(titleText.text, 294, 122);
+  ctx.font = descriptionText.font;
+  ctx.fillText(descriptionText.text, 294, 173);
+  ctx.font = timeText.font;
+  ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#D6D0F4"), 0.5);
+  ctx.textAlign = "right";
+  ctx.fillText(timeText.text, 1064, 116);
+  ctx.restore();
+}
+
+function drawPostStudioCollab(ctx, studio, width, height) {
+  const partnerLogoKey = studio.partnerLogo?.dataUrl ? `partner:${studio.partnerLogo.dataUrl}` : "";
+  const partnerLogo = partnerLogoKey ? getLoadedPostStudioImage(partnerLogoKey) : null;
+  const groupCenterY = 154;
+  const markSize = 80;
+  const wordGap = 20;
+  const separatorGapLeft = 44;
+  const separatorGapRight = 42;
+  const partnerBounds = { width: 300, height: 110 };
+  let partnerDisplayWidth = 214;
+  let partnerDisplayHeight = 92;
+  if (partnerLogo?.naturalWidth && partnerLogo?.naturalHeight) {
+    const scale = Math.min(
+      partnerBounds.width / partnerLogo.naturalWidth,
+      partnerBounds.height / partnerLogo.naturalHeight,
+      1
+    );
+    partnerDisplayWidth = partnerLogo.naturalWidth * scale;
+    partnerDisplayHeight = partnerLogo.naturalHeight * scale;
+  }
+
+  ctx.save();
+  ctx.font = '400 86px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const shipideMetrics = postMeasureText(ctx, "Shipide");
+  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
+  const separatorMetrics = postMeasureText(ctx, "×");
+
+  const totalWidth =
+    markSize +
+    wordGap +
+    shipideMetrics.width +
+    separatorGapLeft +
+    separatorMetrics.width +
+    separatorGapRight +
+    partnerDisplayWidth;
+  const startX = Math.round((width - totalWidth) / 2);
+
+  const markX = startX;
+  const markY = groupCenterY - markSize / 2;
+  postDrawShipideMark(ctx, markX, markY, markSize, POST_TEMPLATE_TEXT_HEX, 1);
+
+  ctx.font = '400 86px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
+  const shipideBaselineY = groupCenterY + shipideMetrics.ascent / 2 - shipideMetrics.descent / 2;
+  const shipideX = markX + markSize + wordGap;
+  ctx.fillText("Shipide", shipideX, shipideBaselineY);
+
+  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.28);
+  const separatorX = shipideX + shipideMetrics.width + separatorGapLeft;
+  const separatorBaselineY =
+    groupCenterY + separatorMetrics.ascent / 2 - separatorMetrics.descent / 2;
+  ctx.fillText("×", separatorX, separatorBaselineY);
+
+  const partnerX = separatorX + separatorMetrics.width + separatorGapRight;
+  const partnerY = groupCenterY - partnerDisplayHeight / 2;
+  if (partnerLogo) {
+    ctx.drawImage(partnerLogo, partnerX, partnerY, partnerDisplayWidth, partnerDisplayHeight);
+  } else {
+    ctx.save();
+    ctx.strokeStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_ACCENT_HEX), 0.48);
+    ctx.setLineDash([10, 8]);
+    ctx.lineWidth = 2;
+    postRoundRectPath(ctx, partnerX, partnerY, partnerDisplayWidth, partnerDisplayHeight, 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '400 24px "PT Mono", monospace';
+    ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.58);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "Partner logo",
+      partnerX + partnerDisplayWidth / 2,
+      partnerY + partnerDisplayHeight / 2
+    );
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawPostStudioFrame() {
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  const ctx = postVisualCanvas.getContext("2d");
+  if (!ctx) return;
+  const width = POST_VISUAL_DIMENSIONS.width;
+  const height = POST_VISUAL_DIMENSIONS.height;
+  const studio = getPostStudioState();
+  const templateKey = studio.template;
+  const data = getPostStudioTemplateData(templateKey);
+  const baseImage = getLoadedPostStudioImage(templateKey);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#00060F";
+  ctx.fillRect(0, 0, width, height);
+  if (baseImage) {
+    ctx.drawImage(baseImage, 0, 0, width, height);
+  }
+
+  switch (templateKey) {
+    case "titlepost2":
+      drawPostStudioTitlePost2(ctx, data, width);
+      break;
+    case "earnings":
+      drawPostStudioEarnings(ctx, data);
+      break;
+    case "withtext1":
+      drawPostStudioWithText(ctx, data);
+      break;
+    case "collab":
+      drawPostStudioCollab(ctx, studio, width, height);
+      break;
+    case "titlepost1":
+    default:
+      drawPostStudioTitlePost1(ctx, data);
+      break;
+  }
+}
+
+async function exportPostStudioPng() {
+  const studio = getPostStudioState();
+  if (studio.template === "collab" && !studio.partnerLogo?.dataUrl) {
+    showToast(tr("Upload a partner logo before exporting the collab template."), { tone: "error" });
+    return;
+  }
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  await ensureCurrentPostStudioAssetsReady();
+  drawPostStudioFrame();
+  const blob = await new Promise((resolve) => {
+    postVisualCanvas.toBlob(resolve, "image/png");
+  });
+  if (!(blob instanceof Blob)) {
+    showToast(tr("Could not export the post visual."), { tone: "error" });
+    return;
+  }
+  const partnerSlug =
+    studio.template === "collab" && studio.partnerLogo?.name
+      ? `-${String(studio.partnerLogo.name)
+          .replace(/\.[^.]+$/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")}`
+      : "";
+  const filename = `post-${studio.template}${partnerSlug}-${new Date()
+    .toISOString()
+    .slice(0, 10)}.png`;
+  downloadBlobAsFile(blob, filename);
+  showToast(tr("Post visual exported."), { tone: "success" });
+}
+
+function initializePostStudio() {
+  if (postStudioInitialized) return;
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  postStudioInitialized = true;
+  postStudioState = clonePostStudioState();
+  postVisualCanvas.width = POST_VISUAL_DIMENSIONS.width;
+  postVisualCanvas.height = POST_VISUAL_DIMENSIONS.height;
+
+  void ensurePostStudioBaseAssets();
+  void ensurePostStudioFontsReady().then(() => {
+    if (postStudioInitialized) {
+      drawPostStudioFrame();
+    }
+  });
+
+  updatePostStudioInputsFromState();
+  drawPostStudioFrame();
+
+  postTemplateSwitch?.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-post-template]") : null;
+    if (!(button instanceof HTMLElement)) return;
+    setPostStudioTemplate(String(button.dataset.postTemplate || ""));
+  });
+
+  postTemplateFields?.addEventListener("input", (event) => {
+    const target = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
+      ? event.target
+      : null;
+    if (!target) return;
+    const fieldKey = String(target.getAttribute("data-post-field-key") || "").trim();
+    if (!fieldKey) return;
+    const data = getPostStudioTemplateData();
+    data[fieldKey] = target.value;
+    drawPostStudioFrame();
+  });
+
+  postTemplateFields?.addEventListener("change", (event) => {
+    const target = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
+      ? event.target
+      : null;
+    if (!target) return;
+    const fieldKey = String(target.getAttribute("data-post-field-key") || "").trim();
+    if (!fieldKey) return;
+    const data = getPostStudioTemplateData();
+    data[fieldKey] = target.value;
+    drawPostStudioFrame();
+  });
+
+  postCaptionInput?.addEventListener("input", () => {
+    updatePostStudioCopyFromInputs();
+  });
+
+  postCaptionInput?.addEventListener("change", () => {
+    updatePostStudioCopyFromInputs();
+  });
+
+  postPartnerLogoInput?.addEventListener("change", () => {
+    const file = postPartnerLogoInput.files?.[0] || null;
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      showToast(tr("Upload an image file for the partner logo."), { tone: "error" });
+      postPartnerLogoInput.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result) {
+        showToast(tr("Could not read the partner logo."), { tone: "error" });
+        return;
+      }
+      const studio = getPostStudioState();
+      studio.partnerLogo = {
+        name: file.name,
+        dataUrl: result,
+      };
+      void loadPostStudioImageResource(`partner:${result}`, result).catch(() => {
+        showToast(tr("Could not load the partner logo."), { tone: "error" });
+      });
+      refreshPostStudioPartnerLogoCard();
+      refreshPostStudioStatusUi();
+      drawPostStudioFrame();
+    };
+    reader.onerror = () => {
+      showToast(tr("Could not read the partner logo."), { tone: "error" });
+    };
+    reader.readAsDataURL(file);
+  });
+
+  postPartnerLogoClearButton?.addEventListener("click", () => {
+    const studio = getPostStudioState();
+    studio.partnerLogo = { name: "", dataUrl: "" };
+    if (postPartnerLogoInput instanceof HTMLInputElement) {
+      postPartnerLogoInput.value = "";
+    }
+    refreshPostStudioPartnerLogoCard();
+    refreshPostStudioStatusUi();
+    drawPostStudioFrame();
+  });
+
+  postExportButton?.addEventListener("click", () => {
+    void exportPostStudioPng();
   });
 }
 
