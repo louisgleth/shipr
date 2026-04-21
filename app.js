@@ -20352,10 +20352,13 @@ function ensurePostStudioBaseAssets() {
 }
 
 function ensurePostStudioFontsReady() {
-  if (document.fonts?.ready) {
-    return document.fonts.ready.catch(() => undefined);
-  }
-  return Promise.resolve();
+  if (!document.fonts) return Promise.resolve();
+  return Promise.all([
+    document.fonts.load('400 64px "Creato Display Regular"'),
+    document.fonts.load('300 64px "Creato Display Light"'),
+    document.fonts.load('400 28px "PT Mono"'),
+    document.fonts.ready,
+  ]).catch(() => undefined);
 }
 
 async function ensureCurrentPostStudioAssetsReady() {
