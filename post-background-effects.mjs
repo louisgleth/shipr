@@ -70,13 +70,13 @@ void main() {
 }
 `;
 
-const DITHER_VERTEX = `
+const DITHER_WAVE_VERTEX = `
 void main() {
   gl_Position = vec4(position, 1.0);
 }
 `;
 
-const DITHER_FRAGMENT = `
+const DITHER_WAVE_FRAGMENT = `
 precision highp float;
 
 uniform vec2 uResolution;
@@ -85,12 +85,9 @@ uniform float uWaveSpeed;
 uniform float uWaveFrequency;
 uniform float uWaveAmplitude;
 uniform vec3 uWaveColor;
-uniform vec3 uBackgroundColor;
 uniform vec2 uMousePos;
 uniform float uMouseActive;
 uniform float uMouseRadius;
-uniform float uColorNum;
-uniform float uPixelSize;
 
 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
@@ -171,21 +168,58 @@ void main() {
     f -= 0.5 * effect;
   }
 
-  vec3 baseColor = mix(uBackgroundColor, uWaveColor, clamp(f, 0.0, 1.0));
+  vec3 color = mix(vec3(0.0), uWaveColor, f);
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
 
-  vec2 normalizedPixelSize = uPixelSize / uResolution;
-  vec2 uvPixel = normalizedPixelSize * floor(uv / normalizedPixelSize);
-  vec2 scaledCoord = floor(uvPixel * uResolution / uPixelSize);
+const DITHER_POST_VERTEX = `
+varying vec2 vUv;
+
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position, 1.0);
+}
+`;
+
+const DITHER_POST_FRAGMENT = `
+precision highp float;
+
+uniform sampler2D uInputBuffer;
+uniform vec2 uResolution;
+uniform float uColorNum;
+uniform float uPixelSize;
+
+varying vec2 vUv;
+
+const float bayerMatrix8x8[64] = float[64](
+  0.0/64.0, 48.0/64.0, 12.0/64.0, 60.0/64.0,  3.0/64.0, 51.0/64.0, 15.0/64.0, 63.0/64.0,
+  32.0/64.0, 16.0/64.0, 44.0/64.0, 28.0/64.0, 35.0/64.0, 19.0/64.0, 47.0/64.0, 31.0/64.0,
+  8.0/64.0, 56.0/64.0,  4.0/64.0, 52.0/64.0, 11.0/64.0, 59.0/64.0,  7.0/64.0, 55.0/64.0,
+  40.0/64.0, 24.0/64.0, 36.0/64.0, 20.0/64.0, 43.0/64.0, 27.0/64.0, 39.0/64.0, 23.0/64.0,
+  2.0/64.0, 50.0/64.0, 14.0/64.0, 62.0/64.0,  1.0/64.0, 49.0/64.0, 13.0/64.0, 61.0/64.0,
+  34.0/64.0, 18.0/64.0, 46.0/64.0, 30.0/64.0, 33.0/64.0, 17.0/64.0, 45.0/64.0, 29.0/64.0,
+  10.0/64.0, 58.0/64.0,  6.0/64.0, 54.0/64.0,  9.0/64.0, 57.0/64.0,  5.0/64.0, 53.0/64.0,
+  42.0/64.0, 26.0/64.0, 38.0/64.0, 22.0/64.0, 41.0/64.0, 25.0/64.0, 37.0/64.0, 21.0/64.0
+);
+
+vec3 dither(vec2 uv, vec3 color) {
+  vec2 scaledCoord = floor(uv * uResolution / uPixelSize);
   int x = int(mod(scaledCoord.x, 8.0));
   int y = int(mod(scaledCoord.y, 8.0));
   float threshold = bayerMatrix8x8[y * 8 + x] - 0.25;
-  float stepValue = 1.0 / max(1.0, uColorNum - 1.0);
-
-  vec3 color = baseColor + threshold * stepValue;
+  float stepValue = 1.0 / (uColorNum - 1.0);
+  color += threshold * stepValue;
   color = clamp(color - 0.2, 0.0, 1.0);
-  color = floor(color * max(1.0, uColorNum - 1.0) + 0.5) / max(1.0, uColorNum - 1.0);
+  return floor(color * (uColorNum - 1.0) + 0.5) / (uColorNum - 1.0);
+}
 
-  gl_FragColor = vec4(color, 1.0);
+void main() {
+  vec2 normalizedPixelSize = uPixelSize / uResolution;
+  vec2 uvPixel = normalizedPixelSize * floor(vUv / normalizedPixelSize);
+  vec4 color = texture2D(uInputBuffer, uvPixel);
+  color.rgb = dither(vUv, color.rgb);
+  gl_FragColor = color;
 }
 `;
 
@@ -923,32 +957,53 @@ class DitherEffect extends BaseEffect {
     });
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(1);
-    this.scene = new THREE.Scene();
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.uniforms = {
+    this.waveScene = new THREE.Scene();
+    this.postScene = new THREE.Scene();
+    this.waveUniforms = {
       uResolution: { value: new THREE.Vector2(width, height) },
       uTime: { value: 0 },
       uWaveSpeed: { value: 0.05 },
       uWaveFrequency: { value: 3 },
       uWaveAmplitude: { value: 0.3 },
       uWaveColor: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
-      uBackgroundColor: { value: new THREE.Vector3(0, 0, 0) },
       uMousePos: { value: new THREE.Vector2(0, 0) },
       uMouseActive: { value: 0 },
       uMouseRadius: { value: 1 },
+    };
+    this.postUniforms = {
+      uInputBuffer: { value: null },
+      uResolution: { value: new THREE.Vector2(width, height) },
       uColorNum: { value: 4 },
       uPixelSize: { value: 2 },
     };
-    this.material = new THREE.ShaderMaterial({
-      vertexShader: DITHER_VERTEX,
-      fragmentShader: DITHER_FRAGMENT,
-      uniforms: this.uniforms,
+    this.waveMaterial = new THREE.ShaderMaterial({
+      vertexShader: DITHER_WAVE_VERTEX,
+      fragmentShader: DITHER_WAVE_FRAGMENT,
+      uniforms: this.waveUniforms,
       transparent: true,
       depthTest: false,
       depthWrite: false,
     });
-    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
-    this.scene.add(this.quad);
+    this.postMaterial = new THREE.ShaderMaterial({
+      vertexShader: DITHER_POST_VERTEX,
+      fragmentShader: DITHER_POST_FRAGMENT,
+      uniforms: this.postUniforms,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.waveQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.waveMaterial);
+    this.postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMaterial);
+    this.waveScene.add(this.waveQuad);
+    this.postScene.add(this.postQuad);
+    this.renderTarget = new THREE.WebGLRenderTarget(width, height, {
+      depthBuffer: false,
+      stencilBuffer: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    });
+    this.postUniforms.uInputBuffer.value = this.renderTarget.texture;
     this.clock = new THREE.Clock();
     this.setSize(width, height);
     this.update(options);
@@ -957,35 +1012,42 @@ class DitherEffect extends BaseEffect {
 
   update(options = {}) {
     super.update(options);
-    this.uniforms.uWaveSpeed.value = Number(this.options.waveSpeed || 0.05);
-    this.uniforms.uWaveFrequency.value = Number(this.options.waveFrequency || 3);
-    this.uniforms.uWaveAmplitude.value = Number(this.options.waveAmplitude || 0.3);
+    this.waveUniforms.uWaveSpeed.value = Number(this.options.waveSpeed || 0.05);
+    this.waveUniforms.uWaveFrequency.value = Number(this.options.waveFrequency || 3);
+    this.waveUniforms.uWaveAmplitude.value = Number(this.options.waveAmplitude || 0.3);
     const waveColor = parseHexColor(this.options.waveColor || "#8ec5ff", "#8ec5ff");
-    const backgroundColor = parseHexColor(this.options.backgroundColor || "#000000", "#000000");
-    this.uniforms.uWaveColor.value.set(waveColor.r, waveColor.g, waveColor.b);
-    this.uniforms.uBackgroundColor.value.set(backgroundColor.r, backgroundColor.g, backgroundColor.b);
-    this.uniforms.uMouseRadius.value = Number(this.options.mouseRadius || 1);
-    this.uniforms.uColorNum.value = Number(this.options.colorNum || 4);
-    this.uniforms.uPixelSize.value = Number(this.options.pixelSize || 2);
+    this.waveUniforms.uWaveColor.value.set(waveColor.r, waveColor.g, waveColor.b);
+    this.waveUniforms.uMouseRadius.value = Number(this.options.mouseRadius || 1);
+    this.postUniforms.uColorNum.value = Number(this.options.colorNum || 4);
+    this.postUniforms.uPixelSize.value = Number(this.options.pixelSize || 2);
   }
 
   setPointer(pointer = this.pointer) {
     super.setPointer(pointer);
-    this.uniforms.uMouseActive.value = this.pointer.active ? 1 : 0;
-    this.uniforms.uMousePos.value.set(this.pointer.x * this.width, (1 - this.pointer.y) * this.height);
+    this.waveUniforms.uMouseActive.value = this.pointer.active ? 1 : 0;
+    this.waveUniforms.uMousePos.value.set(this.pointer.x * this.width, this.pointer.y * this.height);
   }
 
   setSize(width, height) {
     super.setSize(width, height);
     this.renderer.setSize(this.width, this.height, false);
-    this.uniforms.uResolution.value.set(this.width, this.height);
+    this.renderTarget.setSize(this.width, this.height);
+    this.waveUniforms.uResolution.value.set(this.width, this.height);
+    this.postUniforms.uResolution.value.set(this.width, this.height);
   }
 
   renderFrame() {
     if (!this.options.disableAnimation) {
-      this.uniforms.uTime.value = this.clock.getElapsedTime();
+      this.waveUniforms.uTime.value = this.clock.getElapsedTime();
     }
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
+  }
+
+  renderScene() {
+    this.renderer.setRenderTarget(this.renderTarget);
+    this.renderer.render(this.waveScene, this.camera);
+    this.renderer.setRenderTarget(null);
+    this.renderer.render(this.postScene, this.camera);
   }
 
   start() {
@@ -999,13 +1061,16 @@ class DitherEffect extends BaseEffect {
   }
 
   renderOnce() {
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
   }
 
   dispose() {
     if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
-    this.quad.geometry.dispose();
-    this.material.dispose();
+    this.waveQuad.geometry.dispose();
+    this.postQuad.geometry.dispose();
+    this.waveMaterial.dispose();
+    this.postMaterial.dispose();
+    this.renderTarget.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }
