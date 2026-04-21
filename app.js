@@ -169,21 +169,21 @@ const POST_MODE_LABELS = Object.freeze({
   shapeGrid: "Shape Grid",
   pixelBlast: "Pixel Blast",
 });
+const POST_STUDIO_BASE_PALETTE = Object.freeze({
+  background: "#00060F",
+  accent: "#7747E3",
+  text: "#F6F1FF",
+});
 const POST_STUDIO_PALETTES = Object.freeze([
-  { background: "#0f172a", accent: "#8ec5ff", text: "#f8fafc" },
-  { background: "#151927", accent: "#f7c873", text: "#fdf8f0" },
-  { background: "#101c1b", accent: "#74f0c8", text: "#f1fff8" },
-  { background: "#25141f", accent: "#ff8b9c", text: "#fff4f7" },
-  { background: "#14111f", accent: "#c4a0ff", text: "#faf7ff" },
-  { background: "#1a1712", accent: "#ffb86b", text: "#fff7ea" },
+  POST_STUDIO_BASE_PALETTE,
 ]);
 const POST_STUDIO_DEFAULTS = Object.freeze({
   live: true,
   mode: "pixelSnow",
   colors: {
-    background: "#0f172a",
-    accent: "#8ec5ff",
-    text: "#f8fafc",
+    background: POST_STUDIO_BASE_PALETTE.background,
+    accent: POST_STUDIO_BASE_PALETTE.accent,
+    text: POST_STUDIO_BASE_PALETTE.text,
     overlayOpacity: 0.84,
   },
   copy: {
