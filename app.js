@@ -2588,6 +2588,9 @@ let postStudioLastRenderMs = 0;
 let postStudioPointer = { x: 0.5, y: 0.5, active: false };
 let postStudioRipples = [];
 let postStudioState = null;
+let postBackgroundRenderer = null;
+let postBackgroundRendererPromise = null;
+let postBackgroundModulePromise = null;
 let adminAccessAllowed = false;
 let adminAccessStatusPromise = null;
 let adminAccessStatusRequestId = 0;
@@ -19115,6 +19118,64 @@ function getPostStudioModeState(mode = getPostStudioState().mode) {
   return studio.modes[mode] || studio.modes.pixelSnow;
 }
 
+function usesManagedPostStudioBackground(mode = getPostStudioState().mode) {
+  return mode === "particles" || mode === "dither" || mode === "shapeGrid" || mode === "pixelBlast";
+}
+
+function ensurePostBackgroundModule() {
+  if (!postBackgroundModulePromise) {
+    postBackgroundModulePromise = import("./post-background-effects.mjs");
+  }
+  return postBackgroundModulePromise;
+}
+
+async function ensurePostBackgroundRenderer() {
+  if (postBackgroundRenderer) return postBackgroundRenderer;
+  if (postBackgroundRendererPromise) return postBackgroundRendererPromise;
+  postBackgroundRendererPromise = ensurePostBackgroundModule()
+    .then((module) => {
+      postBackgroundRenderer = module.createPostBackgroundRenderer({
+        width: POST_VISUAL_DIMENSIONS.width,
+        height: POST_VISUAL_DIMENSIONS.height,
+      });
+      return postBackgroundRenderer;
+    })
+    .finally(() => {
+      postBackgroundRendererPromise = null;
+    });
+  return postBackgroundRendererPromise;
+}
+
+async function syncPostBackgroundRenderer(options = {}) {
+  const { modeChanged = false } = options;
+  const studio = getPostStudioState();
+  if (!usesManagedPostStudioBackground(studio.mode)) {
+    if (postBackgroundRenderer) {
+      postBackgroundRenderer.setPaused(true);
+    }
+    return null;
+  }
+  const renderer = await ensurePostBackgroundRenderer();
+  const module = await ensurePostBackgroundModule();
+  renderer.resize(POST_VISUAL_DIMENSIONS.width, POST_VISUAL_DIMENSIONS.height);
+  const effectOptions = module.buildPostBackgroundOptions(
+    studio.mode,
+    getPostStudioModeState(studio.mode),
+    studio.colors
+  );
+  await renderer.setMode(studio.mode, effectOptions);
+  renderer.setPointerNormalized(postStudioPointer);
+  renderer.setPaused(!(studio.live && currentMainView === "post" && !prefersReducedMotion()));
+  return renderer;
+}
+
+async function syncPostStudioBackgroundAndFrame(options = {}) {
+  const renderer = await syncPostBackgroundRenderer(options);
+  renderer?.renderOnce?.();
+  drawPostStudioFrame();
+  return renderer;
+}
+
 function formatPostControlValue(definition, value) {
   const numericValue = Number(value);
   switch (definition?.format) {
@@ -19666,14 +19727,13 @@ function drawPostStudioFrame() {
   ctx.clearRect(0, 0, width, height);
 
   const mode = studio.mode;
-  if (mode === "particles") {
-    drawPostStudioParticles(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
-  } else if (mode === "dither") {
-    drawPostStudioDither(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
-  } else if (mode === "shapeGrid") {
-    drawPostStudioShapeGrid(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
-  } else if (mode === "pixelBlast") {
-    drawPostStudioPixelBlast(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  if (usesManagedPostStudioBackground(mode)) {
+    const effectCanvas = postBackgroundRenderer?.getCanvas?.();
+    if (effectCanvas) {
+      ctx.drawImage(effectCanvas, 0, 0, width, height);
+    } else {
+      postFillBackdrop(ctx, width, height, palette);
+    }
   } else {
     drawPostStudioPixelSnow(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
   }
@@ -19813,8 +19873,15 @@ function syncPostStudioAnimation() {
       cancelAnimationFrame(postStudioAnimationFrame);
       postStudioAnimationFrame = 0;
     }
+    if (postBackgroundRenderer) {
+      postBackgroundRenderer.setPaused(true);
+      postBackgroundRenderer.renderOnce?.();
+    }
     drawPostStudioFrame();
     return;
+  }
+  if (usesManagedPostStudioBackground()) {
+    void syncPostStudioBackgroundAndFrame();
   }
   if (postStudioAnimationFrame) return;
   postStudioLastRenderMs = performance.now();
@@ -19868,7 +19935,14 @@ function setPostStudioMode(mode) {
   syncPostStudioModeChips();
   renderPostStudioModeControls();
   refreshPostStudioStatusUi();
-  drawPostStudioFrame();
+  if (usesManagedPostStudioBackground(mode)) {
+    void syncPostStudioBackgroundAndFrame({ modeChanged: true });
+  } else {
+    if (postBackgroundRenderer) {
+      postBackgroundRenderer.setPaused(true);
+    }
+    drawPostStudioFrame();
+  }
 }
 
 function randomizePostStudioCurrentMode() {
@@ -19901,12 +19975,12 @@ function randomizePostStudioCurrentMode() {
   updatePostStudioInputsFromState();
   renderPostStudioModeControls();
   syncPostStudioModeChips();
-  drawPostStudioFrame();
+  void syncPostStudioBackgroundAndFrame();
 }
 
 async function exportPostStudioPng() {
   if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
-  drawPostStudioFrame();
+  await syncPostStudioBackgroundAndFrame();
   const blob = await new Promise((resolve) => {
     postVisualCanvas.toBlob(resolve, "image/png");
   });
@@ -19935,6 +20009,7 @@ function initializePostStudio() {
   renderPostStudioModeControls();
   refreshPostStudioStatusUi();
   drawPostStudioFrame();
+  void syncPostStudioBackgroundAndFrame({ modeChanged: true });
 
   const textInputs = [
     postBrandInput,
@@ -19961,11 +20036,11 @@ function initializePostStudio() {
     if (!input) return;
     input.addEventListener("input", () => {
       updatePostStudioThemeFromInputs();
-      drawPostStudioFrame();
+      void syncPostStudioBackgroundAndFrame();
     });
     input.addEventListener("change", () => {
       updatePostStudioThemeFromInputs();
-      drawPostStudioFrame();
+      void syncPostStudioBackgroundAndFrame();
     });
   });
 
@@ -19992,7 +20067,7 @@ function initializePostStudio() {
         modeState[controlKey] = Number(target.value);
       }
       refreshPostStudioModeControlOutputs();
-      drawPostStudioFrame();
+      void syncPostStudioBackgroundAndFrame();
     };
     postModeControls.addEventListener("input", handlePostModeChange);
     postModeControls.addEventListener("change", handlePostModeChange);
@@ -20025,6 +20100,10 @@ function initializePostStudio() {
       y: clamp01((event.clientY - rect.top) / rect.height),
       active: true,
     };
+    postBackgroundRenderer?.setPointerNormalized?.(postStudioPointer);
+    if (!getPostStudioState().live) {
+      postBackgroundRenderer?.renderOnce?.();
+    }
     if (!getPostStudioState().live) {
       drawPostStudioFrame();
     }
@@ -20032,6 +20111,10 @@ function initializePostStudio() {
 
   postVisualCanvas.addEventListener("pointerleave", () => {
     postStudioPointer = { x: 0.5, y: 0.5, active: false };
+    postBackgroundRenderer?.setPointerNormalized?.(postStudioPointer);
+    if (!getPostStudioState().live) {
+      postBackgroundRenderer?.renderOnce?.();
+    }
     if (!getPostStudioState().live) {
       drawPostStudioFrame();
     }
@@ -20045,9 +20128,14 @@ function initializePostStudio() {
       y: clamp01((event.clientY - rect.top) / rect.height),
       startedAt: postStudioElapsedMs,
     };
+    postStudioPointer = { x: ripple.x, y: ripple.y, active: true };
     postStudioRipples.unshift(ripple);
     if (postStudioRipples.length > POST_STUDIO_MAX_RIPPLES) {
       postStudioRipples = postStudioRipples.slice(0, POST_STUDIO_MAX_RIPPLES);
+    }
+    postBackgroundRenderer?.pointerDown?.(postStudioPointer);
+    if (!getPostStudioState().live) {
+      postBackgroundRenderer?.renderOnce?.();
     }
     drawPostStudioFrame();
   });
