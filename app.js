@@ -135,6 +135,7 @@ const ROUTE_PATHS = {
   leads: "/leads",
   history: "/history",
   reports: "/reports",
+  post: "/post",
 };
 const STEP_ROUTE_PATHS = {
   1: "/label-info",
@@ -153,8 +154,181 @@ const ROUTE_SUFFIXES = [
   ROUTE_PATHS.leads,
   ROUTE_PATHS.history,
   ROUTE_PATHS.reports,
+  ROUTE_PATHS.post,
   ...Object.values(STEP_ROUTE_PATHS),
 ];
+const POST_VISUAL_DIMENSIONS = Object.freeze({
+  width: 1200,
+  height: 627,
+});
+const POST_STUDIO_MAX_RIPPLES = 8;
+const POST_MODE_LABELS = Object.freeze({
+  pixelSnow: "Pixel Snow",
+  particles: "Particles",
+  dither: "Dither",
+  shapeGrid: "Shape Grid",
+  pixelBlast: "Pixel Blast",
+});
+const POST_STUDIO_PALETTES = Object.freeze([
+  { background: "#0f172a", accent: "#8ec5ff", text: "#f8fafc" },
+  { background: "#151927", accent: "#f7c873", text: "#fdf8f0" },
+  { background: "#101c1b", accent: "#74f0c8", text: "#f1fff8" },
+  { background: "#25141f", accent: "#ff8b9c", text: "#fff4f7" },
+  { background: "#14111f", accent: "#c4a0ff", text: "#faf7ff" },
+  { background: "#1a1712", accent: "#ffb86b", text: "#fff7ea" },
+]);
+const POST_STUDIO_DEFAULTS = Object.freeze({
+  live: true,
+  mode: "pixelSnow",
+  colors: {
+    background: "#0f172a",
+    accent: "#8ec5ff",
+    text: "#f8fafc",
+    overlayOpacity: 0.84,
+  },
+  copy: {
+    brand: "Shipide",
+    eyebrow: "LinkedIn machine",
+    headline: "Shipping visuals that feel premium before the first word lands.",
+    body: "Use the studio to shape the image, freeze the exact frame, and export a clean LinkedIn-ready asset.",
+    footer: "shipide.com",
+    textAlign: "left",
+    caption:
+      "Hook: what makes the post worth stopping for?\n\nInsight: what is the single takeaway?\n\nCTA: what should happen next?",
+  },
+  modes: {
+    pixelSnow: {
+      density: 0.42,
+      speed: 1.18,
+      size: 2.6,
+      pixelResolution: 220,
+      brightness: 0.94,
+      direction: 125,
+      variant: "square",
+    },
+    particles: {
+      count: 140,
+      spread: 0.82,
+      speed: 0.72,
+      baseSize: 2.8,
+      alpha: true,
+      rotation: true,
+    },
+    dither: {
+      waveSpeed: 0.62,
+      waveFrequency: 2.9,
+      waveAmplitude: 0.55,
+      colorNum: 4,
+      pixelSize: 8,
+      mouseRadius: 0.28,
+    },
+    shapeGrid: {
+      speed: 0.52,
+      squareSize: 42,
+      direction: "diagonal",
+      shape: "square",
+      lineWidth: 1.2,
+      fillStrength: 0.62,
+    },
+    pixelBlast: {
+      variant: "square",
+      pixelSize: 10,
+      patternScale: 2.35,
+      density: 1.08,
+      jitter: 0.45,
+      rippleSpeed: 0.38,
+      rippleThickness: 0.16,
+      rippleIntensity: 1.35,
+      edgeFade: 0.24,
+    },
+  },
+});
+const POST_MODE_CONTROL_DEFS = Object.freeze({
+  pixelSnow: [
+    { key: "density", label: "Density", type: "range", min: 0.05, max: 1, step: 0.01, format: "percent" },
+    { key: "speed", label: "Speed", type: "range", min: 0, max: 2.5, step: 0.01, format: "float2" },
+    { key: "size", label: "Flake Size", type: "range", min: 1, max: 6, step: 0.1, format: "px" },
+    { key: "pixelResolution", label: "Pixel Resolution", type: "range", min: 80, max: 320, step: 1, format: "int" },
+    { key: "brightness", label: "Brightness", type: "range", min: 0.2, max: 1.5, step: 0.01, format: "float2" },
+    { key: "direction", label: "Direction", type: "range", min: 0, max: 360, step: 1, format: "deg" },
+    {
+      key: "variant",
+      label: "Variant",
+      type: "select",
+      options: [
+        { value: "square", label: "Square" },
+        { value: "round", label: "Round" },
+        { value: "snowflake", label: "Snowflake" },
+      ],
+    },
+  ],
+  particles: [
+    { key: "count", label: "Particle Count", type: "range", min: 40, max: 260, step: 1, format: "int" },
+    { key: "spread", label: "Spread", type: "range", min: 0.2, max: 1.4, step: 0.01, format: "float2" },
+    { key: "speed", label: "Speed", type: "range", min: 0, max: 2, step: 0.01, format: "float2" },
+    { key: "baseSize", label: "Base Size", type: "range", min: 1, max: 6, step: 0.1, format: "px" },
+    { key: "alpha", label: "Alpha Particles", type: "checkbox" },
+    { key: "rotation", label: "Rotate System", type: "checkbox" },
+  ],
+  dither: [
+    { key: "waveSpeed", label: "Wave Speed", type: "range", min: 0, max: 1.5, step: 0.01, format: "float2" },
+    { key: "waveFrequency", label: "Wave Frequency", type: "range", min: 1, max: 6, step: 0.01, format: "float2" },
+    { key: "waveAmplitude", label: "Wave Amplitude", type: "range", min: 0.1, max: 0.95, step: 0.01, format: "float2" },
+    { key: "colorNum", label: "Color Steps", type: "range", min: 2, max: 6, step: 1, format: "int" },
+    { key: "pixelSize", label: "Pixel Size", type: "range", min: 5, max: 18, step: 1, format: "px" },
+    { key: "mouseRadius", label: "Mouse Radius", type: "range", min: 0.05, max: 0.6, step: 0.01, format: "float2" },
+  ],
+  shapeGrid: [
+    { key: "speed", label: "Speed", type: "range", min: 0.05, max: 1.4, step: 0.01, format: "float2" },
+    { key: "squareSize", label: "Cell Size", type: "range", min: 24, max: 80, step: 1, format: "px" },
+    {
+      key: "direction",
+      label: "Direction",
+      type: "select",
+      options: [
+        { value: "right", label: "Right" },
+        { value: "left", label: "Left" },
+        { value: "up", label: "Up" },
+        { value: "down", label: "Down" },
+        { value: "diagonal", label: "Diagonal" },
+      ],
+    },
+    {
+      key: "shape",
+      label: "Shape",
+      type: "select",
+      options: [
+        { value: "square", label: "Square" },
+        { value: "hexagon", label: "Hexagon" },
+        { value: "circle", label: "Circle" },
+        { value: "triangle", label: "Triangle" },
+      ],
+    },
+    { key: "lineWidth", label: "Line Width", type: "range", min: 0.5, max: 2.5, step: 0.1, format: "px" },
+    { key: "fillStrength", label: "Fill Strength", type: "range", min: 0.15, max: 1, step: 0.01, format: "percent" },
+  ],
+  pixelBlast: [
+    {
+      key: "variant",
+      label: "Variant",
+      type: "select",
+      options: [
+        { value: "square", label: "Square" },
+        { value: "circle", label: "Circle" },
+        { value: "triangle", label: "Triangle" },
+        { value: "diamond", label: "Diamond" },
+      ],
+    },
+    { key: "pixelSize", label: "Pixel Size", type: "range", min: 6, max: 20, step: 1, format: "px" },
+    { key: "patternScale", label: "Pattern Scale", type: "range", min: 1, max: 4.5, step: 0.01, format: "float2" },
+    { key: "density", label: "Density", type: "range", min: 0.4, max: 1.6, step: 0.01, format: "float2" },
+    { key: "jitter", label: "Jitter", type: "range", min: 0, max: 1, step: 0.01, format: "float2" },
+    { key: "rippleSpeed", label: "Ripple Speed", type: "range", min: 0.05, max: 1, step: 0.01, format: "float2" },
+    { key: "rippleThickness", label: "Ripple Thickness", type: "range", min: 0.05, max: 0.3, step: 0.01, format: "float2" },
+    { key: "rippleIntensity", label: "Ripple Intensity", type: "range", min: 0.5, max: 2, step: 0.01, format: "float2" },
+    { key: "edgeFade", label: "Edge Fade", type: "range", min: 0, max: 0.5, step: 0.01, format: "percent" },
+  ],
+});
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
 const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
@@ -1864,6 +2038,7 @@ const openAccountPageButton = document.getElementById("openAccountPage");
 const openBuilderPageButton = document.getElementById("openBuilderPage");
 const openAdminPageButton = document.getElementById("openAdminPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
+const openPostPageButton = document.getElementById("openPostPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const portalFooterLogoLottie = document.getElementById("portalFooterLogoLottie");
@@ -1873,6 +2048,7 @@ const portalFooterSubmitButton = document.getElementById("portalFooterSubmit");
 const closeAccountPageButton = document.getElementById("closeAccountPage");
 const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeLeadsPageButton = document.getElementById("closeLeadsPage");
+const closePostPageButton = document.getElementById("closePostPage");
 const closeHistoryPageButton = document.getElementById("closeHistoryPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
 const openAdminSettingsModalButton = document.getElementById("openAdminSettingsModal");
@@ -1880,8 +2056,28 @@ const builderPage = document.getElementById("builderPage");
 const accountPageSection = document.getElementById("accountPageSection");
 const adminPageSection = document.getElementById("adminPageSection");
 const leadsPageSection = document.getElementById("leadsPageSection");
+const postPageSection = document.getElementById("postPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
+const postVisualCanvas = document.getElementById("postVisualCanvas");
+const postStageMeta = document.getElementById("postStageMeta");
+const postStageStatus = document.getElementById("postStageStatus");
+const postPreviewToggleButton = document.getElementById("postPreviewToggle");
+const postExportButton = document.getElementById("postExportButton");
+const postShuffleButton = document.getElementById("postShuffleButton");
+const postModeSwitch = document.getElementById("postModeSwitch");
+const postModeControls = document.getElementById("postModeControls");
+const postBrandInput = document.getElementById("postBrandInput");
+const postEyebrowInput = document.getElementById("postEyebrowInput");
+const postHeadlineInput = document.getElementById("postHeadlineInput");
+const postBodyInput = document.getElementById("postBodyInput");
+const postFooterInput = document.getElementById("postFooterInput");
+const postTextAlignInput = document.getElementById("postTextAlignInput");
+const postBackgroundColorInput = document.getElementById("postBackgroundColorInput");
+const postAccentColorInput = document.getElementById("postAccentColorInput");
+const postTextColorInput = document.getElementById("postTextColorInput");
+const postOverlayOpacityInput = document.getElementById("postOverlayOpacityInput");
+const postCaptionInput = document.getElementById("postCaptionInput");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
 const accountPreviewPanel = historyPageSection?.querySelector(".account-preview-panel") || null;
 const accountCompanyName = document.getElementById("accountCompanyName");
@@ -2385,6 +2581,13 @@ let authBackgroundVariant = "matrix";
 let authBlastBackground = null;
 let authBlastBackgroundLoading = null;
 let currentMainView = "builder";
+let postStudioInitialized = false;
+let postStudioAnimationFrame = 0;
+let postStudioElapsedMs = 0;
+let postStudioLastRenderMs = 0;
+let postStudioPointer = { x: 0.5, y: 0.5, active: false };
+let postStudioRipples = [];
+let postStudioState = null;
 let adminAccessAllowed = false;
 let adminAccessStatusPromise = null;
 let adminAccessStatusRequestId = 0;
@@ -2835,6 +3038,9 @@ function parseRouteFromLocation() {
     const reportRangeFromState = String(history.state?.reportRange || "").trim().toLowerCase();
     return { view: "reports", reportRange: reportRangeFromQuery || reportRangeFromState };
   }
+  if (path === ROUTE_PATHS.post) {
+    return { view: "post" };
+  }
 
   const stepEntry = Object.entries(STEP_ROUTE_PATHS).find(([, routePath]) => routePath === path);
   if (stepEntry) {
@@ -2853,6 +3059,9 @@ function parseRouteFromLocation() {
   }
   if (hash === "#history") {
     return { view: "history" };
+  }
+  if (hash === "#post") {
+    return { view: "post" };
   }
   if (hash === "#login") {
     return { view: "login" };
@@ -3012,6 +3221,9 @@ function routeToPath(route) {
   }
   if (route.view === "reports") {
     return buildRoutePath(ROUTE_PATHS.reports);
+  }
+  if (route.view === "post") {
+    return buildRoutePath(ROUTE_PATHS.post);
   }
   return buildRoutePath(STEP_ROUTE_PATHS[clampStep(state.step)]);
 }
@@ -6413,6 +6625,9 @@ async function loadAdminAccessStatus(options = {}) {
       }
       if (!adminAccessAllowed && currentMainView === "leads") {
         setLeadsPageVisible(false, { replace: true });
+      }
+      if (!adminAccessAllowed && currentMainView === "post") {
+        setPostPageVisible(false, { replace: true });
       }
       return adminAccessAllowed;
     }
@@ -9821,6 +10036,15 @@ function syncAdminAccessButtons() {
     }
     openLeadsPageButton.classList.toggle("is-hidden", !shouldShow);
   }
+  if (openPostPageButton) {
+    openPostPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
+    if (adminAccessLoading) {
+      openPostPageButton.setAttribute("aria-busy", "true");
+    } else {
+      openPostPageButton.removeAttribute("aria-busy");
+    }
+    openPostPageButton.classList.toggle("is-hidden", !shouldShow);
+  }
   if (openAdminPageButton) {
     openAdminPageButton.disabled = Boolean(isAuthed && adminAccessLoading);
     if (adminAccessLoading) {
@@ -11860,6 +12084,7 @@ function setMainView(view, options = {}) {
     view === "account" ||
     view === "admin" ||
     view === "leads" ||
+    view === "post" ||
     view === "history" ||
     view === "reports" ||
     view === "builder"
@@ -11883,6 +12108,9 @@ function setMainView(view, options = {}) {
     }
     if (leadsPageSection) {
       leadsPageSection.classList.toggle("is-hidden", nextView !== "leads");
+    }
+    if (postPageSection) {
+      postPageSection.classList.toggle("is-hidden", nextView !== "post");
     }
     if (historyPageSection) {
       historyPageSection.classList.toggle("is-hidden", nextView !== "history");
@@ -11912,6 +12140,9 @@ function setMainView(view, options = {}) {
     if (nextView !== "leads") {
       setLeadCallOutcomeModalOpen(false);
     }
+    if (nextView === "post") {
+      initializePostStudio();
+    }
     if (nextView === "reports") {
       applyReportRangeFromToken(reportRange || getReportRangeFromLocation(window.location));
       renderReportsDashboard();
@@ -11921,6 +12152,7 @@ function setMainView(view, options = {}) {
         }
       });
     }
+    syncPostStudioAnimation();
   };
 
   runMainViewTransition(applyView, { animate: animate && viewChanged });
@@ -11936,6 +12168,10 @@ function setMainView(view, options = {}) {
     }
     if (nextView === "leads") {
       updateRoute({ view: "leads" }, { replace });
+      return;
+    }
+    if (nextView === "post") {
+      updateRoute({ view: "post" }, { replace });
       return;
     }
     if (nextView === "history") {
@@ -11959,6 +12195,7 @@ function syncTopbarNavState(view = currentMainView) {
     view === "account" ||
     view === "admin" ||
     view === "leads" ||
+    view === "post" ||
     view === "history" ||
     view === "reports" ||
     view === "builder"
@@ -11968,6 +12205,7 @@ function syncTopbarNavState(view = currentMainView) {
     [openBuilderPageButton, "builder"],
     [openAccountPageButton, "account"],
     [openLeadsPageButton, "leads"],
+    [openPostPageButton, "post"],
     [openAdminPageButton, "admin"],
     [openHistoryPageButton, "history"],
     [openReportsPageButton, "reports"],
@@ -11988,6 +12226,10 @@ function setAdminPageVisible(visible, options = {}) {
 
 function setLeadsPageVisible(visible, options = {}) {
   setMainView(visible ? "leads" : "builder", options);
+}
+
+function setPostPageVisible(visible, options = {}) {
+  setMainView(visible ? "post" : "builder", options);
 }
 
 function setReportsPageVisible(visible, options = {}) {
@@ -18678,6 +18920,8 @@ async function initializeAuth() {
     setMainView("admin", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "leads") {
     setMainView("leads", { push: false, animate: false });
+  } else if (isAppAuthed && initialRoute.view === "post") {
+    setMainView("post", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "reports") {
@@ -18701,6 +18945,7 @@ async function initializeAuth() {
       (initialRoute.view === "account" ||
         initialRoute.view === "admin" ||
         initialRoute.view === "leads" ||
+        initialRoute.view === "post" ||
         initialRoute.view === "history" ||
         initialRoute.view === "reports"),
   });
@@ -18709,6 +18954,13 @@ async function initializeAuth() {
   }
   if (isAppAuthed && initialRoute.view === "leads") {
     await loadLeadProspects({ quiet: true });
+  }
+  if (isAppAuthed && initialRoute.view === "post") {
+    await loadAdminAccessStatus({ quiet: true });
+    if (adminAccessAllowed) {
+      initializePostStudio();
+      syncPostStudioAnimation();
+    }
   }
   supabaseClient.auth.onAuthStateChange((event, updatedSession) => {
     setAuthMessage("");
@@ -18743,6 +18995,14 @@ async function initializeAuth() {
     } else if (route.view === "leads") {
       setMainView("leads", { push: false, animate: false });
       void loadLeadProspects({ quiet: true });
+    } else if (route.view === "post") {
+      setMainView("post", { push: false, animate: false });
+      void loadAdminAccessStatus({ quiet: true }).then((hasAccess) => {
+        if (hasAccess) {
+          initializePostStudio();
+          syncPostStudioAnimation();
+        }
+      });
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
     } else if (route.view === "reports") {
@@ -18764,6 +19024,7 @@ async function initializeAuth() {
         route.view === "account" ||
         route.view === "admin" ||
         route.view === "leads" ||
+        route.view === "post" ||
         route.view === "history" ||
         route.view === "reports",
     });
@@ -18832,6 +19093,964 @@ function mixRgbColors(source, target, amount) {
     g: Math.round(source.g + (target.g - source.g) * t),
     b: Math.round(source.b + (target.b - source.b) * t),
   };
+}
+
+function clonePostStudioState() {
+  return JSON.parse(JSON.stringify(POST_STUDIO_DEFAULTS));
+}
+
+function getPostStudioState() {
+  if (!postStudioState) {
+    postStudioState = clonePostStudioState();
+  }
+  return postStudioState;
+}
+
+function getPostStudioModeLabel(mode = getPostStudioState().mode) {
+  return POST_MODE_LABELS[mode] || POST_MODE_LABELS.pixelSnow;
+}
+
+function getPostStudioModeState(mode = getPostStudioState().mode) {
+  const studio = getPostStudioState();
+  return studio.modes[mode] || studio.modes.pixelSnow;
+}
+
+function formatPostControlValue(definition, value) {
+  const numericValue = Number(value);
+  switch (definition?.format) {
+    case "int":
+      return `${Math.round(numericValue)}`;
+    case "px":
+      return `${Number(numericValue).toFixed(numericValue % 1 === 0 ? 0 : 1)}px`;
+    case "deg":
+      return `${Math.round(numericValue)}deg`;
+    case "percent":
+      return `${Math.round(clamp01(numericValue) * 100)}%`;
+    case "float2":
+      return `${Number(numericValue).toFixed(2)}`;
+    default:
+      return String(value ?? "");
+  }
+}
+
+function postWrapNumber(value, max) {
+  if (!Number.isFinite(max) || max <= 0) return 0;
+  const next = value % max;
+  return next < 0 ? next + max : next;
+}
+
+function postHash(value) {
+  const hashed = Math.sin(Number(value || 0) * 127.1 + 311.7) * 43758.5453123;
+  return hashed - Math.floor(hashed);
+}
+
+function postNoise2d(x, y, t = 0) {
+  return postHash(x * 12.9898 + y * 78.233 + t * 0.117);
+}
+
+function postSmoothstep(edge0, edge1, value) {
+  if (edge0 === edge1) return value < edge0 ? 0 : 1;
+  const t = clamp01((value - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+function postRgbToCss(rgb, alpha = 1) {
+  const safeRgb = rgb || { r: 255, g: 255, b: 255 };
+  const safeAlpha = clamp01(alpha);
+  return `rgba(${safeRgb.r}, ${safeRgb.g}, ${safeRgb.b}, ${safeAlpha})`;
+}
+
+function postRoundRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, width, height, r);
+    return;
+  }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+}
+
+function postFillBackdrop(ctx, width, height, palette) {
+  const background = parseHexColorToRgb(palette.background);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const deep = mixRgbColors(background, { r: 0, g: 0, b: 0 }, 0.22);
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, postRgbToCss(mixRgbColors(background, accent, 0.14), 1));
+  gradient.addColorStop(0.45, postRgbToCss(background, 1));
+  gradient.addColorStop(1, postRgbToCss(deep, 1));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width * 0.18, height * 0.16, 0, width * 0.18, height * 0.16, width * 0.55);
+  glow.addColorStop(0, postRgbToCss(mixRgbColors(accent, text, 0.12), 0.3));
+  glow.addColorStop(1, postRgbToCss(accent, 0));
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+
+  const edge = ctx.createRadialGradient(width * 0.86, height * 0.82, 0, width * 0.86, height * 0.82, width * 0.48);
+  edge.addColorStop(0, postRgbToCss(mixRgbColors(background, text, 0.16), 0.18));
+  edge.addColorStop(1, postRgbToCss(background, 0));
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function postDrawPixelShape(ctx, variant, x, y, size) {
+  const safeSize = Math.max(1, size);
+  const half = safeSize / 2;
+  ctx.beginPath();
+  if (variant === "circle" || variant === "round") {
+    ctx.arc(x, y, half, 0, Math.PI * 2);
+    return;
+  }
+  if (variant === "triangle") {
+    ctx.moveTo(x, y - half);
+    ctx.lineTo(x + half, y + half);
+    ctx.lineTo(x - half, y + half);
+    ctx.closePath();
+    return;
+  }
+  if (variant === "diamond") {
+    ctx.moveTo(x, y - half);
+    ctx.lineTo(x + half, y);
+    ctx.lineTo(x, y + half);
+    ctx.lineTo(x - half, y);
+    ctx.closePath();
+    return;
+  }
+  ctx.rect(x - half, y - half, safeSize, safeSize);
+}
+
+function postDrawGridShape(ctx, shape, x, y, size) {
+  const half = size / 2;
+  ctx.beginPath();
+  if (shape === "circle") {
+    ctx.arc(x, y, half, 0, Math.PI * 2);
+    return;
+  }
+  if (shape === "triangle") {
+    ctx.moveTo(x, y - half);
+    ctx.lineTo(x + half, y + half);
+    ctx.lineTo(x - half, y + half);
+    ctx.closePath();
+    return;
+  }
+  if (shape === "hexagon") {
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (Math.PI / 3) * index + Math.PI / 6;
+      const px = x + Math.cos(angle) * half;
+      const py = y + Math.sin(angle) * half;
+      if (index === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    return;
+  }
+  ctx.rect(x - half, y - half, size, size);
+}
+
+function postDrawSnowflake(ctx, x, y, size) {
+  const radius = Math.max(1, size / 2);
+  ctx.beginPath();
+  ctx.moveTo(x - radius, y);
+  ctx.lineTo(x + radius, y);
+  ctx.moveTo(x, y - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.moveTo(x - radius * 0.72, y - radius * 0.72);
+  ctx.lineTo(x + radius * 0.72, y + radius * 0.72);
+  ctx.moveTo(x + radius * 0.72, y - radius * 0.72);
+  ctx.lineTo(x - radius * 0.72, y + radius * 0.72);
+  ctx.stroke();
+}
+
+function postWrapTextLines(ctx, text, maxWidth) {
+  const lines = [];
+  const paragraphs = String(text || "")
+    .replace(/\r/g, "")
+    .split("\n");
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      if (paragraphIndex < paragraphs.length - 1 || !lines.length) {
+        lines.push("");
+      }
+      return;
+    }
+    let currentLine = words[0];
+    for (let index = 1; index < words.length; index += 1) {
+      const trialLine = `${currentLine} ${words[index]}`;
+      if (ctx.measureText(trialLine).width <= maxWidth) {
+        currentLine = trialLine;
+      } else {
+        lines.push(currentLine);
+        currentLine = words[index];
+      }
+    }
+    lines.push(currentLine);
+  });
+  return lines;
+}
+
+function postTrimLineToWidth(ctx, text, maxWidth) {
+  let next = String(text || "");
+  if (ctx.measureText(next).width <= maxWidth) return next;
+  while (next.length > 1 && ctx.measureText(`${next}…`).width > maxWidth) {
+    next = next.slice(0, -1).trimEnd();
+  }
+  return `${next}…`;
+}
+
+function postFitTextBlock(ctx, text, options = {}) {
+  const {
+    fontFamily = '"Creato Display Regular", "Creato Display Light", sans-serif',
+    fontWeight = 600,
+    maxWidth = 480,
+    maxLines = 4,
+    fontSize = 64,
+    minFontSize = 28,
+    lineHeight = 1.08,
+  } = options;
+  let size = fontSize;
+  let lines = [];
+  while (size >= minFontSize) {
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    lines = postWrapTextLines(ctx, text, maxWidth);
+    if (lines.length <= maxLines) break;
+    size -= 2;
+  }
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    lines[maxLines - 1] = postTrimLineToWidth(ctx, lines[maxLines - 1], maxWidth);
+  }
+  return {
+    font: `${fontWeight} ${size}px ${fontFamily}`,
+    lineHeight: size * lineHeight,
+    lines,
+  };
+}
+
+function drawPostStudioPixelSnow(ctx, width, height, timeMs, palette, settings) {
+  postFillBackdrop(ctx, width, height, palette);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const count = Math.max(40, Math.round(70 + settings.density * 260));
+  const direction = (Number(settings.direction) || 0) * (Math.PI / 180);
+  const timeScale = timeMs * 0.001;
+  const driftX = Math.cos(direction) * settings.speed * 26 * timeScale;
+  const driftY = Math.sin(direction) * settings.speed * 18 * timeScale + settings.speed * 52 * timeScale;
+  const pixelStep = Math.max(1, Math.round(width / Math.max(80, Number(settings.pixelResolution) || 220)));
+  for (let index = 0; index < count; index += 1) {
+    const seed = index + 1;
+    const layer = 0.45 + postHash(seed * 3.17) * 1.8;
+    const baseX = postHash(seed * 18.7) * width;
+    const baseY = postHash(seed * 71.9) * height;
+    const x = Math.round(
+      postWrapNumber(
+        baseX + driftX * layer + Math.sin(timeScale * 0.9 + seed * 0.61) * 34 * (2 - Math.min(layer, 1.7)),
+        width + 80
+      ) / pixelStep
+    ) * pixelStep - 40;
+    const y = Math.round(
+      postWrapNumber(
+        baseY + driftY * layer + Math.cos(timeScale * 0.72 + seed * 0.37) * 22,
+        height + 80
+      ) / pixelStep
+    ) * pixelStep - 40;
+    const size = Math.max(1.2, settings.size * (0.7 + postHash(seed * 11.3) * 1.5) + layer * 0.4);
+    const alpha = clamp01((0.18 + postHash(seed * 9.17) * 0.62) * settings.brightness / (0.7 + layer * 0.18));
+    const flakeColor = mixRgbColors(accent, text, 0.15 + postHash(seed * 5.4) * 0.55);
+    ctx.save();
+    ctx.fillStyle = postRgbToCss(flakeColor, alpha);
+    ctx.strokeStyle = postRgbToCss(flakeColor, alpha);
+    ctx.lineWidth = Math.max(1, size * 0.18);
+    if (settings.variant === "snowflake") {
+      postDrawSnowflake(ctx, x, y, size * 1.7);
+    } else {
+      postDrawPixelShape(ctx, settings.variant, x, y, size);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawPostStudioParticles(ctx, width, height, timeMs, palette, settings) {
+  postFillBackdrop(ctx, width, height, palette);
+  const background = parseHexColorToRgb(palette.background);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const pointerX = postStudioPointer.active ? (postStudioPointer.x - 0.5) * width * 0.08 : 0;
+  const pointerY = postStudioPointer.active ? (postStudioPointer.y - 0.5) * height * 0.08 : 0;
+  const count = Math.max(20, Math.round(settings.count));
+  const timeScale = timeMs * 0.00032 * (0.3 + settings.speed);
+  ctx.save();
+  for (let index = 0; index < count; index += 1) {
+    const seed = index + 1;
+    const orbit = settings.rotation ? timeScale : timeScale * 0.12;
+    const radius = settings.spread * (0.15 + postHash(seed * 9.73) * 0.92) * Math.min(width, height) * 0.46;
+    const angle = orbit * (0.75 + postHash(seed * 1.37) * 1.4) + postHash(seed * 7.13) * Math.PI * 2;
+    const x =
+      width / 2 +
+      Math.cos(angle) * radius +
+      Math.sin(timeScale * 1.8 + seed * 0.41) * 28 +
+      pointerX * (0.12 + postHash(seed * 2.11) * 0.38);
+    const y =
+      height / 2 +
+      Math.sin(angle * 1.18) * radius * 0.58 +
+      Math.cos(timeScale * 1.24 + seed * 0.61) * 32 +
+      pointerY * (0.16 + postHash(seed * 5.77) * 0.44);
+    const depth = 0.45 + postHash(seed * 12.13) * 1.45;
+    const radiusPx = Math.max(1.4, settings.baseSize * (0.8 + postHash(seed * 4.7) * 2.1) / depth);
+    const fillColor = mixRgbColors(accent, text, postHash(seed * 8.51) * 0.7);
+    const alpha = settings.alpha ? clamp01(0.22 + (1.7 - depth) * 0.38) : 0.92;
+    ctx.fillStyle = postRgbToCss(fillColor, alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, radiusPx, 0, Math.PI * 2);
+    ctx.fill();
+    if (index % 4 === 0) {
+      const glowColor = mixRgbColors(background, fillColor, 0.86);
+      ctx.fillStyle = postRgbToCss(glowColor, alpha * 0.22);
+      ctx.beginPath();
+      ctx.arc(x, y, radiusPx * 4.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawPostStudioDither(ctx, width, height, timeMs, palette, settings) {
+  postFillBackdrop(ctx, width, height, palette);
+  const background = parseHexColorToRgb(palette.background);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const bayer = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5],
+  ];
+  const cellSize = Math.max(4, Math.round(settings.pixelSize));
+  const colorSteps = Math.max(2, Math.round(settings.colorNum));
+  const pointerX = postStudioPointer.active ? postStudioPointer.x : 0.5;
+  const pointerY = postStudioPointer.active ? postStudioPointer.y : 0.5;
+  const timeScale = timeMs * 0.00045;
+  for (let y = 0; y < height; y += cellSize) {
+    const row = Math.floor(y / cellSize);
+    for (let x = 0; x < width; x += cellSize) {
+      const col = Math.floor(x / cellSize);
+      const nx = x / width - 0.5;
+      const ny = y / height - 0.5;
+      const waveA = Math.sin((nx * settings.waveFrequency + timeScale * settings.waveSpeed) * Math.PI * 2);
+      const waveB = Math.cos((ny * settings.waveFrequency * 1.15 - timeScale * settings.waveSpeed * 0.84) * Math.PI * 2);
+      const noise = postNoise2d(col * 0.12, row * 0.09, timeScale * 10) * 0.28;
+      const pointerDistance = Math.hypot(nx - (pointerX - 0.5), ny - (pointerY - 0.5));
+      const pointerBoost = postStudioPointer.active
+        ? 1 - postSmoothstep(0, settings.mouseRadius, pointerDistance)
+        : 0;
+      const value =
+        0.45 +
+        waveA * 0.16 +
+        waveB * 0.18 * settings.waveAmplitude +
+        noise * settings.waveAmplitude +
+        pointerBoost * 0.42;
+      const threshold = (bayer[row % 4][col % 4] / 16 - 0.5) * 0.34;
+      const quantized = Math.round(clamp01(value + threshold) * (colorSteps - 1)) / (colorSteps - 1);
+      const fill = mixRgbColors(background, accent, quantized * 0.88);
+      const shaded = mixRgbColors(fill, text, quantized * 0.14);
+      ctx.fillStyle = postRgbToCss(shaded, 1);
+      ctx.fillRect(x, y, cellSize, cellSize);
+    }
+  }
+}
+
+function drawPostStudioShapeGrid(ctx, width, height, timeMs, palette, settings) {
+  postFillBackdrop(ctx, width, height, palette);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const background = parseHexColorToRgb(palette.background);
+  const size = Math.max(18, Number(settings.squareSize) || 42);
+  const diagonal = settings.direction === "diagonal";
+  const speed = Number(settings.speed) || 0;
+  const travel = timeMs * 0.02 * speed;
+  let offsetX = 0;
+  let offsetY = 0;
+  if (settings.direction === "left") offsetX = travel;
+  if (settings.direction === "right") offsetX = -travel;
+  if (settings.direction === "up") offsetY = travel;
+  if (settings.direction === "down") offsetY = -travel;
+  if (diagonal) {
+    offsetX = -travel;
+    offsetY = -travel * 0.88;
+  }
+  ctx.save();
+  ctx.lineWidth = Math.max(0.5, Number(settings.lineWidth) || 1);
+  for (let x = -size; x < width + size * 2; x += size) {
+    for (let y = -size; y < height + size * 2; y += size) {
+      const px = postWrapNumber(x + offsetX, width + size * 2) - size;
+      const py = postWrapNumber(y + offsetY, height + size * 2) - size;
+      const centerX = px + size / 2;
+      const centerY = py + size / 2;
+      const pulse =
+        0.5 +
+        0.5 *
+          Math.sin(
+            (Math.floor(x / size) + Math.floor(y / size)) * 0.8 +
+              timeMs * 0.0013 * (0.5 + speed)
+          );
+      const fillAlpha = clamp01((pulse - 0.2) * settings.fillStrength);
+      const fillColor = mixRgbColors(background, accent, 0.82);
+      postDrawGridShape(ctx, settings.shape, centerX, centerY, size * 0.78);
+      if (fillAlpha > 0.02) {
+        ctx.fillStyle = postRgbToCss(fillColor, fillAlpha * 0.42);
+        ctx.fill();
+      }
+      ctx.strokeStyle = postRgbToCss(mixRgbColors(accent, text, 0.28), 0.34 + fillAlpha * 0.44);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawPostStudioPixelBlast(ctx, width, height, timeMs, palette, settings) {
+  postFillBackdrop(ctx, width, height, palette);
+  const background = parseHexColorToRgb(palette.background);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const cellSize = Math.max(4, Math.round(settings.pixelSize));
+  const timeScale = timeMs * 0.0006;
+  postStudioRipples = postStudioRipples.filter((ripple) => timeMs - ripple.startedAt < 5000);
+  for (let y = 0; y < height; y += cellSize) {
+    const row = Math.floor(y / cellSize);
+    for (let x = 0; x < width; x += cellSize) {
+      const col = Math.floor(x / cellSize);
+      const nx = x / width - 0.5;
+      const ny = y / height - 0.5;
+      let feed =
+        0.24 +
+        Math.sin(nx * settings.patternScale * 7 + timeScale) * 0.18 +
+        Math.cos(ny * settings.patternScale * 9 - timeScale * 1.4) * 0.16 +
+        (postNoise2d(col * 0.18, row * 0.18, timeScale * 12) - 0.5) * 0.72;
+      postStudioRipples.forEach((ripple) => {
+        const age = (timeMs - ripple.startedAt) * 0.001;
+        const waveRadius = age * Math.max(0.1, settings.rippleSpeed) * 0.9;
+        const distance = Math.hypot(nx - (ripple.x - 0.5), ny - (ripple.y - 0.5));
+        const ring = Math.exp(-Math.pow((distance - waveRadius) / Math.max(0.03, settings.rippleThickness), 2));
+        const attenuation = Math.exp(-age * 1.2) * Math.exp(-distance * 4.8);
+        feed = Math.max(feed, ring * attenuation * settings.rippleIntensity);
+      });
+      const edge =
+        1 -
+        postSmoothstep(
+          0,
+          Math.max(0.001, settings.edgeFade),
+          Math.min(Math.min(x / width, y / height), Math.min((width - x) / width, (height - y) / height))
+        );
+      const density = settings.density * 0.34;
+      const active = feed + density > 0.18;
+      if (!active) continue;
+      const jitter = 1 + (postHash(col * 17.13 + row * 9.17) - 0.5) * settings.jitter;
+      const coverage = clamp01((feed + density + 0.22) * jitter * (1 - edge * 0.55));
+      const size = Math.max(1.2, cellSize * (0.34 + coverage * 0.66));
+      const fillColor = mixRgbColors(background, accent, 0.68 + coverage * 0.22);
+      ctx.fillStyle = postRgbToCss(mixRgbColors(fillColor, text, coverage * 0.18), 0.74 + coverage * 0.22);
+      postDrawPixelShape(ctx, settings.variant, x + cellSize / 2, y + cellSize / 2, size);
+      ctx.fill();
+    }
+  }
+}
+
+function drawPostStudioOverlay(ctx, width, height, palette, studio) {
+  const background = parseHexColorToRgb(palette.background);
+  const accent = parseHexColorToRgb(palette.accent);
+  const text = parseHexColorToRgb(palette.text);
+  const align = studio.copy.textAlign === "center" || studio.copy.textAlign === "right"
+    ? studio.copy.textAlign
+    : "left";
+  const overlayWidth = align === "center" ? 690 : 560;
+  const overlayX =
+    align === "left"
+      ? 56
+      : align === "right"
+        ? width - overlayWidth - 56
+        : Math.round((width - overlayWidth) / 2);
+  const overlayY = 54;
+  const overlayHeight = height - 108;
+  ctx.save();
+  ctx.shadowColor = postRgbToCss(background, 0.34);
+  ctx.shadowBlur = 32;
+  ctx.shadowOffsetY = 10;
+  postRoundRectPath(ctx, overlayX, overlayY, overlayWidth, overlayHeight, 30);
+  ctx.fillStyle = postRgbToCss(mixRgbColors(background, { r: 8, g: 12, b: 20 }, 0.38), studio.colors.overlayOpacity);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  const barWidth = align === "center" ? overlayWidth - 68 : 7;
+  const barX = align === "center" ? overlayX + 34 : overlayX + 24;
+  const barY = overlayY + 24;
+  postRoundRectPath(ctx, barX, barY, barWidth, align === "center" ? 6 : overlayHeight - 48, 10);
+  ctx.fillStyle = postRgbToCss(accent, align === "center" ? 0.7 : 0.88);
+  ctx.fill();
+
+  const textPaddingX = align === "center" ? 46 : 52;
+  const textX =
+    align === "left"
+      ? overlayX + textPaddingX
+      : align === "right"
+        ? overlayX + overlayWidth - textPaddingX
+        : overlayX + overlayWidth / 2;
+  const textMaxWidth = overlayWidth - textPaddingX * 2;
+  ctx.textAlign = align;
+  ctx.textBaseline = "top";
+
+  let cursorY = overlayY + 34;
+  ctx.font = '16px "PT Mono", monospace';
+  ctx.fillStyle = postRgbToCss(text, 0.8);
+  ctx.fillText(String(studio.copy.brand || "").toUpperCase(), textX, cursorY);
+  cursorY += 28;
+
+  ctx.font = '18px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.fillStyle = postRgbToCss(mixRgbColors(accent, text, 0.22), 0.92);
+  ctx.fillText(String(studio.copy.eyebrow || ""), textX, cursorY);
+  cursorY += 40;
+
+  const headlineBlock = postFitTextBlock(ctx, studio.copy.headline, {
+    maxWidth: textMaxWidth,
+    maxLines: 4,
+    fontSize: align === "center" ? 68 : 62,
+    minFontSize: 34,
+  });
+  ctx.font = headlineBlock.font;
+  ctx.fillStyle = postRgbToCss(text, 1);
+  headlineBlock.lines.forEach((line) => {
+    ctx.fillText(line, textX, cursorY);
+    cursorY += headlineBlock.lineHeight;
+  });
+  cursorY += 18;
+
+  const bodyBlock = postFitTextBlock(ctx, studio.copy.body, {
+    maxWidth: textMaxWidth,
+    maxLines: 5,
+    fontSize: 26,
+    minFontSize: 18,
+    lineHeight: 1.38,
+    fontWeight: 400,
+  });
+  ctx.font = bodyBlock.font;
+  ctx.fillStyle = postRgbToCss(mixRgbColors(text, background, 0.1), 0.86);
+  bodyBlock.lines.forEach((line) => {
+    ctx.fillText(line, textX, cursorY);
+    cursorY += bodyBlock.lineHeight;
+  });
+
+  ctx.font = '18px "PT Mono", monospace';
+  ctx.fillStyle = postRgbToCss(mixRgbColors(accent, text, 0.32), 0.92);
+  ctx.fillText(String(studio.copy.footer || ""), textX, overlayY + overlayHeight - 48);
+  ctx.restore();
+}
+
+function drawPostStudioFrame() {
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  const ctx = postVisualCanvas.getContext("2d");
+  if (!ctx) return;
+  const studio = getPostStudioState();
+  const width = POST_VISUAL_DIMENSIONS.width;
+  const height = POST_VISUAL_DIMENSIONS.height;
+  const palette = studio.colors;
+  ctx.clearRect(0, 0, width, height);
+
+  const mode = studio.mode;
+  if (mode === "particles") {
+    drawPostStudioParticles(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  } else if (mode === "dither") {
+    drawPostStudioDither(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  } else if (mode === "shapeGrid") {
+    drawPostStudioShapeGrid(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  } else if (mode === "pixelBlast") {
+    drawPostStudioPixelBlast(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  } else {
+    drawPostStudioPixelSnow(ctx, width, height, postStudioElapsedMs, palette, getPostStudioModeState(mode));
+  }
+  drawPostStudioOverlay(ctx, width, height, palette, studio);
+}
+
+function syncPostStudioModeChips() {
+  if (!postModeSwitch) return;
+  const activeMode = getPostStudioState().mode;
+  postModeSwitch.querySelectorAll("[data-post-mode]").forEach((button) => {
+    const isActive = String(button.getAttribute("data-post-mode") || "") === activeMode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+function refreshPostStudioStatusUi() {
+  const studio = getPostStudioState();
+  const liveAllowed = studio.live && currentMainView === "post" && !prefersReducedMotion();
+  const label = getPostStudioModeLabel(studio.mode);
+  if (postStageStatus) {
+    postStageStatus.textContent = liveAllowed ? `${label} live` : `${label} paused`;
+  }
+  if (postStageMeta) {
+    postStageMeta.textContent = liveAllowed
+      ? "Live canvas at exact export resolution."
+      : "Static frame locked at exact export resolution.";
+  }
+  if (postPreviewToggleButton) {
+    const span = postPreviewToggleButton.querySelector("span");
+    if (span) {
+      span.textContent = studio.live ? "Pause" : "Live";
+    }
+    postPreviewToggleButton.setAttribute("aria-pressed", studio.live ? "true" : "false");
+  }
+}
+
+function renderPostStudioModeControls() {
+  if (!postModeControls) return;
+  const studio = getPostStudioState();
+  const controls = POST_MODE_CONTROL_DEFS[studio.mode] || [];
+  postModeControls.innerHTML = `
+    <div class="post-mode-controls-grid">
+      ${controls
+        .map((definition) => {
+          const value = getPostStudioModeState(studio.mode)[definition.key];
+          if (definition.type === "checkbox") {
+            return `
+              <label class="post-checkbox-row">
+                <span>${escapeHtml(definition.label)}</span>
+                <input type="checkbox" data-post-control-key="${escapeHtml(definition.key)}" ${value ? "checked" : ""} />
+              </label>
+            `;
+          }
+          if (definition.type === "select") {
+            return `
+              <label class="field">
+                <span>${escapeHtml(definition.label)}</span>
+                <select data-post-control-key="${escapeHtml(definition.key)}">
+                  ${definition.options
+                    .map(
+                      (option) => `
+                        <option value="${escapeHtml(option.value)}" ${String(value) === option.value ? "selected" : ""}>
+                          ${escapeHtml(option.label)}
+                        </option>
+                      `
+                    )
+                    .join("")}
+                </select>
+              </label>
+            `;
+          }
+          return `
+            <label class="field">
+              <span class="post-control-field-meta">
+                <span>${escapeHtml(definition.label)}</span>
+                <span class="post-range-output" data-post-output-key="${escapeHtml(definition.key)}">${escapeHtml(
+                  formatPostControlValue(definition, value)
+                )}</span>
+              </span>
+              <input
+                type="range"
+                data-post-control-key="${escapeHtml(definition.key)}"
+                min="${definition.min}"
+                max="${definition.max}"
+                step="${definition.step}"
+                value="${value}"
+              />
+            </label>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function refreshPostStudioModeControlOutputs() {
+  if (!postModeControls) return;
+  const controls = POST_MODE_CONTROL_DEFS[getPostStudioState().mode] || [];
+  const controlMap = new Map(controls.map((control) => [control.key, control]));
+  postModeControls.querySelectorAll("[data-post-output-key]").forEach((element) => {
+    const key = String(element.getAttribute("data-post-output-key") || "").trim();
+    if (!key) return;
+    const definition = controlMap.get(key);
+    if (!definition) return;
+    element.textContent = formatPostControlValue(definition, getPostStudioModeState()[key]);
+  });
+}
+
+function updatePostStudioInputsFromState() {
+  const studio = getPostStudioState();
+  if (postBrandInput) postBrandInput.value = studio.copy.brand;
+  if (postEyebrowInput) postEyebrowInput.value = studio.copy.eyebrow;
+  if (postHeadlineInput) postHeadlineInput.value = studio.copy.headline;
+  if (postBodyInput) postBodyInput.value = studio.copy.body;
+  if (postFooterInput) postFooterInput.value = studio.copy.footer;
+  if (postTextAlignInput) postTextAlignInput.value = studio.copy.textAlign;
+  if (postBackgroundColorInput) postBackgroundColorInput.value = studio.colors.background;
+  if (postAccentColorInput) postAccentColorInput.value = studio.colors.accent;
+  if (postTextColorInput) postTextColorInput.value = studio.colors.text;
+  if (postOverlayOpacityInput) postOverlayOpacityInput.value = Math.round(studio.colors.overlayOpacity * 100);
+  if (postCaptionInput) postCaptionInput.value = studio.copy.caption;
+}
+
+function syncPostStudioAnimation() {
+  if (!postStudioInitialized) {
+    return;
+  }
+  refreshPostStudioStatusUi();
+  const shouldAnimate =
+    Boolean(postStudioInitialized) &&
+    Boolean(getPostStudioState().live) &&
+    currentMainView === "post" &&
+    !prefersReducedMotion();
+  if (!shouldAnimate) {
+    if (postStudioAnimationFrame) {
+      cancelAnimationFrame(postStudioAnimationFrame);
+      postStudioAnimationFrame = 0;
+    }
+    drawPostStudioFrame();
+    return;
+  }
+  if (postStudioAnimationFrame) return;
+  postStudioLastRenderMs = performance.now();
+  const tick = (now) => {
+    postStudioAnimationFrame = 0;
+    if (
+      !postStudioInitialized ||
+      !getPostStudioState().live ||
+      currentMainView !== "post" ||
+      prefersReducedMotion()
+    ) {
+      drawPostStudioFrame();
+      return;
+    }
+    const delta = Math.min(40, Math.max(0, now - postStudioLastRenderMs));
+    postStudioLastRenderMs = now;
+    postStudioElapsedMs += delta;
+    drawPostStudioFrame();
+    postStudioAnimationFrame = requestAnimationFrame(tick);
+  };
+  postStudioAnimationFrame = requestAnimationFrame(tick);
+}
+
+function setPostStudioLiveState(live) {
+  getPostStudioState().live = Boolean(live);
+  syncPostStudioAnimation();
+}
+
+function updatePostStudioCopyFromInputs() {
+  const studio = getPostStudioState();
+  studio.copy.brand = String(postBrandInput?.value || "").trim();
+  studio.copy.eyebrow = String(postEyebrowInput?.value || "").trim();
+  studio.copy.headline = String(postHeadlineInput?.value || "").trim();
+  studio.copy.body = String(postBodyInput?.value || "").trim();
+  studio.copy.footer = String(postFooterInput?.value || "").trim();
+  studio.copy.textAlign = String(postTextAlignInput?.value || "left").trim();
+  studio.copy.caption = String(postCaptionInput?.value || "");
+}
+
+function updatePostStudioThemeFromInputs() {
+  const studio = getPostStudioState();
+  studio.colors.background = String(postBackgroundColorInput?.value || studio.colors.background);
+  studio.colors.accent = String(postAccentColorInput?.value || studio.colors.accent);
+  studio.colors.text = String(postTextColorInput?.value || studio.colors.text);
+  studio.colors.overlayOpacity = clamp01((Number(postOverlayOpacityInput?.value || 84) || 84) / 100);
+}
+
+function setPostStudioMode(mode) {
+  if (!POST_MODE_LABELS[mode]) return;
+  getPostStudioState().mode = mode;
+  syncPostStudioModeChips();
+  renderPostStudioModeControls();
+  refreshPostStudioStatusUi();
+  drawPostStudioFrame();
+}
+
+function randomizePostStudioCurrentMode() {
+  const studio = getPostStudioState();
+  const palette = POST_STUDIO_PALETTES[Math.floor(Math.random() * POST_STUDIO_PALETTES.length)];
+  if (palette) {
+    studio.colors.background = palette.background;
+    studio.colors.accent = palette.accent;
+    studio.colors.text = palette.text;
+  }
+  const controls = POST_MODE_CONTROL_DEFS[studio.mode] || [];
+  controls.forEach((definition) => {
+    const target = getPostStudioModeState(studio.mode);
+    if (definition.type === "checkbox") {
+      target[definition.key] = Math.random() > 0.5;
+      return;
+    }
+    if (definition.type === "select") {
+      const options = definition.options || [];
+      if (options.length) {
+        target[definition.key] = options[Math.floor(Math.random() * options.length)].value;
+      }
+      return;
+    }
+    const steps = Math.max(1, Math.round((definition.max - definition.min) / definition.step));
+    const randomStep = Math.floor(Math.random() * (steps + 1));
+    target[definition.key] = Number((definition.min + randomStep * definition.step).toFixed(4));
+  });
+  studio.colors.overlayOpacity = 0.72 + Math.random() * 0.18;
+  updatePostStudioInputsFromState();
+  renderPostStudioModeControls();
+  syncPostStudioModeChips();
+  drawPostStudioFrame();
+}
+
+async function exportPostStudioPng() {
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  drawPostStudioFrame();
+  const blob = await new Promise((resolve) => {
+    postVisualCanvas.toBlob(resolve, "image/png");
+  });
+  if (!(blob instanceof Blob)) {
+    showToast(tr("Could not export the post visual."), { tone: "error" });
+    return;
+  }
+  const brandSlug = String(getPostStudioState().copy.brand || "shipide")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const filename = `${brandSlug || "shipide"}-linkedin-visual-${new Date().toISOString().slice(0, 10)}.png`;
+  downloadBlobAsFile(blob, filename);
+  showToast(tr("Post visual exported."), { tone: "success" });
+}
+
+function initializePostStudio() {
+  if (postStudioInitialized) return;
+  if (!(postVisualCanvas instanceof HTMLCanvasElement)) return;
+  postStudioInitialized = true;
+  postStudioState = clonePostStudioState();
+  postVisualCanvas.width = POST_VISUAL_DIMENSIONS.width;
+  postVisualCanvas.height = POST_VISUAL_DIMENSIONS.height;
+  updatePostStudioInputsFromState();
+  syncPostStudioModeChips();
+  renderPostStudioModeControls();
+  refreshPostStudioStatusUi();
+  drawPostStudioFrame();
+
+  const textInputs = [
+    postBrandInput,
+    postEyebrowInput,
+    postHeadlineInput,
+    postBodyInput,
+    postFooterInput,
+    postTextAlignInput,
+    postCaptionInput,
+  ];
+  textInputs.forEach((input) => {
+    if (!input) return;
+    input.addEventListener("input", () => {
+      updatePostStudioCopyFromInputs();
+      drawPostStudioFrame();
+    });
+    input.addEventListener("change", () => {
+      updatePostStudioCopyFromInputs();
+      drawPostStudioFrame();
+    });
+  });
+
+  [postBackgroundColorInput, postAccentColorInput, postTextColorInput, postOverlayOpacityInput].forEach((input) => {
+    if (!input) return;
+    input.addEventListener("input", () => {
+      updatePostStudioThemeFromInputs();
+      drawPostStudioFrame();
+    });
+    input.addEventListener("change", () => {
+      updatePostStudioThemeFromInputs();
+      drawPostStudioFrame();
+    });
+  });
+
+  if (postModeSwitch) {
+    postModeSwitch.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-post-mode]") : null;
+      if (!(button instanceof HTMLElement)) return;
+      setPostStudioMode(String(button.dataset.postMode || ""));
+    });
+  }
+
+  if (postModeControls) {
+    const handlePostModeChange = (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target) return;
+      const controlKey = String(target.getAttribute("data-post-control-key") || "").trim();
+      if (!controlKey) return;
+      const modeState = getPostStudioModeState();
+      if (target instanceof HTMLInputElement && target.type === "checkbox") {
+        modeState[controlKey] = target.checked;
+      } else if (target instanceof HTMLSelectElement) {
+        modeState[controlKey] = target.value;
+      } else if (target instanceof HTMLInputElement) {
+        modeState[controlKey] = Number(target.value);
+      }
+      refreshPostStudioModeControlOutputs();
+      drawPostStudioFrame();
+    };
+    postModeControls.addEventListener("input", handlePostModeChange);
+    postModeControls.addEventListener("change", handlePostModeChange);
+  }
+
+  if (postPreviewToggleButton) {
+    postPreviewToggleButton.addEventListener("click", () => {
+      setPostStudioLiveState(!getPostStudioState().live);
+    });
+  }
+
+  if (postShuffleButton) {
+    postShuffleButton.addEventListener("click", () => {
+      randomizePostStudioCurrentMode();
+      refreshPostStudioStatusUi();
+    });
+  }
+
+  if (postExportButton) {
+    postExportButton.addEventListener("click", () => {
+      void exportPostStudioPng();
+    });
+  }
+
+  postVisualCanvas.addEventListener("pointermove", (event) => {
+    const rect = postVisualCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    postStudioPointer = {
+      x: clamp01((event.clientX - rect.left) / rect.width),
+      y: clamp01((event.clientY - rect.top) / rect.height),
+      active: true,
+    };
+    if (!getPostStudioState().live) {
+      drawPostStudioFrame();
+    }
+  });
+
+  postVisualCanvas.addEventListener("pointerleave", () => {
+    postStudioPointer = { x: 0.5, y: 0.5, active: false };
+    if (!getPostStudioState().live) {
+      drawPostStudioFrame();
+    }
+  });
+
+  postVisualCanvas.addEventListener("pointerdown", (event) => {
+    const rect = postVisualCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ripple = {
+      x: clamp01((event.clientX - rect.left) / rect.width),
+      y: clamp01((event.clientY - rect.top) / rect.height),
+      startedAt: postStudioElapsedMs,
+    };
+    postStudioRipples.unshift(ripple);
+    if (postStudioRipples.length > POST_STUDIO_MAX_RIPPLES) {
+      postStudioRipples = postStudioRipples.slice(0, POST_STUDIO_MAX_RIPPLES);
+    }
+    drawPostStudioFrame();
+  });
 }
 
 function cloneAnimationData(data) {
@@ -20954,6 +22173,18 @@ if (openLeadsPageButton) {
   });
 }
 
+if (openPostPageButton) {
+  openPostPageButton.addEventListener("click", async () => {
+    const hasAccess = await loadAdminAccessStatus({ quiet: true });
+    if (!hasAccess) {
+      showToast(tr("You are not allowed to access the post studio."), { tone: "error" });
+      return;
+    }
+    initializePostStudio();
+    setPostPageVisible(true);
+  });
+}
+
 if (openHistoryPageButton) {
   openHistoryPageButton.addEventListener("click", async () => {
     setHistoryPageVisible(true);
@@ -20984,6 +22215,12 @@ if (closeAdminPageButton) {
 if (closeLeadsPageButton) {
   closeLeadsPageButton.addEventListener("click", () => {
     setLeadsPageVisible(false);
+  });
+}
+
+if (closePostPageButton) {
+  closePostPageButton.addEventListener("click", () => {
+    setPostPageVisible(false);
   });
 }
 
@@ -24234,6 +25471,17 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     if (route.view === "leads") {
       setMainView("leads", { push: false });
       loadLeadProspects({ quiet: true });
+      return;
+    }
+
+    if (route.view === "post") {
+      setMainView("post", { push: false });
+      loadAdminAccessStatus({ quiet: true }).then((hasAccess) => {
+        if (hasAccess) {
+          initializePostStudio();
+          syncPostStudioAnimation();
+        }
+      });
       return;
     }
 
