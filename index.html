@@ -1652,13 +1652,20 @@
                 <section class="admin-client-wallet-card">
                   <div class="admin-client-wallet-section-head">
                     <div>
-                      <div class="preview-title">Manual Credit</div>
+                      <div class="preview-title">Manual Balance Adjustment</div>
                       <p class="panel-sub admin-panel-sub">
-                        Add balance with a required reason so the adjustment remains auditable.
+                        Add or subtract balance with a required reason so the adjustment remains auditable.
                       </p>
                     </div>
                   </div>
                   <div class="admin-client-wallet-form">
+                    <label class="field">
+                      <span>Adjustment type</span>
+                      <select id="adminClientWalletDirection" class="invite-select">
+                        <option value="credit">Add balance</option>
+                        <option value="debit">Subtract balance</option>
+                      </select>
+                    </label>
                     <label class="field">
                       <span>Amount (EUR)</span>
                       <input type="number" id="adminClientWalletAmount" min="0.01" step="0.01" placeholder="25.00" />
@@ -1678,7 +1685,7 @@
                       <span>Close</span>
                     </button>
                     <button type="button" class="btn btn-primary" id="adminClientWalletSubmit">
-                      <span>Apply credit</span>
+                      <span>Apply adjustment</span>
                     </button>
                   </div>
                 </section>

@@ -227,8 +227,12 @@ export default {
       if (pathname === "/api/admin/client-wallet" && request.method === "GET") {
         return handleAdminClientWalletDetail(request, env, url);
       }
-      if (pathname === "/api/admin/client-wallet/credit" && request.method === "POST") {
-        return handleAdminClientWalletCredit(request, env);
+      if (
+        (pathname === "/api/admin/client-wallet/adjust"
+          || pathname === "/api/admin/client-wallet/credit")
+        && request.method === "POST"
+      ) {
+        return handleAdminClientWalletAdjust(request, env);
       }
       if (pathname === "/api/admin/invoices" && request.method === "GET") {
         return handleAdminInvoicesList(request, env, url);
@@ -3782,7 +3786,7 @@ function buildTopupReference(userId = "") {
   return `SHIP-${userChunk}-${timeChunk}-${randChunk}`;
 }
 
-function buildWalletManualCreditReference(userId = "") {
+function buildWalletManualAdjustmentReference(userId = "", direction = "credit") {
   const userChunk = String(userId || "")
     .replace(/[^a-z0-9]/gi, "")
     .slice(0, 6)
@@ -3793,7 +3797,7 @@ function buildWalletManualCreditReference(userId = "") {
     .padStart(4, "0")
     .slice(0, 4)
     .toUpperCase();
-  return `CREDIT-${userChunk}-${timeChunk}-${randChunk}`;
+  return `${String(direction || "credit").trim().toUpperCase()}-${userChunk}-${timeChunk}-${randChunk}`;
 }
 
 function buildTopupInstructions(ibanConfig, row, amountCents = null) {
@@ -4298,7 +4302,7 @@ async function debitWalletForCheckout(env, user, amountEur, metadata = {}) {
   };
 }
 
-async function creditBillingWalletManually(
+async function adjustBillingWalletManually(
   env,
   {
     userId = "",
@@ -4306,6 +4310,7 @@ async function creditBillingWalletManually(
     actor = "admin",
     reason = "",
     note = "",
+    direction = "credit",
   } = {}
 ) {
   const safeUserId = String(userId || "").trim();
@@ -4317,13 +4322,20 @@ async function creditBillingWalletManually(
     throw new Error("A reason is required.");
   }
   const numericAmount = Number(amountEur);
-  const creditCents = Number.isFinite(numericAmount) ? toCents(numericAmount) : 0;
-  if (!Number.isFinite(creditCents) || creditCents <= 0) {
-    throw new Error("A valid credit amount is required.");
+  const adjustmentCents = Number.isFinite(numericAmount) ? toCents(numericAmount) : 0;
+  if (!Number.isFinite(adjustmentCents) || adjustmentCents <= 0) {
+    throw new Error("A valid adjustment amount is required.");
   }
+  const normalizedDirection = String(direction || "credit").trim().toLowerCase() === "debit"
+    ? "debit"
+    : "credit";
   const wallet = await getOrCreateBillingWallet(env, safeUserId);
   const currentBalanceCents = Math.max(0, Number(wallet?.balance_cents) || 0);
-  const nextBalanceCents = currentBalanceCents + creditCents;
+  if (normalizedDirection === "debit" && adjustmentCents > currentBalanceCents) {
+    throw new Error("Cannot subtract more than the current balance.");
+  }
+  const signedAmountCents = normalizedDirection === "debit" ? -adjustmentCents : adjustmentCents;
+  const nextBalanceCents = currentBalanceCents + signedAmountCents;
   const updatedAt = new Date().toISOString();
   const updateResponse = await supabaseServiceRequest(
     env,
@@ -4356,12 +4368,12 @@ async function creditBillingWalletManually(
           currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
           updated_at: updatedAt,
         };
-  const reference = buildWalletManualCreditReference(safeUserId);
+  const reference = buildWalletManualAdjustmentReference(safeUserId, normalizedDirection);
   try {
     const transaction = await saveWalletTransaction(env, {
       user_id: safeUserId,
-      source: "manual_credit",
-      amount_cents: creditCents,
+      source: normalizedDirection === "debit" ? "manual_debit" : "manual_credit",
+      amount_cents: signedAmountCents,
       balance_after_cents: nextBalanceCents,
       reference,
       metadata: {
@@ -4369,6 +4381,7 @@ async function creditBillingWalletManually(
         reason: reasonText,
         note: String(note || "").trim() || null,
         channel: "admin_client_workspace",
+        direction: normalizedDirection,
       },
     });
     return {
@@ -8741,12 +8754,15 @@ async function mapInviteHistoryRow(request, env, invite) {
   };
 }
 
-function shouldIncludeAdminClient(user, env) {
+function shouldIncludeAdminClient(user, env, currentAdminUserId = "") {
   if (!user?.id) return false;
+  if (String(currentAdminUserId || "").trim() === String(user.id || "").trim()) {
+    return true;
+  }
   return !canManageRegistrationInvites(user, env);
 }
 
-async function buildAdminDashboard(request, env) {
+async function buildAdminDashboard(request, env, currentAdminUserId = "") {
   const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
@@ -8842,7 +8858,7 @@ async function buildAdminDashboard(request, env) {
   );
 
   const clients = users
-    .filter((user) => shouldIncludeAdminClient(user, env))
+    .filter((user) => shouldIncludeAdminClient(user, env, currentAdminUserId))
     .map((user) => ({
       user: {
         id: user.id,
@@ -8866,6 +8882,16 @@ async function buildAdminDashboard(request, env) {
       const rightValue = Date.parse(right?.metrics?.last_generation_at || right?.user?.created_at || 0);
       return rightValue - leftValue;
     });
+  const summaryClients = clients.filter(
+    (client) => !canManageRegistrationInvites(
+      {
+        id: client?.user?.id,
+        email: client?.user?.email,
+        user_metadata: client?.user?.user_metadata || {},
+      },
+      env
+    )
+  );
 
   const inviteHistory = await Promise.all(
     invites.map((invite) => mapInviteHistoryRow(request, env, invite))
@@ -8875,7 +8901,7 @@ async function buildAdminDashboard(request, env) {
     settings,
     invites: inviteHistory,
     clients,
-    summary: buildAdminClientSummary(clients, invites),
+    summary: buildAdminClientSummary(summaryClients, invites),
     billing: {
       invoices: buildInvoiceListResponseRows(invoices.slice(0, 120)),
       wise: {
@@ -12908,7 +12934,7 @@ async function handleAdminDashboard(request, env) {
     return jsonResponse({ error: "You are not allowed to access the admin panel." }, 403);
   }
   try {
-    const dashboard = await buildAdminDashboard(request, env);
+    const dashboard = await buildAdminDashboard(request, env, user.id);
     return jsonResponse(dashboard);
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not load admin dashboard." }, 500);
@@ -13006,7 +13032,7 @@ async function handleAdminClientWalletDetail(request, env, url) {
   }
   try {
     const targetUser = await getSupabaseUserById(env, targetUserId);
-    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env)) {
+    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env, user.id)) {
       return jsonResponse({ error: "Client account not found." }, 404);
     }
     const workspace = await buildAdminClientWalletWorkspace(env, targetUserId);
@@ -13019,13 +13045,13 @@ async function handleAdminClientWalletDetail(request, env, url) {
   }
 }
 
-async function handleAdminClientWalletCredit(request, env) {
+async function handleAdminClientWalletAdjust(request, env) {
   const user = await getAuthenticatedUser(request, env);
   if (!user?.id) {
     return jsonResponse({ error: "Authentication required." }, 401);
   }
   if (!canManageRegistrationInvites(user, env)) {
-    return jsonResponse({ error: "You are not allowed to credit client wallets." }, 403);
+    return jsonResponse({ error: "You are not allowed to adjust client wallets." }, 403);
   }
 
   let body = {};
@@ -13039,6 +13065,11 @@ async function handleAdminClientWalletCredit(request, env) {
   const amount = body?.amount ?? body?.amountEur ?? null;
   const reason = String(body?.reason || "").trim();
   const note = String(body?.note || "").trim();
+  const direction = String(body?.direction || body?.mode || body?.action || "credit")
+    .trim()
+    .toLowerCase() === "debit"
+      ? "debit"
+      : "credit";
   if (!targetUserId) {
     return jsonResponse({ error: "Client id is required." }, 400);
   }
@@ -13048,20 +13079,21 @@ async function handleAdminClientWalletCredit(request, env) {
 
   try {
     const targetUser = await getSupabaseUserById(env, targetUserId);
-    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env)) {
+    if (!targetUser?.id || !shouldIncludeAdminClient(targetUser, env, user.id)) {
       return jsonResponse({ error: "Client account not found." }, 404);
     }
-    const result = await creditBillingWalletManually(env, {
+    const result = await adjustBillingWalletManually(env, {
       userId: targetUserId,
       amountEur: amount,
       actor: normalizeEmail(user.email || "") || user.id,
       reason,
       note,
+      direction,
     });
     const workspace = await buildAdminClientWalletWorkspace(env, targetUserId);
     return jsonResponse({
       ok: true,
-      message: "Manual credit applied.",
+      message: direction === "debit" ? "Manual debit applied." : "Manual credit applied.",
       wallet: workspace.wallet,
       summary: workspace.summary,
       transactions: workspace.transactions,
@@ -13069,9 +13101,10 @@ async function handleAdminClientWalletCredit(request, env) {
       transaction: result?.transaction ? mapBillingWalletTransactionRow(result.transaction) : null,
       reference: result?.reference || null,
       userId: targetUserId,
+      direction,
     });
   } catch (error) {
-    return jsonResponse({ error: error?.message || "Could not apply manual credit." }, 500);
+    return jsonResponse({ error: error?.message || "Could not apply wallet adjustment." }, 500);
   }
 }
 

@@ -1150,6 +1150,54 @@ const TRANSLATIONS = {
     fr: "Inclus au-dessus de 10 kg",
     nl: "Inbegrepen boven 10 kg",
   },
+  "Manual Balance Adjustment": {
+    fr: "Ajustement manuel du solde",
+    nl: "Handmatige saldoaanpassing",
+  },
+  "Add or subtract balance with a required reason so the adjustment remains auditable.": {
+    fr: "Ajoutez ou soustrayez du solde avec un motif obligatoire afin que l’ajustement reste traçable.",
+    nl: "Voeg saldo toe of trek het af met een verplichte reden zodat de aanpassing controleerbaar blijft.",
+  },
+  "Adjustment type": { fr: "Type d’ajustement", nl: "Type aanpassing" },
+  "Add balance": { fr: "Ajouter du solde", nl: "Saldo toevoegen" },
+  "Subtract balance": { fr: "Soustraire du solde", nl: "Saldo aftrekken" },
+  "Apply adjustment": { fr: "Appliquer l’ajustement", nl: "Aanpassing toepassen" },
+  "Applying adjustment...": {
+    fr: "Application de l’ajustement...",
+    nl: "Aanpassing wordt toegepast...",
+  },
+  "Manual credit": { fr: "Crédit manuel", nl: "Handmatig krediet" },
+  "Manual debit": { fr: "Débit manuel", nl: "Handmatige afschrijving" },
+  "Enter a valid adjustment amount.": {
+    fr: "Saisissez un montant d’ajustement valide.",
+    nl: "Voer een geldig aanpassingsbedrag in.",
+  },
+  "Cannot subtract more than the current balance.": {
+    fr: "Impossible de soustraire plus que le solde actuel.",
+    nl: "Je kunt niet meer aftrekken dan het huidige saldo.",
+  },
+  "Balance added.": { fr: "Solde ajouté.", nl: "Saldo toegevoegd." },
+  "Balance subtracted.": { fr: "Solde soustrait.", nl: "Saldo afgetrokken." },
+  "Balance added. Reference: {reference}": {
+    fr: "Solde ajouté. Référence : {reference}",
+    nl: "Saldo toegevoegd. Referentie: {reference}",
+  },
+  "Balance subtracted. Reference: {reference}": {
+    fr: "Solde soustrait. Référence : {reference}",
+    nl: "Saldo afgetrokken. Referentie: {reference}",
+  },
+  "Manual balance added.": {
+    fr: "Ajout manuel du solde effectué.",
+    nl: "Handmatig saldo toegevoegd.",
+  },
+  "Manual balance subtracted.": {
+    fr: "Soustraction manuelle du solde effectuée.",
+    nl: "Handmatig saldo afgetrokken.",
+  },
+  "Could not apply balance adjustment.": {
+    fr: "Impossible d’appliquer l’ajustement du solde.",
+    nl: "Kon saldoaanpassing niet toepassen.",
+  },
   "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
   "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
   "SIGNATURE READY": { fr: "SIGNATURE PRÊTE", nl: "HANDTEKENING KLAAR" },
@@ -2416,6 +2464,7 @@ const adminClientWalletBalance = document.getElementById("adminClientWalletBalan
 const adminClientWalletMeta = document.getElementById("adminClientWalletMeta");
 const adminClientWalletPending = document.getElementById("adminClientWalletPending");
 const adminClientWalletCounts = document.getElementById("adminClientWalletCounts");
+const adminClientWalletDirectionInput = document.getElementById("adminClientWalletDirection");
 const adminClientWalletAmountInput = document.getElementById("adminClientWalletAmount");
 const adminClientWalletReasonInput = document.getElementById("adminClientWalletReason");
 const adminClientWalletNoteInput = document.getElementById("adminClientWalletNote");
@@ -2806,6 +2855,7 @@ let adminClientWalletData = null;
 let adminClientWalletLoading = false;
 let adminClientWalletCreditBusy = false;
 let adminClientWalletRequestToken = 0;
+let adminClientWalletDirection = "credit";
 let leadProspects = [];
 let leadProspectsLoading = false;
 let leadProspectsLoaded = false;
@@ -6187,6 +6237,10 @@ async function openAdminClientWalletWorkspace(userId) {
   adminClientWalletData = null;
   adminClientWalletLoading = true;
   adminClientWalletCreditBusy = false;
+  adminClientWalletDirection = "credit";
+  if (adminClientWalletDirectionInput) {
+    adminClientWalletDirectionInput.value = adminClientWalletDirection;
+  }
   setAdminClientWalletStatus("");
   renderAdminClientWalletModal();
   setAdminClientWalletModalOpen(true);
@@ -6218,25 +6272,35 @@ async function openAdminClientWalletWorkspace(userId) {
   }
 }
 
-async function submitAdminClientWalletCredit() {
+async function submitAdminClientWalletAdjustment() {
   const safeUserId = String(adminClientWalletUserId || "").trim();
   if (!safeUserId || adminClientWalletLoading || adminClientWalletCreditBusy) return;
+  const direction = adminClientWalletDirection === "debit" ? "debit" : "credit";
   const amount = Number(adminClientWalletAmountInput?.value || 0);
   const reason = String(adminClientWalletReasonInput?.value || "").trim();
   const note = String(adminClientWalletNoteInput?.value || "").trim();
   if (!Number.isFinite(amount) || amount <= 0) {
-    setAdminClientWalletStatus(tr("Enter a valid credit amount."), "error");
+    setAdminClientWalletStatus(tr("Enter a valid adjustment amount."), "error");
     return;
   }
   if (!reason) {
     setAdminClientWalletStatus(tr("A reason is required."), "error");
     return;
   }
+  const currentBalance = Number(
+    adminClientWalletData?.wallet?.balance_eur
+      ?? getAdminClientById(safeUserId)?.wallet?.balance_eur
+      ?? 0
+  );
+  if (direction === "debit" && amount > currentBalance + 0.0001) {
+    setAdminClientWalletStatus(tr("Cannot subtract more than the current balance."), "error");
+    return;
+  }
   adminClientWalletCreditBusy = true;
   setAdminClientWalletStatus("", "");
   renderAdminClientWalletModal();
   try {
-    const payload = await fetchApiWithAuth("/api/admin/client-wallet/credit", {
+    const payload = await fetchApiWithAuth("/api/admin/client-wallet/adjust", {
       method: "POST",
       timeoutMs: 20000,
       body: JSON.stringify({
@@ -6244,6 +6308,7 @@ async function submitAdminClientWalletCredit() {
         amount,
         reason,
         note,
+        direction,
       }),
     });
     adminClientWalletData = payload && typeof payload === "object" ? payload : {};
@@ -6252,18 +6317,29 @@ async function submitAdminClientWalletCredit() {
     if (adminClientWalletAmountInput) adminClientWalletAmountInput.value = "";
     if (adminClientWalletReasonInput) adminClientWalletReasonInput.value = "";
     if (adminClientWalletNoteInput) adminClientWalletNoteInput.value = "";
+    const successKey =
+      direction === "debit"
+        ? payload?.reference
+          ? "Balance subtracted. Reference: {reference}"
+          : "Balance subtracted."
+        : payload?.reference
+          ? "Balance added. Reference: {reference}"
+          : "Balance added.";
     setAdminClientWalletStatus(
       payload?.reference
-        ? tr("Credit applied. Reference: {reference}", {
+        ? tr(successKey, {
             reference: payload.reference,
           })
-        : tr("Credit applied."),
+        : tr(successKey),
       "success"
     );
     renderAdminClientWalletModal();
-    showToast(payload?.message || tr("Manual credit applied."), { tone: "success" });
+    showToast(
+      direction === "debit" ? tr("Manual balance subtracted.") : tr("Manual balance added."),
+      { tone: "success" }
+    );
   } catch (error) {
-    setAdminClientWalletStatus(error?.message || tr("Could not apply manual credit."), "error");
+    setAdminClientWalletStatus(error?.message || tr("Could not apply balance adjustment."), "error");
     renderAdminClientWalletModal();
   } finally {
     adminClientWalletCreditBusy = false;
@@ -6395,8 +6471,11 @@ function setAdminClientWalletStatus(message = "", tone = "") {
 
 function getAdminClientWalletTransactionLabel(entry = {}) {
   const source = String(entry?.source || "").trim().toLowerCase();
-  if (source === "manual_credit") {
-    return String(entry?.metadata?.reason || "").trim() || tr("Manual credit");
+  if (source === "manual_credit" || source === "manual_debit") {
+    return (
+      String(entry?.metadata?.reason || "").trim()
+      || tr(source === "manual_debit" ? "Manual debit" : "Manual credit")
+    );
   }
   if (source === "label_checkout") {
     return tr("Label checkout");
@@ -6474,6 +6553,10 @@ function renderAdminClientWalletModal() {
   if (adminClientWalletAmountInput) {
     adminClientWalletAmountInput.disabled = busy || loading;
   }
+  if (adminClientWalletDirectionInput) {
+    adminClientWalletDirectionInput.disabled = busy || loading;
+    adminClientWalletDirectionInput.value = adminClientWalletDirection;
+  }
   if (adminClientWalletReasonInput) {
     adminClientWalletReasonInput.disabled = busy || loading;
   }
@@ -6484,7 +6567,7 @@ function renderAdminClientWalletModal() {
     adminClientWalletSubmit.disabled = busy || loading || !adminClientWalletUserId;
     const label = adminClientWalletSubmit.querySelector("span");
     if (label) {
-      label.textContent = busy ? tr("Applying credit...") : tr("Apply credit");
+      label.textContent = busy ? tr("Applying adjustment...") : tr("Apply adjustment");
     }
   }
 
@@ -12499,6 +12582,8 @@ function setAdminClientWalletModalOpen(open) {
     adminClientWalletData = null;
     adminClientWalletLoading = false;
     adminClientWalletCreditBusy = false;
+    adminClientWalletDirection = "credit";
+    if (adminClientWalletDirectionInput) adminClientWalletDirectionInput.value = adminClientWalletDirection;
     if (adminClientWalletAmountInput) adminClientWalletAmountInput.value = "";
     if (adminClientWalletReasonInput) adminClientWalletReasonInput.value = "";
     if (adminClientWalletNoteInput) adminClientWalletNoteInput.value = "";
@@ -23772,7 +23857,19 @@ if (adminClientWalletModal) {
 
 if (adminClientWalletSubmit) {
   adminClientWalletSubmit.addEventListener("click", async () => {
-    await submitAdminClientWalletCredit();
+    await submitAdminClientWalletAdjustment();
+  });
+}
+
+if (adminClientWalletDirectionInput) {
+  adminClientWalletDirectionInput.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    adminClientWalletDirection = String(target.value || "credit").trim().toLowerCase() === "debit"
+      ? "debit"
+      : "credit";
+    setAdminClientWalletStatus("");
+    renderAdminClientWalletModal();
   });
 }
 
