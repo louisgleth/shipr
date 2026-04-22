@@ -458,6 +458,13 @@ const POST_TEMPLATE_TEXT_DEFAULTS = Object.freeze({
 const POST_STUDIO_TEMPLATE_DEFAULTS = Object.freeze({
   template: "titlepost1",
   templates: POST_TEMPLATE_TEXT_DEFAULTS,
+  notificationLayout: {
+    textX: 294,
+    titleY: 212,
+    descriptionY: 261,
+    timeX: 1064,
+    timeY: 208,
+  },
   partnerLogo: {
     name: "",
     dataUrl: "",
@@ -2208,6 +2215,18 @@ const postExportButton = document.getElementById("postExportButton");
 const postTemplateSwitch = document.getElementById("postTemplateSwitch");
 const postTemplateDescription = document.getElementById("postTemplateDescription");
 const postTemplateFields = document.getElementById("postTemplateFields");
+const postNotificationTuningCard = document.getElementById("postNotificationTuningCard");
+const postNotificationTuningResetButton = document.getElementById("postNotificationTuningReset");
+const postNotificationTextXInput = document.getElementById("postNotificationTextXInput");
+const postNotificationTextXValue = document.getElementById("postNotificationTextXValue");
+const postNotificationTitleYInput = document.getElementById("postNotificationTitleYInput");
+const postNotificationTitleYValue = document.getElementById("postNotificationTitleYValue");
+const postNotificationDescriptionYInput = document.getElementById("postNotificationDescriptionYInput");
+const postNotificationDescriptionYValue = document.getElementById("postNotificationDescriptionYValue");
+const postNotificationTimeXInput = document.getElementById("postNotificationTimeXInput");
+const postNotificationTimeXValue = document.getElementById("postNotificationTimeXValue");
+const postNotificationTimeYInput = document.getElementById("postNotificationTimeYInput");
+const postNotificationTimeYValue = document.getElementById("postNotificationTimeYValue");
 const postPartnerLogoCard = document.getElementById("postPartnerLogoCard");
 const postPartnerLogoInput = document.getElementById("postPartnerLogoInput");
 const postPartnerLogoClearButton = document.getElementById("postPartnerLogoClear");
@@ -20468,6 +20487,28 @@ function refreshPostStudioPartnerLogoCard() {
   }
 }
 
+function refreshPostStudioNotificationTuningCard() {
+  const studio = getPostStudioState();
+  const active = studio.template === "withtext1";
+  postNotificationTuningCard?.classList.toggle("is-hidden", !active);
+  const layout = studio.notificationLayout || POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout;
+  const bindings = [
+    [postNotificationTextXInput, postNotificationTextXValue, layout.textX],
+    [postNotificationTitleYInput, postNotificationTitleYValue, layout.titleY],
+    [postNotificationDescriptionYInput, postNotificationDescriptionYValue, layout.descriptionY],
+    [postNotificationTimeXInput, postNotificationTimeXValue, layout.timeX],
+    [postNotificationTimeYInput, postNotificationTimeYValue, layout.timeY],
+  ];
+  bindings.forEach(([input, valueNode, value]) => {
+    if (input instanceof HTMLInputElement) {
+      input.value = String(value);
+    }
+    if (valueNode) {
+      valueNode.textContent = String(value);
+    }
+  });
+}
+
 function refreshPostStudioStatusUi() {
   const studio = getPostStudioState();
   const config = getPostStudioTemplateConfig(studio.template);
@@ -20490,6 +20531,7 @@ function updatePostStudioInputsFromState() {
   }
   syncPostStudioTemplateChips();
   renderPostStudioTemplateFields();
+  refreshPostStudioNotificationTuningCard();
   refreshPostStudioPartnerLogoCard();
   refreshPostStudioStatusUi();
 }
@@ -20701,14 +20743,24 @@ function drawPostStudioEarnings(ctx, data) {
   });
   ctx.save();
   ctx.font = amount.font;
-  ctx.fillStyle = POST_TEMPLATE_AMOUNT_HEX;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(amount.text, 70, 122);
+  const amountTop = 122;
+  const amountGradient = ctx.createLinearGradient(
+    0,
+    amountTop,
+    0,
+    amountTop + Math.max(amount.metrics.height, amount.fontSize)
+  );
+  amountGradient.addColorStop(0, "#98FF9B");
+  amountGradient.addColorStop(1, "#6EB970");
+  ctx.fillStyle = amountGradient;
+  ctx.fillText(amount.text, 70, amountTop);
   ctx.restore();
 }
 
 function drawPostStudioWithText(ctx, data) {
+  const layout = getPostStudioState().notificationLayout || POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout;
   const titleText = postFitSingleLineText(ctx, data.title, {
     fontSize: 56,
     minFontSize: 28,
@@ -20735,13 +20787,13 @@ function drawPostStudioWithText(ctx, data) {
   ctx.textAlign = "left";
   ctx.font = titleText.font;
   ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
-  ctx.fillText(titleText.text, 294, 212);
+  ctx.fillText(titleText.text, layout.textX, layout.titleY);
   ctx.font = descriptionText.font;
-  ctx.fillText(descriptionText.text, 294, 261);
+  ctx.fillText(descriptionText.text, layout.textX, layout.descriptionY);
   ctx.font = timeText.font;
   ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#D6D0F4"), 0.5);
   ctx.textAlign = "right";
-  ctx.fillText(timeText.text, 1064, 208);
+  ctx.fillText(timeText.text, layout.timeX, layout.timeY);
   ctx.restore();
 }
 
@@ -20993,6 +21045,38 @@ function initializePostStudio() {
 
   postPartnerLogoSizeInput?.addEventListener("input", handlePartnerScaleChange);
   postPartnerLogoSizeInput?.addEventListener("change", handlePartnerScaleChange);
+
+  const handleNotificationTuningChange = () => {
+    const studio = getPostStudioState();
+    studio.notificationLayout = {
+      textX: Math.round(Number(postNotificationTextXInput?.value) || 294),
+      titleY: Math.round(Number(postNotificationTitleYInput?.value) || 212),
+      descriptionY: Math.round(Number(postNotificationDescriptionYInput?.value) || 261),
+      timeX: Math.round(Number(postNotificationTimeXInput?.value) || 1064),
+      timeY: Math.round(Number(postNotificationTimeYInput?.value) || 208),
+    };
+    refreshPostStudioNotificationTuningCard();
+    drawPostStudioFrame();
+  };
+
+  [
+    postNotificationTextXInput,
+    postNotificationTitleYInput,
+    postNotificationDescriptionYInput,
+    postNotificationTimeXInput,
+    postNotificationTimeYInput,
+  ].forEach((input) => {
+    input?.addEventListener("input", handleNotificationTuningChange);
+    input?.addEventListener("change", handleNotificationTuningChange);
+  });
+
+  postNotificationTuningResetButton?.addEventListener("click", () => {
+    getPostStudioState().notificationLayout = {
+      ...POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout,
+    };
+    refreshPostStudioNotificationTuningCard();
+    drawPostStudioFrame();
+  });
 
   postPartnerLogoClearButton?.addEventListener("click", () => {
     const studio = getPostStudioState();
