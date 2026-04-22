@@ -4939,6 +4939,17 @@ body.is-auth-view {
   line-height: 1.6;
 }
 
+.post-control-field-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.post-range-output {
+  color: var(--text);
+}
+
 .post-upload-shell {
   display: flex;
   flex-wrap: wrap;
@@ -4982,6 +4993,25 @@ body.is-auth-view {
 
 .post-upload-preview.is-ready .post-upload-preview-empty {
   display: none;
+}
+
+.post-partner-scale-field {
+  gap: 10px;
+}
+
+.post-partner-scale-field input[type="range"] {
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.post-partner-scale-field input[type="range"]:focus {
+  box-shadow: none;
 }
 
 .post-upload-meta,

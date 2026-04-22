@@ -461,6 +461,7 @@ const POST_STUDIO_TEMPLATE_DEFAULTS = Object.freeze({
   partnerLogo: {
     name: "",
     dataUrl: "",
+    scale: 1,
   },
   caption:
     "Hook: what makes the post worth stopping for?\n\nInsight: what is the single takeaway?\n\nCTA: what should happen next?",
@@ -2212,6 +2213,8 @@ const postPartnerLogoInput = document.getElementById("postPartnerLogoInput");
 const postPartnerLogoClearButton = document.getElementById("postPartnerLogoClear");
 const postPartnerLogoPreviewWrap = document.getElementById("postPartnerLogoPreviewWrap");
 const postPartnerLogoPreview = document.getElementById("postPartnerLogoPreview");
+const postPartnerLogoSizeInput = document.getElementById("postPartnerLogoSizeInput");
+const postPartnerLogoSizeValue = document.getElementById("postPartnerLogoSizeValue");
 const postPartnerLogoMeta = document.getElementById("postPartnerLogoMeta");
 const postOverlayOpacityInput = document.getElementById("postOverlayOpacityInput");
 const postCaptionInput = document.getElementById("postCaptionInput");
@@ -20456,6 +20459,13 @@ function refreshPostStudioPartnerLogoCard() {
   if (postPartnerLogoClearButton instanceof HTMLButtonElement) {
     postPartnerLogoClearButton.disabled = !hasLogo;
   }
+  const safeScale = Math.max(0.5, Math.min(1.8, Number(studio.partnerLogo?.scale) || 1));
+  if (postPartnerLogoSizeInput instanceof HTMLInputElement) {
+    postPartnerLogoSizeInput.value = String(safeScale);
+  }
+  if (postPartnerLogoSizeValue) {
+    postPartnerLogoSizeValue.textContent = `${Math.round(safeScale * 100)}%`;
+  }
 }
 
 function refreshPostStudioStatusUi() {
@@ -20630,8 +20640,8 @@ function drawPostStudioTitlePost1(ctx, data) {
   const headline = postFitTextBlock(ctx, data.headline, {
     maxWidth: 930,
     maxLines: 2,
-    fontSize: 92,
-    minFontSize: 52,
+    fontSize: 100,
+    minFontSize: 56,
     fontWeight: 400,
     lineHeight: 1.02,
   });
@@ -20725,13 +20735,13 @@ function drawPostStudioWithText(ctx, data) {
   ctx.textAlign = "left";
   ctx.font = titleText.font;
   ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
-  ctx.fillText(titleText.text, 294, 182);
+  ctx.fillText(titleText.text, 294, 196);
   ctx.font = descriptionText.font;
-  ctx.fillText(descriptionText.text, 294, 231);
+  ctx.fillText(descriptionText.text, 294, 246);
   ctx.font = timeText.font;
   ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#D6D0F4"), 0.5);
   ctx.textAlign = "right";
-  ctx.fillText(timeText.text, 1064, 178);
+  ctx.fillText(timeText.text, 1064, 192);
   ctx.restore();
 }
 
@@ -20746,13 +20756,17 @@ function drawPostStudioCollab(ctx, studio, width, height) {
   const shipideDisplay = shipideLockup
     ? postMeasureImageFit(shipideLockup, shipideBounds.width, shipideBounds.height)
     : { width: 316, height: 74 };
-  const partnerBounds = { width: 280, height: shipideDisplay.height };
+  const partnerScale = Math.max(0.5, Math.min(1.8, Number(studio.partnerLogo?.scale) || 1));
+  const partnerBounds = {
+    width: 280 * partnerScale,
+    height: shipideDisplay.height * partnerScale,
+  };
   const partnerDisplay = partnerLogo
     ? postMeasureImageFit(partnerLogo, partnerBounds.width, partnerBounds.height)
-    : { width: 214, height: shipideDisplay.height };
+    : { width: 214 * partnerScale, height: shipideDisplay.height * partnerScale };
 
   ctx.save();
-  ctx.font = '300 52px "Creato Display Regular", "Creato Display Light", sans-serif';
+  ctx.font = '300 42px "Creato Display Regular", "Creato Display Light", sans-serif';
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const separatorMetrics = postMeasureText(ctx, "×");
@@ -20773,7 +20787,7 @@ function drawPostStudioCollab(ctx, studio, width, height) {
     postDrawShipideMark(ctx, shipideX, shipideY, shipideDisplay.height, POST_TEMPLATE_TEXT_HEX, 1);
   }
 
-  ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.28);
+  ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.2);
   const separatorX = shipideX + shipideDisplay.width + separatorGapLeft;
   const separatorBaselineY =
     groupCenterY + separatorMetrics.ascent / 2 - separatorMetrics.descent / 2;
@@ -20949,6 +20963,7 @@ function initializePostStudio() {
       studio.partnerLogo = {
         name: file.name,
         dataUrl: result,
+        scale: Math.max(0.5, Math.min(1.8, Number(studio.partnerLogo?.scale) || 1)),
       };
       void loadPostStudioImageResource(`partner:${result}`, result).catch(() => {
         showToast(tr("Could not load the partner logo."), { tone: "error" });
@@ -20963,9 +20978,26 @@ function initializePostStudio() {
     reader.readAsDataURL(file);
   });
 
+  const handlePartnerScaleChange = () => {
+    const studio = getPostStudioState();
+    studio.partnerLogo.scale = Math.max(
+      0.5,
+      Math.min(1.8, Number(postPartnerLogoSizeInput?.value) || 1)
+    );
+    refreshPostStudioPartnerLogoCard();
+    drawPostStudioFrame();
+  };
+
+  postPartnerLogoSizeInput?.addEventListener("input", handlePartnerScaleChange);
+  postPartnerLogoSizeInput?.addEventListener("change", handlePartnerScaleChange);
+
   postPartnerLogoClearButton?.addEventListener("click", () => {
     const studio = getPostStudioState();
-    studio.partnerLogo = { name: "", dataUrl: "" };
+    studio.partnerLogo = {
+      name: "",
+      dataUrl: "",
+      scale: Math.max(0.5, Math.min(1.8, Number(studio.partnerLogo?.scale) || 1)),
+    };
     if (postPartnerLogoInput instanceof HTMLInputElement) {
       postPartnerLogoInput.value = "";
     }
