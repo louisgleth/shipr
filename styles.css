@@ -8224,6 +8224,14 @@ body.is-auth-view {
   font-weight: 400;
 }
 
+.label-sub {
+  margin-top: 3px;
+  font-family: var(--font-mono), monospace;
+  font-size: var(--fs-2xs);
+  line-height: 1.3;
+  color: var(--muted);
+}
+
 .label-price-group {
   display: inline-flex;
   align-items: baseline;
@@ -8253,7 +8261,8 @@ body.is-auth-view {
 .label-feature {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 5px;
+  font-family: var(--font-mono), monospace;
   font-size: var(--fs-xs);
   line-height: 1.35;
   color: var(--text);
@@ -8271,9 +8280,9 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
   margin-top: 1px;
 }
 
@@ -8286,8 +8295,8 @@ body.is-auth-view {
 }
 
 .label-feature-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 

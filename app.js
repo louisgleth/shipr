@@ -1102,6 +1102,14 @@ const TRANSLATIONS = {
   "Select your delivery service. Pricing updates instantly.": { fr: "Sélectionnez votre service de livraison. Le prix se met à jour instantanément.", nl: "Selecteer je leveringsservice. De prijs wordt meteen bijgewerkt." },
   "Economy": { fr: "Économie", nl: "Economy" },
   "Standard": { fr: "Standard", nl: "Standard" },
+  "Reliable, cost-efficient": {
+    fr: "Fiable, économique",
+    nl: "Betrouwbaar, kostenefficiënt",
+  },
+  "Tracked, protected delivery": {
+    fr: "Suivi, livraison protégée",
+    nl: "Tracking, beschermde levering",
+  },
   "No proof of deposit nor Track & Trace": {
     fr: "Aucune preuve de dépôt ni suivi Track & Trace",
     nl: "Geen afgiftebewijs en geen Track & Trace",
