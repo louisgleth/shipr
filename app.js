@@ -401,7 +401,7 @@ const POST_TEMPLATE_DEFS = Object.freeze({
   },
   withtext1: {
     label: "Notification",
-    asset: "assets/withtext1-without.png",
+    asset: "assets/notification-base.png",
     description: "Notification card composition with a fixed left icon, a text block in the middle, and a right-aligned time label.",
     fields: [
       {
@@ -464,6 +464,9 @@ const POST_STUDIO_TEMPLATE_DEFAULTS = Object.freeze({
     descriptionY: 261,
     timeX: 1064,
     timeY: 208,
+    titleSize: 56,
+    descriptionSize: 35,
+    timeSize: 48,
   },
   partnerLogo: {
     name: "",
@@ -2223,10 +2226,16 @@ const postNotificationTitleYInput = document.getElementById("postNotificationTit
 const postNotificationTitleYValue = document.getElementById("postNotificationTitleYValue");
 const postNotificationDescriptionYInput = document.getElementById("postNotificationDescriptionYInput");
 const postNotificationDescriptionYValue = document.getElementById("postNotificationDescriptionYValue");
+const postNotificationTitleSizeInput = document.getElementById("postNotificationTitleSizeInput");
+const postNotificationTitleSizeValue = document.getElementById("postNotificationTitleSizeValue");
+const postNotificationDescriptionSizeInput = document.getElementById("postNotificationDescriptionSizeInput");
+const postNotificationDescriptionSizeValue = document.getElementById("postNotificationDescriptionSizeValue");
 const postNotificationTimeXInput = document.getElementById("postNotificationTimeXInput");
 const postNotificationTimeXValue = document.getElementById("postNotificationTimeXValue");
 const postNotificationTimeYInput = document.getElementById("postNotificationTimeYInput");
 const postNotificationTimeYValue = document.getElementById("postNotificationTimeYValue");
+const postNotificationTimeSizeInput = document.getElementById("postNotificationTimeSizeInput");
+const postNotificationTimeSizeValue = document.getElementById("postNotificationTimeSizeValue");
 const postPartnerLogoCard = document.getElementById("postPartnerLogoCard");
 const postPartnerLogoInput = document.getElementById("postPartnerLogoInput");
 const postPartnerLogoClearButton = document.getElementById("postPartnerLogoClear");
@@ -20496,8 +20505,11 @@ function refreshPostStudioNotificationTuningCard() {
     [postNotificationTextXInput, postNotificationTextXValue, layout.textX],
     [postNotificationTitleYInput, postNotificationTitleYValue, layout.titleY],
     [postNotificationDescriptionYInput, postNotificationDescriptionYValue, layout.descriptionY],
+    [postNotificationTitleSizeInput, postNotificationTitleSizeValue, layout.titleSize],
+    [postNotificationDescriptionSizeInput, postNotificationDescriptionSizeValue, layout.descriptionSize],
     [postNotificationTimeXInput, postNotificationTimeXValue, layout.timeX],
     [postNotificationTimeYInput, postNotificationTimeYValue, layout.timeY],
+    [postNotificationTimeSizeInput, postNotificationTimeSizeValue, layout.timeSize],
   ];
   bindings.forEach(([input, valueNode, value]) => {
     if (input instanceof HTMLInputElement) {
@@ -20759,24 +20771,78 @@ function drawPostStudioEarnings(ctx, data) {
   ctx.restore();
 }
 
+function drawPostStudioNotificationShell(ctx) {
+  const stack = [
+    { x: 174, y: 324, width: 732, height: 63, radius: 34, alpha: 0.16 },
+    { x: 208, y: 347, width: 687, height: 55, radius: 30, alpha: 0.13 },
+  ];
+  ctx.save();
+  stack.forEach((layer) => {
+    postRoundRectPath(ctx, layer.x, layer.y, layer.width, layer.height, layer.radius);
+    ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#948FCC"), layer.alpha);
+    ctx.fill();
+    ctx.strokeStyle = postRgbToCss(parseHexColorToRgb("#D5D2F0"), 0.22);
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  });
+
+  const cardX = 101;
+  const cardY = 182;
+  const cardWidth = 969;
+  const cardHeight = 166;
+  postRoundRectPath(ctx, cardX, cardY, cardWidth, cardHeight, 42);
+  const cardGradient = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardHeight);
+  cardGradient.addColorStop(0, postRgbToCss(parseHexColorToRgb("#49457A"), 0.9));
+  cardGradient.addColorStop(1, postRgbToCss(parseHexColorToRgb("#3A385F"), 0.82));
+  ctx.fillStyle = cardGradient;
+  ctx.fill();
+  ctx.strokeStyle = postRgbToCss(parseHexColorToRgb("#D9D6F3"), 0.32);
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+
+  const iconBoxX = 134;
+  const iconBoxY = 211;
+  const iconBoxSize = 98;
+  postRoundRectPath(ctx, iconBoxX, iconBoxY, iconBoxSize, iconBoxSize, 24);
+  const iconGradient = ctx.createLinearGradient(iconBoxX, iconBoxY, iconBoxX, iconBoxY + iconBoxSize);
+  iconGradient.addColorStop(0, postRgbToCss(parseHexColorToRgb("#2E2E40"), 1));
+  iconGradient.addColorStop(1, postRgbToCss(parseHexColorToRgb("#04010F"), 1));
+  ctx.fillStyle = iconGradient;
+  ctx.fill();
+  ctx.strokeStyle = postRgbToCss(parseHexColorToRgb("#5D587E"), 0.55);
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
+  postDrawShipideMark(
+    ctx,
+    iconBoxX + 27,
+    iconBoxY + 20,
+    44,
+    POST_TEMPLATE_TEXT_HEX,
+    0.95
+  );
+  ctx.restore();
+}
+
 function drawPostStudioWithText(ctx, data) {
   const layout = getPostStudioState().notificationLayout || POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout;
+  drawPostStudioNotificationShell(ctx);
   const titleText = postFitSingleLineText(ctx, data.title, {
-    fontSize: 56,
+    fontSize: layout.titleSize,
     minFontSize: 28,
     maxWidth: 500,
     fontWeight: 400,
     fontFamily: '"Creato Display Regular", "Creato Display Light", sans-serif',
   });
   const timeText = postFitSingleLineText(ctx, data.time, {
-    fontSize: 48,
+    fontSize: layout.timeSize,
     minFontSize: 22,
     maxWidth: 190,
     fontWeight: 300,
     fontFamily: '"Creato Display Light", sans-serif',
   });
   const descriptionText = postFitSingleLineText(ctx, data.description, {
-    fontSize: 35,
+    fontSize: layout.descriptionSize,
     minFontSize: 20,
     maxWidth: 540,
     fontWeight: 300,
@@ -21052,8 +21118,11 @@ function initializePostStudio() {
       textX: Math.round(Number(postNotificationTextXInput?.value) || 294),
       titleY: Math.round(Number(postNotificationTitleYInput?.value) || 212),
       descriptionY: Math.round(Number(postNotificationDescriptionYInput?.value) || 261),
+      titleSize: Math.round(Number(postNotificationTitleSizeInput?.value) || 56),
+      descriptionSize: Math.round(Number(postNotificationDescriptionSizeInput?.value) || 35),
       timeX: Math.round(Number(postNotificationTimeXInput?.value) || 1064),
       timeY: Math.round(Number(postNotificationTimeYInput?.value) || 208),
+      timeSize: Math.round(Number(postNotificationTimeSizeInput?.value) || 48),
     };
     refreshPostStudioNotificationTuningCard();
     drawPostStudioFrame();
@@ -21063,8 +21132,11 @@ function initializePostStudio() {
     postNotificationTextXInput,
     postNotificationTitleYInput,
     postNotificationDescriptionYInput,
+    postNotificationTitleSizeInput,
+    postNotificationDescriptionSizeInput,
     postNotificationTimeXInput,
     postNotificationTimeYInput,
+    postNotificationTimeSizeInput,
   ].forEach((input) => {
     input?.addEventListener("input", handleNotificationTuningChange);
     input?.addEventListener("change", handleNotificationTuningChange);
