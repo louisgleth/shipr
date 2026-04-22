@@ -391,12 +391,16 @@
                   </div>
                 </button>
               </div>
+              <div class="label-service-divider" aria-hidden="true"></div>
               <div class="label-addon-card is-hidden" id="warrantyOptionCard">
-                <label class="label-addon-toggle" for="warrantyToggle">
-                  <input type="checkbox" id="warrantyToggle" />
-                  <span class="label-addon-box" aria-hidden="true"></span>
-                  <span class="label-addon-title">Add warranty</span>
-                </label>
+                <div class="label-addon-head">
+                  <label class="label-addon-toggle" for="warrantyToggle">
+                    <input type="checkbox" id="warrantyToggle" />
+                    <span class="label-addon-box" aria-hidden="true"></span>
+                    <span class="label-addon-title">Add warranty</span>
+                  </label>
+                  <span class="label-addon-price" id="warrantyOptionPrice">€1.55</span>
+                </div>
                 <div class="label-feature-list label-feature-list--compact">
                   <div class="label-feature is-positive">
                     <span class="label-feature-icon" aria-hidden="true">
@@ -417,9 +421,7 @@
                     <span>Signature of receiver on delivery</span>
                   </div>
                 </div>
-                <div class="label-addon-note is-hidden" id="warrantyOptionNote">
-                  Only applicable to Belgian recipients
-                </div>
+                <div class="label-addon-note is-hidden" id="warrantyOptionNote"></div>
               </div>
               <div class="quantity-row">
                 <label class="field">

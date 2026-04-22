@@ -8319,14 +8319,29 @@ body.is-auth-view {
   display: block;
 }
 
+.label-service-divider {
+  width: 100%;
+  margin: 18px 0 16px;
+  border-top: 1px solid var(--stroke);
+  opacity: 0.9;
+}
+
 .label-addon-card {
-  margin-top: 16px;
+  margin-top: 0;
   display: grid;
   gap: 12px;
   padding: 16px 18px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--stroke);
   background: color-mix(in srgb, var(--card-bg) 84%, #ffffff 4%);
+}
+
+.label-addon-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .label-addon-toggle {
@@ -8381,6 +8396,13 @@ body.is-auth-view {
 .label-addon-title {
   font-size: var(--fs-xs);
   font-weight: 400;
+}
+
+.label-addon-price {
+  font-family: var(--font-mono), monospace;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .label-addon-note {

@@ -86,6 +86,7 @@ const AUTH_REGISTER_STEP_IN_MS = 260;
 const CSV_MODAL_STEP_SWITCH_DELAY_MS = 160;
 const CSV_TABLE_PAGE_SIZE = 10;
 const VAT_RATE = 0;
+const WARRANTY_PRICE_EUR = 1.55;
 const TOTAL_STEPS = 4;
 const CUSTOMS_MAX_ITEMS = 12;
 const REPORT_RANGE_PRESETS = [7, 30, 90, 365];
@@ -1115,6 +1116,7 @@ const TRANSLATIONS = {
     fr: "Ajouter la garantie",
     nl: "Garantie toevoegen",
   },
+  "Included": { fr: "Inclus", nl: "Inbegrepen" },
   "No proof of deposit nor Track & Trace": {
     fr: "Aucune preuve de dépôt ni suivi Track & Trace",
     nl: "Geen afgiftebewijs en geen Track & Trace",
@@ -1143,6 +1145,10 @@ const TRANSLATIONS = {
   "Only applicable to Belgian recipients": {
     fr: "Applicable uniquement aux destinataires belges",
     nl: "Alleen van toepassing op Belgische ontvangers",
+  },
+  "Included above 10 kg": {
+    fr: "Inclus au-dessus de 10 kg",
+    nl: "Inbegrepen boven 10 kg",
   },
   "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
   "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
@@ -2490,6 +2496,7 @@ const labelCards = document.querySelectorAll(".label-card");
 const warrantyOptionCard = document.getElementById("warrantyOptionCard");
 const warrantyToggle = document.getElementById("warrantyToggle");
 const warrantyOptionNote = document.getElementById("warrantyOptionNote");
+const warrantyOptionPrice = document.getElementById("warrantyOptionPrice");
 const summaryService = document.getElementById("summaryService");
 const summaryPrice = document.getElementById("summaryPrice");
 const summaryQty = document.getElementById("summaryQty");
@@ -13163,6 +13170,8 @@ async function loadGenerationHistory(options = {}) {
 
 function buildHistoryRecord() {
   if (!currentUser || !state.labels.length) return null;
+  const totals = getOrderTotals();
+  const warranty = getWarrantyPricingDetails();
   const payloadLabels = state.labels.map((label) => ({
     index: label.index,
     labelId: label.labelId,
@@ -13182,9 +13191,15 @@ function buildHistoryRecord() {
   return {
     service_type: state.selection.type,
     quantity: payloadLabels.length,
-    total_price: Number((state.selection.price * payloadLabels.length).toFixed(2)),
+    total_price: totals.total,
     payload: {
-      selection: { ...state.selection },
+      selection: {
+        ...state.selection,
+        warranty_price_eur: WARRANTY_PRICE_EUR,
+        warranty_charge_eur: warranty.surchargeTotal,
+        warranty_included_count: warranty.includedCount,
+        warranty_charge_count: warranty.surchargeCount,
+      },
       labels: payloadLabels,
       customs: customsPayload,
     },
@@ -21990,19 +22005,80 @@ function getWarrantyEligibility() {
   };
 }
 
+function parsePackageWeightKg(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(",", ".")
+    .match(/-?\d+(?:\.\d+)?/);
+  const amount = normalized ? Number(normalized[0]) : 0;
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function getWarrantyShipmentTargets() {
+  if (state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length) {
+    return state.csvRows.map((row) => ({
+      country: String(row?.recipientCountry || "").trim(),
+      weightKg: parsePackageWeightKg(row?.packageWeight),
+    }));
+  }
+  const country = String(state.info.recipientCountry || inputMap.recipientCountry?.value || "").trim();
+  const weightKg = parsePackageWeightKg(state.info.packageWeight || inputMap.packageWeight?.value || "");
+  return Array.from({ length: getQuantity() }, () => ({
+    country,
+    weightKg,
+  }));
+}
+
+function getWarrantyPricingDetails() {
+  const targets = getWarrantyShipmentTargets();
+  const applicableTargets = targets.filter((target) => isDomesticCountry(target.country));
+  const includedCount = applicableTargets.filter((target) => target.weightKg > 10).length;
+  const paidEligibleCount = applicableTargets.filter((target) => target.weightKg <= 10).length;
+  const eligibility = getWarrantyEligibility();
+  const surchargeCount =
+    eligibility.visible && Boolean(state.selection.warranty) ? paidEligibleCount : 0;
+  const surchargeTotal = round2(surchargeCount * WARRANTY_PRICE_EUR);
+  return {
+    visible: eligibility.visible,
+    showBelgianNote: eligibility.showNote,
+    applicableCount: applicableTargets.length,
+    includedCount,
+    paidEligibleCount,
+    autoIncludedOnly: eligibility.visible && includedCount > 0 && paidEligibleCount === 0,
+    surchargeCount,
+    surchargeTotal,
+    hasIncludedAboveTenKg: eligibility.visible && includedCount > 0,
+  };
+}
+
 function refreshWarrantyOptionUi() {
   if (!warrantyOptionCard) return;
-  const eligibility = getWarrantyEligibility();
-  warrantyOptionCard.classList.toggle("is-hidden", !eligibility.visible);
-  if (!eligibility.visible) {
+  const pricing = getWarrantyPricingDetails();
+  warrantyOptionCard.classList.toggle("is-hidden", !pricing.visible);
+  if (!pricing.visible) {
     state.selection.warranty = false;
   }
   if (warrantyToggle) {
-    warrantyToggle.checked = eligibility.visible && Boolean(state.selection.warranty);
-    warrantyToggle.disabled = !eligibility.visible;
+    warrantyToggle.checked = pricing.autoIncludedOnly
+      ? true
+      : pricing.visible && Boolean(state.selection.warranty);
+    warrantyToggle.disabled = !pricing.visible || pricing.autoIncludedOnly;
+  }
+  if (warrantyOptionPrice) {
+    warrantyOptionPrice.textContent = pricing.autoIncludedOnly
+      ? tr("Included")
+      : formatMoney(WARRANTY_PRICE_EUR);
   }
   if (warrantyOptionNote) {
-    warrantyOptionNote.classList.toggle("is-hidden", !eligibility.showNote);
+    const noteParts = [];
+    if (pricing.showBelgianNote) {
+      noteParts.push(tr("Only applicable to Belgian recipients"));
+    }
+    if (pricing.hasIncludedAboveTenKg) {
+      noteParts.push(tr("Included above 10 kg"));
+    }
+    warrantyOptionNote.textContent = noteParts.join(" • ");
+    warrantyOptionNote.classList.toggle("is-hidden", noteParts.length === 0);
   }
 }
 
@@ -22098,10 +22174,19 @@ function updatePayment() {
 
 function getOrderTotals() {
   const quantity = getQuantity();
-  const subtotal = Number((state.selection.price * quantity).toFixed(2));
+  const warranty = getWarrantyPricingDetails();
+  const subtotal = round2(state.selection.price * quantity + warranty.surchargeTotal);
   const vatAmount = Number((subtotal * VAT_RATE).toFixed(2));
   const total = Number((subtotal + vatAmount).toFixed(2));
-  return { quantity, subtotal, vatAmount, total };
+  return {
+    quantity,
+    subtotal,
+    vatAmount,
+    total,
+    warrantySurcharge: warranty.surchargeTotal,
+    warrantySurchargeCount: warranty.surchargeCount,
+    warrantyIncludedCount: warranty.includedCount,
+  };
 }
 
 function getIbanInstructionsFromOverview() {
