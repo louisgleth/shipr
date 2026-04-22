@@ -20735,13 +20735,13 @@ function drawPostStudioWithText(ctx, data) {
   ctx.textAlign = "left";
   ctx.font = titleText.font;
   ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
-  ctx.fillText(titleText.text, 294, 196);
+  ctx.fillText(titleText.text, 294, 212);
   ctx.font = descriptionText.font;
-  ctx.fillText(descriptionText.text, 294, 246);
+  ctx.fillText(descriptionText.text, 294, 261);
   ctx.font = timeText.font;
   ctx.fillStyle = postRgbToCss(parseHexColorToRgb("#D6D0F4"), 0.5);
   ctx.textAlign = "right";
-  ctx.fillText(timeText.text, 1064, 192);
+  ctx.fillText(timeText.text, 1064, 208);
   ctx.restore();
 }
 
@@ -20752,6 +20752,7 @@ function drawPostStudioCollab(ctx, studio, width, height) {
   const groupCenterY = Math.round(height * 0.46);
   const separatorGapLeft = 44;
   const separatorGapRight = 42;
+  const separatorSize = 22;
   const shipideBounds = { width: 360, height: 74 };
   const shipideDisplay = shipideLockup
     ? postMeasureImageFit(shipideLockup, shipideBounds.width, shipideBounds.height)
@@ -20766,15 +20767,11 @@ function drawPostStudioCollab(ctx, studio, width, height) {
     : { width: 214 * partnerScale, height: shipideDisplay.height * partnerScale };
 
   ctx.save();
-  ctx.font = '300 42px "Creato Display Regular", "Creato Display Light", sans-serif';
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  const separatorMetrics = postMeasureText(ctx, "×");
 
   const totalWidth =
     shipideDisplay.width +
     separatorGapLeft +
-    separatorMetrics.width +
+    separatorSize +
     separatorGapRight +
     partnerDisplay.width;
   const startX = Math.round((width - totalWidth) / 2);
@@ -20787,13 +20784,19 @@ function drawPostStudioCollab(ctx, studio, width, height) {
     postDrawShipideMark(ctx, shipideX, shipideY, shipideDisplay.height, POST_TEMPLATE_TEXT_HEX, 1);
   }
 
-  ctx.fillStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.2);
+  ctx.strokeStyle = postRgbToCss(parseHexColorToRgb(POST_TEMPLATE_TEXT_HEX), 0.16);
+  ctx.lineWidth = 1.15;
+  ctx.lineCap = "round";
   const separatorX = shipideX + shipideDisplay.width + separatorGapLeft;
-  const separatorBaselineY =
-    groupCenterY + separatorMetrics.ascent / 2 - separatorMetrics.descent / 2;
-  ctx.fillText("×", separatorX, separatorBaselineY);
+  const separatorY = groupCenterY;
+  ctx.beginPath();
+  ctx.moveTo(separatorX, separatorY - separatorSize / 2);
+  ctx.lineTo(separatorX + separatorSize, separatorY + separatorSize / 2);
+  ctx.moveTo(separatorX + separatorSize, separatorY - separatorSize / 2);
+  ctx.lineTo(separatorX, separatorY + separatorSize / 2);
+  ctx.stroke();
 
-  const partnerX = separatorX + separatorMetrics.width + separatorGapRight;
+  const partnerX = separatorX + separatorSize + separatorGapRight;
   const partnerY = groupCenterY - partnerDisplay.height / 2;
   if (partnerLogo) {
     ctx.drawImage(partnerLogo, partnerX, partnerY, partnerDisplay.width, partnerDisplay.height);
