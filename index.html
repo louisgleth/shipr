@@ -391,15 +391,10 @@
                   </div>
                 </button>
               </div>
-              <div class="quantity-row">
-                <label class="field">
-                  <span>Label Quantity</span>
-                  <input type="number" id="labelQuantity" min="1" max="50" value="1" />
-                </label>
-              </div>
               <div class="label-addon-card is-hidden" id="warrantyOptionCard">
                 <label class="label-addon-toggle" for="warrantyToggle">
                   <input type="checkbox" id="warrantyToggle" />
+                  <span class="label-addon-box" aria-hidden="true"></span>
                   <span class="label-addon-title">Add warranty</span>
                 </label>
                 <div class="label-feature-list label-feature-list--compact">
@@ -425,6 +420,12 @@
                 <div class="label-addon-note is-hidden" id="warrantyOptionNote">
                   Only applicable to Belgian recipients
                 </div>
+              </div>
+              <div class="quantity-row">
+                <label class="field">
+                  <span>Label Quantity</span>
+                  <input type="number" id="labelQuantity" min="1" max="50" value="1" />
+                </label>
               </div>
 
               <div class="panel-actions">
