@@ -4999,12 +4999,6 @@ body.is-auth-view {
   gap: 10px;
 }
 
-.post-tuning-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .post-partner-scale-field input[type="range"] {
   height: auto;
   padding: 0;
@@ -10145,10 +10139,6 @@ input.is-invalid {
   }
 
   .post-template-fields {
-    grid-template-columns: 1fr;
-  }
-
-  .post-tuning-grid {
     grid-template-columns: 1fr;
   }
 

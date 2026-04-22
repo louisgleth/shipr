@@ -459,14 +459,14 @@ const POST_STUDIO_TEMPLATE_DEFAULTS = Object.freeze({
   template: "titlepost1",
   templates: POST_TEMPLATE_TEXT_DEFAULTS,
   notificationLayout: {
-    textX: 294,
-    titleY: 212,
-    descriptionY: 261,
-    timeX: 1064,
-    timeY: 208,
-    titleSize: 56,
+    textX: 288,
+    titleY: 222,
+    descriptionY: 271,
+    timeX: 1024,
+    timeY: 228,
+    titleSize: 45,
     descriptionSize: 35,
-    timeSize: 48,
+    timeSize: 35,
   },
   partnerLogo: {
     name: "",
@@ -2218,24 +2218,6 @@ const postExportButton = document.getElementById("postExportButton");
 const postTemplateSwitch = document.getElementById("postTemplateSwitch");
 const postTemplateDescription = document.getElementById("postTemplateDescription");
 const postTemplateFields = document.getElementById("postTemplateFields");
-const postNotificationTuningCard = document.getElementById("postNotificationTuningCard");
-const postNotificationTuningResetButton = document.getElementById("postNotificationTuningReset");
-const postNotificationTextXInput = document.getElementById("postNotificationTextXInput");
-const postNotificationTextXValue = document.getElementById("postNotificationTextXValue");
-const postNotificationTitleYInput = document.getElementById("postNotificationTitleYInput");
-const postNotificationTitleYValue = document.getElementById("postNotificationTitleYValue");
-const postNotificationDescriptionYInput = document.getElementById("postNotificationDescriptionYInput");
-const postNotificationDescriptionYValue = document.getElementById("postNotificationDescriptionYValue");
-const postNotificationTitleSizeInput = document.getElementById("postNotificationTitleSizeInput");
-const postNotificationTitleSizeValue = document.getElementById("postNotificationTitleSizeValue");
-const postNotificationDescriptionSizeInput = document.getElementById("postNotificationDescriptionSizeInput");
-const postNotificationDescriptionSizeValue = document.getElementById("postNotificationDescriptionSizeValue");
-const postNotificationTimeXInput = document.getElementById("postNotificationTimeXInput");
-const postNotificationTimeXValue = document.getElementById("postNotificationTimeXValue");
-const postNotificationTimeYInput = document.getElementById("postNotificationTimeYInput");
-const postNotificationTimeYValue = document.getElementById("postNotificationTimeYValue");
-const postNotificationTimeSizeInput = document.getElementById("postNotificationTimeSizeInput");
-const postNotificationTimeSizeValue = document.getElementById("postNotificationTimeSizeValue");
 const postPartnerLogoCard = document.getElementById("postPartnerLogoCard");
 const postPartnerLogoInput = document.getElementById("postPartnerLogoInput");
 const postPartnerLogoClearButton = document.getElementById("postPartnerLogoClear");
@@ -20496,31 +20478,6 @@ function refreshPostStudioPartnerLogoCard() {
   }
 }
 
-function refreshPostStudioNotificationTuningCard() {
-  const studio = getPostStudioState();
-  const active = studio.template === "withtext1";
-  postNotificationTuningCard?.classList.toggle("is-hidden", !active);
-  const layout = studio.notificationLayout || POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout;
-  const bindings = [
-    [postNotificationTextXInput, postNotificationTextXValue, layout.textX],
-    [postNotificationTitleYInput, postNotificationTitleYValue, layout.titleY],
-    [postNotificationDescriptionYInput, postNotificationDescriptionYValue, layout.descriptionY],
-    [postNotificationTitleSizeInput, postNotificationTitleSizeValue, layout.titleSize],
-    [postNotificationDescriptionSizeInput, postNotificationDescriptionSizeValue, layout.descriptionSize],
-    [postNotificationTimeXInput, postNotificationTimeXValue, layout.timeX],
-    [postNotificationTimeYInput, postNotificationTimeYValue, layout.timeY],
-    [postNotificationTimeSizeInput, postNotificationTimeSizeValue, layout.timeSize],
-  ];
-  bindings.forEach(([input, valueNode, value]) => {
-    if (input instanceof HTMLInputElement) {
-      input.value = String(value);
-    }
-    if (valueNode) {
-      valueNode.textContent = String(value);
-    }
-  });
-}
-
 function refreshPostStudioStatusUi() {
   const studio = getPostStudioState();
   const config = getPostStudioTemplateConfig(studio.template);
@@ -20543,7 +20500,6 @@ function updatePostStudioInputsFromState() {
   }
   syncPostStudioTemplateChips();
   renderPostStudioTemplateFields();
-  refreshPostStudioNotificationTuningCard();
   refreshPostStudioPartnerLogoCard();
   refreshPostStudioStatusUi();
 }
@@ -20694,8 +20650,8 @@ function drawPostStudioTitlePost1(ctx, data) {
   const headline = postFitTextBlock(ctx, data.headline, {
     maxWidth: 930,
     maxLines: 2,
-    fontSize: 100,
-    minFontSize: 56,
+    fontSize: 112,
+    minFontSize: 60,
     fontWeight: 400,
     lineHeight: 1.02,
   });
@@ -21057,44 +21013,6 @@ function initializePostStudio() {
 
   postPartnerLogoSizeInput?.addEventListener("input", handlePartnerScaleChange);
   postPartnerLogoSizeInput?.addEventListener("change", handlePartnerScaleChange);
-
-  const handleNotificationTuningChange = () => {
-    const studio = getPostStudioState();
-    studio.notificationLayout = {
-      textX: Math.round(Number(postNotificationTextXInput?.value) || 294),
-      titleY: Math.round(Number(postNotificationTitleYInput?.value) || 212),
-      descriptionY: Math.round(Number(postNotificationDescriptionYInput?.value) || 261),
-      titleSize: Math.round(Number(postNotificationTitleSizeInput?.value) || 56),
-      descriptionSize: Math.round(Number(postNotificationDescriptionSizeInput?.value) || 35),
-      timeX: Math.round(Number(postNotificationTimeXInput?.value) || 1064),
-      timeY: Math.round(Number(postNotificationTimeYInput?.value) || 208),
-      timeSize: Math.round(Number(postNotificationTimeSizeInput?.value) || 48),
-    };
-    refreshPostStudioNotificationTuningCard();
-    drawPostStudioFrame();
-  };
-
-  [
-    postNotificationTextXInput,
-    postNotificationTitleYInput,
-    postNotificationDescriptionYInput,
-    postNotificationTitleSizeInput,
-    postNotificationDescriptionSizeInput,
-    postNotificationTimeXInput,
-    postNotificationTimeYInput,
-    postNotificationTimeSizeInput,
-  ].forEach((input) => {
-    input?.addEventListener("input", handleNotificationTuningChange);
-    input?.addEventListener("change", handleNotificationTuningChange);
-  });
-
-  postNotificationTuningResetButton?.addEventListener("click", () => {
-    getPostStudioState().notificationLayout = {
-      ...POST_STUDIO_TEMPLATE_DEFAULTS.notificationLayout,
-    };
-    refreshPostStudioNotificationTuningCard();
-    drawPostStudioFrame();
-  });
 
   postPartnerLogoClearButton?.addEventListener("click", () => {
     const studio = getPostStudioState();
