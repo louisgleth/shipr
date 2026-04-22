@@ -8215,7 +8215,7 @@ body.is-auth-view {
 .label-card-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
 }
 
@@ -8224,21 +8224,71 @@ body.is-auth-view {
   font-weight: 400;
 }
 
-.label-sub {
+.label-price-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.label-price-compare {
   font-size: var(--fs-xs);
   color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
-.label-price {
+.label-price-current {
   font-size: var(--fs-sm);
   font-weight: 400;
+  color: var(--text);
 }
 
-.label-meta {
+.label-feature-list {
+  display: grid;
+  gap: 8px;
+}
+
+.label-feature {
   display: flex;
-  gap: 12px;
-  font-size: var(--fs-2xs);
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.label-feature.is-muted {
   color: var(--muted);
+}
+
+.label-feature.is-positive {
+  color: var(--text);
+}
+
+.label-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
+}
+
+.label-feature.is-muted .label-feature-icon {
+  color: var(--muted);
+}
+
+.label-feature.is-positive .label-feature-icon {
+  color: var(--success);
+}
+
+.label-feature-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .form-grid {

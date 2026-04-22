@@ -244,6 +244,7 @@ Questions related to this agreement can be sent to legal@shipide.com.
 By selecting "I agree", you confirm that you had the opportunity to review the full text and agree to be legally bound.`;
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
+  Standard: 12.2,
   Priority: 12.2,
   "International Express": 21.8,
 };

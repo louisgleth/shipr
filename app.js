@@ -1101,9 +1101,24 @@ const TRANSLATIONS = {
   "Choose your label service": { fr: "Choisissez votre service d’étiquette", nl: "Kies je labelservice" },
   "Select your delivery service. Pricing updates instantly.": { fr: "Sélectionnez votre service de livraison. Le prix se met à jour instantanément.", nl: "Selecteer je leveringsservice. De prijs wordt meteen bijgewerkt." },
   "Economy": { fr: "Économie", nl: "Economy" },
-  "Reliable, cost-efficient": { fr: "Fiable, économique", nl: "Betrouwbaar, kostenefficiënt" },
-  "TRACKING INCLUDED": { fr: "SUIVI INCLUS", nl: "TRACKING INBEGREPEN" },
-  "4x6 PDF": { fr: "PDF 4x6", nl: "4x6 PDF" },
+  "Standard": { fr: "Standard", nl: "Standard" },
+  "No proof of deposit nor Track & Trace": {
+    fr: "Aucune preuve de dépôt ni suivi Track & Trace",
+    nl: "Geen afgiftebewijs en geen Track & Trace",
+  },
+  "No basic indemnity in case of loss or damage": {
+    fr: "Aucune indemnité de base en cas de perte ou de dommage",
+    nl: "Geen basisvergoeding bij verlies of schade",
+  },
+  "Up to 2 kg": { fr: "Jusqu’à 2 kg", nl: "Tot 2 kg" },
+  "Parcel with Track & Trace": {
+    fr: "Colis avec Track & Trace",
+    nl: "Pakket met Track & Trace",
+  },
+  "Basic indemnity in case of loss or damage": {
+    fr: "Indemnité de base en cas de perte ou de dommage",
+    nl: "Basisvergoeding bij verlies of schade",
+  },
   "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
   "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
   "SIGNATURE READY": { fr: "SIGNATURE PRÊTE", nl: "HANDTEKENING KLAAR" },
@@ -3007,12 +3022,14 @@ function invalidateCustomsCompletion() {
 
 const RETAIL_BASE_RATE = {
   Economy: 7.1,
+  Standard: 12.2,
   Priority: 12.2,
   "International Express": 21.8,
 };
 
 const REPORT_SERVICE_COLOR_MAP = {
   Economy: "#7747e3",
+  Standard: "#8f66ed",
   Priority: "#8f66ed",
   "International Express": "#a18af0",
 };
@@ -20660,7 +20677,7 @@ function drawPostStudioTitlePost1(ctx, data) {
   ctx.fillStyle = POST_TEMPLATE_TEXT_HEX;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  let cursorY = 484;
+  let cursorY = 476;
   headline.lines.forEach((line) => {
     ctx.fillText(line, 58, cursorY);
     cursorY += headline.lineHeight;
@@ -21930,6 +21947,7 @@ function getSummaryDiscountRate() {
   }
   const service = normalizeNameKey(state.selection.type);
   if (service === normalizeNameKey("Economy")) return 21;
+  if (service === normalizeNameKey("Standard")) return 16;
   if (service === normalizeNameKey("Priority")) return 16;
   if (service === normalizeNameKey("International Express")) return 13;
   return 15;
@@ -21992,7 +22010,7 @@ function updatePayment() {
   const { quantity, subtotal, vatAmount, total } = getOrderTotals();
 
   if (paymentService) {
-    paymentService.textContent = state.selection.type;
+    paymentService.textContent = translateServiceName(state.selection.type);
   }
   if (invoiceQty) {
     invoiceQty.textContent = String(quantity);
@@ -22473,7 +22491,7 @@ function renderCheckoutStepMode() {
 function updatePreview() {
   const activeLabel = getActiveLabel();
   const activeData = activeLabel.data || state.info;
-  previewService.textContent = state.selection.type;
+  previewService.textContent = translateServiceName(state.selection.type);
   previewTracking.textContent = activeLabel.trackingId || "TRACKING";
 
   previewFrom.textContent = formatAddress(
