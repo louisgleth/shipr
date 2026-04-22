@@ -8226,7 +8226,7 @@ body.is-auth-view {
 
 .label-sub {
   margin-top: 3px;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-primary), sans-serif;
   font-size: var(--fs-2xs);
   line-height: 1.3;
   color: var(--muted);
@@ -8254,18 +8254,34 @@ body.is-auth-view {
 }
 
 .label-feature-list {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
 }
 
 .label-feature {
   display: flex;
   align-items: flex-start;
-  gap: 5px;
+  gap: 4px;
   font-family: var(--font-mono), monospace;
   font-size: var(--fs-xs);
   line-height: 1.35;
   color: var(--text);
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.label-feature:first-child {
+  padding-left: 0;
+}
+
+.label-feature:last-child {
+  padding-right: 0;
+}
+
+.label-feature + .label-feature {
+  border-left: 1px solid rgba(154, 163, 178, 0.2);
 }
 
 .label-feature.is-muted {
@@ -8298,6 +8314,65 @@ body.is-auth-view {
   width: 14px;
   height: 14px;
   display: block;
+}
+
+.label-addon-card {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--stroke);
+  background: color-mix(in srgb, var(--card-bg) 84%, #ffffff 4%);
+}
+
+.label-addon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.label-addon-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.label-addon-title {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.label-addon-note {
+  font-family: var(--font-mono), monospace;
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.label-feature-list--compact .label-feature {
+  flex-basis: 50%;
+}
+
+@media (max-width: 860px) {
+  .label-feature-list {
+    flex-direction: column;
+  }
+
+  .label-feature {
+    padding: 0;
+  }
+
+  .label-feature + .label-feature {
+    border-left: 0;
+    border-top: 1px solid rgba(154, 163, 178, 0.2);
+    margin-top: 8px;
+    padding-top: 8px;
+  }
 }
 
 .form-grid {

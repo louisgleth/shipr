@@ -4,6 +4,7 @@ const state = {
     type: "Economy",
     speed: "2-4 working days",
     price: 5.9,
+    warranty: false,
   },
   quantity: 1,
   labels: [],
@@ -1110,6 +1111,10 @@ const TRANSLATIONS = {
     fr: "Suivi, livraison protégée",
     nl: "Tracking, beschermde levering",
   },
+  "Add warranty": {
+    fr: "Ajouter la garantie",
+    nl: "Garantie toevoegen",
+  },
   "No proof of deposit nor Track & Trace": {
     fr: "Aucune preuve de dépôt ni suivi Track & Trace",
     nl: "Geen afgiftebewijs en geen Track & Trace",
@@ -1126,6 +1131,18 @@ const TRANSLATIONS = {
   "Basic indemnity in case of loss or damage": {
     fr: "Indemnité de base en cas de perte ou de dommage",
     nl: "Basisvergoeding bij verlies of schade",
+  },
+  "Warranty included up to €500,00 for goods": {
+    fr: "Garantie incluse jusqu’à 500,00 € pour les marchandises",
+    nl: "Garantie inbegrepen tot €500,00 voor goederen",
+  },
+  "Signature of receiver on delivery": {
+    fr: "Signature du destinataire à la livraison",
+    nl: "Handtekening van ontvanger bij levering",
+  },
+  "Only applicable to Belgian recipients": {
+    fr: "Applicable uniquement aux destinataires belges",
+    nl: "Alleen van toepassing op Belgische ontvangers",
   },
   "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
   "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
@@ -2470,6 +2487,9 @@ const stepper = document.getElementById("stepper");
 const step3Title = document.querySelector('.stepper-item[data-step="3"] .step-title');
 const step3Sub = document.querySelector('.stepper-item[data-step="3"] .step-sub');
 const labelCards = document.querySelectorAll(".label-card");
+const warrantyOptionCard = document.getElementById("warrantyOptionCard");
+const warrantyToggle = document.getElementById("warrantyToggle");
+const warrantyOptionNote = document.getElementById("warrantyOptionNote");
 const summaryService = document.getElementById("summaryService");
 const summaryPrice = document.getElementById("summaryPrice");
 const summaryQty = document.getElementById("summaryQty");
@@ -21732,6 +21752,8 @@ function setCsvMode(enabled) {
   syncWooCommerceAutoRefreshState();
   renderCsvShipFromSelector();
   renderCsvTable();
+  updateSummary();
+  updatePayment();
 }
 
 function setCsvEditMode(enabled) {
@@ -21932,6 +21954,13 @@ labelCards.forEach((card) => {
   card.addEventListener("click", () => selectLabel(card));
 });
 
+if (warrantyToggle) {
+  warrantyToggle.addEventListener("change", () => {
+    state.selection.warranty = Boolean(warrantyToggle.checked);
+    updateSummary();
+  });
+}
+
 // Click stepper items to navigate back to completed/current steps
 stepperItems.forEach((item) => {
   item.style.cursor = "pointer";
@@ -21947,6 +21976,34 @@ stepperItems.forEach((item) => {
 
 function getSummaryCarrierLabel() {
   return "Bpost";
+}
+
+function getWarrantyEligibility() {
+  const countries = getShipmentCountryValues().filter(Boolean);
+  const isBatch = state.csvMode || getQuantity() > 1;
+  const hasBelgianRecipients = countries.some((country) => isDomesticCountry(country));
+  const allBelgianRecipients = countries.length > 0 && countries.every((country) => isDomesticCountry(country));
+  const visible = isBatch ? hasBelgianRecipients : allBelgianRecipients;
+  return {
+    visible,
+    showNote: visible && !allBelgianRecipients,
+  };
+}
+
+function refreshWarrantyOptionUi() {
+  if (!warrantyOptionCard) return;
+  const eligibility = getWarrantyEligibility();
+  warrantyOptionCard.classList.toggle("is-hidden", !eligibility.visible);
+  if (!eligibility.visible) {
+    state.selection.warranty = false;
+  }
+  if (warrantyToggle) {
+    warrantyToggle.checked = eligibility.visible && Boolean(state.selection.warranty);
+    warrantyToggle.disabled = !eligibility.visible;
+  }
+  if (warrantyOptionNote) {
+    warrantyOptionNote.classList.toggle("is-hidden", !eligibility.showNote);
+  }
 }
 
 function getSummaryDiscountRate() {
@@ -22003,6 +22060,7 @@ function updateSummary() {
   if (summaryTracking) {
     summaryTracking.textContent = tr("Chat with us");
   }
+  refreshWarrantyOptionUi();
 }
 
 function openSupportChat() {
@@ -25096,6 +25154,7 @@ function resetAll() {
   resetCustomsDeclaration();
   customsGhostVisible = false;
   checkoutPaymentMethod = "invoice";
+  state.selection.warranty = false;
   state.quantity = 1;
   state.csvMode = false;
   state.csvEditable = false;

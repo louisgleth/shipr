@@ -397,6 +397,35 @@
                   <input type="number" id="labelQuantity" min="1" max="50" value="1" />
                 </label>
               </div>
+              <div class="label-addon-card is-hidden" id="warrantyOptionCard">
+                <label class="label-addon-toggle" for="warrantyToggle">
+                  <input type="checkbox" id="warrantyToggle" />
+                  <span class="label-addon-title">Add warranty</span>
+                </label>
+                <div class="label-feature-list label-feature-list--compact">
+                  <div class="label-feature is-positive">
+                    <span class="label-feature-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="8.25"></circle>
+                        <path d="M8.2 12.3l2.5 2.6 5.3-5.6"></path>
+                      </svg>
+                    </span>
+                    <span>Warranty included up to €500,00 for goods</span>
+                  </div>
+                  <div class="label-feature is-positive">
+                    <span class="label-feature-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="8.25"></circle>
+                        <path d="M8.2 12.3l2.5 2.6 5.3-5.6"></path>
+                      </svg>
+                    </span>
+                    <span>Signature of receiver on delivery</span>
+                  </div>
+                </div>
+                <div class="label-addon-note is-hidden" id="warrantyOptionNote">
+                  Only applicable to Belgian recipients
+                </div>
+              </div>
 
               <div class="panel-actions">
                 <button type="button" class="btn btn-ghost" data-back="1">
