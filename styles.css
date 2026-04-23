@@ -4027,6 +4027,14 @@ body.is-auth-view {
   gap: 12px;
 }
 
+.admin-client-wallet-card.is-activity {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(64vh, 720px);
+  overflow: hidden;
+}
+
 .admin-client-wallet-form {
   display: grid;
   gap: 10px;
@@ -4067,6 +4075,14 @@ body.is-auth-view {
 .admin-client-wallet-list {
   display: grid;
   gap: 8px;
+}
+
+.admin-client-wallet-card.is-activity .admin-client-wallet-list {
+  min-height: 0;
+  max-height: min(24vh, 260px);
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .admin-client-wallet-empty {
