@@ -3393,6 +3393,73 @@ body.is-auth-view {
   margin-top: auto;
 }
 
+.admin-platform-history-card {
+  margin-top: 12px;
+}
+
+.admin-platform-history-empty {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.admin-platform-history-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(46vh, 420px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.admin-platform-history-entry {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-platform-history-entry-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-platform-history-entry-title {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.admin-platform-history-entry-meta,
+.admin-platform-history-entry-detail {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-platform-history-entry-side {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-platform-history-entry-side.is-credit {
+  color: var(--success);
+}
+
+.admin-platform-history-entry-side.is-debit {
+  color: #e29f9f;
+}
+
+.admin-platform-history-entry-side.is-neutral {
+  color: rgba(241, 244, 251, 0.78);
+}
+
 .admin-billing-status {
   min-height: 18px;
   font-size: var(--fs-2xs);
@@ -10276,6 +10343,15 @@ input.is-invalid {
   }
 
   .admin-client-wallet-inline-note {
+    white-space: normal;
+  }
+
+  .admin-platform-history-entry {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-platform-history-entry-side {
     white-space: normal;
   }
 

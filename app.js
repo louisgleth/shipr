@@ -1198,6 +1198,40 @@ const TRANSLATIONS = {
     fr: "Impossible d’appliquer l’ajustement du solde.",
     nl: "Kon saldoaanpassing niet toepassen.",
   },
+  "Platform Activity": {
+    fr: "Activité de la plateforme",
+    nl: "Platformactiviteit",
+  },
+  "Recent top-ups, label purchases, and manual balance adjustments across the portal.": {
+    fr: "Top-ups récents, achats d’étiquettes et ajustements manuels du solde sur le portail.",
+    nl: "Recente top-ups, labelaankopen en handmatige saldoaanpassingen in het portaal.",
+  },
+  "Recent platform activity": {
+    fr: "Activité récente de la plateforme",
+    nl: "Recente platformactiviteit",
+  },
+  "No platform activity yet.": {
+    fr: "Aucune activité plateforme pour le moment.",
+    nl: "Nog geen platformactiviteit.",
+  },
+  "Loading platform activity...": {
+    fr: "Chargement de l’activité de la plateforme...",
+    nl: "Platformactiviteit wordt geladen...",
+  },
+  "{count} recent events • {topups} top-ups • {labels} label purchases • {adjustments} balance changes": {
+    fr: "{count} événements récents • {topups} top-ups • {labels} achats d’étiquettes • {adjustments} changements de solde",
+    nl: "{count} recente gebeurtenissen • {topups} top-ups • {labels} labelaankopen • {adjustments} saldowijzigingen",
+  },
+  "Top-up": { fr: "Top-up", nl: "Top-up" },
+  "Label purchase": { fr: "Achat d’étiquettes", nl: "Labelaankoop" },
+  "Balance added": { fr: "Solde ajouté", nl: "Saldo toegevoegd" },
+  "Balance subtracted": { fr: "Solde soustrait", nl: "Saldo afgetrokken" },
+  "{count} labels": { fr: "{count} étiquettes", nl: "{count} labels" },
+  "{count} label": { fr: "{count} étiquette", nl: "{count} label" },
+  "Executed by {actor}": {
+    fr: "Exécuté par {actor}",
+    nl: "Uitgevoerd door {actor}",
+  },
   "Priority": { fr: "Prioritaire", nl: "Prioriteit" },
   "Fast, time-sensitive": { fr: "Rapide, urgent", nl: "Snel, tijdsgevoelig" },
   "SIGNATURE READY": { fr: "SIGNATURE PRÊTE", nl: "HANDTEKENING KLAAR" },
@@ -2449,6 +2483,9 @@ const adminWiseSyncButton = document.getElementById("adminWiseSync");
 const adminWiseReceiptList = document.getElementById("adminWiseReceiptList");
 const adminWiseReceiptEmpty = document.getElementById("adminWiseReceiptEmpty");
 const adminClientsWorkspaceSummary = document.getElementById("adminClientsWorkspaceSummary");
+const adminTransactionsWorkspaceSummary = document.getElementById("adminTransactionsWorkspaceSummary");
+const adminTransactionsEmpty = document.getElementById("adminTransactionsEmpty");
+const adminTransactionsList = document.getElementById("adminTransactionsList");
 const openAdminClientsModalButton = document.getElementById("openAdminClientsModal");
 const adminClientsModal = document.getElementById("adminClientsModal");
 const adminClientsClose = document.getElementById("adminClientsClose");
@@ -2890,6 +2927,7 @@ let adminSettingsSaved = {
 };
 let adminInviteActionBusyIds = new Set();
 let adminClientBillingBusyIds = new Set();
+let adminPlatformHistory = [];
 let adminMockModeEnabled = false;
 let adminMockSnapshot = null;
 let authShellTransitionToken = 0;
@@ -5931,6 +5969,126 @@ function renderAdminClientsWorkspaceSummary() {
   );
 }
 
+function getAdminPlatformHistoryAccountLabel(entry = {}) {
+  const account = entry?.account && typeof entry.account === "object" ? entry.account : {};
+  return (
+    String(account?.company_name || account?.companyName || "").trim()
+    || String(account?.contact_email || account?.contactEmail || "").trim()
+    || "Client account"
+  );
+}
+
+function formatAdminPlatformHistoryStatus(status) {
+  const key = String(status || "").trim().toLowerCase();
+  if (!key) return "--";
+  return key
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatAdminPlatformHistoryQuantity(count) {
+  const safeCount = Math.max(1, Number(count) || 1);
+  return tr(safeCount === 1 ? "{count} label" : "{count} labels", { count: safeCount });
+}
+
+function renderAdminPlatformHistory() {
+  if (!adminTransactionsWorkspaceSummary || !adminTransactionsList || !adminTransactionsEmpty) return;
+  const rows = Array.isArray(adminPlatformHistory) ? adminPlatformHistory : [];
+  if (!rows.length) {
+    adminTransactionsWorkspaceSummary.textContent = adminDashboardLoading
+      ? tr("Loading platform activity...")
+      : tr("No platform activity yet.");
+    adminTransactionsList.innerHTML = "";
+    adminTransactionsEmpty.textContent = adminDashboardLoading
+      ? tr("Loading platform activity...")
+      : tr("No platform activity yet.");
+    adminTransactionsEmpty.classList.remove("is-hidden");
+    return;
+  }
+
+  const topupCount = rows.filter((entry) => entry?.type === "topup").length;
+  const labelCount = rows.filter((entry) => entry?.type === "label_purchase").length;
+  const adjustmentCount = rows.filter((entry) => entry?.type === "balance_adjustment").length;
+  adminTransactionsWorkspaceSummary.textContent = tr(
+    "{count} recent events • {topups} top-ups • {labels} label purchases • {adjustments} balance changes",
+    {
+      count: rows.length,
+      topups: topupCount,
+      labels: labelCount,
+      adjustments: adjustmentCount,
+    }
+  );
+
+  adminTransactionsEmpty.classList.add("is-hidden");
+  adminTransactionsList.innerHTML = "";
+  rows.forEach((entry) => {
+    const type = String(entry?.type || "").trim();
+    const accountLabel = getAdminPlatformHistoryAccountLabel(entry);
+    const meta = [accountLabel, entry?.occurred_at ? formatHistoryDate(entry.occurred_at) : "--"].join(" • ");
+    let title = "--";
+    let detail = "";
+    let aside = "";
+    let asideClass = "admin-platform-history-entry-side";
+
+    if (type === "topup") {
+      title = tr("Top-up");
+      detail = [
+        formatAdminPlatformHistoryStatus(entry?.topup_status || "pending"),
+        String(entry?.reference || "").trim() || "--",
+      ].join(" • ");
+      aside = formatMoney(Number(entry?.amount_eur || 0));
+      asideClass += " is-credit";
+    } else if (type === "label_purchase") {
+      title = tr("Label purchase");
+      detail = [
+        String(entry?.service_type || "").trim() || "Shipping labels",
+        formatMoney(Number(entry?.amount_eur || 0)),
+      ].join(" • ");
+      aside = formatAdminPlatformHistoryQuantity(entry?.quantity);
+      asideClass += " is-neutral";
+    } else if (type === "balance_adjustment") {
+      const direction = String(entry?.direction || "").trim().toLowerCase() === "debit" ? "debit" : "credit";
+      title = tr(direction === "debit" ? "Balance subtracted" : "Balance added");
+      detail = [
+        String(entry?.reason || "").trim() || "--",
+        entry?.executed_by
+          ? tr("Executed by {actor}", { actor: String(entry.executed_by || "").trim() })
+          : "--",
+      ].join(" • ");
+      aside = `${direction === "debit" ? "-" : "+"}${formatMoney(Number(entry?.amount_eur || 0))}`;
+      asideClass += direction === "debit" ? " is-debit" : " is-credit";
+    }
+
+    const row = document.createElement("article");
+    row.className = "admin-platform-history-entry";
+    row.innerHTML = `
+      <div class="admin-platform-history-entry-copy">
+        <div class="admin-platform-history-entry-title">${escapeHtml(title)}</div>
+        <div class="admin-platform-history-entry-meta mono">${escapeHtml(meta)}</div>
+        <div class="admin-platform-history-entry-detail mono">${escapeHtml(detail)}</div>
+      </div>
+      <div class="${escapeHtml(asideClass)}">${escapeHtml(aside)}</div>
+    `;
+    adminTransactionsList.appendChild(row);
+  });
+}
+
+function prependAdminPlatformHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") return;
+  adminPlatformHistory = [entry, ...(Array.isArray(adminPlatformHistory) ? adminPlatformHistory : [])]
+    .sort((left, right) => Date.parse(right?.occurred_at || 0) - Date.parse(left?.occurred_at || 0))
+    .slice(0, 80);
+  if (adminDashboardState && typeof adminDashboardState === "object") {
+    adminDashboardState = {
+      ...adminDashboardState,
+      platform_history: adminPlatformHistory,
+    };
+  }
+  renderAdminPlatformHistory();
+}
+
 function getAdminClientProfile(client) {
   return buildMockAccountProfile(client?.user || null) || {
     companyName: "--",
@@ -6314,6 +6472,26 @@ async function submitAdminClientWalletAdjustment() {
     adminClientWalletData = payload && typeof payload === "object" ? payload : {};
     updateAdminClientWalletState(safeUserId, adminClientWalletData?.wallet || null);
     renderAdminClientsList();
+    const client = getAdminClientById(safeUserId);
+    const profile = getAdminClientProfile(client);
+    prependAdminPlatformHistoryEntry({
+      id: `wallet:${String(payload?.transaction?.id || payload?.reference || Date.now())}`,
+      type: "balance_adjustment",
+      occurred_at: payload?.transaction?.created_at || new Date().toISOString(),
+      account: {
+        user_id: safeUserId,
+        company_name: profile.companyName || "Client account",
+        contact_email: profile.contactEmail || "",
+        customer_id: profile.customerId || "",
+      },
+      amount_eur: Number(payload?.transaction?.amount_eur || amount),
+      direction,
+      reason: String(payload?.transaction?.metadata?.reason || reason).trim() || null,
+      executed_by:
+        String(payload?.transaction?.metadata?.actor || currentUser?.email || currentUser?.id || "").trim()
+        || null,
+      reference: String(payload?.transaction?.reference || payload?.reference || "").trim() || null,
+    });
     if (adminClientWalletAmountInput) adminClientWalletAmountInput.value = "";
     if (adminClientWalletReasonInput) adminClientWalletReasonInput.value = "";
     if (adminClientWalletNoteInput) adminClientWalletNoteInput.value = "";
@@ -6774,24 +6952,114 @@ function buildMockAdminClients() {
   });
 }
 
+function buildMockAdminPlatformHistory(clients = []) {
+  const rows = Array.isArray(clients) ? clients : [];
+  const buildAccount = (client) => {
+    const profile = getAdminClientProfile(client);
+    return {
+      user_id: String(client?.user?.id || "").trim(),
+      company_name: profile.companyName || "Client account",
+      contact_email: profile.contactEmail || "",
+      customer_id: profile.customerId || "",
+    };
+  };
+  const now = Date.now();
+  const sample = [
+    {
+      type: "topup",
+      occurred_at: new Date(now - 1000 * 60 * 24).toISOString(),
+      account: buildAccount(rows[0]),
+      amount_eur: 75,
+      topup_status: "credited",
+      reference: "SHIP-MOCK-7A2Q-1D5F",
+    },
+    {
+      type: "label_purchase",
+      occurred_at: new Date(now - 1000 * 60 * 85).toISOString(),
+      account: buildAccount(rows[1] || rows[0]),
+      quantity: 18,
+      service_type: "Standard",
+      amount_eur: 194.4,
+    },
+    {
+      type: "balance_adjustment",
+      occurred_at: new Date(now - 1000 * 60 * 150).toISOString(),
+      account: buildAccount(rows[2] || rows[0]),
+      amount_eur: 20,
+      direction: "credit",
+      reason: "Goodwill shipping credit",
+      executed_by: "finance@shipide.com",
+      reference: "CREDIT-MOCK-8BG2",
+    },
+    {
+      type: "topup",
+      occurred_at: new Date(now - 1000 * 60 * 210).toISOString(),
+      account: buildAccount(rows[3] || rows[1] || rows[0]),
+      amount_eur: 120,
+      topup_status: "pending",
+      reference: "SHIP-MOCK-91KX-2Q1M",
+    },
+    {
+      type: "label_purchase",
+      occurred_at: new Date(now - 1000 * 60 * 320).toISOString(),
+      account: buildAccount(rows[0]),
+      quantity: 4,
+      service_type: "Economy",
+      amount_eur: 23.6,
+    },
+    {
+      type: "balance_adjustment",
+      occurred_at: new Date(now - 1000 * 60 * 430).toISOString(),
+      account: buildAccount(rows[4] || rows[0]),
+      amount_eur: 9.5,
+      direction: "debit",
+      reason: "Duplicate manual funding reversal",
+      executed_by: "ops@shipide.com",
+      reference: "DEBIT-MOCK-3ZK8",
+    },
+    {
+      type: "label_purchase",
+      occurred_at: new Date(now - 1000 * 60 * 560).toISOString(),
+      account: buildAccount(rows[2] || rows[0]),
+      quantity: 27,
+      service_type: "Standard",
+      amount_eur: 291.6,
+    },
+    {
+      type: "topup",
+      occurred_at: new Date(now - 1000 * 60 * 700).toISOString(),
+      account: buildAccount(rows[1] || rows[0]),
+      amount_eur: 40,
+      topup_status: "received",
+      reference: "SHIP-MOCK-5PV9-7QTE",
+    },
+  ];
+  return sample.filter((entry) => entry?.account?.user_id);
+}
+
 function toggleAdminMockData() {
   if (adminDashboardLoading) return;
   if (!adminMockModeEnabled) {
     adminMockSnapshot = {
       clients: JSON.parse(JSON.stringify(adminClients || [])),
       summary: JSON.parse(JSON.stringify(adminDashboardState?.summary || {})),
+      platform_history: JSON.parse(JSON.stringify(adminPlatformHistory || [])),
     };
     const mockClients = buildMockAdminClients();
+    const mockPlatformHistory = buildMockAdminPlatformHistory(mockClients);
     adminClients = mockClients;
+    adminPlatformHistory = mockPlatformHistory;
     adminMockModeEnabled = true;
     const openInvites = Number(adminDashboardState?.summary?.open_invites || 0);
     adminDashboardState = {
       ...(adminDashboardState || {}),
       clients: mockClients,
+      platform_history: mockPlatformHistory,
       summary: buildAdminSummaryFromClients(mockClients, openInvites),
     };
     renderAdminSummary(adminDashboardState.summary || {});
     renderAdminClientsList();
+    renderAdminPlatformHistory();
     renderAdminMockDataButton();
     showToast(tr("Mock data loaded (frontend only)."), { tone: "info" });
     return;
@@ -6800,15 +7068,20 @@ function toggleAdminMockData() {
   adminMockModeEnabled = false;
   if (adminMockSnapshot) {
     adminClients = Array.isArray(adminMockSnapshot.clients) ? adminMockSnapshot.clients : [];
+    adminPlatformHistory = Array.isArray(adminMockSnapshot.platform_history)
+      ? adminMockSnapshot.platform_history
+      : [];
     adminDashboardState = {
       ...(adminDashboardState || {}),
       clients: adminClients,
+      platform_history: adminPlatformHistory,
       summary: adminMockSnapshot.summary || {},
     };
   }
   adminMockSnapshot = null;
   renderAdminSummary(adminDashboardState?.summary || {});
   renderAdminClientsList();
+  renderAdminPlatformHistory();
   renderAdminMockDataButton();
   showToast(tr("Live admin data restored."), { tone: "success" });
 }
@@ -6948,6 +7221,7 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminPlatformHistory = [];
     adminBillingInvoices = [];
     adminWiseReceipts = [];
     adminWiseConfigured = false;
@@ -6956,6 +7230,7 @@ async function loadAdminDashboard(options = {}) {
     adminMockSnapshot = null;
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminPlatformHistory();
     renderAdminInvoiceList();
     renderAdminSalesLedger();
     renderAdminWiseReceiptList();
@@ -6970,6 +7245,7 @@ async function loadAdminDashboard(options = {}) {
   }
   adminDashboardLoading = true;
   renderAdminClientsList();
+  renderAdminPlatformHistory();
   try {
     const payload = await fetchApiWithAuth("/api/admin/dashboard", { timeoutMs: 20000 });
     adminClientBillingBusyIds = new Set();
@@ -6978,6 +7254,9 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardState = payload && typeof payload === "object" ? payload : {};
     clientInviteHistory = Array.isArray(adminDashboardState?.invites) ? adminDashboardState.invites : [];
     adminClients = Array.isArray(adminDashboardState?.clients) ? adminDashboardState.clients : [];
+    adminPlatformHistory = Array.isArray(adminDashboardState?.platform_history)
+      ? adminDashboardState.platform_history
+      : [];
     syncAdminBillingFromDashboard(adminDashboardState);
     renderAdminSummary(adminDashboardState?.summary || {});
     renderClientInviteHistory(clientInviteHistory);
@@ -6986,6 +7265,7 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = true;
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminPlatformHistory();
     return true;
   } catch (error) {
     adminClientBillingBusyIds = new Set();
@@ -6994,11 +7274,13 @@ async function loadAdminDashboard(options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminPlatformHistory = [];
     adminBillingInvoices = [];
     adminWiseReceipts = [];
     adminWiseConfigured = false;
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminPlatformHistory();
     renderAdminInvoiceList();
     renderAdminSalesLedger();
     renderAdminWiseReceiptList();
@@ -18814,6 +19096,7 @@ function setAuthView(session, options = {}) {
     adminDashboardLoaded = false;
     adminDashboardState = null;
     adminClients = [];
+    adminPlatformHistory = [];
     adminBillingInvoices = [];
     clientInviteHistory = [];
     adminClientBillingBusyIds = new Set();
@@ -18827,6 +19110,7 @@ function setAuthView(session, options = {}) {
     renderAdminSummary({});
     renderAdminMockDataButton();
     renderAdminClientsList();
+    renderAdminPlatformHistory();
     renderAdminInvoiceList();
     updateSummary();
     renderCheckoutStepMode();

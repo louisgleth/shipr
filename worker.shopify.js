@@ -3141,6 +3141,91 @@ function buildAdminClientSummary(clients = [], invites = []) {
   };
 }
 
+function getAdminHistoryAccountSnapshot(usersById, userId = "") {
+  const safeUserId = String(userId || "").trim();
+  const user = safeUserId ? usersById.get(safeUserId) : null;
+  const profile = mapInvoiceProfileFromUser(user || {});
+  return {
+    user_id: safeUserId,
+    company_name: String(profile.company_name || "").trim() || "Client account",
+    contact_email: normalizeEmail(profile.contact_email || user?.email || "") || "",
+    customer_id: String(profile.customer_id || "").trim() || "",
+  };
+}
+
+function buildAdminPlatformHistoryEntries(
+  users = [],
+  generationHistoryRows = [],
+  topups = [],
+  walletTransactions = []
+) {
+  const usersById = new Map(
+    (Array.isArray(users) ? users : [])
+      .map((user) => [String(user?.id || "").trim(), user])
+      .filter(([userId]) => Boolean(userId))
+  );
+  const entries = [];
+
+  (Array.isArray(topups) ? topups : []).forEach((row) => {
+    const topup = mapBillingTopupRow(row);
+    const occurredAt = topup.credited_at || topup.received_at || topup.requested_at || null;
+    if (!occurredAt) return;
+    entries.push({
+      id: `topup:${topup.id || topup.reference || crypto.randomUUID()}`,
+      type: "topup",
+      occurred_at: occurredAt,
+      account: getAdminHistoryAccountSnapshot(usersById, row?.user_id || ""),
+      amount_eur: Number(topup.amount_eur || 0),
+      reference: topup.reference || null,
+      topup_status: String(topup.status || "").trim() || "pending",
+    });
+  });
+
+  (Array.isArray(generationHistoryRows) ? generationHistoryRows : []).forEach((row) => {
+    const userId = String(row?.user_id || "").trim();
+    const occurredAt = row?.created_at || null;
+    if (!userId || !occurredAt) return;
+    entries.push({
+      id: `label:${String(row?.id || row?.created_at || Math.random()).trim()}`,
+      type: "label_purchase",
+      occurred_at: occurredAt,
+      account: getAdminHistoryAccountSnapshot(usersById, userId),
+      quantity: Math.max(1, Number(row?.quantity) || 1),
+      service_type: String(row?.service_type || "").trim() || null,
+      amount_eur: Number(row?.total_price || 0),
+    });
+  });
+
+  (Array.isArray(walletTransactions) ? walletTransactions : []).forEach((row) => {
+    const transaction = mapBillingWalletTransactionRow(row);
+    const source = String(transaction.source || "").trim().toLowerCase();
+    if (!["manual_credit", "manual_debit"].includes(source)) return;
+    entries.push({
+      id: `wallet:${String(transaction.id || transaction.reference || Math.random()).trim()}`,
+      type: "balance_adjustment",
+      occurred_at: transaction.created_at || null,
+      account: getAdminHistoryAccountSnapshot(usersById, row?.user_id || ""),
+      amount_eur: Number(transaction.amount_eur || 0),
+      direction: source === "manual_debit" ? "debit" : "credit",
+      reason: String(transaction?.metadata?.reason || "").trim() || null,
+      executed_by:
+        normalizeEmail(transaction?.metadata?.actor || "")
+        || String(transaction?.metadata?.actor || "").trim()
+        || null,
+      reference: transaction.reference || null,
+    });
+  });
+
+  return entries
+    .filter((entry) => entry?.occurred_at)
+    .sort((left, right) => {
+      const leftTime = Date.parse(left?.occurred_at || 0);
+      const rightTime = Date.parse(right?.occurred_at || 0);
+      return rightTime - leftTime;
+    })
+    .slice(0, 80);
+}
+
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(String(value || "")));
   const bytes = new Uint8Array(digest);
@@ -4109,6 +4194,71 @@ async function listBillingWalletTransactions(
       throw new Error(walletIssue.message);
     }
     throw new Error(`Could not load wallet transactions (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function listRecentBillingTopupsForAdmin(
+  env,
+  { limit = 80, allowMissing = false } = {}
+) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 80));
+  const params = new URLSearchParams();
+  params.set("select", BILLING_TOPUP_SELECT_FIELDS);
+  params.set("order", "requested_at.desc,created_at.desc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_WALLET_TOPUPS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TOPUPS_TABLE);
+    if (walletIssue) {
+      if (allowMissing && walletIssue.kind === "missing") return [];
+      throw new Error(walletIssue.message);
+    }
+    throw new Error(`Could not load recent top-ups (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function listRecentBillingWalletTransactionsForAdmin(
+  env,
+  { sources = [], limit = 120, allowMissing = false } = {}
+) {
+  const safeLimit = Math.max(1, Math.min(300, Number(limit) || 120));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,user_id,source,amount_cents,balance_after_cents,reference,metadata,created_at"
+  );
+  params.set("order", "created_at.desc,id.desc");
+  params.set("limit", String(safeLimit));
+  if (Array.isArray(sources) && sources.length) {
+    const normalized = sources
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean);
+    if (normalized.length) {
+      params.set("source", `in.(${normalized.join(",")})`);
+    }
+  }
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${BILLING_WALLET_TRANSACTIONS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TRANSACTIONS_TABLE);
+    if (walletIssue) {
+      if (allowMissing && walletIssue.kind === "missing") return [];
+      throw new Error(walletIssue.message);
+    }
+    throw new Error(`Could not load recent wallet transactions (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows : [];
@@ -8763,7 +8913,7 @@ function shouldIncludeAdminClient(user, env, currentAdminUserId = "") {
 }
 
 async function buildAdminDashboard(request, env, currentAdminUserId = "") {
-  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets] = await Promise.all([
+  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets, recentTopups, recentManualWalletTransactions] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
     listSupabaseUsers(env, 1000),
@@ -8791,6 +8941,15 @@ async function buildAdminDashboard(request, env, currentAdminUserId = "") {
       },
       { pageSize: 500, allowMissingSchema: true }
     ).catch(() => []),
+    listRecentBillingTopupsForAdmin(env, {
+      limit: 120,
+      allowMissing: true,
+    }).catch(() => []),
+    listRecentBillingWalletTransactionsForAdmin(env, {
+      sources: ["manual_credit", "manual_debit"],
+      limit: 120,
+      allowMissing: true,
+    }).catch(() => []),
   ]);
   const nonTopupInvoiceIds = invoices
     .filter((invoice) => !isTopupBillingInvoice(invoice))
@@ -8896,11 +9055,18 @@ async function buildAdminDashboard(request, env, currentAdminUserId = "") {
   const inviteHistory = await Promise.all(
     invites.map((invite) => mapInviteHistoryRow(request, env, invite))
   );
+  const platformHistory = buildAdminPlatformHistoryEntries(
+    users,
+    historyRows,
+    recentTopups,
+    recentManualWalletTransactions
+  );
 
   return {
     settings,
     invites: inviteHistory,
     clients,
+    platform_history: platformHistory,
     summary: buildAdminClientSummary(summaryClients, invites),
     billing: {
       invoices: buildInvoiceListResponseRows(invoices.slice(0, 120)),
