@@ -13794,6 +13794,30 @@ function buildReceiptTrackingId(rawId) {
   };
 }
 
+function getStoredReceiptDocumentCode(record = {}) {
+  return String(record?.payload?.document?.public_code || "").trim();
+}
+
+function buildDocumentPdfFilenameFromReference(reference, fallback = "document") {
+  const safe = String(reference || "")
+    .trim()
+    .replace(/[^A-Za-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const stem = safe || String(fallback || "document").trim() || "document";
+  return `${stem}.pdf`;
+}
+
+function getReceiptDocumentIdentity(record = {}) {
+  const publicCode = getStoredReceiptDocumentCode(record);
+  if (publicCode) {
+    return {
+      display: publicCode,
+      slug: publicCode,
+    };
+  }
+  return buildReceiptTrackingId(record?.id);
+}
+
 function buildInvoiceTrackingId(rawId) {
   const receiptLike = buildReceiptTrackingId(rawId);
   const display = String(receiptLike.display || "--").replace(/^RCPT\b/, "INV");
@@ -13943,7 +13967,7 @@ function buildReceiptViewModel(record) {
   const labels = accountLabels.length ? accountLabels : record.payload?.labels || [];
   const headlineParts = formatHistoryHeadlineParts(record.created_at);
   const issuedAt = `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " ");
-  const receiptTracking = buildReceiptTrackingId(record?.id);
+  const receiptTracking = getReceiptDocumentIdentity(record);
   return {
     record,
     totals,
@@ -14042,26 +14066,15 @@ function getTopupInvoiceIssuedAt(row) {
 }
 
 function buildTopupInvoiceNumber(topup) {
-  const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
-  const issuedDate = new Date(issuedDateRaw || Date.now());
-  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
-  const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
-  const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
   const rawId = String(topup?.id || "").trim();
-  const token = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawId)
-    ? rawId.replace(/-/g, "").slice(0, 8).toUpperCase()
-    : (() => {
-        const normalizedId = rawId.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        if (normalizedId) return normalizedId.slice(0, 8).padEnd(8, "0");
-        const normalizedReference = String(topup?.reference || "")
-          .trim()
-          .toUpperCase()
-          .replace(/[^A-Z0-9]/g, "");
-        if (normalizedReference) return normalizedReference.slice(-8).padStart(8, "0");
-        return "TOPUP000";
-      })();
-  return `TUP-${yy}${mm}${dd}-${token}`;
+  const normalizedId = rawId.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizedReference = String(topup?.reference || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const tokenSource = normalizedId || normalizedReference || "PREVIEW";
+  const token = tokenSource.slice(0, 6).padEnd(6, "X");
+  return `T-INV-${token}`;
 }
 
 function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
@@ -15167,22 +15180,106 @@ function measureReceiptRegions(receiptDoc, scale) {
 }
 
 function getReceiptPdfFilename() {
-  const tracking = buildReceiptTrackingId(accountActiveRecord?.id);
-  return `receipt-${tracking.slug || tr("label-order")}.pdf`;
+  const receiptIdentity = getReceiptDocumentIdentity(accountActiveRecord);
+  return buildDocumentPdfFilenameFromReference(
+    receiptIdentity.display,
+    "R-REC-UNKNOWN"
+  );
 }
 
 function getInvoicePdfFilename() {
   const tracking = buildInvoiceTrackingId(accountActiveRecord?.id);
-  return `invoice-${tracking.slug || "shipide"}.pdf`;
+  return buildDocumentPdfFilenameFromReference(
+    tracking.display,
+    "INV-UNKNOWN"
+  );
 }
 
 function buildInvoicePdfFilenameFromReference(reference) {
-  const safe = String(reference || "shipide")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `invoice-${safe || "shipide"}.pdf`;
+  return buildDocumentPdfFilenameFromReference(reference, "INV-UNKNOWN");
+}
+
+const receiptDocumentCodeRequests = new Map();
+
+function isUuidLike(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function applyStoredReceiptDocumentCode(generationId, publicCode) {
+  const safeGenerationId = String(generationId || "").trim();
+  const safeCode = String(publicCode || "").trim();
+  if (!safeGenerationId || !safeCode) return null;
+  const applyToRecord = (record) => {
+    if (!record || String(record?.id || "").trim() !== safeGenerationId) return record;
+    const payload = record?.payload && typeof record.payload === "object" ? record.payload : {};
+    return {
+      ...record,
+      payload: {
+        ...payload,
+        document: {
+          ...(payload?.document && typeof payload.document === "object" ? payload.document : {}),
+          kind: "receipt",
+          public_code: safeCode,
+          filename: buildDocumentPdfFilenameFromReference(safeCode, "R-REC-UNKNOWN"),
+        },
+      },
+    };
+  };
+  historyRecords = historyRecords.map((record) => applyToRecord(record));
+  if (accountActiveRecord && String(accountActiveRecord?.id || "").trim() === safeGenerationId) {
+    accountActiveRecord = applyToRecord(accountActiveRecord);
+  }
+  if (currentUser?.id) {
+    saveServerHistoryCache(currentUser.id, historyRecords);
+    if (historyStore === "local") {
+      saveLocalHistory(currentUser.id, historyRecords);
+    }
+  }
+  return historyRecords.find((record) => String(record?.id || "").trim() === safeGenerationId) || accountActiveRecord || null;
+}
+
+async function ensureHistoryReceiptDocumentCode(record, options = {}) {
+  const existingCode = getStoredReceiptDocumentCode(record);
+  if (existingCode) return record;
+  const generationId = String(record?.id || "").trim();
+  if (!currentUser?.id || !isUuidLike(generationId)) return record;
+  if (receiptDocumentCodeRequests.has(generationId)) {
+    return receiptDocumentCodeRequests.get(generationId);
+  }
+  const request = (async () => {
+    try {
+      const payload = await fetchApiWithAuth("/api/billing/receipts/ensure-code", {
+        method: "POST",
+        timeoutMs: 30000,
+        body: JSON.stringify({
+          generationId,
+        }),
+      });
+      const code = String(payload?.code || "").trim();
+      if (!code) return record;
+      return applyStoredReceiptDocumentCode(generationId, code) || record;
+    } catch (error) {
+      if (!options?.quiet) {
+        showToast(error?.message || tr("Could not allocate receipt code."), { tone: "error" });
+      }
+      return record;
+    } finally {
+      receiptDocumentCodeRequests.delete(generationId);
+    }
+  })();
+  receiptDocumentCodeRequests.set(generationId, request);
+  return request;
+}
+
+async function syncSelectedAccountReceiptDocumentCode(record = null) {
+  const targetRecord = record || accountActiveRecord;
+  const activeId = String(targetRecord?.id || "").trim();
+  if (!activeId) return;
+  const updatedRecord = await ensureHistoryReceiptDocumentCode(targetRecord, { quiet: true });
+  if (!updatedRecord || String(accountActiveRecord?.id || "").trim() !== activeId) return;
+  renderReceiptDetails(updatedRecord);
 }
 
 function buildInvoiceVariantPdfFilename(reference, reminderStage = 0) {
@@ -15474,6 +15571,10 @@ async function buildReceiptPdfExportFromViewModel(
 
 async function buildReceiptPdfExport() {
   if (!accountActiveRecord) return;
+  const ensuredRecord = await ensureHistoryReceiptDocumentCode(accountActiveRecord, { quiet: true });
+  if (ensuredRecord) {
+    accountActiveRecord = ensuredRecord;
+  }
   const viewModel = buildReceiptViewModel(accountActiveRecord);
   return buildReceiptPdfExportFromViewModel(viewModel, getReceiptPdfFilename(), {
     preferServerRender: true,
@@ -15839,7 +15940,8 @@ function buildAdminTestBillingInvoiceRecord(toEmail) {
   return {
     id: invoiceId,
     invoice_kind: "monthly",
-    reference: buildInvoiceTrackingId(invoiceId).display,
+    invoice_number: "M-INV-9F5X56",
+    reference: "M-INV-9F5X56",
     company_name: "Atelier Meridian",
     contact_name: "Claire Dupont",
     contact_email: String(toEmail || "").trim(),
@@ -15978,7 +16080,6 @@ function buildAdminTestReceiptViewModel(toEmail) {
   const totals = calculateRecordTotals(record);
   const profile = buildAdminDocumentPreviewProfile(toEmail);
   const headlineParts = formatHistoryHeadlineParts(record.created_at);
-  const receiptTracking = buildReceiptTrackingId(record?.id);
   return {
     record,
     totals,
@@ -15987,8 +16088,8 @@ function buildAdminTestReceiptViewModel(toEmail) {
     serviceType: translateServiceName(record.service_type || "--"),
     labels: record?.payload?.labels || [],
     issuedAt: `${headlineParts.dateText}${headlineParts.timeText || ""}`.replace(/\u00A0/g, " "),
-    receiptNumber: receiptTracking.display,
-    receiptSlug: receiptTracking.slug,
+    receiptNumber: "R-REC-3N8D1M",
+    receiptSlug: "R-REC-3N8D1M",
     quantity: totals.quantity,
     billingAddressLines: splitReceiptAddressLines(profile.billingAddress),
   };
@@ -16048,8 +16149,8 @@ function buildAdminDocumentPreviewLongReceiptViewModel(toEmail = ADMIN_DOCUMENT_
     serviceType: "Express",
     labels,
     issuedAt,
-    receiptNumber: "RCPT-5A17E1-2401",
-    receiptSlug: "5a17e1-2401",
+    receiptNumber: "R-REC-3N8D1M",
+    receiptSlug: "R-REC-3N8D1M",
     quantity,
     totals,
     billingAddressLines: splitReceiptAddressLines(profile.billingAddress),
@@ -16076,7 +16177,8 @@ function buildAdminDocumentPreviewMonthlyInvoiceRecord(
       ? crypto.randomUUID()
       : `inv-monthly-preview-${Date.now()}`,
     invoice_kind: "monthly",
-    reference: "INV-F529D138",
+    invoice_number: "M-INV-9F5X56",
+    reference: "M-INV-9F5X56",
     company_name: "Atelier Meridian",
     contact_name: "Claire Dupont",
     contact_email: String(toEmail || "").trim(),
@@ -16406,6 +16508,7 @@ function selectAccountRecord(index) {
   selectAccountLabel(0);
   renderReceiptDetails(record);
   queueHistoryPanelSync();
+  void syncSelectedAccountReceiptDocumentCode(record);
 }
 
 function toDayKey(date) {

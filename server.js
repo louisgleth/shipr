@@ -2269,6 +2269,45 @@ function toInvoiceReference(invoiceId) {
   return `INV-${safe.slice(0, 8).toUpperCase()}`;
 }
 
+const PUBLIC_DOCUMENT_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const PUBLIC_DOCUMENT_CODE_LENGTH = 6;
+
+function getBillingDocumentPublicCodePrefix(invoiceKind = "monthly", documentType = "invoice") {
+  const normalizedKind = String(invoiceKind || "").trim().toLowerCase();
+  const normalizedType = String(documentType || "").trim().toLowerCase();
+  if (normalizedType === "receipt") return "R-REC";
+  if (normalizedKind === "topup") return "T-INV";
+  return "M-INV";
+}
+
+function generatePublicDocumentCodeSuffix(length = PUBLIC_DOCUMENT_CODE_LENGTH) {
+  const safeLength = Math.max(4, Math.min(12, Number(length) || PUBLIC_DOCUMENT_CODE_LENGTH));
+  const bytes = crypto.randomBytes(safeLength);
+  let result = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    result += PUBLIC_DOCUMENT_CODE_ALPHABET[bytes[index] % PUBLIC_DOCUMENT_CODE_ALPHABET.length];
+  }
+  return result;
+}
+
+function buildBillingDocumentPublicCode(invoiceKind = "monthly", documentType = "invoice") {
+  return `${getBillingDocumentPublicCodePrefix(invoiceKind, documentType)}-${generatePublicDocumentCodeSuffix()}`;
+}
+
+function buildDocumentPdfFilenameFromReference(reference, fallback = "document") {
+  const safe = String(reference || "")
+    .trim()
+    .replace(/[^A-Za-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const stem = safe || String(fallback || "document").trim() || "document";
+  return `${stem}.pdf`;
+}
+
+function isPublicDocumentCodeCollisionError(error) {
+  const message = String(error?.message || "");
+  return /(23505|duplicate key)/i.test(message) && /invoice_number|public_code|document code/i.test(message);
+}
+
 function getBillingInvoiceKind(invoice = {}) {
   const normalized = String(
     invoice?.invoice_kind
@@ -2314,19 +2353,7 @@ function buildTopupInvoiceToken(topup = {}) {
 }
 
 function buildTopupInvoiceNumber(topup = {}) {
-  const issuedSource =
-    topup?.credited_at
-    || topup?.received_at
-    || topup?.requested_at
-    || topup?.created_at
-    || Date.now();
-  const issuedDate = new Date(issuedSource);
-  const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
-  const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
-  const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
-  const token = buildTopupInvoiceToken(topup);
-  return `TUP-${yy}${mm}${dd}-${token}`;
+  return buildBillingDocumentPublicCode("topup", "invoice");
 }
 
 function getCanonicalInvoiceTimestamp(invoice = {}) {
@@ -3475,6 +3502,74 @@ async function upsertBillingInvoice(invoicePayload) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+async function ensureBillingInvoicePublicCode(invoice = {}) {
+  if (!invoice?.id) return invoice || null;
+  const existingCode = String(
+    invoice?.invoice_number || invoice?.metadata?.invoice_number || ""
+  ).trim();
+  if (existingCode) return invoice;
+  const invoiceKind = getBillingInvoiceKind(invoice);
+  let lastError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const nextCode = buildBillingDocumentPublicCode(invoiceKind, "invoice");
+    try {
+      const updated = await updateBillingInvoiceFields(invoice.id, {
+        invoice_number: nextCode,
+        metadata: {
+          ...(invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {}),
+          invoice_kind: invoiceKind,
+          invoice_number: nextCode,
+        },
+      });
+      return updated || {
+        ...invoice,
+        invoice_number: nextCode,
+        metadata: {
+          ...(invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {}),
+          invoice_kind: invoiceKind,
+          invoice_number: nextCode,
+        },
+      };
+    } catch (error) {
+      if (!isPublicDocumentCodeCollisionError(error)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Could not allocate a unique invoice document code.");
+}
+
+async function upsertBillingInvoiceWithPublicCode(invoicePayload, existing = null) {
+  const fixedCode = String(
+    existing?.invoice_number || existing?.metadata?.invoice_number || invoicePayload?.invoice_number || ""
+  ).trim();
+  let lastError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const invoiceNumber = fixedCode || buildBillingDocumentPublicCode("monthly", "invoice");
+    const payload = {
+      ...invoicePayload,
+      invoice_number: invoiceNumber,
+      metadata: {
+        ...(invoicePayload?.metadata && typeof invoicePayload.metadata === "object"
+          ? invoicePayload.metadata
+          : {}),
+        invoice_kind: "monthly",
+        invoice_number: invoiceNumber,
+      },
+    };
+    try {
+      return await upsertBillingInvoice(payload);
+    } catch (error) {
+      if (fixedCode || !isPublicDocumentCodeCollisionError(error)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Could not allocate a unique monthly invoice document code.");
+}
+
 async function getBillingInvoiceBySourceTopupId(topupId, { withItems = false, allowMissing = false } = {}) {
   const safeTopupId = String(topupId || "").trim();
   if (!safeTopupId) return null;
@@ -3541,6 +3636,98 @@ async function createBillingTopupInvoice(invoicePayload) {
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+function getStoredGenerationReceiptPublicCode(row = {}) {
+  return String(row?.payload?.document?.public_code || "").trim();
+}
+
+async function getGenerationHistoryRowById(generationId, { allowMissing = false } = {}) {
+  const safeGenerationId = String(generationId || "").trim();
+  if (!safeGenerationId) return null;
+  const params = new URLSearchParams();
+  params.set("select", "id,user_id,created_at,service_type,quantity,total_price,payload,billed_invoice_id,billed_at");
+  params.set("id", `eq.${safeGenerationId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${HISTORY_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (allowMissing && /relation .*label_generations/i.test(details)) {
+      return null;
+    }
+    throw new Error(`Could not load generation row (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function updateGenerationHistoryPayload(generationId, payload = {}) {
+  const safeGenerationId = String(generationId || "").trim();
+  if (!safeGenerationId) throw new Error("Generation id is required.");
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeGenerationId}`);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${HISTORY_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        payload,
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not update generation row (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function ensureGenerationReceiptPublicCode(row = {}) {
+  if (!row?.id) return { row: row || null, publicCode: "" };
+  const existingCode = getStoredGenerationReceiptPublicCode(row);
+  if (existingCode) {
+    return { row, publicCode: existingCode };
+  }
+  const currentPayload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+  let lastError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const nextCode = buildBillingDocumentPublicCode("receipt", "receipt");
+    const nextPayload = {
+      ...currentPayload,
+      document: {
+        ...(currentPayload?.document && typeof currentPayload.document === "object"
+          ? currentPayload.document
+          : {}),
+        kind: "receipt",
+        public_code: nextCode,
+        filename: buildDocumentPdfFilenameFromReference(nextCode, "R-REC-UNKNOWN"),
+      },
+    };
+    try {
+      const updatedRow = await updateGenerationHistoryPayload(row.id, nextPayload);
+      return {
+        row: updatedRow || {
+          ...row,
+          payload: nextPayload,
+        },
+        publicCode: nextCode,
+      };
+    } catch (error) {
+      if (!isPublicDocumentCodeCollisionError(error) && !/(23505|duplicate key)/i.test(String(error?.message || ""))) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Could not allocate a unique receipt document code.");
 }
 
 async function replaceBillingInvoiceItems(invoiceId, items = []) {
@@ -3800,10 +3987,10 @@ function formatInvoicePaymentModeLabel(invoice = {}) {
 }
 
 function buildInvoicePdfFilename(invoice = {}) {
-  const reference = getBillingInvoiceReference(invoice)
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-");
-  return `invoice-${reference || "shipide"}.pdf`;
+  return buildDocumentPdfFilenameFromReference(
+    getBillingInvoiceReference(invoice),
+    "INV-UNKNOWN"
+  );
 }
 
 function buildInvoiceVariantPdfFilename(invoice = {}, reminderStage = 0) {
@@ -6545,55 +6732,75 @@ async function upsertBillingTopupInvoice(topup, user = null) {
     withItems: false,
     allowMissing: true,
   });
-  const payload = buildTopupInvoicePayload(topup, user, {
-    invoiceNumber: existing?.invoice_number || existing?.metadata?.invoice_number,
-  });
+  const fixedInvoiceNumber = String(
+    existing?.invoice_number || existing?.metadata?.invoice_number || ""
+  ).trim();
   let invoice = existing;
-  if (!invoice?.id) {
-    invoice = await createBillingTopupInvoice(payload);
-    if (invoice?.id) {
-      await insertBillingInvoiceEvent(invoice.id, {
-        event_type: "created",
-        actor: "system",
-        channel: "wallet",
-        message: "Top-up invoice created from credited wallet top-up.",
-        metadata: {
-          topup_id: topup.id,
-          topup_reference: topup.reference || null,
-        },
-      }).catch(() => {});
-    }
-  } else {
-    invoice = await updateBillingInvoiceFields(invoice.id, {
-      invoice_kind: "topup",
-      source_topup_id: topup.id,
-      invoice_number:
-        String(invoice?.invoice_number || invoice?.metadata?.invoice_number || payload.invoice_number || "").trim()
-        || null,
-      issued_at: invoice?.issued_at || payload.issued_at,
-      due_at: invoice?.due_at || payload.due_at,
-      paid_at: invoice?.paid_at || payload.paid_at,
-      status: invoice?.status || payload.status,
-      payment_mode: "wallet",
-      currency: payload.currency,
-      vat_rate: 0,
-      subtotal_ex_vat: payload.subtotal_ex_vat,
-      vat_amount: 0,
-      total_inc_vat: payload.total_inc_vat,
-      labels_count: 1,
-      line_count: 1,
-      company_name: payload.company_name,
-      contact_name: payload.contact_name,
-      contact_email: payload.contact_email,
-      customer_id: payload.customer_id,
-      account_manager: payload.account_manager,
-      payment_reference: payload.payment_reference,
-      payment_received_amount: payload.payment_received_amount,
-      metadata: {
-        ...(invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {}),
-        ...(payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
-      },
+  let createdInvoice = false;
+  let lastError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const payload = buildTopupInvoicePayload(topup, user, {
+      invoiceNumber: fixedInvoiceNumber || buildBillingDocumentPublicCode("topup", "invoice"),
     });
+    try {
+      if (!invoice?.id) {
+        invoice = await createBillingTopupInvoice(payload);
+        createdInvoice = Boolean(invoice?.id);
+      } else {
+        invoice = await updateBillingInvoiceFields(invoice.id, {
+          invoice_kind: "topup",
+          source_topup_id: topup.id,
+          invoice_number:
+            String(invoice?.invoice_number || invoice?.metadata?.invoice_number || payload.invoice_number || "").trim()
+            || null,
+          issued_at: invoice?.issued_at || payload.issued_at,
+          due_at: invoice?.due_at || payload.due_at,
+          paid_at: invoice?.paid_at || payload.paid_at,
+          status: invoice?.status || payload.status,
+          payment_mode: "wallet",
+          currency: payload.currency,
+          vat_rate: 0,
+          subtotal_ex_vat: payload.subtotal_ex_vat,
+          vat_amount: 0,
+          total_inc_vat: payload.total_inc_vat,
+          labels_count: 1,
+          line_count: 1,
+          company_name: payload.company_name,
+          contact_name: payload.contact_name,
+          contact_email: payload.contact_email,
+          customer_id: payload.customer_id,
+          account_manager: payload.account_manager,
+          payment_reference: payload.payment_reference,
+          payment_received_amount: payload.payment_received_amount,
+          metadata: {
+            ...(invoice?.metadata && typeof invoice.metadata === "object" ? invoice.metadata : {}),
+            ...(payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
+          },
+        });
+      }
+      break;
+    } catch (error) {
+      if (fixedInvoiceNumber || !isPublicDocumentCodeCollisionError(error)) {
+        throw error;
+      }
+      lastError = error;
+      invoice = existing;
+    }
+  }
+  if (!invoice?.id && lastError) {
+    throw lastError;
+  }
+  if (createdInvoice && invoice?.id) {
+    await insertBillingInvoiceEvent(invoice.id, {
+      event_type: "created",
+      actor: "system",
+      channel: "wallet",
+      message: "Top-up invoice created from credited wallet top-up.",
+      metadata: {
+        topup_id: topup.id,
+        topup_reference: topup.reference || null,
+      },
+    }).catch(() => {});
   }
   if (!invoice?.id) {
     invoice = await getBillingInvoiceBySourceTopupId(topup.id, {
@@ -7497,6 +7704,7 @@ async function buildInvoicesFromLabelHistory(options = {}) {
     const previewInvoice = {
       id: existing?.id || null,
       user_id: userId,
+      invoice_number: String(existing?.invoice_number || existing?.metadata?.invoice_number || "").trim() || null,
       company_name: profile.company_name,
       contact_email: profile.contact_email,
       period_start: billingWindow.startIsoDate,
@@ -7515,7 +7723,9 @@ async function buildInvoicesFromLabelHistory(options = {}) {
     if (mode === "preview") {
       result.invoices.push({
         ...previewInvoice,
-        reference: previewInvoice.id ? toInvoiceReference(previewInvoice.id) : "INV-PREVIEW",
+        reference:
+          previewInvoice.invoice_number
+          || (previewInvoice.id ? toInvoiceReference(previewInvoice.id) : "M-INV-PREVIEW"),
       });
       result.totals.subtotal_ex_vat = fromCents(
         toCents(result.totals.subtotal_ex_vat) + toCents(totals.subtotal_ex_vat)
@@ -7529,7 +7739,7 @@ async function buildInvoicesFromLabelHistory(options = {}) {
       continue;
     }
 
-    const persisted = await upsertBillingInvoice(invoicePayload);
+    const persisted = await upsertBillingInvoiceWithPublicCode(invoicePayload, existing);
     if (!persisted?.id) {
       throw new Error("Invoice could not be persisted.");
     }
@@ -11448,11 +11658,12 @@ async function handleBillingInvoiceDetail(req, res, requestUrl) {
     return;
   }
   try {
-    const invoice = await getBillingInvoiceById(invoiceId, { withItems: true });
+    let invoice = await getBillingInvoiceById(invoiceId, { withItems: true });
     if (!invoice?.id || String(invoice?.user_id || "").trim() !== String(user.id || "").trim()) {
       sendJson(res, 404, { error: "Invoice not found." });
       return;
     }
+    invoice = await ensureBillingInvoicePublicCode(invoice);
     sendJson(res, 200, {
       invoice: {
         ...invoice,
@@ -14382,6 +14593,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/render-receipt-pdf" && req.method === "POST") {
     await proxyAuthenticatedPdfRender(req, res, "/api/billing/render-receipt-pdf");
+    return true;
+  }
+  if (pathname === "/api/billing/receipts/ensure-code" && req.method === "POST") {
+    await proxyAuthenticatedApi(req, res, "/api/billing/receipts/ensure-code");
     return true;
   }
   if (pathname === "/api/document-jobs/status" && req.method === "GET") {
