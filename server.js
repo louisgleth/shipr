@@ -2294,6 +2294,25 @@ function getBillingInvoiceReference(invoice = {}) {
   return customReference || toInvoiceReference(invoice?.id);
 }
 
+function buildTopupInvoiceToken(topup = {}) {
+  const rawId = String(topup?.id || "").trim();
+  if (isUuid(rawId)) {
+    return rawId.replace(/-/g, "").slice(0, 8).toUpperCase();
+  }
+  const normalizedId = rawId.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (normalizedId) {
+    return normalizedId.slice(0, 8).padEnd(8, "0");
+  }
+  const normalizedReference = String(topup?.reference || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (normalizedReference) {
+    return normalizedReference.slice(-8).padStart(8, "0");
+  }
+  return "TOPUP000";
+}
+
 function buildTopupInvoiceNumber(topup = {}) {
   const issuedSource =
     topup?.credited_at
@@ -2306,11 +2325,37 @@ function buildTopupInvoiceNumber(topup = {}) {
   const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
   const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
-  const tokenSource = String(topup?.id || topup?.reference || "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
+  const token = buildTopupInvoiceToken(topup);
   return `TUP-${yy}${mm}${dd}-${token}`;
+}
+
+function getCanonicalInvoiceTimestamp(invoice = {}) {
+  const candidates = [
+    invoice?.created_at,
+    invoice?.issued_at,
+    invoice?.sent_at,
+    invoice?.paid_at,
+    invoice?.updated_at,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(String(candidate || "").trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function compareCanonicalBillingInvoices(left = {}, right = {}) {
+  const leftIssued = Boolean(String(left?.sent_at || left?.email_message_id || "").trim());
+  const rightIssued = Boolean(String(right?.sent_at || right?.email_message_id || "").trim());
+  if (leftIssued !== rightIssued) {
+    return leftIssued ? -1 : 1;
+  }
+  const leftTime = getCanonicalInvoiceTimestamp(left);
+  const rightTime = getCanonicalInvoiceTimestamp(right);
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
 }
 
 function formatInvoiceSubjectMonthYear(invoice = {}) {
@@ -3337,7 +3382,8 @@ async function getBillingInvoiceByPeriod(userId, periodStart, periodEnd) {
   params.set("invoice_kind", "eq.monthly");
   params.set("period_start", `eq.${safeStart}`);
   params.set("period_end", `eq.${safeEnd}`);
-  params.set("limit", "1");
+  params.set("order", "created_at.asc,updated_at.asc,id.asc");
+  params.set("limit", "5");
   const response = await supabaseServiceRequest(
     `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
     { method: "GET" }
@@ -3350,7 +3396,18 @@ async function getBillingInvoiceByPeriod(userId, periodStart, periodEnd) {
     throw new Error(`Could not load invoice period (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const sorted = rows.slice().sort(compareCanonicalBillingInvoices);
+  if (sorted.length > 1) {
+    console.error("[billing invoice duplicate period select]", `${safeUserId}:${safeStart}:${safeEnd}`, sorted.map((invoice) => ({
+      id: invoice?.id || null,
+      status: invoice?.status || null,
+      issued_at: invoice?.issued_at || null,
+      sent_at: invoice?.sent_at || null,
+      created_at: invoice?.created_at || null,
+    })));
+  }
+  return sorted[0];
 }
 
 async function getBillingInvoiceById(invoiceId, { withItems = false } = {}) {
@@ -3425,7 +3482,8 @@ async function getBillingInvoiceBySourceTopupId(topupId, { withItems = false, al
   params.set("select", BILLING_INVOICE_SELECT_FIELDS);
   params.set("source_topup_id", `eq.${safeTopupId}`);
   params.set("invoice_kind", "eq.topup");
-  params.set("limit", "1");
+  params.set("order", "created_at.asc,updated_at.asc,id.asc");
+  params.set("limit", "5");
   const response = await supabaseServiceRequest(
     `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
     { method: "GET" }
@@ -3439,7 +3497,18 @@ async function getBillingInvoiceBySourceTopupId(topupId, { withItems = false, al
     throw new Error(`Could not load top-up invoice (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
-  const invoice = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const sorted = rows.slice().sort(compareCanonicalBillingInvoices);
+  if (sorted.length > 1) {
+    console.error("[billing topup duplicate invoice]", safeTopupId, sorted.map((invoice) => ({
+      id: invoice?.id || null,
+      invoice_number: invoice?.invoice_number || null,
+      status: invoice?.status || null,
+      sent_at: invoice?.sent_at || null,
+      created_at: invoice?.created_at || null,
+    })));
+  }
+  const invoice = sorted[0];
   if (!invoice || !withItems) return invoice;
   return getBillingInvoiceById(invoice.id, { withItems: true });
 }
@@ -6423,14 +6492,16 @@ function buildTopupInvoiceItems(topup = {}) {
   ];
 }
 
-function buildTopupInvoicePayload(topup = {}, user = null) {
+function buildTopupInvoicePayload(topup = {}, user = null, options = {}) {
   const issuedAt =
     parseIsoTimestamp(
       topup?.credited_at || topup?.received_at || topup?.requested_at || topup?.created_at || ""
     ) || new Date().toISOString();
   const amount = fromCents(Math.max(0, Number(topup?.amount_cents) || 0));
   const profile = mapInvoiceProfileFromUser(user);
-  const invoiceNumber = buildTopupInvoiceNumber(topup);
+  const invoiceNumber =
+    String(options?.invoiceNumber || "").trim()
+    || buildTopupInvoiceNumber(topup);
   return {
     user_id: String(topup?.user_id || "").trim() || null,
     invoice_kind: "topup",
@@ -6470,10 +6541,12 @@ function buildTopupInvoicePayload(topup = {}, user = null) {
 
 async function upsertBillingTopupInvoice(topup, user = null) {
   if (!topup?.id) return null;
-  const payload = buildTopupInvoicePayload(topup, user);
   const existing = await getBillingInvoiceBySourceTopupId(topup.id, {
     withItems: false,
     allowMissing: true,
+  });
+  const payload = buildTopupInvoicePayload(topup, user, {
+    invoiceNumber: existing?.invoice_number || existing?.metadata?.invoice_number,
   });
   let invoice = existing;
   if (!invoice?.id) {
@@ -6494,7 +6567,9 @@ async function upsertBillingTopupInvoice(topup, user = null) {
     invoice = await updateBillingInvoiceFields(invoice.id, {
       invoice_kind: "topup",
       source_topup_id: topup.id,
-      invoice_number: payload.invoice_number,
+      invoice_number:
+        String(invoice?.invoice_number || invoice?.metadata?.invoice_number || payload.invoice_number || "").trim()
+        || null,
       issued_at: invoice?.issued_at || payload.issued_at,
       due_at: invoice?.due_at || payload.due_at,
       paid_at: invoice?.paid_at || payload.paid_at,
@@ -14283,6 +14358,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/topups" && req.method === "GET") {
     await handleBillingTopups(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/billing/topups/invoice-pdf" && req.method === "GET") {
+    await proxyAuthenticatedApi(req, res, `/api/billing/topups/invoice-pdf${requestUrl.search}`);
     return true;
   }
   if (pathname === "/api/billing/topups/repair-invoice" && req.method === "POST") {

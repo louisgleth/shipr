@@ -2214,6 +2214,25 @@ function getBillingInvoiceReference(invoice = {}) {
   return customReference || toInvoiceReference(invoice?.id);
 }
 
+function buildTopupInvoiceToken(topup = {}) {
+  const rawId = String(topup?.id || "").trim();
+  if (isUuid(rawId)) {
+    return rawId.replace(/-/g, "").slice(0, 8).toUpperCase();
+  }
+  const normalizedId = rawId.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (normalizedId) {
+    return normalizedId.slice(0, 8).padEnd(8, "0");
+  }
+  const normalizedReference = String(topup?.reference || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (normalizedReference) {
+    return normalizedReference.slice(-8).padStart(8, "0");
+  }
+  return "TOPUP000";
+}
+
 function buildTopupInvoiceNumber(topup = {}) {
   const issuedSource =
     topup?.credited_at
@@ -2226,11 +2245,37 @@ function buildTopupInvoiceNumber(topup = {}) {
   const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
   const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
-  const tokenSource = String(topup?.id || topup?.reference || "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
+  const token = buildTopupInvoiceToken(topup);
   return `TUP-${yy}${mm}${dd}-${token}`;
+}
+
+function getCanonicalInvoiceTimestamp(invoice = {}) {
+  const candidates = [
+    invoice?.created_at,
+    invoice?.issued_at,
+    invoice?.sent_at,
+    invoice?.paid_at,
+    invoice?.updated_at,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(String(candidate || "").trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function compareCanonicalBillingInvoices(left = {}, right = {}) {
+  const leftIssued = Boolean(String(left?.sent_at || left?.email_message_id || "").trim());
+  const rightIssued = Boolean(String(right?.sent_at || right?.email_message_id || "").trim());
+  if (leftIssued !== rightIssued) {
+    return leftIssued ? -1 : 1;
+  }
+  const leftTime = getCanonicalInvoiceTimestamp(left);
+  const rightTime = getCanonicalInvoiceTimestamp(right);
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
 }
 
 function formatInvoiceSubjectMonthYear(invoice = {}) {
@@ -5278,14 +5323,16 @@ function buildTopupInvoiceItems(topup = {}) {
   ];
 }
 
-function buildTopupInvoicePayload(topup = {}, user = null) {
+function buildTopupInvoicePayload(topup = {}, user = null, options = {}) {
   const issuedAt =
     parseIsoTimestamp(
       topup?.credited_at || topup?.received_at || topup?.requested_at || topup?.created_at || ""
     ) || new Date().toISOString();
   const amount = fromCents(Math.max(0, Number(topup?.amount_cents) || 0));
   const profile = mapInvoiceProfileFromUser(user);
-  const invoiceNumber = buildTopupInvoiceNumber(topup);
+  const invoiceNumber =
+    String(options?.invoiceNumber || "").trim()
+    || buildTopupInvoiceNumber(topup);
   return {
     user_id: String(topup?.user_id || "").trim() || null,
     invoice_kind: "topup",
@@ -5325,10 +5372,12 @@ function buildTopupInvoicePayload(topup = {}, user = null) {
 
 async function upsertBillingTopupInvoice(env, topup, user = null) {
   if (!topup?.id) return null;
-  const payload = buildTopupInvoicePayload(topup, user);
   const existing = await getBillingInvoiceBySourceTopupId(env, topup.id, {
     withItems: false,
     allowMissing: true,
+  });
+  const payload = buildTopupInvoicePayload(topup, user, {
+    invoiceNumber: existing?.invoice_number || existing?.metadata?.invoice_number,
   });
   let invoice = existing;
   if (!invoice?.id) {
@@ -5349,7 +5398,9 @@ async function upsertBillingTopupInvoice(env, topup, user = null) {
     invoice = await updateBillingInvoiceFields(env, invoice.id, {
       invoice_kind: "topup",
       source_topup_id: topup.id,
-      invoice_number: payload.invoice_number,
+      invoice_number:
+        String(invoice?.invoice_number || invoice?.metadata?.invoice_number || payload.invoice_number || "").trim()
+        || null,
       issued_at: invoice?.issued_at || payload.issued_at,
       due_at: invoice?.due_at || payload.due_at,
       paid_at: invoice?.paid_at || payload.paid_at,
@@ -6031,7 +6082,7 @@ async function listBillingInvoicesForPeriod(
       },
       { pageSize: 500, allowMissingSchema: allowMissing }
     );
-    return rows.filter((invoice) => {
+    const filteredRows = rows.filter((invoice) => {
       const invoiceStatus = normalizeInvoiceStatus(invoice?.status);
       const invoicePaymentMode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
       if (Array.isArray(statuses) && statuses.length) {
@@ -6052,6 +6103,31 @@ async function listBillingInvoicesForPeriod(
       }
       return true;
     });
+    const grouped = new Map();
+    filteredRows.forEach((invoice) => {
+      const key = [
+        String(invoice?.user_id || "").trim(),
+        String(invoice?.period_start || "").trim(),
+        String(invoice?.period_end || "").trim(),
+      ].join(":");
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(invoice);
+    });
+    const canonical = [];
+    grouped.forEach((group, key) => {
+      const sorted = group.slice().sort(compareCanonicalBillingInvoices);
+      if (sorted.length > 1) {
+        console.error("[billing invoice duplicate period]", key, sorted.map((invoice) => ({
+          id: invoice?.id || null,
+          status: invoice?.status || null,
+          issued_at: invoice?.issued_at || null,
+          sent_at: invoice?.sent_at || null,
+          created_at: invoice?.created_at || null,
+        })));
+      }
+      canonical.push(sorted[0]);
+    });
+    return canonical;
   } catch (error) {
     const message = String(error?.message || "");
     if (allowMissing && /billing schema missing/i.test(message)) {
@@ -6072,7 +6148,8 @@ async function getBillingInvoiceByPeriod(env, userId, periodStart, periodEnd) {
   params.set("invoice_kind", "eq.monthly");
   params.set("period_start", `eq.${safeStart}`);
   params.set("period_end", `eq.${safeEnd}`);
-  params.set("limit", "1");
+  params.set("order", "created_at.asc,updated_at.asc,id.asc");
+  params.set("limit", "5");
   const response = await supabaseServiceRequest(
     env,
     `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
@@ -6086,7 +6163,18 @@ async function getBillingInvoiceByPeriod(env, userId, periodStart, periodEnd) {
     throw new Error(`Could not load invoice period (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const sorted = rows.slice().sort(compareCanonicalBillingInvoices);
+  if (sorted.length > 1) {
+    console.error("[billing invoice duplicate period select]", `${safeUserId}:${safeStart}:${safeEnd}`, sorted.map((invoice) => ({
+      id: invoice?.id || null,
+      status: invoice?.status || null,
+      issued_at: invoice?.issued_at || null,
+      sent_at: invoice?.sent_at || null,
+      created_at: invoice?.created_at || null,
+    })));
+  }
+  return sorted[0];
 }
 
 async function getBillingInvoiceById(env, invoiceId, { withItems = false } = {}) {
@@ -6164,7 +6252,8 @@ async function getBillingInvoiceBySourceTopupId(env, topupId, { withItems = fals
   params.set("select", BILLING_INVOICE_SELECT_FIELDS);
   params.set("source_topup_id", `eq.${safeTopupId}`);
   params.set("invoice_kind", "eq.topup");
-  params.set("limit", "1");
+  params.set("order", "created_at.asc,updated_at.asc,id.asc");
+  params.set("limit", "5");
   const response = await supabaseServiceRequest(
     env,
     `/rest/v1/${BILLING_INVOICES_TABLE}?${params.toString()}`,
@@ -6179,7 +6268,18 @@ async function getBillingInvoiceBySourceTopupId(env, topupId, { withItems = fals
     throw new Error(`Could not load top-up invoice (${response.status}) ${details}`.trim());
   }
   const rows = await response.json().catch(() => []);
-  const invoice = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const sorted = rows.slice().sort(compareCanonicalBillingInvoices);
+  if (sorted.length > 1) {
+    console.error("[billing topup duplicate invoice]", safeTopupId, sorted.map((invoice) => ({
+      id: invoice?.id || null,
+      invoice_number: invoice?.invoice_number || null,
+      status: invoice?.status || null,
+      sent_at: invoice?.sent_at || null,
+      created_at: invoice?.created_at || null,
+    })));
+  }
+  const invoice = sorted[0];
   if (!invoice || !withItems) return invoice;
   return getBillingInvoiceById(env, invoice.id, { withItems: true });
 }
@@ -15377,7 +15477,7 @@ async function handleBillingTopupInvoicePdf(request, env, url, ctx) {
     if (getEffectiveTopupStatus(topup) !== "credited") {
       return jsonResponse({ error: "Top-up invoice is not available yet." }, 409);
     }
-    const { invoice } = await resolveCanonicalBillingTopupInvoice(env, topup, {
+    let { invoice } = await resolveCanonicalBillingTopupInvoice(env, topup, {
       user,
       withItems: false,
     });
@@ -15396,6 +15496,24 @@ async function handleBillingTopupInvoicePdf(request, env, url, ctx) {
           "Cache-Control": "no-store",
         },
       });
+    }
+    try {
+      const ensuredPdf = await getApprovedBillingInvoicePdfExport(env, invoice.id, { reminderStage: 0 });
+      if (ensuredPdf?.bytes) {
+        return new Response(ensuredPdf.bytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${String(ensuredPdf.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      invoice =
+        await getBillingInvoiceById(env, invoice.id, { withItems: false }).catch(() => invoice)
+        || invoice;
+    } catch (_error) {
+      // Fall back to the queued worker path below if a direct export cannot be resolved promptly.
     }
     let job = await enqueueInvoicePdfDocumentJob(env, invoice, {
       invoiceId: invoice.id,

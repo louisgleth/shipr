@@ -14029,10 +14029,7 @@ function buildInvoiceViewModel(record) {
 }
 
 function canDownloadTopupInvoice(row) {
-  return (
-    String(row?.status || "").trim().toLowerCase() === "credited"
-    && Boolean(String(row?.invoice_id || "").trim())
-  );
+  return String(row?.status || "").trim().toLowerCase() === "credited";
 }
 
 function getTopupInvoiceIssuedAt(row) {
@@ -14048,11 +14045,22 @@ function buildTopupInvoiceNumber(topup) {
   const issuedDateRaw = getTopupInvoiceIssuedAt(topup);
   const issuedDate = new Date(issuedDateRaw || Date.now());
   const resolvedIssuedDate = Number.isNaN(issuedDate.getTime()) ? new Date() : issuedDate;
-  const yy = String(resolvedIssuedDate.getFullYear()).slice(-2);
-  const mm = String(resolvedIssuedDate.getMonth() + 1).padStart(2, "0");
-  const dd = String(resolvedIssuedDate.getDate()).padStart(2, "0");
-  const tokenSource = String(topup?.id || topup?.reference || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const token = (tokenSource.slice(0, 4) || tokenSource.slice(-4) || "TOPU").padEnd(4, "0");
+  const yy = String(resolvedIssuedDate.getUTCFullYear()).slice(-2);
+  const mm = String(resolvedIssuedDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(resolvedIssuedDate.getUTCDate()).padStart(2, "0");
+  const rawId = String(topup?.id || "").trim();
+  const token = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawId)
+    ? rawId.replace(/-/g, "").slice(0, 8).toUpperCase()
+    : (() => {
+        const normalizedId = rawId.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (normalizedId) return normalizedId.slice(0, 8).padEnd(8, "0");
+        const normalizedReference = String(topup?.reference || "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "");
+        if (normalizedReference) return normalizedReference.slice(-8).padStart(8, "0");
+        return "TOPUP000";
+      })();
   return `TUP-${yy}${mm}${dd}-${token}`;
 }
 
@@ -22875,7 +22883,7 @@ async function downloadTopupInvoicePdf(button, topupId) {
   });
   try {
     const result = await fetchBillingTopupInvoicePdfBlob(safeTopupId, {
-      timeoutMs: 15_000,
+      timeoutMs: 120_000,
       queueTimeoutMs: 300_000,
     });
     if (!result?.blob || !(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
