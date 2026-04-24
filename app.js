@@ -8448,6 +8448,26 @@ async function fetchBillingInvoicePdfBlob(invoiceId, options = {}) {
   };
 }
 
+async function fetchBillingTopupInvoicePdfBlob(topupId, options = {}) {
+  const safeTopupId = String(topupId || "").trim();
+  if (!safeTopupId) {
+    throw new Error(tr("Top-up id is required."));
+  }
+  const response = await fetchQueuedPdfWithAuth(
+    `/api/billing/topups/invoice-pdf?topupId=${encodeURIComponent(safeTopupId)}`,
+    {
+      timeoutMs: Math.max(10_000, Number(options?.timeoutMs) || 120000),
+      queueTimeoutMs: Math.max(10_000, Number(options?.queueTimeoutMs) || 300000),
+    }
+  );
+  return {
+    blob: response?.blob || null,
+    filename:
+      parseContentDispositionFilename(response?.headers)
+      || buildInvoicePdfFilenameFromReference(safeTopupId),
+  };
+}
+
 function applyRepairedTopupRowToBillingOverview(topupRow = null) {
   if (!topupRow || typeof topupRow !== "object") return;
   if (!billingOverview || typeof billingOverview !== "object") return;
@@ -22854,65 +22874,17 @@ async function downloadTopupInvoicePdf(button, topupId) {
     busyLabel: tr("Preparing invoice PDF..."),
   });
   try {
-    let linkedInvoiceId = String(topup?.invoice_id || "").trim();
-    if (!linkedInvoiceId) {
-      const repaired = await repairBillingTopupInvoice(safeTopupId);
-      linkedInvoiceId = String(repaired?.topup?.invoice_id || repaired?.invoice?.id || "").trim();
-      if (!linkedInvoiceId) {
-        throw new Error(tr("Invoice not available yet."));
-      }
-    }
-    const loadInvoiceDetail = async (invoiceId) => {
-      const invoiceRecord = await fetchBillingInvoiceDetail(invoiceId);
-      if (!invoiceRecord?.id) {
-        throw new Error(tr("Invoice not available yet."));
-      }
-      return invoiceRecord;
-    };
-    const hasStoredInvoicePdf = (invoiceRecord) => {
-      const variants =
-        invoiceRecord?.metadata?.invoice_pdf_variants
-        && typeof invoiceRecord.metadata.invoice_pdf_variants === "object"
-          ? invoiceRecord.metadata.invoice_pdf_variants
-          : null;
-      const variant = variants?.["0"];
-      return Boolean(
-        variant
-        && typeof variant === "object"
-        && String(variant?.objectPath || variant?.fullPath || "").trim()
-      );
-    };
-
-    const invoiceRecord = await loadInvoiceDetail(linkedInvoiceId).catch(async (error) => {
-      const repaired = await repairBillingTopupInvoice(safeTopupId);
-      const repairedInvoiceId = String(
-        repaired?.topup?.invoice_id || repaired?.invoice?.id || linkedInvoiceId
-      ).trim();
-      if (!repairedInvoiceId) {
-        throw error;
-      }
-      linkedInvoiceId = repairedInvoiceId;
-      return loadInvoiceDetail(linkedInvoiceId);
+    const result = await fetchBillingTopupInvoicePdfBlob(safeTopupId, {
+      timeoutMs: 15_000,
+      queueTimeoutMs: 300_000,
     });
-
-    const fallbackFilename = buildInvoicePdfFilenameFromReference(
-      invoiceRecord?.reference || linkedInvoiceId,
-    );
-    let result = null;
-    if (hasStoredInvoicePdf(invoiceRecord)) {
-      result = await fetchBillingInvoicePdfBlob(linkedInvoiceId, {
-        timeoutMs: 15_000,
-        queueTimeoutMs: 20_000,
-      }).catch(() => null);
-    }
-    if (!result?.blob) {
-      const viewModel = buildBillingInvoiceViewModel(invoiceRecord);
-      result = await requestSelectableInvoicePdf(viewModel, fallbackFilename).catch(() => null);
-    }
     if (!result?.blob || !(result.blob instanceof Blob) || Number(result.blob.size || 0) <= 0) {
       throw new Error(tr("Could not load a valid invoice PDF."));
     }
-    downloadPdfBlobAsFile(result.blob, result.filename || fallbackFilename);
+    downloadPdfBlobAsFile(
+      result.blob,
+      result.filename || buildInvoicePdfFilenameFromReference(topup?.invoice_reference || safeTopupId)
+    );
     showToast(tr("Invoice PDF ready."), { tone: "success" });
   } catch (error) {
     showToast(error?.message || tr("Could not load invoice PDF."), { tone: "error" });

@@ -430,6 +430,9 @@ export default {
       if (pathname === "/api/billing/topups" && request.method === "GET") {
         return handleBillingTopups(request, env, url);
       }
+      if (pathname === "/api/billing/topups/invoice-pdf" && request.method === "GET") {
+        return handleBillingTopupInvoicePdf(request, env, url, ctx);
+      }
       if (pathname === "/api/billing/topups/repair-invoice" && request.method === "POST") {
         return handleBillingTopupInvoiceRepair(request, env);
       }
@@ -5402,6 +5405,47 @@ async function linkBillingTopupInvoice(env, topup, invoice) {
   return updateBillingTopupFields(env, topup.id, { metadata: desiredMetadata });
 }
 
+async function resolveCanonicalBillingTopupInvoice(env, topup, options = {}) {
+  if (!topup?.id) {
+    return { topup: topup || null, invoice: null, user: null };
+  }
+  let user = options?.user || null;
+  if (!user && topup?.user_id) {
+    try {
+      user = await getSupabaseUserById(env, topup.user_id);
+    } catch (_error) {
+      user = null;
+    }
+  }
+  const withItems = options?.withItems === true;
+  let invoice = await getBillingInvoiceBySourceTopupId(env, topup.id, {
+    withItems,
+    allowMissing: true,
+  });
+  if (!invoice?.id) {
+    invoice = await upsertBillingTopupInvoice(env, topup, user);
+  }
+  if (!invoice?.id) {
+    throw new Error("Could not create top-up invoice.");
+  }
+  const linkedTopup = await linkBillingTopupInvoice(env, topup, invoice).catch(() => topup);
+  let finalInvoice = invoice;
+  if (options?.ensurePdf === true) {
+    await getApprovedBillingInvoicePdfExport(env, invoice.id, { reminderStage: 0 });
+    finalInvoice =
+      await getBillingInvoiceById(env, invoice.id, { withItems }).catch(() => invoice)
+      || invoice;
+  }
+  const finalTopup = await linkBillingTopupInvoice(env, linkedTopup || topup, finalInvoice).catch(
+    () => linkedTopup || topup
+  );
+  return {
+    topup: finalTopup,
+    invoice: finalInvoice,
+    user,
+  };
+}
+
 async function ensureBillingTopupInvoiceAndSend(env, topupId, options = {}) {
   const topup = await getBillingTopupById(env, topupId, { allowMissing: true });
   if (!topup?.id) {
@@ -5410,21 +5454,9 @@ async function ensureBillingTopupInvoiceAndSend(env, topupId, options = {}) {
   if (getEffectiveTopupStatus(topup) !== "credited") {
     return { skipped: true, reason: "Top-up is not credited yet.", invoice: null, topup };
   }
-
-  let user = null;
-  if (topup?.user_id) {
-    try {
-      user = await getSupabaseUserById(env, topup.user_id);
-    } catch (_error) {
-      user = null;
-    }
-  }
-
-  const invoice = await upsertBillingTopupInvoice(env, topup, user);
-  if (!invoice?.id) {
-    throw new Error("Could not create top-up invoice.");
-  }
-  const linkedTopup = await linkBillingTopupInvoice(env, topup, invoice).catch(() => topup);
+  const { invoice, topup: linkedTopup } = await resolveCanonicalBillingTopupInvoice(env, topup, {
+    withItems: true,
+  });
   const shouldEnsurePdf = options?.ensurePdf !== false;
   const alreadySent =
     Boolean(String(invoice?.sent_at || "").trim())
@@ -15325,6 +15357,76 @@ async function handleBillingTopups(request, env, url) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not load top-up history." }, 500);
+  }
+}
+
+async function handleBillingTopupInvoicePdf(request, env, url, ctx) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  const topupId = String(url.searchParams.get("topupId") || "").trim();
+  if (!topupId) {
+    return jsonResponse({ error: "Top-up id is required." }, 400);
+  }
+  try {
+    const topup = await getBillingTopupById(env, topupId, { allowMissing: true });
+    if (!topup?.id || String(topup?.user_id || "").trim() !== String(user.id || "").trim()) {
+      return jsonResponse({ error: "Top-up not found." }, 404);
+    }
+    if (getEffectiveTopupStatus(topup) !== "credited") {
+      return jsonResponse({ error: "Top-up invoice is not available yet." }, 409);
+    }
+    const { invoice } = await resolveCanonicalBillingTopupInvoice(env, topup, {
+      user,
+      withItems: false,
+    });
+    if (!invoice?.id) {
+      throw new Error("Could not create top-up invoice.");
+    }
+    const storedVariant = await loadStoredBillingInvoicePdfVariant(env, invoice, 0, {
+      allowFallback: false,
+    }).catch(() => null);
+    if (storedVariant?.bytes) {
+      return new Response(storedVariant.bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${String(storedVariant.filename || "invoice-shipide.pdf").replace(/"/g, "")}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    let job = await enqueueInvoicePdfDocumentJob(env, invoice, {
+      invoiceId: invoice.id,
+      reminderStage: 0,
+      priority: 10,
+    });
+    if (normalizeBillingDocumentJobStatus(job?.status) === "completed") {
+      job = await requeueCompletedBillingDocumentJob(env, job, {
+        payload: {
+          invoiceId: invoice.id,
+          reminderStage: 0,
+        },
+      });
+    }
+    queueBillingDocumentJobPump(env, ctx, {
+      limit: 1,
+      publicAppUrl: getPublicAppUrl(env, request),
+    });
+    return buildBillingDocumentJobAcceptedResponse(
+      env,
+      buildBillingDocumentJobResponseRow(job),
+      "Top-up invoice PDF queued. Retry after it finishes."
+    );
+  } catch (error) {
+    const message = error?.message || "Could not load top-up invoice PDF.";
+    const status = /not found/i.test(message)
+      ? 404
+      : /not available yet|unavailable|regenerate/i.test(message)
+        ? 409
+        : 500;
+    return jsonResponse({ error: message }, status);
   }
 }
 
