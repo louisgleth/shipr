@@ -1840,6 +1840,38 @@
               <div class="post-upload-meta mono" id="postPartnerLogoMeta">Use a transparent PNG or SVG-style raster export for the cleanest lockup.</div>
             </article>
 
+            <article class="reports-card post-control-card" id="postLinkedInCard">
+              <div class="post-control-head">
+                <div>
+                  <div class="preview-title">LinkedIn Publishing</div>
+                  <p class="panel-sub post-control-sub">
+                    Connect a LinkedIn admin account, choose the company page, and publish the exact current export canvas.
+                  </p>
+                </div>
+                <div class="post-linkedin-pill mono" id="postLinkedInStatus">Not connected</div>
+              </div>
+              <div class="post-linkedin-meta mono" id="postLinkedInMeta">
+                Company-page posting uses LinkedIn OAuth plus page admin permissions.
+              </div>
+              <label class="field">
+                <span>Company Page</span>
+                <select id="postLinkedInOrganizationSelect">
+                  <option value="">Connect LinkedIn first</option>
+                </select>
+              </label>
+              <div class="post-linkedin-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="postLinkedInConnectButton">Connect LinkedIn</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="postLinkedInRefreshButton">Refresh Pages</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="postLinkedInDisconnectButton">Disconnect</button>
+              </div>
+              <div class="post-linkedin-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="postLinkedInPublishButton">Publish To LinkedIn</button>
+              </div>
+              <div class="post-linkedin-result mono is-hidden" id="postLinkedInResultWrap">
+                <a href="#" target="_blank" rel="noreferrer" id="postLinkedInResultLink">View published post</a>
+              </div>
+            </article>
+
             <article class="reports-card post-control-card">
               <div class="post-control-head">
                 <div>
@@ -1854,7 +1886,7 @@
                 <textarea id="postCaptionInput" rows="8" placeholder="Draft the caption, hook, and CTA here."></textarea>
               </label>
               <div class="post-caption-note mono">
-                Nothing posts yet. This page is now the template-driven visual studio + caption draft skeleton for the automation that comes next.
+                Publishing sends the selected company page the exact current `1200 x 627` canvas export plus this caption.
               </div>
             </article>
           </div>

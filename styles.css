@@ -3152,6 +3152,14 @@ body.is-auth-view {
     width: min(100%, calc(100vw - 32px));
   }
 
+  .shopify-settings-overlay#labelConfirmModal > .label-confirm-modal .panel-actions.label-confirm-actions {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 12px;
+  }
+
   .label-confirm-modal-body .label-confirm-hero-copy h2 {
     white-space: normal;
   }
@@ -5038,6 +5046,60 @@ body.is-auth-view {
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+}
+
+.post-linkedin-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.post-linkedin-pill.is-warning {
+  color: #f2c27d;
+  border-color: rgba(242, 194, 125, 0.24);
+  background: rgba(242, 194, 125, 0.1);
+}
+
+.post-linkedin-pill.is-success {
+  color: #8fe2b2;
+  border-color: rgba(143, 226, 178, 0.24);
+  background: rgba(143, 226, 178, 0.1);
+}
+
+.post-linkedin-meta {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.7;
+}
+
+.post-linkedin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.post-linkedin-result {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+}
+
+.post-linkedin-result a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.post-linkedin-result a:hover {
+  text-decoration: underline;
 }
 
 .post-upload-button {
@@ -8501,18 +8563,32 @@ body.is-auth-view {
 
 @media (max-width: 860px) {
   .label-feature-list {
-    flex-direction: column;
+    display: grid;
+    align-items: stretch;
+    width: 100%;
   }
 
   .label-feature {
-    padding: 0;
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 6px;
+    width: 100%;
+    padding: 8px 0 0;
   }
 
   .label-feature + .label-feature {
     border-left: 0;
     border-top: 1px solid rgba(154, 163, 178, 0.2);
     margin-top: 8px;
-    padding-top: 8px;
+  }
+
+  .label-feature:first-child {
+    padding-top: 0;
+  }
+
+  .label-feature-icon {
+    margin-top: 1px;
   }
 }
 
@@ -10401,7 +10477,18 @@ input.is-invalid {
 
   .reports-page-actions {
     width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
     justify-content: flex-start;
+  }
+
+  .reports-range-control {
+    width: 100%;
+    order: 2;
+  }
+
+  #closeReportsPage {
+    order: 1;
   }
 
   .post-studio-layout {
@@ -10432,14 +10519,37 @@ input.is-invalid {
   }
 
   .toast-stack {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    left: 14px;
+    right: 14px;
+    top: 50%;
+    bottom: auto;
+    width: auto;
+    transform: translateY(-50%);
+    display: grid;
+    gap: 8px;
   }
 
   .toast {
+    position: relative;
+    right: auto;
+    bottom: auto;
     min-width: 0;
     max-width: none;
+    box-shadow: none;
+    border-radius: var(--radius);
+    filter: none;
+    transform: translate3d(0, 10px, 0);
+    transform-origin: center;
+  }
+
+  .toast.is-visible {
+    filter: none;
+    transform: translate3d(0, 0, 0);
+  }
+
+  .toast.is-exit {
+    filter: none;
+    transform: translate3d(0, 8px, 0);
   }
 
   .reports-range {
@@ -10510,13 +10620,35 @@ input.is-invalid {
     flex-wrap: wrap;
   }
 
+  .account-history-panel {
+    max-height: 330px;
+    overflow: hidden;
+  }
+
+  .account-history-panel > .preview-title {
+    min-height: 0;
+    padding-bottom: 2px;
+    align-items: flex-start;
+  }
+
+  .account-history-list-wrap {
+    min-height: 0;
+  }
+
+  .account-history-list {
+    max-height: 230px;
+  }
+
   .account-preview-head {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .account-preview-head > :first-child {
     padding-right: 0;
+    align-items: flex-start;
+    text-align: left;
   }
 
   .account-preview-actions {
@@ -10666,6 +10798,19 @@ input.is-invalid {
 
   .panel-actions [data-next] {
     margin-left: 0;
+  }
+
+  .step-panel[data-panel="4"] .panel-header {
+    align-items: flex-start;
+  }
+
+  .step-panel[data-panel="4"] .panel-header > .panel-actions.inline-actions {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
   }
 
   .receipt-actions {

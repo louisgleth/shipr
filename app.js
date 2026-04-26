@@ -2355,6 +2355,16 @@ const postPartnerLogoSizeInput = document.getElementById("postPartnerLogoSizeInp
 const postPartnerLogoSizeValue = document.getElementById("postPartnerLogoSizeValue");
 const postPartnerLogoMeta = document.getElementById("postPartnerLogoMeta");
 const postOverlayOpacityInput = document.getElementById("postOverlayOpacityInput");
+const postLinkedInCard = document.getElementById("postLinkedInCard");
+const postLinkedInStatus = document.getElementById("postLinkedInStatus");
+const postLinkedInMeta = document.getElementById("postLinkedInMeta");
+const postLinkedInOrganizationSelect = document.getElementById("postLinkedInOrganizationSelect");
+const postLinkedInConnectButton = document.getElementById("postLinkedInConnectButton");
+const postLinkedInRefreshButton = document.getElementById("postLinkedInRefreshButton");
+const postLinkedInDisconnectButton = document.getElementById("postLinkedInDisconnectButton");
+const postLinkedInPublishButton = document.getElementById("postLinkedInPublishButton");
+const postLinkedInResultWrap = document.getElementById("postLinkedInResultWrap");
+const postLinkedInResultLink = document.getElementById("postLinkedInResultLink");
 const postCaptionInput = document.getElementById("postCaptionInput");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
 const accountPreviewPanel = historyPageSection?.querySelector(".account-preview-panel") || null;
@@ -2879,6 +2889,10 @@ let postStudioImageCache = new Map();
 let postBackgroundRenderer = null;
 let postBackgroundRendererPromise = null;
 let postBackgroundModulePromise = null;
+let linkedInConnection = null;
+let linkedInConnectionLoading = false;
+let linkedInConnectionPromise = null;
+let linkedInPublishBusy = false;
 let adminAccessAllowed = false;
 let adminAccessStatusPromise = null;
 let adminAccessStatusRequestId = 0;
@@ -9329,6 +9343,361 @@ async function consumeWooCommerceCallbackParams() {
   }
 
   const cleanUrl = buildCleanUrl(window.location.pathname, window.location.hash || "");
+  history.replaceState(history.state, "", cleanUrl);
+}
+
+function normalizeLinkedInConnectionState(payload = null) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const connection = source.connection && typeof source.connection === "object" ? source.connection : null;
+  return {
+    configured: source.configured !== false,
+    connected: Boolean(source.connected && connection),
+    needsReconnect: Boolean(source.needsReconnect),
+    connectedAt: String(connection?.connectedAt || "").trim(),
+    updatedAt: String(connection?.updatedAt || "").trim(),
+    expiresAt: String(connection?.expiresAt || "").trim(),
+    scopes: Array.isArray(connection?.scopes)
+      ? connection.scopes.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+    selectedOrganizationUrn: String(connection?.selectedOrganizationUrn || "").trim(),
+    organizations: Array.isArray(connection?.organizations)
+      ? connection.organizations
+          .map((entry) => ({
+            id: String(entry?.id || "").trim(),
+            urn: String(entry?.urn || "").trim(),
+            name: String(entry?.name || "").trim(),
+            vanityName: String(entry?.vanityName || "").trim(),
+            roles: Array.isArray(entry?.roles)
+              ? entry.roles.map((value) => String(value || "").trim()).filter(Boolean)
+              : [],
+          }))
+          .filter((entry) => entry.urn)
+      : [],
+  };
+}
+
+function getSelectedLinkedInOrganizationFromConnection(connection = linkedInConnection) {
+  if (!connection || !Array.isArray(connection.organizations)) return null;
+  return (
+    connection.organizations.find((entry) => entry.urn === connection.selectedOrganizationUrn)
+    || connection.organizations[0]
+    || null
+  );
+}
+
+function resetLinkedInPublishResult() {
+  if (postLinkedInResultWrap) {
+    postLinkedInResultWrap.classList.add("is-hidden");
+  }
+  if (postLinkedInResultLink instanceof HTMLAnchorElement) {
+    postLinkedInResultLink.href = "#";
+  }
+}
+
+function refreshPostLinkedInUi() {
+  if (!postLinkedInCard) return;
+  const connection = normalizeLinkedInConnectionState(linkedInConnection);
+  const selectedOrganization = getSelectedLinkedInOrganizationFromConnection(connection);
+  const hasCaption = Boolean(String(postCaptionInput?.value || "").trim());
+  const collabNeedsLogo =
+    getPostStudioState().template === "collab" && !String(getPostStudioState().partnerLogo?.dataUrl || "").trim();
+
+  if (postLinkedInStatus) {
+    let statusLabel = "Not connected";
+    if (!connection.configured) {
+      statusLabel = "Not configured";
+    } else if (linkedInConnectionLoading) {
+      statusLabel = "Loading";
+    } else if (connection.needsReconnect) {
+      statusLabel = "Reconnect required";
+    } else if (connection.connected) {
+      statusLabel = "Connected";
+    }
+    postLinkedInStatus.textContent = statusLabel;
+    postLinkedInStatus.classList.toggle("is-warning", connection.configured && (connection.needsReconnect || (!connection.connected && !linkedInConnectionLoading)));
+    postLinkedInStatus.classList.toggle("is-success", connection.connected && !connection.needsReconnect);
+  }
+
+  if (postLinkedInMeta) {
+    if (!connection.configured) {
+      postLinkedInMeta.textContent = "Add LinkedIn client credentials and callback configuration before connecting this page.";
+    } else if (linkedInConnectionLoading) {
+      postLinkedInMeta.textContent = "Loading the LinkedIn connection and available company pages...";
+    } else if (!connection.connected) {
+      postLinkedInMeta.textContent = "Connect a LinkedIn admin account to load the company pages you can post to.";
+    } else if (connection.needsReconnect) {
+      postLinkedInMeta.textContent = "Your LinkedIn token expired or is about to expire. Reconnect the account before publishing.";
+    } else if (!connection.organizations.length) {
+      postLinkedInMeta.textContent = "LinkedIn connected, but no eligible company pages were returned for this account.";
+    } else {
+      const selectedLabel = selectedOrganization?.name ? `Selected page: ${selectedOrganization.name}` : "Choose a company page to publish this post.";
+      const updatedLabel = connection.updatedAt ? `Updated ${formatHistoryDate(connection.updatedAt)}` : "";
+      postLinkedInMeta.textContent = [selectedLabel, updatedLabel].filter(Boolean).join(" • ");
+    }
+  }
+
+  if (postLinkedInOrganizationSelect instanceof HTMLSelectElement) {
+    const organizations = connection.organizations;
+    const currentValue = String(connection.selectedOrganizationUrn || "");
+    postLinkedInOrganizationSelect.innerHTML = "";
+    if (!organizations.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = connection.connected ? "No eligible company pages found" : "Connect LinkedIn first";
+      postLinkedInOrganizationSelect.appendChild(option);
+    } else {
+      organizations.forEach((entry) => {
+        const option = document.createElement("option");
+        option.value = entry.urn;
+        option.textContent = entry.vanityName
+          ? `${entry.name} (${entry.vanityName})`
+          : entry.name || entry.urn;
+        option.selected = entry.urn === currentValue;
+        postLinkedInOrganizationSelect.appendChild(option);
+      });
+    }
+    postLinkedInOrganizationSelect.disabled =
+      linkedInConnectionLoading
+      || !connection.connected
+      || connection.needsReconnect
+      || !connection.organizations.length;
+  }
+
+  if (postLinkedInConnectButton instanceof HTMLButtonElement) {
+    postLinkedInConnectButton.disabled = linkedInConnectionLoading || linkedInPublishBusy || !currentUser;
+    postLinkedInConnectButton.textContent =
+      connection.connected || connection.needsReconnect ? "Reconnect LinkedIn" : "Connect LinkedIn";
+  }
+  if (postLinkedInRefreshButton instanceof HTMLButtonElement) {
+    postLinkedInRefreshButton.disabled =
+      linkedInConnectionLoading
+      || linkedInPublishBusy
+      || !connection.connected
+      || connection.needsReconnect;
+  }
+  if (postLinkedInDisconnectButton instanceof HTMLButtonElement) {
+    postLinkedInDisconnectButton.disabled =
+      linkedInConnectionLoading
+      || linkedInPublishBusy
+      || !connection.connected;
+  }
+  if (postLinkedInPublishButton instanceof HTMLButtonElement) {
+    postLinkedInPublishButton.disabled =
+      linkedInConnectionLoading
+      || linkedInPublishBusy
+      || !connection.connected
+      || connection.needsReconnect
+      || !selectedOrganization?.urn
+      || !hasCaption
+      || collabNeedsLogo;
+    postLinkedInPublishButton.textContent = linkedInPublishBusy ? "Publishing..." : "Publish To LinkedIn";
+  }
+}
+
+async function loadLinkedInConnectionStatus(options = {}) {
+  const { quiet = false, refresh = false } = options;
+  if (!currentUser?.id) {
+    linkedInConnectionPromise = null;
+    linkedInConnectionLoading = false;
+    linkedInConnection = null;
+    resetLinkedInPublishResult();
+    refreshPostLinkedInUi();
+    return null;
+  }
+  if (linkedInConnectionPromise && !refresh) {
+    return linkedInConnectionPromise;
+  }
+  linkedInConnectionLoading = true;
+  refreshPostLinkedInUi();
+  const request = (async () => {
+    try {
+      const query = refresh ? "?refresh=1" : "";
+      const payload = await fetchApiWithAuth(`/api/linkedin/connection${query}`);
+      linkedInConnection = normalizeLinkedInConnectionState(payload);
+      return linkedInConnection;
+    } catch (error) {
+      linkedInConnection = null;
+      if (!quiet) {
+        showToast(error?.message || tr("Could not load LinkedIn connection."), { tone: "error" });
+      }
+      return null;
+    } finally {
+      linkedInConnectionLoading = false;
+      linkedInConnectionPromise = null;
+      refreshPostLinkedInUi();
+    }
+  })();
+  linkedInConnectionPromise = request;
+  return request;
+}
+
+async function startLinkedInConnectFlow() {
+  if (!currentUser?.id) {
+    showToast(tr("You must be signed in."), { tone: "error" });
+    return;
+  }
+  try {
+    const payload = await fetchApiWithAuth("/api/linkedin/install-link", {
+      method: "POST",
+      timeoutMs: 20000,
+      body: JSON.stringify({}),
+    });
+    const url = String(payload?.url || "").trim();
+    if (!url) {
+      throw new Error(tr("Could not start the LinkedIn connect flow."));
+    }
+    window.location.href = url;
+  } catch (error) {
+    showToast(error?.message || tr("Could not start the LinkedIn connect flow."), { tone: "error" });
+  }
+}
+
+async function disconnectLinkedInConnection() {
+  linkedInConnectionLoading = true;
+  refreshPostLinkedInUi();
+  try {
+    await fetchApiWithAuth("/api/linkedin/disconnect", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    linkedInConnection = null;
+    resetLinkedInPublishResult();
+    refreshPostLinkedInUi();
+    showToast("LinkedIn disconnected.", { tone: "success" });
+  } catch (error) {
+    showToast(error?.message || tr("Could not disconnect LinkedIn."), { tone: "error" });
+  } finally {
+    linkedInConnectionLoading = false;
+    refreshPostLinkedInUi();
+  }
+}
+
+async function saveLinkedInSelectedOrganization() {
+  if (!(postLinkedInOrganizationSelect instanceof HTMLSelectElement)) return;
+  const organizationUrn = String(postLinkedInOrganizationSelect.value || "").trim();
+  if (!organizationUrn) return;
+  linkedInConnectionLoading = true;
+  refreshPostLinkedInUi();
+  try {
+    const payload = await fetchApiWithAuth("/api/linkedin/select-organization", {
+      method: "POST",
+      body: JSON.stringify({ organizationUrn }),
+    });
+    linkedInConnection = normalizeLinkedInConnectionState(payload);
+    refreshPostLinkedInUi();
+  } catch (error) {
+    showToast(error?.message || tr("Could not save the LinkedIn page selection."), { tone: "error" });
+  } finally {
+    linkedInConnectionLoading = false;
+    refreshPostLinkedInUi();
+  }
+}
+
+function buildPostStudioAltText() {
+  const studio = getPostStudioState();
+  const templateKey = studio.template;
+  const data = getPostStudioTemplateData(templateKey);
+  if (templateKey === "earnings") {
+    return `${String(data.eyebrow || "").trim()}: ${String(data.amount || "").trim()}`.trim().slice(0, 120);
+  }
+  if (templateKey === "withtext1") {
+    return `Notification visual: ${String(data.title || "").trim()}. ${String(data.description || "").trim()}`.trim().slice(0, 120);
+  }
+  if (templateKey === "collab") {
+    const partnerName = String(studio.partnerLogo?.name || "").replace(/\.[^.]+$/, "").trim();
+    return `Collaboration visual featuring Shipide${partnerName ? ` and ${partnerName}` : ""}.`
+      .trim()
+      .slice(0, 120);
+  }
+  const eyebrow = String(data.eyebrow || "").trim();
+  const headline = String(data.headline || "").trim();
+  return [eyebrow, headline].filter(Boolean).join(". ").slice(0, 120);
+}
+
+async function publishPostStudioToLinkedIn() {
+  const connection = normalizeLinkedInConnectionState(linkedInConnection);
+  const selectedOrganization = getSelectedLinkedInOrganizationFromConnection(connection);
+  if (!currentUser?.id) {
+    showToast(tr("You must be signed in."), { tone: "error" });
+    return;
+  }
+  if (!connection.connected || connection.needsReconnect) {
+    showToast("Connect LinkedIn again before publishing.", { tone: "error" });
+    return;
+  }
+  if (!selectedOrganization?.urn) {
+    showToast("Choose a LinkedIn company page before publishing.", { tone: "error" });
+    return;
+  }
+  const caption = String(postCaptionInput?.value || "").trim();
+  if (!caption) {
+    showToast("Add a LinkedIn caption before publishing.", { tone: "error" });
+    return;
+  }
+  if (getPostStudioState().template === "collab" && !String(getPostStudioState().partnerLogo?.dataUrl || "").trim()) {
+    showToast("Upload a partner logo before publishing the collab template.", { tone: "error" });
+    return;
+  }
+  linkedInPublishBusy = true;
+  refreshPostLinkedInUi();
+  try {
+    await ensureCurrentPostStudioAssetsReady();
+    drawPostStudioFrame();
+    const imageDataUrl = postVisualCanvas instanceof HTMLCanvasElement
+      ? postVisualCanvas.toDataURL("image/png")
+      : "";
+    if (!imageDataUrl) {
+      throw new Error("Could not prepare the LinkedIn image.");
+    }
+    const payload = await fetchApiWithAuth("/api/linkedin/post", {
+      method: "POST",
+      timeoutMs: 180000,
+      body: JSON.stringify({
+        caption,
+        imageDataUrl,
+        altText: buildPostStudioAltText(),
+      }),
+    });
+    const feedUrl = String(payload?.feedUrl || "").trim();
+    if (postLinkedInResultWrap) {
+      postLinkedInResultWrap.classList.toggle("is-hidden", !feedUrl);
+    }
+    if (postLinkedInResultLink instanceof HTMLAnchorElement && feedUrl) {
+      postLinkedInResultLink.href = feedUrl;
+    }
+    showToast(
+      payload?.organization?.name
+        ? `Published to LinkedIn page ${payload.organization.name}.`
+        : "Published to LinkedIn.",
+      { tone: "success" }
+    );
+  } catch (error) {
+    showToast(error?.message || tr("Could not publish to LinkedIn."), { tone: "error" });
+  } finally {
+    linkedInPublishBusy = false;
+    refreshPostLinkedInUi();
+  }
+}
+
+async function consumeLinkedInCallbackParams() {
+  const params = new URLSearchParams(window.location.search || "");
+  if (params.get("provider") !== "linkedin") return;
+  const status = String(params.get("linkedin") || "").trim().toLowerCase();
+  const message = String(params.get("message") || "").trim();
+  const cleanUrl = buildCleanUrl(window.location.pathname, window.location.hash || "");
+  if (!currentUser?.id) {
+    history.replaceState(history.state, "", cleanUrl);
+    return;
+  }
+  if (status === "connected") {
+    await loadLinkedInConnectionStatus({ quiet: true, refresh: true });
+    showToast(message || "LinkedIn connected.", { tone: "success" });
+  } else if (status === "error") {
+    await loadLinkedInConnectionStatus({ quiet: true });
+    showToast(message || "LinkedIn connection failed.", { tone: "error" });
+  } else {
+    await loadLinkedInConnectionStatus({ quiet: true });
+  }
   history.replaceState(history.state, "", cleanUrl);
 }
 
@@ -19616,6 +19985,7 @@ async function initializeAuth() {
     void consumeWixCallbackParams();
     void consumeShopifyCallbackParams();
     void consumeWooCommerceCallbackParams();
+    void consumeLinkedInCallbackParams();
   }
   const initialRoute = parseRouteFromLocation();
   const isAuthed = Boolean(session?.user);
@@ -19675,6 +20045,7 @@ async function initializeAuth() {
     if (adminAccessAllowed) {
       initializePostStudio();
       syncPostStudioAnimation();
+      await loadLinkedInConnectionStatus({ quiet: true });
     }
   }
   supabaseClient.auth.onAuthStateChange((event, updatedSession) => {
@@ -19687,6 +20058,12 @@ async function initializeAuth() {
     cachePendingWixInstanceFromLocation();
     setAuthView(updatedSession, { animate: true });
     if (!updatedSession) {
+      linkedInConnection = null;
+      linkedInConnectionLoading = false;
+      linkedInConnectionPromise = null;
+      linkedInPublishBusy = false;
+      resetLinkedInPublishResult();
+      refreshPostLinkedInUi();
       resetAll();
       goToStep(1, { push: false, regenerate: false });
       setMainView("builder", { push: false, animate: false });
@@ -19696,6 +20073,9 @@ async function initializeAuth() {
     }
 
     void consumeWixCallbackParams();
+    void consumeShopifyCallbackParams();
+    void consumeWooCommerceCallbackParams();
+    void consumeLinkedInCallbackParams();
 
     const route = parseRouteFromLocation();
     if (route.view === "recovery") {
@@ -19716,6 +20096,7 @@ async function initializeAuth() {
         if (hasAccess) {
           initializePostStudio();
           syncPostStudioAnimation();
+          void loadLinkedInConnectionStatus({ quiet: true });
         }
       });
     } else if (route.view === "history") {
@@ -21062,6 +21443,7 @@ function updatePostStudioInputsFromState() {
   renderPostStudioTemplateFields();
   refreshPostStudioPartnerLogoCard();
   refreshPostStudioStatusUi();
+  refreshPostLinkedInUi();
 }
 
 function updatePostStudioCopyFromInputs() {
@@ -21073,6 +21455,7 @@ function updatePostStudioCopyFromInputs() {
 function syncPostStudioAnimation() {
   if (!postStudioInitialized) return;
   refreshPostStudioStatusUi();
+  refreshPostLinkedInUi();
   if (currentMainView === "post") {
     drawPostStudioFrame();
   }
@@ -21081,6 +21464,7 @@ function syncPostStudioAnimation() {
 function setPostStudioTemplate(templateKey) {
   if (!POST_TEMPLATE_DEFS[templateKey]) return;
   getPostStudioState().template = templateKey;
+  resetLinkedInPublishResult();
   updatePostStudioInputsFromState();
   void ensureCurrentPostStudioAssetsReady();
   drawPostStudioFrame();
@@ -21487,6 +21871,8 @@ function initializePostStudio() {
   });
 
   updatePostStudioInputsFromState();
+  resetLinkedInPublishResult();
+  refreshPostLinkedInUi();
   drawPostStudioFrame();
 
   postTemplateSwitch?.addEventListener("click", (event) => {
@@ -21504,6 +21890,7 @@ function initializePostStudio() {
     if (!fieldKey) return;
     const data = getPostStudioTemplateData();
     data[fieldKey] = target.value;
+    resetLinkedInPublishResult();
     drawPostStudioFrame();
   });
 
@@ -21516,15 +21903,20 @@ function initializePostStudio() {
     if (!fieldKey) return;
     const data = getPostStudioTemplateData();
     data[fieldKey] = target.value;
+    resetLinkedInPublishResult();
     drawPostStudioFrame();
   });
 
   postCaptionInput?.addEventListener("input", () => {
     updatePostStudioCopyFromInputs();
+    resetLinkedInPublishResult();
+    refreshPostLinkedInUi();
   });
 
   postCaptionInput?.addEventListener("change", () => {
     updatePostStudioCopyFromInputs();
+    resetLinkedInPublishResult();
+    refreshPostLinkedInUi();
   });
 
   postPartnerLogoInput?.addEventListener("change", () => {
@@ -21548,11 +21940,13 @@ function initializePostStudio() {
         dataUrl: result,
         scale: Math.max(0.5, Math.min(1.8, Number(studio.partnerLogo?.scale) || 1)),
       };
+      resetLinkedInPublishResult();
       void loadPostStudioImageResource(`partner:${result}`, result).catch(() => {
         showToast(tr("Could not load the partner logo."), { tone: "error" });
       });
       refreshPostStudioPartnerLogoCard();
       refreshPostStudioStatusUi();
+      refreshPostLinkedInUi();
       drawPostStudioFrame();
     };
     reader.onerror = () => {
@@ -21567,6 +21961,7 @@ function initializePostStudio() {
       0.5,
       Math.min(1.8, Number(postPartnerLogoSizeInput?.value) || 1)
     );
+    resetLinkedInPublishResult();
     refreshPostStudioPartnerLogoCard();
     drawPostStudioFrame();
   };
@@ -21584,13 +21979,35 @@ function initializePostStudio() {
     if (postPartnerLogoInput instanceof HTMLInputElement) {
       postPartnerLogoInput.value = "";
     }
+    resetLinkedInPublishResult();
     refreshPostStudioPartnerLogoCard();
     refreshPostStudioStatusUi();
+    refreshPostLinkedInUi();
     drawPostStudioFrame();
   });
 
   postExportButton?.addEventListener("click", () => {
     void exportPostStudioPng();
+  });
+
+  postLinkedInConnectButton?.addEventListener("click", () => {
+    void startLinkedInConnectFlow();
+  });
+
+  postLinkedInRefreshButton?.addEventListener("click", () => {
+    void loadLinkedInConnectionStatus({ refresh: true });
+  });
+
+  postLinkedInDisconnectButton?.addEventListener("click", () => {
+    void disconnectLinkedInConnection();
+  });
+
+  postLinkedInOrganizationSelect?.addEventListener("change", () => {
+    void saveLinkedInSelectedOrganization();
+  });
+
+  postLinkedInPublishButton?.addEventListener("click", () => {
+    void publishPostStudioToLinkedIn();
   });
 }
 
@@ -23784,6 +24201,7 @@ if (openPostPageButton) {
     }
     initializePostStudio();
     setPostPageVisible(true);
+    await loadLinkedInConnectionStatus({ quiet: true });
   });
 }
 
@@ -27095,6 +27513,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
         if (hasAccess) {
           initializePostStudio();
           syncPostStudioAnimation();
+          void loadLinkedInConnectionStatus({ quiet: true });
         }
       });
       return;

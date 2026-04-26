@@ -36,6 +36,26 @@ const SHOPIFY_COMPLIANCE_WEBHOOK_TOPICS = Object.freeze([
 const WIX_APP_ID = String(process.env.WIX_APP_ID || "").trim();
 const WIX_APP_SECRET = String(process.env.WIX_APP_SECRET || "").trim();
 const WIX_APP_INSTALL_URL = String(process.env.WIX_APP_INSTALL_URL || "").trim();
+const LINKEDIN_CLIENT_ID = String(process.env.LINKEDIN_CLIENT_ID || "").trim();
+const LINKEDIN_CLIENT_SECRET = String(process.env.LINKEDIN_CLIENT_SECRET || "").trim();
+const LINKEDIN_REDIRECT_URI = String(process.env.LINKEDIN_REDIRECT_URI || "").trim();
+const LINKEDIN_SCOPES = String(
+  process.env.LINKEDIN_SCOPES || "rw_organization_admin w_organization_social"
+)
+  .split(/\s+/)
+  .map((scope) => scope.trim())
+  .filter(Boolean);
+const LINKEDIN_API_VERSION = String(process.env.LINKEDIN_API_VERSION || "202602").trim() || "202602";
+const LINKEDIN_PROVIDER = "linkedin";
+const LINKEDIN_CONNECTION_KEY = "linkedin";
+const LINKEDIN_ALLOWED_POST_ROLES = new Set([
+  "ADMINISTRATOR",
+  "DIRECT_SPONSORED_CONTENT_POSTER",
+  "CONTENT_ADMINISTRATOR",
+  "CONTENT_ADMIN",
+  "RECRUITING_POSTER",
+]);
+const LINKEDIN_CONNECTION_STATUS_CONNECTED = "connected";
 const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
   "paid",
   "pending",
@@ -10021,6 +10041,223 @@ async function getWixConnection(userId, requestedInstanceId, options = {}) {
   return rows[0];
 }
 
+function getLinkedInConnectionRowKey() {
+  return LINKEDIN_CONNECTION_KEY;
+}
+
+function normalizeLinkedInOrganizationId(value) {
+  const match = /(\d+)$/.exec(String(value || "").trim());
+  return match ? match[1] : "";
+}
+
+function getLinkedInApiHeaders(accessToken, extraHeaders = {}) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Linkedin-Version": getLinkedInApiVersion(),
+    "X-Restli-Protocol-Version": "2.0.0",
+    ...extraHeaders,
+  };
+}
+
+async function fetchLinkedInJson(accessToken, path, options = {}) {
+  const response = await fetch(`https://api.linkedin.com${path}`, {
+    ...options,
+    headers: getLinkedInApiHeaders(accessToken, {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      String(payload?.message || payload?.error_description || payload?.error || "").trim()
+      || `LinkedIn request failed (${response.status}).`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function normalizeLinkedInStoredPayload(payload = {}) {
+  const organizations = Array.isArray(payload?.organizations)
+    ? payload.organizations
+        .map((entry) => {
+          const id = normalizeLinkedInOrganizationId(entry?.id || entry?.urn || "");
+          const urn = String(entry?.urn || (id ? `urn:li:organization:${id}` : "")).trim();
+          if (!id || !urn) return null;
+          return {
+            id,
+            urn,
+            name: String(entry?.name || entry?.localizedName || "").trim() || `Organization ${id}`,
+            vanityName: String(entry?.vanityName || "").trim(),
+            roles: Array.isArray(entry?.roles)
+              ? entry.roles.map((value) => String(value || "").trim()).filter(Boolean)
+              : [],
+          };
+        })
+        .filter(Boolean)
+    : [];
+  const selectedOrganizationUrn = String(
+    payload?.selectedOrganizationUrn || organizations[0]?.urn || ""
+  ).trim();
+  return {
+    accessToken: String(payload?.accessToken || "").trim(),
+    refreshToken: String(payload?.refreshToken || "").trim(),
+    expiresAt: String(payload?.expiresAt || "").trim(),
+    refreshExpiresAt: String(payload?.refreshExpiresAt || "").trim(),
+    scopes: Array.isArray(payload?.scopes)
+      ? payload.scopes.map((value) => String(value || "").trim()).filter(Boolean)
+      : String(payload?.scope || "")
+          .split(/\s+/)
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
+    organizations,
+    selectedOrganizationUrn,
+  };
+}
+
+function parseStoredLinkedInConnection(encryptedToken) {
+  if (!String(encryptedToken || "").trim()) return null;
+  const decrypted = decryptToken(encryptedToken);
+  if (!decrypted) return null;
+  try {
+    return normalizeLinkedInStoredPayload(JSON.parse(decrypted));
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function upsertLinkedInConnection(userId, payload = {}) {
+  const nowIso = new Date().toISOString();
+  const normalizedPayload = normalizeLinkedInStoredPayload(payload);
+  const connectedAt = String(payload?.connectedAt || payload?.connected_at || nowIso).trim() || nowIso;
+  const response = await supabaseServiceRequest(
+    "/rest/v1/provider_connections?on_conflict=user_id,provider,shop_domain",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify([
+        {
+          user_id: userId,
+          provider: LINKEDIN_PROVIDER,
+          shop_domain: getLinkedInConnectionRowKey(),
+          status: LINKEDIN_CONNECTION_STATUS_CONNECTED,
+          scopes: normalizedPayload.scopes.join(" "),
+          access_token: encryptToken(JSON.stringify(normalizedPayload)),
+          updated_at: nowIso,
+          connected_at: connectedAt,
+        },
+      ]),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed saving LinkedIn connection (${response.status}) ${details}`.trim());
+  }
+}
+
+async function getLinkedInConnection(userId) {
+  const params = new URLSearchParams();
+  params.set("select", "shop_domain,status,scopes,connected_at,updated_at,access_token");
+  params.set("user_id", `eq.${userId}`);
+  params.set("provider", `eq.${LINKEDIN_PROVIDER}`);
+  params.set("shop_domain", `eq.${getLinkedInConnectionRowKey()}`);
+  params.set("status", `eq.${LINKEDIN_CONNECTION_STATUS_CONNECTED}`);
+  params.set("order", "updated_at.desc");
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(`/rest/v1/provider_connections?${params.toString()}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Failed reading LinkedIn connection (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) return null;
+  return rows[0];
+}
+
+async function listLinkedInOrganizations(accessToken) {
+  const collected = new Map();
+  let start = 0;
+  for (let iteration = 0; iteration < 10; iteration += 1) {
+    const aclPayload = await fetchLinkedInJson(
+      accessToken,
+      `/rest/organizationAcls?q=roleAssignee&state=APPROVED&count=100&start=${start}`,
+      { method: "GET", headers: { "Content-Type": "application/json" } }
+    );
+    const elements = Array.isArray(aclPayload?.elements) ? aclPayload.elements : [];
+    elements.forEach((entry) => {
+      const role = String(entry?.role || "").trim().toUpperCase();
+      if (!LINKEDIN_ALLOWED_POST_ROLES.has(role)) return;
+      const urn = String(entry?.organization || entry?.organizationTarget || "").trim();
+      const id = normalizeLinkedInOrganizationId(urn);
+      if (!urn || !id) return;
+      const current = collected.get(id) || {
+        id,
+        urn,
+        name: "",
+        vanityName: "",
+        roles: [],
+      };
+      if (!current.roles.includes(role)) {
+        current.roles.push(role);
+      }
+      collected.set(id, current);
+    });
+    const paging = aclPayload?.paging && typeof aclPayload.paging === "object" ? aclPayload.paging : {};
+    const count = Number(paging.count) || elements.length || 0;
+    const total = Number(paging.total);
+    if (!elements.length || !Number.isFinite(total) || start + count >= total) {
+      break;
+    }
+    start += count;
+  }
+  const ids = Array.from(collected.keys());
+  for (const idChunk of chunkArray(ids, 50)) {
+    if (!idChunk.length) continue;
+    const lookupPayload = await fetchLinkedInJson(
+      accessToken,
+      `/rest/organizationsLookup?ids=List(${idChunk.map((value) => encodeURIComponent(value)).join(",")})`,
+      { method: "GET", headers: { "Content-Type": "application/json" } }
+    );
+    const results = lookupPayload?.results && typeof lookupPayload.results === "object" ? lookupPayload.results : {};
+    Object.entries(results).forEach(([id, entry]) => {
+      const current = collected.get(id);
+      if (!current) return;
+      current.name =
+        String(entry?.localizedName || "").trim()
+        || String(entry?.name?.localized?.en_US || "").trim()
+        || current.name
+        || `Organization ${id}`;
+      current.vanityName = String(entry?.vanityName || "").trim() || current.vanityName;
+      collected.set(id, current);
+    });
+  }
+  return Array.from(collected.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function refreshLinkedInConnectionOrganizations(row, stored) {
+  const organizations = await listLinkedInOrganizations(stored.accessToken);
+  const nextPayload = normalizeLinkedInStoredPayload({
+    ...stored,
+    organizations,
+    selectedOrganizationUrn: organizations.some((entry) => entry.urn === stored.selectedOrganizationUrn)
+      ? stored.selectedOrganizationUrn
+      : organizations[0]?.urn || "",
+  });
+  await upsertLinkedInConnection(row.user_id, {
+    ...nextPayload,
+    connectedAt: row?.connected_at || "",
+  });
+  return nextPayload;
+}
+
 function normalizeWixInstallUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -10048,6 +10285,39 @@ function normalizeWixPermissions(value) {
 
 function decodeWixBase64Url(value) {
   return Buffer.from(String(value || ""), "base64url").toString("utf8");
+}
+
+function dataUrlToBytes(value) {
+  const match = /^data:([^;,]+)?;base64,(.+)$/i.exec(String(value || "").trim());
+  if (!match) {
+    throw new Error("Image payload must be a valid base64 data URL.");
+  }
+  return {
+    mimeType: String(match[1] || "application/octet-stream").trim().toLowerCase(),
+    bytes: Buffer.from(match[2], "base64"),
+  };
+}
+
+function getLinkedInApiVersion() {
+  return LINKEDIN_API_VERSION || "202602";
+}
+
+function getLinkedInRedirectUri(req) {
+  if (LINKEDIN_REDIRECT_URI) return LINKEDIN_REDIRECT_URI;
+  return `${buildPublicBaseUrl(req)}/api/linkedin/callback`;
+}
+
+function getLinkedInScopes() {
+  return LINKEDIN_SCOPES.length ? LINKEDIN_SCOPES : ["rw_organization_admin", "w_organization_social"];
+}
+
+function assertLinkedInConfig() {
+  if (!LINKEDIN_CLIENT_ID) {
+    throw new Error("LINKEDIN_CLIENT_ID is required for LinkedIn posting.");
+  }
+  if (!LINKEDIN_CLIENT_SECRET) {
+    throw new Error("LINKEDIN_CLIENT_SECRET is required for LinkedIn posting.");
+  }
 }
 
 function verifyWixInstanceSignature(signature, encodedData) {
@@ -13875,6 +14145,428 @@ async function handleWooCommerceDisconnect(req, res) {
   }
 }
 
+function getLinkedInCallbackRedirect(req, params = {}) {
+  const url = new URL("/post", buildPublicBaseUrl(req));
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    url.searchParams.set(key, String(value));
+  });
+  return url.toString();
+}
+
+function buildLinkedInConnectionPayload(row, stored, configured = true) {
+  const expiresAtMs = Date.parse(String(stored?.expiresAt || ""));
+  const needsReconnect = Number.isFinite(expiresAtMs) ? Date.now() >= expiresAtMs - 60 * 1000 : false;
+  return {
+    configured,
+    connected: Boolean(row && stored?.accessToken),
+    needsReconnect,
+    connection:
+      row && stored
+        ? {
+            connectedAt: row.connected_at || "",
+            updatedAt: row.updated_at || "",
+            expiresAt: stored.expiresAt || "",
+            scopes: Array.isArray(stored.scopes) ? stored.scopes : [],
+            selectedOrganizationUrn: stored.selectedOrganizationUrn || "",
+            organizations: Array.isArray(stored.organizations) ? stored.organizations : [],
+          }
+        : null,
+  };
+}
+
+function getSelectedLinkedInOrganization(stored) {
+  if (!stored || !Array.isArray(stored.organizations)) return null;
+  return (
+    stored.organizations.find((entry) => entry.urn === stored.selectedOrganizationUrn)
+    || stored.organizations[0]
+    || null
+  );
+}
+
+async function waitForLinkedInImageAvailable(accessToken, imageUrn) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const payload = await fetchLinkedInJson(
+      accessToken,
+      `/rest/images/${encodeURIComponent(imageUrn)}`,
+      { method: "GET", headers: { "Content-Type": "application/json" } }
+    );
+    const status = String(payload?.status || "").trim().toUpperCase();
+    if (status === "AVAILABLE") {
+      return payload;
+    }
+    if (status === "PROCESSING_FAILED") {
+      throw new Error("LinkedIn image processing failed.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error("LinkedIn image upload is still processing. Please try again.");
+}
+
+async function uploadLinkedInImage(accessToken, ownerUrn, imageDataUrl) {
+  const { mimeType, bytes } = dataUrlToBytes(imageDataUrl);
+  if (!["image/png", "image/jpeg", "image/jpg", "image/gif"].includes(mimeType)) {
+    throw new Error("LinkedIn only accepts PNG, JPG, or GIF images.");
+  }
+  const initializePayload = await fetchLinkedInJson(
+    accessToken,
+    "/rest/images?action=initializeUpload",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        initializeUploadRequest: {
+          owner: ownerUrn,
+        },
+      }),
+    }
+  );
+  const uploadUrl = String(initializePayload?.value?.uploadUrl || "").trim();
+  const imageUrn = String(initializePayload?.value?.image || "").trim();
+  if (!uploadUrl || !imageUrn) {
+    throw new Error("LinkedIn image upload initialization failed.");
+  }
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": mimeType,
+    },
+    body: bytes,
+  });
+  if (!uploadResponse.ok) {
+    const details = await uploadResponse.text().catch(() => "");
+    throw new Error(`LinkedIn image upload failed (${uploadResponse.status}) ${details}`.trim());
+  }
+  await waitForLinkedInImageAvailable(accessToken, imageUrn);
+  return imageUrn;
+}
+
+async function handleLinkedInInstallLink(req, res) {
+  try {
+    assertLinkedInConfig();
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    const state = makeSignedStateToken({
+      userId: user.id,
+      provider: LINKEDIN_PROVIDER,
+    });
+    const installUrl = new URL("https://www.linkedin.com/oauth/v2/authorization");
+    installUrl.searchParams.set("response_type", "code");
+    installUrl.searchParams.set("client_id", LINKEDIN_CLIENT_ID);
+    installUrl.searchParams.set("redirect_uri", getLinkedInRedirectUri(req));
+    installUrl.searchParams.set("state", state);
+    installUrl.searchParams.set("scope", getLinkedInScopes().join(" "));
+    sendJson(res, 200, { url: installUrl.toString() });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not start LinkedIn connect flow." });
+  }
+}
+
+async function handleLinkedInCallback(req, res, requestUrl) {
+  try {
+    assertLinkedInConfig();
+    const linkedInError = String(requestUrl.searchParams.get("error") || "").trim();
+    if (linkedInError) {
+      sendRedirect(
+        res,
+        getLinkedInCallbackRedirect(req, {
+          provider: LINKEDIN_PROVIDER,
+          linkedin: "error",
+          message:
+            String(requestUrl.searchParams.get("error_description") || "").trim()
+            || "LinkedIn authorization was not approved.",
+        })
+      );
+      return;
+    }
+    const code = String(requestUrl.searchParams.get("code") || "").trim();
+    const stateToken = String(requestUrl.searchParams.get("state") || "").trim();
+    if (!code || !stateToken) {
+      sendRedirect(
+        res,
+        getLinkedInCallbackRedirect(req, {
+          provider: LINKEDIN_PROVIDER,
+          linkedin: "error",
+          message: "Missing LinkedIn callback parameters.",
+        })
+      );
+      return;
+    }
+    const statePayload = parseSignedStateToken(stateToken);
+    if (!statePayload?.userId) {
+      sendRedirect(
+        res,
+        getLinkedInCallbackRedirect(req, {
+          provider: LINKEDIN_PROVIDER,
+          linkedin: "error",
+          message: "LinkedIn OAuth session expired. Start the connect flow again.",
+        })
+      );
+      return;
+    }
+    const tokenBody = new URLSearchParams();
+    tokenBody.set("grant_type", "authorization_code");
+    tokenBody.set("code", code);
+    tokenBody.set("client_id", LINKEDIN_CLIENT_ID);
+    tokenBody.set("client_secret", LINKEDIN_CLIENT_SECRET);
+    tokenBody.set("redirect_uri", getLinkedInRedirectUri(req));
+    const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: tokenBody.toString(),
+    });
+    const tokenPayload = await tokenResponse.json().catch(() => null);
+    if (!tokenResponse.ok || !tokenPayload?.access_token) {
+      const message =
+        String(tokenPayload?.error_description || tokenPayload?.error || "").trim()
+        || `LinkedIn token exchange failed (${tokenResponse.status}).`;
+      throw new Error(message);
+    }
+    let organizations = [];
+    let callbackMessage = "LinkedIn connected.";
+    try {
+      organizations = await listLinkedInOrganizations(tokenPayload.access_token);
+      if (!organizations.length) {
+        callbackMessage =
+          "LinkedIn connected, but no eligible company pages were found for this account.";
+      }
+    } catch (error) {
+      callbackMessage =
+        error?.message
+        || "LinkedIn connected, but company pages could not be loaded yet.";
+    }
+    const expiresAt = Number(tokenPayload?.expires_in)
+      ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString()
+      : "";
+    const refreshExpiresAt = Number(tokenPayload?.refresh_token_expires_in)
+      ? new Date(Date.now() + Number(tokenPayload.refresh_token_expires_in) * 1000).toISOString()
+      : "";
+    await upsertLinkedInConnection(statePayload.userId, {
+      accessToken: tokenPayload.access_token,
+      refreshToken: tokenPayload.refresh_token || "",
+      expiresAt,
+      refreshExpiresAt,
+      scope: tokenPayload.scope || getLinkedInScopes().join(" "),
+      organizations,
+      selectedOrganizationUrn: organizations[0]?.urn || "",
+    });
+    sendRedirect(
+      res,
+      getLinkedInCallbackRedirect(req, {
+        provider: LINKEDIN_PROVIDER,
+        linkedin: "connected",
+        message: callbackMessage,
+      })
+    );
+  } catch (error) {
+    sendRedirect(
+      res,
+      getLinkedInCallbackRedirect(req, {
+        provider: LINKEDIN_PROVIDER,
+        linkedin: "error",
+        message: error?.message || "LinkedIn connection failed.",
+      })
+    );
+  }
+}
+
+async function handleLinkedInConnection(req, res, requestUrl) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    const configured = Boolean(LINKEDIN_CLIENT_ID && LINKEDIN_CLIENT_SECRET);
+    if (!configured) {
+      sendJson(res, 200, buildLinkedInConnectionPayload(null, null, false));
+      return;
+    }
+    const row = await getLinkedInConnection(user.id);
+    if (!row) {
+      sendJson(res, 200, buildLinkedInConnectionPayload(null, null, true));
+      return;
+    }
+    let stored = parseStoredLinkedInConnection(row.access_token);
+    if (!stored?.accessToken) {
+      sendJson(res, 200, buildLinkedInConnectionPayload(null, null, true));
+      return;
+    }
+    const shouldRefresh = String(requestUrl.searchParams.get("refresh") || "").trim() === "1";
+    const expiresAtMs = Date.parse(String(stored.expiresAt || ""));
+    const expired = Number.isFinite(expiresAtMs) ? Date.now() >= expiresAtMs - 60 * 1000 : false;
+    if (shouldRefresh && !expired) {
+      stored = await refreshLinkedInConnectionOrganizations(row, stored);
+    }
+    sendJson(res, 200, buildLinkedInConnectionPayload(row, stored, true));
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load LinkedIn connection." });
+  }
+}
+
+async function handleLinkedInSelectOrganization(req, res) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    const row = await getLinkedInConnection(user.id);
+    if (!row) {
+      sendJson(res, 404, { error: "LinkedIn is not connected for this account." });
+      return;
+    }
+    const stored = parseStoredLinkedInConnection(row.access_token);
+    if (!stored?.accessToken) {
+      sendJson(res, 400, { error: "LinkedIn connection data is invalid. Please reconnect." });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const organizationUrn = String(body?.organizationUrn || "").trim();
+    if (!organizationUrn) {
+      sendJson(res, 400, { error: "Select a LinkedIn company page." });
+      return;
+    }
+    const match = stored.organizations.find((entry) => entry.urn === organizationUrn);
+    if (!match) {
+      sendJson(res, 400, { error: "The selected LinkedIn company page is not available." });
+      return;
+    }
+    const nextPayload = normalizeLinkedInStoredPayload({
+      ...stored,
+      selectedOrganizationUrn: organizationUrn,
+    });
+    await upsertLinkedInConnection(user.id, {
+      ...nextPayload,
+      connectedAt: row.connected_at || "",
+    });
+    sendJson(res, 200, buildLinkedInConnectionPayload(row, nextPayload, true));
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not save the LinkedIn page selection." });
+  }
+}
+
+async function handleLinkedInDisconnect(req, res) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    await deleteSupabaseRows(
+      "provider_connections",
+      {
+        user_id: `eq.${user.id}`,
+        provider: `eq.${LINKEDIN_PROVIDER}`,
+        shop_domain: `eq.${getLinkedInConnectionRowKey()}`,
+      },
+      { allowAll: false }
+    );
+    sendJson(res, 200, { disconnected: true });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not disconnect LinkedIn." });
+  }
+}
+
+async function handleLinkedInPost(req, res) {
+  try {
+    assertLinkedInConfig();
+    const user = await getAuthenticatedUser(req);
+    if (!user?.id) {
+      sendJson(res, 401, { error: "Authentication required." });
+      return;
+    }
+    const row = await getLinkedInConnection(user.id);
+    if (!row) {
+      sendJson(res, 404, { error: "Connect LinkedIn before publishing." });
+      return;
+    }
+    const stored = parseStoredLinkedInConnection(row.access_token);
+    if (!stored?.accessToken) {
+      sendJson(res, 400, { error: "LinkedIn connection data is invalid. Please reconnect." });
+      return;
+    }
+    const expiresAtMs = Date.parse(String(stored.expiresAt || ""));
+    if (Number.isFinite(expiresAtMs) && Date.now() >= expiresAtMs - 60 * 1000) {
+      sendJson(res, 400, { error: "Your LinkedIn connection has expired. Please reconnect." });
+      return;
+    }
+    const selectedOrganization = getSelectedLinkedInOrganization(stored);
+    if (!selectedOrganization?.urn) {
+      sendJson(res, 400, { error: "Select a LinkedIn company page before publishing." });
+      return;
+    }
+    const body = await readJsonBody(req);
+    const caption = String(body?.caption || "").trim();
+    const imageDataUrl = String(body?.imageDataUrl || "").trim();
+    const altText = String(body?.altText || "").trim().slice(0, 120);
+    if (!caption) {
+      sendJson(res, 400, { error: "Add a LinkedIn caption before publishing." });
+      return;
+    }
+    if (!imageDataUrl) {
+      sendJson(res, 400, { error: "The LinkedIn image payload is missing." });
+      return;
+    }
+    const imageUrn = await uploadLinkedInImage(
+      stored.accessToken,
+      selectedOrganization.urn,
+      imageDataUrl
+    );
+    const postResponse = await fetch("https://api.linkedin.com/rest/posts", {
+      method: "POST",
+      headers: getLinkedInApiHeaders(stored.accessToken, {
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({
+        author: selectedOrganization.urn,
+        commentary: caption,
+        visibility: "PUBLIC",
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        content: {
+          media: {
+            id: imageUrn,
+            ...(altText ? { altText } : {}),
+          },
+        },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
+      }),
+    });
+    const postPayload = await postResponse.json().catch(() => null);
+    if (!postResponse.ok) {
+      const message =
+        String(postPayload?.message || postPayload?.error || "").trim()
+        || `LinkedIn post publish failed (${postResponse.status}).`;
+      throw new Error(message);
+    }
+    const postUrn = String(postResponse.headers.get("x-restli-id") || postPayload?.id || "").trim();
+    const feedUrl = postUrn
+      ? `https://www.linkedin.com/feed/update/${encodeURIComponent(postUrn)}/`
+      : "";
+    sendJson(res, 200, {
+      ok: true,
+      postUrn,
+      feedUrl,
+      organization: {
+        urn: selectedOrganization.urn,
+        name: selectedOrganization.name,
+        vanityName: selectedOrganization.vanityName,
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not publish to LinkedIn." });
+  }
+}
+
 async function handleWooCommerceImportOrders(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -14528,6 +15220,30 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/woocommerce/disconnect" && req.method === "POST") {
     await handleWooCommerceDisconnect(req, res);
+    return true;
+  }
+  if (pathname === "/api/linkedin/install-link" && req.method === "POST") {
+    await handleLinkedInInstallLink(req, res);
+    return true;
+  }
+  if (pathname === "/api/linkedin/callback" && req.method === "GET") {
+    await handleLinkedInCallback(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/linkedin/connection" && req.method === "GET") {
+    await handleLinkedInConnection(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/linkedin/select-organization" && req.method === "POST") {
+    await handleLinkedInSelectOrganization(req, res);
+    return true;
+  }
+  if (pathname === "/api/linkedin/post" && req.method === "POST") {
+    await handleLinkedInPost(req, res);
+    return true;
+  }
+  if (pathname === "/api/linkedin/disconnect" && req.method === "POST") {
+    await handleLinkedInDisconnect(req, res);
     return true;
   }
   if (
