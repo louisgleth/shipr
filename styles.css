@@ -10521,10 +10521,10 @@ input.is-invalid {
   .toast-stack {
     left: 14px;
     right: 14px;
-    top: 50%;
-    bottom: auto;
+    top: auto;
+    bottom: 14px;
     width: auto;
-    transform: translateY(-50%);
+    transform: none;
     display: grid;
     gap: 8px;
   }
@@ -10656,6 +10656,12 @@ input.is-invalid {
     width: 100%;
     max-width: none;
     justify-content: flex-start;
+  }
+
+  .account-preview-actions .btn {
+    min-height: 42px;
+    height: 42px;
+    padding-inline: 14px;
   }
 
   .receipt-modal {
@@ -10801,11 +10807,15 @@ input.is-invalid {
   }
 
   .step-panel[data-panel="4"] .panel-header {
+    display: grid;
+    gap: 12px;
     align-items: flex-start;
+    justify-content: stretch;
   }
 
   .step-panel[data-panel="4"] .panel-header > .panel-actions.inline-actions {
     width: 100%;
+    margin-top: 0;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
