@@ -551,6 +551,24 @@ const LEAD_OUTCOME_META = {
     listBucket: "discarded",
   },
 };
+const LEAD_FOLLOW_UP_DECKS = Object.freeze({
+  en: {
+    label: "English",
+    filename: "Shipide_Deck-EN.pdf",
+    url: "assets/decks/Shipide_Deck-EN.pdf",
+  },
+  fr: {
+    label: "French",
+    filename: "Shipide_Deck-FR.pdf",
+    url: "assets/decks/Shipide_Deck-FR.pdf",
+  },
+  nl: {
+    label: "Dutch",
+    filename: "Shipide_Deck-NL.pdf",
+    url: "assets/decks/Shipide_Deck-NL.pdf",
+  },
+});
+const DEFAULT_LEAD_FOLLOW_UP_LANGUAGE = "en";
 const MOCK_LEAD_PROSPECTS = (() => {
   const firstNames = [
     "Claire",
@@ -2454,6 +2472,9 @@ const leadCallOutcomeEmailStep = document.getElementById("leadCallOutcomeEmailSt
 const leadCallOutcomeStepPill = document.getElementById("leadCallOutcomeStepPill");
 const leadCallOutcomeEmailTo = document.getElementById("leadCallOutcomeEmailTo");
 const leadCallOutcomeEmailSubject = document.getElementById("leadCallOutcomeEmailSubject");
+const leadCallOutcomeLanguage = document.getElementById("leadCallOutcomeLanguage");
+const leadCallOutcomeDeckName = document.getElementById("leadCallOutcomeDeckName");
+const leadCallOutcomeDeckLink = document.getElementById("leadCallOutcomeDeckLink");
 const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBody");
 const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
 const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
@@ -2918,6 +2939,7 @@ let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
 let leadCallOutcomeStep = "choose";
 let leadCallOutcomePendingOutcome = "";
+let leadCallOutcomeLanguageValue = DEFAULT_LEAD_FOLLOW_UP_LANGUAGE;
 let leadCallOutcomeSaving = false;
 let adminClientSearch = "";
 let adminClientFilter = "all";
@@ -11103,10 +11125,14 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         ...row,
         orderIndex: index,
         disposition: LEAD_OUTCOME_META[row?.disposition] ? row.disposition : "new",
+        phone: String(row?.phone || ""),
         email: String(row?.email || ""),
         follow_up_email: String(row?.follow_up_email || row?.email || ""),
         follow_up_subject: String(row?.follow_up_subject || ""),
         follow_up_body: String(row?.follow_up_body || ""),
+        follow_up_deck_language: String(row?.follow_up_deck_language || DEFAULT_LEAD_FOLLOW_UP_LANGUAGE),
+        follow_up_deck_filename: String(row?.follow_up_deck_filename || ""),
+        follow_up_deck_url: String(row?.follow_up_deck_url || ""),
         follow_up_sent_at: String(row?.follow_up_sent_at || ""),
         last_called_at: String(row?.last_called_at || ""),
         retry_after:
@@ -11453,9 +11479,17 @@ function setLeadCallOutcomeBusy(isBusy) {
   if (leadCallOutcomeCancel) leadCallOutcomeCancel.disabled = leadCallOutcomeSaving;
   if (leadCallOutcomeBack) leadCallOutcomeBack.disabled = leadCallOutcomeSaving;
   if (leadCallOutcomeSend) leadCallOutcomeSend.disabled = leadCallOutcomeSaving;
-  [leadCallOutcomeEmailTo, leadCallOutcomeEmailSubject, leadCallOutcomeEmailBody].forEach((field) => {
+  [
+    leadCallOutcomeLeadPhone,
+    leadCallOutcomeLeadEmail,
+    leadCallOutcomeEmailTo,
+    leadCallOutcomeEmailSubject,
+    leadCallOutcomeLanguage,
+    leadCallOutcomeEmailBody,
+  ].forEach((field) => {
     if (
       field instanceof HTMLInputElement ||
+      field instanceof HTMLSelectElement ||
       field instanceof HTMLTextAreaElement
     ) {
       field.disabled = leadCallOutcomeSaving;
@@ -11470,11 +11504,11 @@ function populateLeadCallOutcomeModal(lead) {
   if (leadCallOutcomeLeadCompany) {
     leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || "--");
   }
-  if (leadCallOutcomeLeadPhone) {
-    leadCallOutcomeLeadPhone.textContent = String(lead?.phone || "--");
+  if (leadCallOutcomeLeadPhone instanceof HTMLInputElement) {
+    leadCallOutcomeLeadPhone.value = String(lead?.phone || "").trim();
   }
-  if (leadCallOutcomeLeadEmail) {
-    leadCallOutcomeLeadEmail.textContent = String(lead?.email || "--");
+  if (leadCallOutcomeLeadEmail instanceof HTMLInputElement) {
+    leadCallOutcomeLeadEmail.value = String(lead?.email || "").trim();
   }
 }
 
@@ -11486,8 +11520,12 @@ function getActiveLeadCallOutcomeLead() {
 function resetLeadCallOutcomeComposer() {
   leadCallOutcomePendingOutcome = "";
   leadCallOutcomeStep = "choose";
+  leadCallOutcomeLanguageValue = DEFAULT_LEAD_FOLLOW_UP_LANGUAGE;
   if (leadCallOutcomeStepPill) {
     leadCallOutcomeStepPill.textContent = tr("Follow up");
+  }
+  if (leadCallOutcomeLanguage instanceof HTMLSelectElement) {
+    leadCallOutcomeLanguage.value = leadCallOutcomeLanguageValue;
   }
   if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
     leadCallOutcomeEmailTo.value = "";
@@ -11498,6 +11536,7 @@ function resetLeadCallOutcomeComposer() {
   if (leadCallOutcomeEmailBody instanceof HTMLTextAreaElement) {
     leadCallOutcomeEmailBody.value = "";
   }
+  updateLeadCallOutcomeDeckUi();
 }
 
 function setLeadCallOutcomeStep(step) {
@@ -11514,7 +11553,7 @@ function setLeadCallOutcomeStep(step) {
   }
   if (leadCallOutcomeNote) {
     leadCallOutcomeNote.textContent = isCompose
-      ? tr("Review the follow-up draft below. You can edit the recipient, subject, and body before sending it out.")
+      ? tr("Review the follow-up draft below. You can edit the recipient, language, subject, body, and deck before sending it out.")
       : tr("The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.");
   }
 }
@@ -11526,44 +11565,124 @@ function getLeadFirstName(lead) {
     .filter(Boolean)[0] || tr("there");
 }
 
-function buildLeadFollowUpDraft(lead, outcome) {
+function normalizeLeadFollowUpLanguage(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return LEAD_FOLLOW_UP_DECKS[normalized] ? normalized : DEFAULT_LEAD_FOLLOW_UP_LANGUAGE;
+}
+
+function getLeadFollowUpDeck(language = leadCallOutcomeLanguageValue) {
+  return LEAD_FOLLOW_UP_DECKS[normalizeLeadFollowUpLanguage(language)] || LEAD_FOLLOW_UP_DECKS[DEFAULT_LEAD_FOLLOW_UP_LANGUAGE];
+}
+
+function getLeadFollowUpDeckUrl(language = leadCallOutcomeLanguageValue) {
+  const deck = getLeadFollowUpDeck(language);
+  return new URL(deck.url, window.location.origin).toString();
+}
+
+function updateLeadCallOutcomeDeckUi() {
+  const language = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
+  const deck = getLeadFollowUpDeck(language);
+  if (leadCallOutcomeDeckName) {
+    leadCallOutcomeDeckName.textContent = deck.filename;
+  }
+  if (leadCallOutcomeDeckLink instanceof HTMLAnchorElement) {
+    leadCallOutcomeDeckLink.href = deck.url;
+  }
+}
+
+function getLeadCallOutcomeEditedContact() {
+  return {
+    phone:
+      leadCallOutcomeLeadPhone instanceof HTMLInputElement
+        ? String(leadCallOutcomeLeadPhone.value || "").trim()
+        : "",
+    email:
+      leadCallOutcomeLeadEmail instanceof HTMLInputElement
+        ? String(leadCallOutcomeLeadEmail.value || "").trim()
+        : "",
+  };
+}
+
+function getLeadFollowUpTemplateParts(lead, outcome, language) {
   const firstName = getLeadFirstName(lead);
-  const companyName = String(lead?.companyName || tr("your store"));
-  const safeEmail = String(lead?.email || "").trim();
-  if (outcome === "interested_follow_up") {
+  const companyName = String(lead?.companyName || "your store");
+  const deckUrl = getLeadFollowUpDeckUrl(language);
+  const languageKey = normalizeLeadFollowUpLanguage(language);
+  if (languageKey === "fr") {
     return {
-      email: safeEmail,
-      subject: tr("Great speaking today, {name}", { name: firstName }),
-      body: tr(
-        "Hi {name},\n\nThanks again for taking the call today. It was great learning a bit more about {company}.\n\nAs discussed, Shipide helps ecommerce teams centralize label generation, invoice-ready billing, and discounted carrier shipping in one workflow.\n\nIf helpful, I can send over a short overview or walk you through the platform in a quick follow-up.\n\nBest,\nShipide",
-        { name: firstName, company: companyName }
-      ),
+      subject:
+        outcome === "interested_follow_up"
+          ? `Ravi d'avoir echangé aujourd'hui, ${firstName}`
+          : outcome === "mild_follow_up"
+            ? `Petit suivi pour ${companyName}`
+            : `Merci pour votre temps aujourd'hui, ${firstName}`,
+      body:
+        outcome === "not_interested_follow_up"
+          ? `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui.\n\nJe comprends tout a fait que le timing ne soit pas ideal pour ${companyName}.\n\nJe vous laisse tout de meme notre courte presentation Shipide ici :\n${deckUrl}\n\nSi l'expedition devient un sujet plus prioritaire plus tard, je serai ravi d'en reparler simplement.\n\nBien a vous,\nShipide`
+          : `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui. C'etait utile d'en apprendre un peu plus sur ${companyName}.\n\nComme evoque, Shipide aide les equipes e-commerce a centraliser la creation d'etiquettes, la facturation et l'acces a des tarifs transporteurs negocies dans un seul flux.\n\nJe vous joins notre courte presentation ici :\n${deckUrl}\n\nSi cela vous convient, je peux aussi vous montrer la plateforme rapidement lors d'un prochain echange.\n\nBien a vous,\nShipide`,
     };
   }
-  if (outcome === "mild_follow_up") {
+  if (languageKey === "nl") {
     return {
-      email: safeEmail,
-      subject: tr("Quick follow-up for {company}", { company: companyName }),
-      body: tr(
-        "Hi {name},\n\nThanks for taking the call today and pointing me to email.\n\nHere is the short follow-up I mentioned: Shipide helps stores like {company} streamline shipping operations, keep invoice workflows clean, and access discounted carrier pricing from one place.\n\nHappy to send a brief overview or answer any questions when convenient.\n\nBest,\nShipide",
-        { name: firstName, company: companyName }
-      ),
+      subject:
+        outcome === "interested_follow_up"
+          ? `Fijn om u vandaag te spreken, ${firstName}`
+          : outcome === "mild_follow_up"
+            ? `Korte opvolging voor ${companyName}`
+            : `Bedankt voor uw tijd vandaag, ${firstName}`,
+      body:
+        outcome === "not_interested_follow_up"
+          ? `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag.\n\nIk begrijp volledig dat de timing voor ${companyName} momenteel niet ideaal is.\n\nIk laat u toch graag onze korte Shipide-presentatie hier na:\n${deckUrl}\n\nAls verzending later een grotere prioriteit wordt, denk ik graag opnieuw mee.\n\nMet vriendelijke groet,\nShipide`
+          : `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag. Het was nuttig om iets meer te horen over ${companyName}.\n\nZoals besproken helpt Shipide e-commerce teams om labelcreatie, facturatie en voordelige verzendtarieven in een enkele workflow te centraliseren.\n\nU vindt onze korte presentatie hier:\n${deckUrl}\n\nAls het past, kan ik de werking ook kort tonen in een opvolggesprek.\n\nMet vriendelijke groet,\nShipide`,
     };
   }
   return {
+    subject:
+      outcome === "interested_follow_up"
+        ? `Great speaking today, ${firstName}`
+        : outcome === "mild_follow_up"
+          ? `Quick follow-up for ${companyName}`
+          : `Thanks for your time today, ${firstName}`,
+    body:
+      outcome === "not_interested_follow_up"
+        ? `Hi ${firstName},\n\nThanks again for taking the call today.\n\nTotally understood that the timing is not right on your side for ${companyName}.\n\nI am leaving our short Shipide pitch deck here in case it becomes useful later:\n${deckUrl}\n\nIf shipping operations become a bigger priority, I would be glad to reconnect.\n\nBest,\nShipide`
+        : `Hi ${firstName},\n\nThanks again for taking the call today. It was great learning a bit more about ${companyName}.\n\nAs discussed, Shipide helps ecommerce teams centralize label generation, invoice-ready billing, and discounted carrier shipping in one workflow.\n\nI am including our short pitch deck here:\n${deckUrl}\n\nIf helpful, I can also walk you through the platform in a quick follow-up.\n\nBest,\nShipide`,
+  };
+}
+
+function buildLeadFollowUpDraft(lead, outcome, language = leadCallOutcomeLanguageValue) {
+  const firstName = getLeadFirstName(lead);
+  const contact = getLeadCallOutcomeEditedContact();
+  const safeEmail = contact.email || String(lead?.email || "").trim();
+  const parts = getLeadFollowUpTemplateParts(lead, outcome, language);
+  return {
     email: safeEmail,
-    subject: tr("Thanks for your time today, {name}", { name: firstName }),
-    body: tr(
-      "Hi {name},\n\nThanks again for taking the call today.\n\nTotally understood that the timing is not right on your side for {company}. If shipping operations become a bigger priority later on, I would be glad to share a quick overview of Shipide and where it could fit.\n\nBest,\nShipide",
-      { name: firstName, company: companyName }
-    ),
+    subject: parts.subject || `Thanks for your time today, ${firstName}`,
+    body: parts.body || "",
   };
 }
 
 function openLeadFollowUpComposer(outcome) {
   const lead = getActiveLeadCallOutcomeLead();
   if (!lead) return;
-  const draft = buildLeadFollowUpDraft(lead, outcome);
+  const contact = getLeadCallOutcomeEditedContact();
+  const initialLanguage = normalizeLeadFollowUpLanguage(
+    lead?.follow_up_deck_language || getUiLocale().slice(0, 2) || DEFAULT_LEAD_FOLLOW_UP_LANGUAGE
+  );
+  leadCallOutcomeLanguageValue = initialLanguage;
+  if (leadCallOutcomeLanguage instanceof HTMLSelectElement) {
+    leadCallOutcomeLanguage.value = initialLanguage;
+  }
+  updateLeadCallOutcomeDeckUi();
+  const draft = buildLeadFollowUpDraft(
+    {
+      ...lead,
+      phone: contact.phone || lead.phone,
+      email: contact.email || lead.email,
+    },
+    outcome,
+    initialLanguage
+  );
   leadCallOutcomePendingOutcome = outcome;
   if (leadCallOutcomeStepPill) {
     leadCallOutcomeStepPill.textContent = getLeadOutcomeMeta(outcome).label;
@@ -11578,6 +11697,34 @@ function openLeadFollowUpComposer(outcome) {
     leadCallOutcomeEmailBody.value = draft.body;
   }
   setLeadCallOutcomeStep("compose");
+}
+
+function refreshLeadFollowUpDraftForLanguage() {
+  const lead = getActiveLeadCallOutcomeLead();
+  if (!lead || !leadCallOutcomePendingOutcome) {
+    updateLeadCallOutcomeDeckUi();
+    return;
+  }
+  const contact = getLeadCallOutcomeEditedContact();
+  const draft = buildLeadFollowUpDraft(
+    {
+      ...lead,
+      phone: contact.phone || lead.phone,
+      email: contact.email || lead.email,
+    },
+    leadCallOutcomePendingOutcome,
+    leadCallOutcomeLanguageValue
+  );
+  if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
+    leadCallOutcomeEmailSubject.value = draft.subject;
+  }
+  if (leadCallOutcomeEmailBody instanceof HTMLTextAreaElement) {
+    leadCallOutcomeEmailBody.value = draft.body;
+  }
+  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
+    leadCallOutcomeEmailTo.value = draft.email;
+  }
+  updateLeadCallOutcomeDeckUi();
 }
 
 function openLeadFollowUpMailDraft({ email, subject, body }) {
@@ -11650,7 +11797,12 @@ async function saveLeadCallOutcome(outcome) {
         throw new Error(tr("Lead not found."));
       }
       const nextNoPickupCount = Math.max(0, Number(lead?.no_pickup_count || 0)) + 1;
+      const contact = getLeadCallOutcomeEditedContact();
       if (nextNoPickupCount >= 5) {
+        await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+          phone: contact.phone || lead.phone || "",
+          email: contact.email || lead.email || "",
+        });
         await discardLeadProspect(leadCallOutcomeLeadId, { quiet: true });
         leadCallOutcomeLeadId = "";
         resetLeadCallOutcomeComposer();
@@ -11661,6 +11813,8 @@ async function saveLeadCallOutcome(outcome) {
       setLeadListBucket("to_call", { rerender: false });
       await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
         disposition: safeOutcome,
+        phone: contact.phone || lead.phone || "",
+        email: contact.email || lead.email || "",
         last_called_at: new Date().toISOString(),
         no_pickup_count: nextNoPickupCount,
         retry_after: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -11682,10 +11836,13 @@ async function saveLeadCallOutcome(outcome) {
 async function sendLeadFollowUpForCurrentLead() {
   const lead = getActiveLeadCallOutcomeLead();
   if (!lead || !leadCallOutcomePendingOutcome) return;
+  const contact = getLeadCallOutcomeEditedContact();
+  const selectedLanguage = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
+  const selectedDeck = getLeadFollowUpDeck(selectedLanguage);
   const email =
     leadCallOutcomeEmailTo instanceof HTMLInputElement
       ? String(leadCallOutcomeEmailTo.value || "").trim()
-      : "";
+      : contact.email;
   const subject =
     leadCallOutcomeEmailSubject instanceof HTMLInputElement
       ? String(leadCallOutcomeEmailSubject.value || "").trim()
@@ -11710,9 +11867,14 @@ async function sendLeadFollowUpForCurrentLead() {
   try {
     await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
       disposition: leadCallOutcomePendingOutcome,
+      phone: contact.phone || lead.phone || "",
+      email,
       follow_up_email: email,
       follow_up_subject: subject,
       follow_up_body: body,
+      follow_up_deck_language: selectedLanguage,
+      follow_up_deck_filename: selectedDeck.filename,
+      follow_up_deck_url: selectedDeck.url,
       follow_up_sent_at: new Date().toISOString(),
       last_called_at: new Date().toISOString(),
     });
@@ -24390,6 +24552,23 @@ if (leadCallOutcomeBack) {
     if (leadCallOutcomeSaving) return;
     leadCallOutcomePendingOutcome = "";
     setLeadCallOutcomeStep("choose");
+  });
+}
+
+if (leadCallOutcomeLeadEmail) {
+  leadCallOutcomeLeadEmail.addEventListener("input", () => {
+    if (leadCallOutcomeEmailTo instanceof HTMLInputElement && leadCallOutcomeStep === "compose") {
+      leadCallOutcomeEmailTo.value = String(leadCallOutcomeLeadEmail.value || "").trim();
+    }
+  });
+}
+
+if (leadCallOutcomeLanguage) {
+  leadCallOutcomeLanguage.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    leadCallOutcomeLanguageValue = normalizeLeadFollowUpLanguage(target.value);
+    refreshLeadFollowUpDraftForLanguage();
   });
 }
 

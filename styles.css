@@ -2936,6 +2936,25 @@ body.is-auth-view {
   word-break: break-word;
 }
 
+.lead-callout-context-input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid rgba(154, 163, 178, 0.22);
+  border-radius: var(--radius);
+  background: rgba(5, 9, 16, 0.68);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+  outline: none;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+
+.lead-callout-context-input:focus {
+  border-color: var(--accent);
+  background: #0b111a;
+  box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
+}
+
 .lead-callout-actions {
   display: grid;
   gap: 10px;
@@ -3017,6 +3036,24 @@ body.is-auth-view {
 
 .lead-callout-email-body {
   grid-column: 1 / -1;
+}
+
+.lead-callout-deck-card {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: rgba(15, 18, 28, 0.6);
+}
+
+.lead-callout-deck-name {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: var(--fs-xs);
 }
 
 .lead-callout-email-body textarea {

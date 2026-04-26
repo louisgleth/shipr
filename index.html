@@ -2040,11 +2040,11 @@
               </div>
               <div class="lead-callout-context-item">
                 <div class="lead-callout-label">Phone</div>
-                <div class="lead-callout-value mono" id="leadCallOutcomeLeadPhone">--</div>
+                <input type="tel" class="lead-callout-context-input mono" id="leadCallOutcomeLeadPhone" />
               </div>
               <div class="lead-callout-context-item lead-callout-context-item-email">
                 <div class="lead-callout-label">Email</div>
-                <div class="lead-callout-value mono" id="leadCallOutcomeLeadEmail">--</div>
+                <input type="email" class="lead-callout-context-input mono" id="leadCallOutcomeLeadEmail" />
               </div>
             </div>
             <div class="lead-callout-actions" id="leadCallOutcomeActions">
@@ -2081,6 +2081,23 @@
                   <span>Subject</span>
                   <input type="text" id="leadCallOutcomeEmailSubject" />
                 </label>
+                <label class="field">
+                  <span>Language</span>
+                  <select id="leadCallOutcomeLanguage">
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="nl">Dutch</option>
+                  </select>
+                </label>
+                <div class="lead-callout-deck-card">
+                  <div>
+                    <div class="lead-callout-label">Pitch deck</div>
+                    <div class="lead-callout-deck-name mono" id="leadCallOutcomeDeckName">Shipide_Deck-EN.pdf</div>
+                  </div>
+                  <a class="btn btn-secondary btn-sm" id="leadCallOutcomeDeckLink" href="assets/decks/Shipide_Deck-EN.pdf" target="_blank" rel="noreferrer">
+                    <span>Open Deck</span>
+                  </a>
+                </div>
                 <label class="field lead-callout-email-body">
                   <span>Body</span>
                   <textarea id="leadCallOutcomeEmailBody" rows="8"></textarea>
