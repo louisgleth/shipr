@@ -2467,10 +2467,10 @@ const leadCallOutcomeLeadName = document.getElementById("leadCallOutcomeLeadName
 const leadCallOutcomeLeadCompany = document.getElementById("leadCallOutcomeLeadCompany");
 const leadCallOutcomeLeadPhone = document.getElementById("leadCallOutcomeLeadPhone");
 const leadCallOutcomeLeadEmail = document.getElementById("leadCallOutcomeLeadEmail");
+const leadCallOutcomeContext = document.getElementById("leadCallOutcomeContext");
 const leadCallOutcomeActions = document.getElementById("leadCallOutcomeActions");
 const leadCallOutcomeEmailStep = document.getElementById("leadCallOutcomeEmailStep");
 const leadCallOutcomeStepPill = document.getElementById("leadCallOutcomeStepPill");
-const leadCallOutcomeEmailTo = document.getElementById("leadCallOutcomeEmailTo");
 const leadCallOutcomeEmailSubject = document.getElementById("leadCallOutcomeEmailSubject");
 const leadCallOutcomeLanguage = document.getElementById("leadCallOutcomeLanguage");
 const leadCallOutcomeDeckName = document.getElementById("leadCallOutcomeDeckName");
@@ -11482,7 +11482,6 @@ function setLeadCallOutcomeBusy(isBusy) {
   [
     leadCallOutcomeLeadPhone,
     leadCallOutcomeLeadEmail,
-    leadCallOutcomeEmailTo,
     leadCallOutcomeEmailSubject,
     leadCallOutcomeLanguage,
     leadCallOutcomeEmailBody,
@@ -11527,9 +11526,6 @@ function resetLeadCallOutcomeComposer() {
   if (leadCallOutcomeLanguage instanceof HTMLSelectElement) {
     leadCallOutcomeLanguage.value = leadCallOutcomeLanguageValue;
   }
-  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
-    leadCallOutcomeEmailTo.value = "";
-  }
   if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
     leadCallOutcomeEmailSubject.value = "";
   }
@@ -11542,6 +11538,9 @@ function resetLeadCallOutcomeComposer() {
 function setLeadCallOutcomeStep(step) {
   leadCallOutcomeStep = step === "compose" ? "compose" : "choose";
   const isCompose = leadCallOutcomeStep === "compose";
+  if (leadCallOutcomeContext) {
+    leadCallOutcomeContext.classList.toggle("is-hidden", isCompose);
+  }
   if (leadCallOutcomeActions) {
     leadCallOutcomeActions.classList.toggle("is-hidden", isCompose);
   }
@@ -11553,7 +11552,7 @@ function setLeadCallOutcomeStep(step) {
   }
   if (leadCallOutcomeNote) {
     leadCallOutcomeNote.textContent = isCompose
-      ? tr("Review the follow-up draft below. You can edit the recipient, language, subject, body, and deck before sending it out.")
+      ? tr("Review the follow-up template, language, and deck before sending it out.")
       : tr("The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.");
   }
 }
@@ -11687,9 +11686,6 @@ function openLeadFollowUpComposer(outcome) {
   if (leadCallOutcomeStepPill) {
     leadCallOutcomeStepPill.textContent = getLeadOutcomeMeta(outcome).label;
   }
-  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
-    leadCallOutcomeEmailTo.value = draft.email;
-  }
   if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
     leadCallOutcomeEmailSubject.value = draft.subject;
   }
@@ -11720,9 +11716,6 @@ function refreshLeadFollowUpDraftForLanguage() {
   }
   if (leadCallOutcomeEmailBody instanceof HTMLTextAreaElement) {
     leadCallOutcomeEmailBody.value = draft.body;
-  }
-  if (leadCallOutcomeEmailTo instanceof HTMLInputElement) {
-    leadCallOutcomeEmailTo.value = draft.email;
   }
   updateLeadCallOutcomeDeckUi();
 }
@@ -11839,10 +11832,7 @@ async function sendLeadFollowUpForCurrentLead() {
   const contact = getLeadCallOutcomeEditedContact();
   const selectedLanguage = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
   const selectedDeck = getLeadFollowUpDeck(selectedLanguage);
-  const email =
-    leadCallOutcomeEmailTo instanceof HTMLInputElement
-      ? String(leadCallOutcomeEmailTo.value || "").trim()
-      : contact.email;
+  const email = contact.email;
   const subject =
     leadCallOutcomeEmailSubject instanceof HTMLInputElement
       ? String(leadCallOutcomeEmailSubject.value || "").trim()
@@ -24552,14 +24542,6 @@ if (leadCallOutcomeBack) {
     if (leadCallOutcomeSaving) return;
     leadCallOutcomePendingOutcome = "";
     setLeadCallOutcomeStep("choose");
-  });
-}
-
-if (leadCallOutcomeLeadEmail) {
-  leadCallOutcomeLeadEmail.addEventListener("input", () => {
-    if (leadCallOutcomeEmailTo instanceof HTMLInputElement && leadCallOutcomeStep === "compose") {
-      leadCallOutcomeEmailTo.value = String(leadCallOutcomeLeadEmail.value || "").trim();
-    }
   });
 }
 

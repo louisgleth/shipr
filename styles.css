@@ -2891,7 +2891,7 @@ body.is-auth-view {
 }
 
 .lead-callout-modal {
-  max-width: 680px;
+  max-width: 620px;
 }
 
 .lead-callout-modal-body {
@@ -3058,7 +3058,7 @@ body.is-auth-view {
 
 .lead-callout-email-body textarea {
   width: 100%;
-  min-height: 180px;
+  min-height: 150px;
   padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
