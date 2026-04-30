@@ -14805,7 +14805,6 @@ function buildDocumentHeaderHtml({
     profile?.taxId ? `VAT ${profile.taxId}` : "",
   ].filter(Boolean);
   const issuerLines = [
-    { value: issuer?.descriptor || "", className: "is-descriptor" },
     ...(Array.isArray(issuer?.addressLines)
       ? issuer.addressLines
       : splitInvoiceAddressLines(issuer?.jurisdiction || "")
