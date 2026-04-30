@@ -485,7 +485,6 @@ const POST_TEMPLATE_AMOUNT_HEX = "#88EA84";
 const POST_COLLAB_SHIPIDE_LOCKUP_ASSET = "assets/shipide-collab-lockup.svg";
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
-const AUTH_BACKGROUND_VARIANT_STORAGE_KEY = "shipide-auth-bg-variant";
 const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
 const RESERVED_CLIENT_USER_METADATA_KEYS = new Set(["app_admin"]);
 const SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY = "shipide-shopify-embedded-context-v1";
@@ -2265,11 +2264,6 @@ const supabaseClient =
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
 const authPixelCanvas = document.getElementById("authPixelCanvas");
-const authBlastCanvas = document.getElementById("authBlastCanvas");
-const authBgSwitcher = document.getElementById("authBgSwitcher");
-const authBgVariantButtons = authBgSwitcher
-  ? Array.from(authBgSwitcher.querySelectorAll("[data-auth-bg-variant]"))
-  : [];
 const authStack = authGate?.querySelector(".auth-stack") || null;
 const authCard = authGate?.querySelector(".auth-card") || null;
 const authCardFrame = document.getElementById("authCardFrame");
@@ -2392,8 +2386,6 @@ const accountContactEmail = document.getElementById("accountContactEmail");
 const accountContactPhone = document.getElementById("accountContactPhone");
 const accountBillingAddress = document.getElementById("accountBillingAddress");
 const accountTaxId = document.getElementById("accountTaxId");
-const accountCustomerId = document.getElementById("accountCustomerId");
-const accountAccountManager = document.getElementById("accountAccountManager");
 const languageSelect = document.getElementById("languageSelect");
 const warehouseStatus = document.getElementById("warehouseStatus");
 const warehouseStatusRow = warehouseStatus?.closest(".warehouse-status-row") || null;
@@ -2894,9 +2886,6 @@ let warehouseSaving = false;
 let warehouseLoadRequestToken = 0;
 let warehouseEnteringIds = new Set();
 let authBackgroundStarted = false;
-let authBackgroundVariant = "matrix";
-let authBlastBackground = null;
-let authBlastBackgroundLoading = null;
 let currentMainView = "builder";
 let postStudioInitialized = false;
 let postStudioAnimationFrame = 0;
@@ -11611,14 +11600,14 @@ function getLeadFollowUpTemplateParts(lead, outcome, language) {
     return {
       subject:
         outcome === "interested_follow_up"
-          ? `Ravi d'avoir echangé aujourd'hui, ${firstName}`
+          ? `Ravi d'avoir échangé aujourd'hui, ${firstName}`
           : outcome === "mild_follow_up"
             ? `Petit suivi pour ${companyName}`
             : `Merci pour votre temps aujourd'hui, ${firstName}`,
       body:
         outcome === "not_interested_follow_up"
-          ? `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui.\n\nJe comprends tout a fait que le timing ne soit pas ideal pour ${companyName}.\n\nJe vous laisse tout de meme notre courte presentation Shipide ici :\n${deckUrl}\n\nSi l'expedition devient un sujet plus prioritaire plus tard, je serai ravi d'en reparler simplement.\n\nBien a vous,\nShipide`
-          : `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui. C'etait utile d'en apprendre un peu plus sur ${companyName}.\n\nComme evoque, Shipide aide les equipes e-commerce a centraliser la creation d'etiquettes, la facturation et l'acces a des tarifs transporteurs negocies dans un seul flux.\n\nJe vous joins notre courte presentation ici :\n${deckUrl}\n\nSi cela vous convient, je peux aussi vous montrer la plateforme rapidement lors d'un prochain echange.\n\nBien a vous,\nShipide`,
+          ? `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui.\n\nJe comprends tout à fait que le timing ne soit pas idéal pour ${companyName}.\n\nJe vous laisse tout de même notre courte présentation Shipide ici :\n${deckUrl}\n\nSi l'expédition devient un sujet plus prioritaire plus tard, je serai ravi d'en reparler simplement.\n\nBien à vous,\nShipide`
+          : `Bonjour ${firstName},\n\nMerci encore pour l'appel d'aujourd'hui. C'était utile d'en apprendre un peu plus sur ${companyName}.\n\nComme évoqué, Shipide aide les équipes e-commerce à centraliser la création d'étiquettes, la facturation et l'accès à des tarifs transporteurs négociés dans un seul flux.\n\nJe vous joins notre courte présentation ici :\n${deckUrl}\n\nSi cela vous convient, je peux aussi vous montrer la plateforme rapidement lors d'un prochain échange.\n\nBien à vous,\nShipide`,
     };
   }
   if (languageKey === "nl") {
@@ -11631,8 +11620,8 @@ function getLeadFollowUpTemplateParts(lead, outcome, language) {
             : `Bedankt voor uw tijd vandaag, ${firstName}`,
       body:
         outcome === "not_interested_follow_up"
-          ? `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag.\n\nIk begrijp volledig dat de timing voor ${companyName} momenteel niet ideaal is.\n\nIk laat u toch graag onze korte Shipide-presentatie hier na:\n${deckUrl}\n\nAls verzending later een grotere prioriteit wordt, denk ik graag opnieuw mee.\n\nMet vriendelijke groet,\nShipide`
-          : `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag. Het was nuttig om iets meer te horen over ${companyName}.\n\nZoals besproken helpt Shipide e-commerce teams om labelcreatie, facturatie en voordelige verzendtarieven in een enkele workflow te centraliseren.\n\nU vindt onze korte presentatie hier:\n${deckUrl}\n\nAls het past, kan ik de werking ook kort tonen in een opvolggesprek.\n\nMet vriendelijke groet,\nShipide`,
+          ? `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag.\n\nIk begrijp volledig dat de timing voor ${companyName} momenteel niet ideaal is.\n\nIk laat u toch graag onze korte Shipide-presentatie hierna:\n${deckUrl}\n\nAls verzending later een grotere prioriteit wordt, denk ik graag opnieuw mee.\n\nMet vriendelijke groet,\nShipide`
+          : `Hallo ${firstName},\n\nBedankt voor het gesprek vandaag. Het was nuttig om iets meer te horen over ${companyName}.\n\nZoals besproken helpt Shipide e-commerceteams om labelcreatie, facturatie en voordelige verzendtarieven in één workflow te centraliseren.\n\nU vindt onze korte presentatie hier:\n${deckUrl}\n\nAls het past, kan ik de werking ook kort tonen in een opvolggesprek.\n\nMet vriendelijke groet,\nShipide`,
     };
   }
   return {
@@ -12068,8 +12057,6 @@ function renderAccountProfile(user) {
         contactPhone: profile.contactPhone,
         billingAddress: profile.billingAddress,
         taxId: profile.taxId,
-        customerId: profile.customerId,
-        accountManager: profile.accountManager,
       }
     : {
         companyName: "--",
@@ -12078,8 +12065,6 @@ function renderAccountProfile(user) {
         contactPhone: "--",
         billingAddress: "--",
         taxId: "--",
-        customerId: "--",
-        accountManager: "--",
       };
 
   if (accountCompanyName) accountCompanyName.textContent = values.companyName;
@@ -12088,9 +12073,6 @@ function renderAccountProfile(user) {
   if (accountContactPhone) accountContactPhone.textContent = values.contactPhone;
   if (accountBillingAddress) accountBillingAddress.textContent = values.billingAddress;
   if (accountTaxId) accountTaxId.textContent = values.taxId;
-  if (accountCustomerId) accountCustomerId.textContent = values.customerId;
-  if (accountAccountManager) accountAccountManager.textContent = values.accountManager;
-
   if (invoiceCompany) invoiceCompany.textContent = values.companyName;
   if (invoiceContact) invoiceContact.textContent = values.contactName;
   if (invoiceEmail) invoiceEmail.textContent = values.contactEmail;
@@ -14353,8 +14335,12 @@ const INVOICE_ISSUER_PROFILE = Object.freeze({
   legalName: "Cryvelin LLC",
   brandName: "Shipide",
   descriptor: "Operates Shipide",
-  jurisdiction: "Delaware, United States",
-  email: "billing@shipide.com",
+  addressLines: [
+    "8 The Green STE B,",
+    "Dover 19901,",
+    "Delaware, USA",
+  ],
+  ein: "38-4390983",
   iban: "BE71 0000 1111 2222",
 });
 
@@ -14816,13 +14802,16 @@ function buildDocumentHeaderHtml({
   const profileName = profile?.companyName || "--";
   const clientLines = [
     ...billingAddressLines,
-    profile?.taxId ? `VAT ${profile.taxId}` : "",
+    profile?.taxId ? `Tax ID ${profile.taxId}` : "",
   ].filter(Boolean);
   const issuerLines = [
-    issuer?.descriptor || "",
-    ...splitInvoiceAddressLines(issuer?.jurisdiction || ""),
-    issuer?.email || "",
-  ].filter(Boolean);
+    { value: issuer?.descriptor || "", className: "is-descriptor" },
+    ...(Array.isArray(issuer?.addressLines)
+      ? issuer.addressLines
+      : splitInvoiceAddressLines(issuer?.jurisdiction || "")
+    ).map((line) => ({ value: line, className: "" })),
+    { value: issuer?.ein || "", className: "is-mono" },
+  ].filter((line) => String(line?.value || "").trim());
 
   return `
     <div class="receipt-topline">
@@ -14860,7 +14849,7 @@ function buildDocumentHeaderHtml({
           <div class="receipt-address-block">
             <span class="receipt-address-name">${escapeHtml(issuer?.legalName || "--")}</span>
             <div class="receipt-address-lines">
-              ${issuerLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+              ${issuerLines.map((line) => `<span class="${escapeHtml(line.className || "")}">${escapeHtml(line.value)}</span>`).join("")}
             </div>
           </div>
         </div>
@@ -15117,7 +15106,7 @@ function buildInvoiceSettlementHtml(viewModel) {
 function buildInvoiceFooterHtml(invoiceNumber) {
   return `
     <div class="receipt-footer">
-      <span class="receipt-footer-left">Cryvelin LLC · billing@shipide.com</span>
+      <span class="receipt-footer-left">Cryvelin LLC</span>
       <span class="receipt-footer-right">${escapeHtml(invoiceNumber)}</span>
     </div>
   `;
@@ -15126,7 +15115,7 @@ function buildInvoiceFooterHtml(invoiceNumber) {
 function buildReceiptFooterHtml(receiptNumber) {
   return `
     <div class="receipt-footer">
-      <span class="receipt-footer-left">Shipide · billing@shipide.com</span>
+      <span class="receipt-footer-left">Cryvelin LLC</span>
       <span class="receipt-footer-right">${escapeHtml(receiptNumber)}</span>
     </div>
   `;
@@ -22675,127 +22664,16 @@ class PixelCanvasElement extends HTMLElement {
   }
 }
 
-function normalizeAuthBackgroundVariant(value) {
-  return String(value || "").trim().toLowerCase() === "blast" ? "blast" : "matrix";
-}
-
-function readStoredAuthBackgroundVariant() {
-  try {
-    return normalizeAuthBackgroundVariant(window.localStorage.getItem(AUTH_BACKGROUND_VARIANT_STORAGE_KEY));
-  } catch (error) {
-    return "matrix";
-  }
-}
-
-function storeAuthBackgroundVariant(variant) {
-  try {
-    window.localStorage.setItem(
-      AUTH_BACKGROUND_VARIANT_STORAGE_KEY,
-      normalizeAuthBackgroundVariant(variant)
-    );
-  } catch (error) {
-    // Ignore storage issues.
-  }
-}
-
-function updateAuthBackgroundVariantUi(variant) {
-  const normalized = normalizeAuthBackgroundVariant(variant);
-  if (authGate) {
-    authGate.dataset.authBgVariant = normalized;
-  }
-  authBgVariantButtons.forEach((button) => {
-    const isActive = normalizeAuthBackgroundVariant(button.dataset.authBgVariant) === normalized;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-pressed", isActive ? "true" : "false");
-  });
-}
-
-async function ensureAuthBlastBackground() {
-  if (authBlastBackground) return authBlastBackground;
-  if (!authBlastCanvas) return null;
-  if (authBlastBackgroundLoading) return authBlastBackgroundLoading;
-  authBlastBackgroundLoading = import("./auth-pixel-blast.js")
-    .then((mod) => mod.createAuthPixelBlastBackground(authBlastCanvas, {
-      color: "#7747e3",
-      interactionTarget: authGate || document.body,
-      variant: "square",
-      pixelSize: 2,
-      patternScale: 1,
-      patternDensity: 1.4,
-      pixelSizeJitter: 1.6,
-      enableRipples: true,
-      rippleSpeed: 0.4,
-      rippleThickness: 0.12,
-      rippleIntensityScale: 1.5,
-      speed: 0.95,
-      edgeFade: 0.31,
-      transparent: true,
-    }))
-    .then((instance) => {
-      authBlastBackground = instance;
-      return instance;
-    })
-    .catch((error) => {
-      authBlastBackgroundLoading = null;
-      throw error;
-    });
-  return authBlastBackgroundLoading;
-}
-
-async function setAuthBackgroundVariant(variant, options = {}) {
-  const normalized = normalizeAuthBackgroundVariant(variant);
-  const { persist = true } = options;
-  authBackgroundVariant = normalized;
-  updateAuthBackgroundVariantUi(normalized);
-  if (persist) {
-    storeAuthBackgroundVariant(normalized);
-  }
-  if (normalized === "blast") {
-    try {
-      const blast = await ensureAuthBlastBackground();
-      blast?.setPaused(false);
-      if (authPixelCanvas?.setPaused) {
-        authPixelCanvas.setPaused(true);
-      }
-    } catch (error) {
-      authBackgroundVariant = "matrix";
-      updateAuthBackgroundVariantUi("matrix");
-      if (persist) {
-        storeAuthBackgroundVariant("matrix");
-      }
-      showToast("Could not load the Blast background.", { tone: "error" });
-      if (authPixelCanvas?.setPaused) {
-        authPixelCanvas.setPaused(false);
-      }
-    }
-    return;
-  }
-  authBlastBackground?.setPaused(true);
-  if (authPixelCanvas?.setPaused) {
-    authPixelCanvas.setPaused(false);
-  }
-}
-
 function initializeAuthBackground() {
   if (authBackgroundStarted || !authGate || !authPixelCanvas) return;
   authBackgroundStarted = true;
   PixelCanvasElement.register();
-  authBackgroundVariant = readStoredAuthBackgroundVariant();
-  updateAuthBackgroundVariantUi(authBackgroundVariant);
-  if (authBackgroundVariant === "blast" && authPixelCanvas?.setPaused) {
-    authPixelCanvas.setPaused(true);
+  delete authGate.dataset.authBgVariant;
+  if (authPixelCanvas?.setPaused) {
+    authPixelCanvas.setPaused(false);
   }
-  authBgSwitcher?.addEventListener("click", (event) => {
-    const button = event.target instanceof Element
-      ? event.target.closest("[data-auth-bg-variant]")
-      : null;
-    if (!(button instanceof HTMLElement)) return;
-    const nextVariant = normalizeAuthBackgroundVariant(button.dataset.authBgVariant);
-    void setAuthBackgroundVariant(nextVariant);
-  });
   requestAnimationFrame(() => {
     authGate.classList.add("is-ready");
-    void setAuthBackgroundVariant(authBackgroundVariant, { persist: false });
   });
 }
 

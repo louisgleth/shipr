@@ -159,8 +159,12 @@ const DEFAULT_INVOICE_ISSUER = Object.freeze({
   legalName: "Cryvelin LLC",
   brandName: "Shipide",
   descriptor: "Operates Shipide",
-  jurisdiction: "Delaware, United States",
-  email: "billing@shipide.com",
+  addressLines: [
+    "8 The Green STE B,",
+    "Dover 19901,",
+    "Delaware, USA",
+  ],
+  ein: "38-4390983",
 });
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "billing@shipide.com").trim();
@@ -1359,14 +1363,25 @@ async function buildClickwrapPreviewPdf({ contract, email, profile, ipAddress, r
     recordId,
     acceptedAt,
   });
+  let coverFallback = null;
 
   for (const [fieldName, fieldValue] of Object.entries(fieldValues)) {
     try {
       const textField = form.getTextField(fieldName);
-      textField.setFontSize(
-        resolveClickwrapPreviewFieldFontSize(textField, ptMonoFont, fieldName, fieldValue)
-      );
+      const fontSize = resolveClickwrapPreviewFieldFontSize(textField, ptMonoFont, fieldName, fieldValue);
+      textField.setFontSize(fontSize);
       textField.setText(String(fieldValue || ""));
+      if (fieldName === "merchant_legal_name_cover") {
+        const widget = textField?.acroField?.getWidgets?.()?.[0] || null;
+        const rect = widget?.getRectangle?.() || null;
+        if (rect && String(fieldValue || "").trim()) {
+          coverFallback = {
+            text: String(fieldValue || "").trim(),
+            rect,
+            fontSize,
+          };
+        }
+      }
     } catch (_error) {
       // Allow template iterations to omit fields without breaking preview generation.
     }
@@ -1374,6 +1389,18 @@ async function buildClickwrapPreviewPdf({ contract, email, profile, ipAddress, r
 
   form.updateFieldAppearances(ptMonoFont);
   form.flatten();
+  if (coverFallback) {
+    const firstPage = pdfDocument.getPages()[0];
+    if (firstPage) {
+      firstPage.drawText(coverFallback.text, {
+        x: coverFallback.rect.x + 5,
+        y: coverFallback.rect.y + Math.max(2, (coverFallback.rect.height - coverFallback.fontSize) / 2),
+        font: ptMonoFont,
+        size: coverFallback.fontSize,
+        color: rgb(1, 1, 1),
+      });
+    }
+  }
   return Buffer.from(await pdfDocument.save());
 }
 
@@ -4442,7 +4469,7 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       color: colors.stroke,
       opacity: 0.65,
     });
-    page.drawText("Cryvelin LLC - billing@shipide.com", {
+    page.drawText("Cryvelin LLC", {
       x: marginX,
       y: footerY,
       font: fonts.regular,
@@ -4507,13 +4534,16 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       const billedToTop = cursorY;
       const billedToLines = [
         ...splitInvoiceAddressLines(profile.billingAddress),
-        profile.taxId ? `VAT ${profile.taxId}` : "",
+        profile.taxId ? `Tax ID ${profile.taxId}` : "",
       ].filter(Boolean);
       const billedByLines = [
-        issuer.descriptor,
-        ...splitInvoiceAddressLines(issuer.jurisdiction),
-        issuer.email,
-      ].filter(Boolean);
+        { text: issuer.descriptor, font: fonts.regular, size: 8.5 },
+        ...(Array.isArray(issuer.addressLines)
+          ? issuer.addressLines
+          : splitInvoiceAddressLines(issuer.jurisdiction)
+        ).map((line) => ({ text: line, font: fonts.regular, size: 9 })),
+        { text: issuer.ein, font: fonts.mono, size: 9 },
+      ].filter((line) => String(line?.text || "").trim());
       const partyLineCount = Math.max(billedToLines.length, billedByLines.length, 1);
       const partyBlockHeight = 52 + partyLineCount * 16;
       page.drawText("Billed to", {
@@ -4563,14 +4593,15 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       });
       let billedByLineY = billedToTop - 50;
       billedByLines.forEach((line) => {
-        const valueFont = line === issuer.email ? fonts.mono : fonts.regular;
-        const valueLines = wrapPdfText(line, valueFont, 9, partyWidth, 1);
+        const valueFont = line.font || fonts.regular;
+        const valueSize = Number(line.size) || 9;
+        const valueLines = wrapPdfText(line.text, valueFont, valueSize, partyWidth, 1);
         if (valueLines[0]) {
           page.drawText(valueLines[0], {
             x: billedByX,
             y: billedByLineY,
             font: valueFont,
-            size: 9,
+            size: valueSize,
             color: colors.muted,
           });
           billedByLineY -= 16;

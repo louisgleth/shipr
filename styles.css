@@ -180,25 +180,6 @@ body.is-auth-view {
   transition: opacity 0.42s var(--ease-out-expo);
 }
 
-.auth-blast-canvas {
-  position: absolute;
-  inset: -8%;
-  width: 116%;
-  height: 116%;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0;
-  transition: opacity 0.42s var(--ease-out-expo);
-}
-
-.auth-gate[data-auth-bg-variant="blast"] .auth-pixel-canvas {
-  opacity: 0;
-}
-
-.auth-gate[data-auth-bg-variant="blast"] .auth-blast-canvas {
-  opacity: 1;
-}
-
 .auth-stack {
   width: min(440px, 100%);
   display: grid;
@@ -7774,6 +7755,15 @@ body.is-auth-view {
   gap: 2px;
   font-size: var(--doc-fs-body);
   color: var(--invoice-muted, var(--muted));
+}
+
+.receipt-address-lines .is-descriptor {
+  font-size: var(--doc-fs-support);
+  color: var(--invoice-muted, var(--muted));
+}
+
+.receipt-address-lines .is-mono {
+  font-family: var(--font-mono);
 }
 
 .receipt-address-meta {
