@@ -146,7 +146,7 @@ const DEFAULT_VAT_RATE = 0;
 const DEFAULT_BILLING_CURRENCY = "EUR";
 const APPROVED_INVOICE_RENDERER_VERSION = "native-html-v1";
 const BILLING_TOPUP_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_IBAN_BENEFICIARY = "Shipide";
+const DEFAULT_IBAN_BENEFICIARY = "Cryvelin LLC";
 const DEFAULT_IBAN = "BE68 5390 0754 7034";
 const DEFAULT_IBAN_BIC = "KREDBEBB";
 const DEFAULT_IBAN_ADDRESS = "";
@@ -4534,15 +4534,14 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
       const billedToTop = cursorY;
       const billedToLines = [
         ...splitInvoiceAddressLines(profile.billingAddress),
-        profile.taxId ? `Tax ID ${profile.taxId}` : "",
+        profile.taxId ? `VAT ${profile.taxId}` : "",
       ].filter(Boolean);
       const billedByLines = [
-        { text: issuer.descriptor, font: fonts.regular, size: 8.5 },
         ...(Array.isArray(issuer.addressLines)
           ? issuer.addressLines
           : splitInvoiceAddressLines(issuer.jurisdiction)
         ).map((line) => ({ text: line, font: fonts.regular, size: 9 })),
-        { text: issuer.ein, font: fonts.mono, size: 9 },
+        { text: issuer.ein, font: fonts.regular, size: 9 },
       ].filter((line) => String(line?.text || "").trim());
       const partyLineCount = Math.max(billedToLines.length, billedByLines.length, 1);
       const partyBlockHeight = 52 + partyLineCount * 16;
@@ -4584,13 +4583,25 @@ async function buildInvoicePdf(invoice = {}, items = [], options = {}) {
         size: 9,
         color: colors.muted,
       });
-      page.drawText(fitPdfText(issuer.legalName, fonts.bold, 13, partyWidth), {
+      const issuerName = String(issuer.legalName || "Cryvelin LLC");
+      page.drawText(fitPdfText(issuerName, fonts.bold, 13, partyWidth), {
         x: billedByX,
         y: billedToTop - 31,
         font: fonts.bold,
         size: 13,
         color: colors.text,
       });
+      const issuerNameWidth = fonts.bold.widthOfTextAtSize(issuerName, 13);
+      const descriptor = String(issuer.descriptor || "").trim();
+      if (descriptor) {
+        page.drawText(fitPdfText(descriptor, fonts.regular, 8.5, Math.max(20, partyWidth - issuerNameWidth - 8)), {
+          x: billedByX + issuerNameWidth + 8,
+          y: billedToTop - 28.5,
+          font: fonts.regular,
+          size: 8.5,
+          color: colors.muted,
+        });
+      }
       let billedByLineY = billedToTop - 50;
       billedByLines.forEach((line) => {
         const valueFont = line.font || fonts.regular;

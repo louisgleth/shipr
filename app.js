@@ -917,7 +917,7 @@ const TRANSLATIONS = {
   "Contact Email": { fr: "E-mail contact", nl: "E-mail contact" },
   "Phone": { fr: "Téléphone", nl: "Telefoon" },
   "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "Identifiant fiscal", nl: "Fiscaal nummer" },
+  "VAT Number": { fr: "Numéro de TVA", nl: "Btw-nummer" },
   "Customer ID": { fr: "ID client", nl: "Klant-ID" },
   "All registration fields are required except Customer ID.": {
     fr: "Tous les champs d’inscription sont requis sauf l’ID client.",
@@ -1337,7 +1337,7 @@ const TRANSLATIONS = {
   "Phone": { fr: "Téléphone", nl: "Telefoon" },
   "Phone Number": { fr: "Numéro de téléphone", nl: "Telefoonnummer" },
   "Billing Address": { fr: "Adresse de facturation", nl: "Factuuradres" },
-  "Tax ID": { fr: "Identifiant fiscal", nl: "Fiscaal nummer" },
+  "VAT Number": { fr: "Numéro de TVA", nl: "Btw-nummer" },
   "Account Manager": { fr: "Account manager", nl: "Accountmanager" },
   "Monthly Invoice Preview": { fr: "Aperçu de facture mensuelle", nl: "Voorbeeld maandfactuur" },
   "Label service": { fr: "Service d’étiquette", nl: "Labelservice" },
@@ -14802,7 +14802,7 @@ function buildDocumentHeaderHtml({
   const profileName = profile?.companyName || "--";
   const clientLines = [
     ...billingAddressLines,
-    profile?.taxId ? `Tax ID ${profile.taxId}` : "",
+    profile?.taxId ? `VAT ${profile.taxId}` : "",
   ].filter(Boolean);
   const issuerLines = [
     { value: issuer?.descriptor || "", className: "is-descriptor" },
@@ -14810,7 +14810,7 @@ function buildDocumentHeaderHtml({
       ? issuer.addressLines
       : splitInvoiceAddressLines(issuer?.jurisdiction || "")
     ).map((line) => ({ value: line, className: "" })),
-    { value: issuer?.ein || "", className: "is-mono" },
+    { value: issuer?.ein || "", className: "" },
   ].filter((line) => String(line?.value || "").trim());
 
   return `
@@ -14847,7 +14847,10 @@ function buildDocumentHeaderHtml({
         <div class="receipt-panel-title">${escapeHtml(partyFromLabel)}</div>
         <div class="receipt-address">
           <div class="receipt-address-block">
-            <span class="receipt-address-name">${escapeHtml(issuer?.legalName || "--")}</span>
+            <span class="receipt-address-name receipt-issuer-name">
+              ${escapeHtml(issuer?.legalName || "--")}
+              ${issuer?.descriptor ? `<span>${escapeHtml(issuer.descriptor)}</span>` : ""}
+            </span>
             <div class="receipt-address-lines">
               ${issuerLines.map((line) => `<span class="${escapeHtml(line.className || "")}">${escapeHtml(line.value)}</span>`).join("")}
             </div>
@@ -23138,7 +23141,7 @@ function getOrderTotals() {
 
 function getIbanInstructionsFromOverview() {
   const fallback = {
-    beneficiary: "Shipide",
+    beneficiary: "Cryvelin LLC",
     iban: "BE68 5390 0754 7034",
     bic: "KREDBEBB",
     address: "",
