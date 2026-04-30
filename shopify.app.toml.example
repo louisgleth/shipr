@@ -7,7 +7,7 @@ application_url = "https://portal.shipide.com"
 embedded = true
 
 [access_scopes]
-scopes = "read_orders,write_orders,read_locations"
+scopes = "read_orders,read_locations"
 
 [auth]
 redirect_urls = ["https://portal.shipide.com/api/shopify/callback"]

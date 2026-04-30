@@ -20,8 +20,7 @@ create policy "label_generations_select_own"
   using (auth.uid() = user_id);
 
 drop policy if exists "label_generations_insert_own" on public.label_generations;
-create policy "label_generations_insert_own"
-  on public.label_generations
-  for insert
-  with check (auth.uid() = user_id);
 
+revoke insert, update, delete on public.label_generations from anon, authenticated;
+grant select on public.label_generations to authenticated;
+grant select, insert, update, delete on public.label_generations to service_role;

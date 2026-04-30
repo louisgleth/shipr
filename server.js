@@ -23,7 +23,7 @@ const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
 const SHOPIFY_API_SECRET = String(process.env.SHOPIFY_API_SECRET || "").trim();
 const SHOPIFY_API_VERSION = String(process.env.SHOPIFY_API_VERSION || "2025-10").trim();
 const SHOPIFY_SCOPES = String(
-  process.env.SHOPIFY_SCOPES || "read_orders,write_orders,read_locations"
+  process.env.SHOPIFY_SCOPES || "read_orders,read_locations"
 )
   .split(",")
   .map((scope) => scope.trim())
@@ -89,6 +89,9 @@ const SUPABASE_PUBLISHABLE_KEY = String(
 ).trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const SHOPIFY_TOKEN_ENCRYPTION_KEY = String(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim();
+const INVOICE_VIEW_LINK_SECRET = String(process.env.INVOICE_VIEW_LINK_SECRET || "").trim();
+const OAUTH_STATE_SECRET = String(process.env.OAUTH_STATE_SECRET || "").trim();
+const CLICKWRAP_PROOF_SECRET = String(process.env.CLICKWRAP_PROOF_SECRET || "").trim();
 const REGISTRATION_INVITES_TABLE = "registration_invites";
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
@@ -292,6 +295,20 @@ const LOCAL_SIGNUP_PREVIEW_INVITE = {
   claimed_at: null,
   revoked_at: null,
 };
+
+function getRuntimeEnvironmentName() {
+  return String(process.env.NODE_ENV || process.env.APP_ENV || "").trim().toLowerCase();
+}
+
+function isProductionRuntime() {
+  const environment = getRuntimeEnvironmentName();
+  return environment === "production" || environment === "prod";
+}
+
+function isShopifyDevSeedOrdersEnabled() {
+  if (isProductionRuntime()) return false;
+  return /^(1|true|yes)$/i.test(String(process.env.ENABLE_SHOPIFY_DEV_SEED_ORDERS || "").trim());
+}
 const LOCAL_SIGNUP_PREVIEW_CONTRACT = {
   id: "local-signup-preview-contract",
   version: "v2.0",
@@ -442,18 +459,16 @@ function getPublicAppUrl(req = null) {
   return DEFAULT_PUBLIC_APP_URL;
 }
 
-function getInvoiceViewLinkSecret() {
-  const secret = String(
-    process.env.INVOICE_VIEW_LINK_SECRET
-      || SHOPIFY_TOKEN_ENCRYPTION_KEY
-      || SHOPIFY_API_SECRET
-      || SUPABASE_SERVICE_ROLE_KEY
-      || ""
-  ).trim();
+function getRequiredSecret(name, value) {
+  const secret = String(value || "").trim();
   if (!secret) {
-    throw new Error("Invoice view link secret is not configured.");
+    throw new Error(`${name} is required.`);
   }
   return secret;
+}
+
+function getInvoiceViewLinkSecret() {
+  return getRequiredSecret("INVOICE_VIEW_LINK_SECRET", INVOICE_VIEW_LINK_SECRET);
 }
 
 function hmacSha256Hex(secret, value) {
@@ -891,13 +906,7 @@ function consumeOauthState(state, shop) {
 }
 
 function getOauthStateSecret() {
-  return String(
-    process.env.OAUTH_STATE_SECRET
-      || SHOPIFY_API_SECRET
-      || SHOPIFY_TOKEN_ENCRYPTION_KEY
-      || SUPABASE_SERVICE_ROLE_KEY
-      || ""
-  ).trim();
+  return getRequiredSecret("OAUTH_STATE_SECRET", OAUTH_STATE_SECRET);
 }
 
 function makeSignedStateToken(payload, ttlMs = OAUTH_STATE_TTL_MS) {
@@ -938,7 +947,7 @@ function parseSignedStateToken(token) {
 }
 
 function getTokenSecretCandidates() {
-  const candidates = [SHOPIFY_TOKEN_ENCRYPTION_KEY, SHOPIFY_API_SECRET]
+  const candidates = [SHOPIFY_TOKEN_ENCRYPTION_KEY]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const unique = [];
@@ -995,7 +1004,7 @@ function encryptToken(plainToken) {
 function decryptToken(token) {
   const raw = String(token || "");
   if (!raw.startsWith("v1:")) {
-    return raw;
+    throw createTokenDecryptError();
   }
   const parts = raw.split(":");
   const candidateKeys = getTokenSecretCandidates().map((secret) =>
@@ -1105,11 +1114,7 @@ function hmacSha256Hex(secret, message) {
 }
 
 function getClickwrapProofSecret() {
-  return (
-    String(SHOPIFY_TOKEN_ENCRYPTION_KEY || "").trim() ||
-    String(SHOPIFY_API_SECRET || "").trim() ||
-    String(SUPABASE_SERVICE_ROLE_KEY || "").trim()
-  );
+  return getRequiredSecret("CLICKWRAP_PROOF_SECRET", CLICKWRAP_PROOF_SECRET);
 }
 
 function parseNumeric(value) {
@@ -2081,7 +2086,7 @@ function buildClickwrapEvidence(req, invite, contract, agreement, createdUserId,
   const payloadCanonical = JSON.stringify(payload);
   const digest = sha256Hex(payloadCanonical);
   const secret = getClickwrapProofSecret();
-  const signature = secret ? hmacSha256Hex(secret, payloadCanonical) : "";
+  const signature = hmacSha256Hex(secret, payloadCanonical);
   return {
     payload,
     digest,
@@ -5500,6 +5505,45 @@ function resolveWalletAccessIssue(details, tableName) {
   return null;
 }
 
+function extractSupabaseErrorMessage(details) {
+  const raw = String(details || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return String(parsed.message || parsed.details || parsed.hint || raw).trim();
+    }
+  } catch (_error) {}
+  return raw;
+}
+
+function resolveWalletRpcIssue(details) {
+  const raw = String(details || "");
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("apply_billing_wallet_transaction") ||
+    lower.includes("schema cache") ||
+    lower.includes("\"code\":\"pgrst202\"") ||
+    lower.includes("\"code\":\"42883\"")
+  ) {
+    if (lower.includes("schema cache") || lower.includes("could not find the function") || lower.includes("42883")) {
+      return {
+        kind: "missing",
+        message:
+          "Wallet transaction RPC missing or stale. Run supabase_wallet_billing.sql, then run: NOTIFY pgrst, 'reload schema';",
+      };
+    }
+  }
+  if (lower.includes("permission denied") || lower.includes("\"code\":\"42501\"")) {
+    return {
+      kind: "permission",
+      message:
+        "Wallet transaction RPC access denied. Grant execute to service_role, then run: NOTIFY pgrst, 'reload schema';",
+    };
+  }
+  return null;
+}
+
 function resolveWiseStorageIssue(details, tableName) {
   const raw = String(details || "");
   const lower = raw.toLowerCase();
@@ -5954,23 +5998,87 @@ async function updateBillingTopupFields(topupId, patch = {}) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function saveWalletTransaction(payload) {
-  const response = await supabaseServiceRequest(`/rest/v1/${BILLING_WALLET_TRANSACTIONS_TABLE}`, {
+function mapBillingWalletRpcResult(row, fallback = {}) {
+  const safeUserId = String(row?.wallet_user_id || fallback.userId || "").trim();
+  const balanceCents = Number(row?.wallet_balance_cents);
+  const amountCents = Number(fallback.amountCents) || 0;
+  const transactionReference = String(row?.transaction_reference || fallback.reference || "").trim();
+  return {
+    wallet: {
+      user_id: safeUserId,
+      balance_cents: Number.isFinite(balanceCents) ? balanceCents : 0,
+      currency: String(row?.wallet_currency || fallback.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+      updated_at: row?.wallet_updated_at || null,
+    },
+    transaction: {
+      id: row?.transaction_id || null,
+      user_id: safeUserId,
+      source: String(fallback.source || "").trim(),
+      amount_cents: amountCents,
+      balance_after_cents: Number.isFinite(balanceCents) ? balanceCents : 0,
+      reference: transactionReference || null,
+      metadata: fallback.metadata && typeof fallback.metadata === "object" ? fallback.metadata : {},
+    },
+    transaction_reference: transactionReference,
+  };
+}
+
+async function applyBillingWalletTransaction({
+  userId,
+  amountCents,
+  source,
+  reference = null,
+  metadata = {},
+  currency = DEFAULT_BILLING_CURRENCY,
+} = {}) {
+  const safeUserId = String(userId || "").trim();
+  const safeSource = String(source || "").trim();
+  const safeAmountCents = Number(amountCents);
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  if (!Number.isFinite(safeAmountCents) || safeAmountCents === 0) {
+    throw new Error("A non-zero wallet transaction amount is required.");
+  }
+  if (!safeSource) {
+    throw new Error("Wallet transaction source is required.");
+  }
+
+  const response = await supabaseServiceRequest("/rest/v1/rpc/apply_billing_wallet_transaction", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Prefer: "return=representation",
     },
-    body: JSON.stringify([payload]),
+    body: JSON.stringify({
+      p_user_id: safeUserId,
+      p_amount_cents: Math.trunc(safeAmountCents),
+      p_source: safeSource,
+      p_reference: String(reference || "").trim() || null,
+      p_metadata: metadata && typeof metadata === "object" ? metadata : {},
+      p_currency: String(currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+    }),
   });
+
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TRANSACTIONS_TABLE);
-    if (walletIssue) throw new Error(walletIssue.message);
-    throw new Error(`Could not save wallet transaction (${response.status}) ${details}`.trim());
+    const rpcIssue = resolveWalletRpcIssue(details);
+    if (rpcIssue) throw new Error(rpcIssue.message);
+    throw new Error(extractSupabaseErrorMessage(details) || `Could not apply wallet transaction (${response.status}).`);
   }
+
   const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length ? rows[0] : payload;
+  const row = Array.isArray(rows) && rows.length ? rows[0] : rows && typeof rows === "object" ? rows : null;
+  if (!row) {
+    throw new Error("Wallet transaction did not return a result.");
+  }
+  return mapBillingWalletRpcResult(row, {
+    userId: safeUserId,
+    amountCents: Math.trunc(safeAmountCents),
+    source: safeSource,
+    reference,
+    metadata,
+    currency,
+  });
 }
 
 async function debitWalletForCheckout(user, amountEur, metadata = {}) {
@@ -5982,56 +6090,113 @@ async function debitWalletForCheckout(user, amountEur, metadata = {}) {
   if (!Number.isFinite(debitCents) || debitCents <= 0) {
     throw new Error("Invalid checkout amount.");
   }
-  const wallet = await getOrCreateBillingWallet(userId);
-  const currentBalanceCents = Number(wallet?.balance_cents) || 0;
-  if (currentBalanceCents < debitCents) {
-    const missing = fromCents(debitCents - currentBalanceCents).toFixed(2);
-    throw new Error(`Insufficient wallet balance. Add at least €${missing} by bank transfer.`);
-  }
-  const nextBalanceCents = Math.max(0, currentBalanceCents - debitCents);
-  const updateResponse = await supabaseServiceRequest(
-    `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(userId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        balance_cents: nextBalanceCents,
-        updated_at: new Date().toISOString(),
-      }),
-    }
-  );
-  if (!updateResponse.ok) {
-    const details = await updateResponse.text().catch(() => "");
-    throw new Error(`Could not update wallet balance (${updateResponse.status}) ${details}`.trim());
-  }
-  const updatedRows = await updateResponse.json().catch(() => []);
-  const updatedWallet =
-    Array.isArray(updatedRows) && updatedRows.length
-      ? updatedRows[0]
-      : {
-          user_id: userId,
-          balance_cents: nextBalanceCents,
-          currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
-        };
   const reference = buildTopupReference(userId);
-  await saveWalletTransaction({
-    user_id: userId,
-    source: "label_checkout",
-    amount_cents: -debitCents,
-    balance_after_cents: nextBalanceCents,
-    reference,
-    metadata: {
-      checkout: metadata && typeof metadata === "object" ? metadata : {},
-      actor: normalizeEmail(user?.email || "") || userId,
-    },
-  });
+  try {
+    return await applyBillingWalletTransaction({
+      userId,
+      amountCents: -debitCents,
+      source: "label_checkout",
+      reference,
+      metadata: {
+        checkout: metadata && typeof metadata === "object" ? metadata : {},
+        actor: normalizeEmail(user?.email || "") || userId,
+      },
+      currency: DEFAULT_BILLING_CURRENCY,
+    });
+  } catch (error) {
+    if (/insufficient wallet balance/i.test(String(error?.message || ""))) {
+      const wallet = await getOrCreateBillingWallet(userId).catch(() => null);
+      const currentBalanceCents = Number(wallet?.balance_cents) || 0;
+      const missing = fromCents(Math.max(0, debitCents - currentBalanceCents)).toFixed(2);
+      throw new Error(`Insufficient wallet balance. Add at least €${missing} by bank transfer.`);
+    }
+    throw error;
+  }
+}
+
+function normalizeGenerationHistoryInput(user, body = {}) {
+  const userId = String(user?.id || "").trim();
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const serviceType = String(body?.service_type || body?.serviceType || "").trim();
+  if (!serviceType || serviceType.length > 120) {
+    throw new Error("A valid service type is required.");
+  }
+  const quantity = Number(body?.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 10000) {
+    throw new Error("A valid generation quantity is required.");
+  }
+  const totalPrice = Number(body?.total_price ?? body?.totalPrice);
+  if (!Number.isFinite(totalPrice) || totalPrice < 0 || totalPrice > 1000000) {
+    throw new Error("A valid generation total is required.");
+  }
+  const payload = body?.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("A valid generation payload is required.");
+  }
   return {
-    wallet: updatedWallet,
-    transaction_reference: reference,
+    user_id: userId,
+    service_type: serviceType,
+    quantity,
+    total_price: Math.round(totalPrice * 100) / 100,
+    payload,
   };
+}
+
+async function createGenerationHistoryRecord(user, body = {}) {
+  const record = normalizeGenerationHistoryInput(user, body);
+  const response = await supabaseServiceRequest(`/rest/v1/${HISTORY_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([record]),
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(
+      extractSupabaseErrorMessage(details) || `Could not save generation history (${response.status}).`
+    );
+  }
+
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length
+    ? rows[0]
+    : {
+        id: null,
+        created_at: new Date().toISOString(),
+        service_type: record.service_type,
+        quantity: record.quantity,
+        total_price: record.total_price,
+        payload: record.payload,
+      };
+}
+
+async function handleLabelGenerationCreate(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+  try {
+    const generation = await createGenerationHistoryRecord(user, body);
+    sendJson(res, 200, {
+      ok: true,
+      generation,
+    });
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Could not save generation history." });
+  }
 }
 
 function mapBillingOverviewInvoiceRow(invoice) {
@@ -11558,6 +11723,9 @@ function assertShopifyAppConfig() {
   if (!SHOPIFY_SCOPES.length) {
     throw new Error("SHOPIFY_SCOPES must include at least one scope.");
   }
+  if (!OAUTH_STATE_SECRET || !SHOPIFY_TOKEN_ENCRYPTION_KEY) {
+    throw new Error("OAUTH_STATE_SECRET and SHOPIFY_TOKEN_ENCRYPTION_KEY are required.");
+  }
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
       "SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and SUPABASE_SERVICE_ROLE_KEY are required."
@@ -14984,6 +15152,14 @@ async function handleShopifyDevSeedOrders(req, res) {
     sendJson(res, 401, { error: "Authentication required." });
     return;
   }
+  if (!isShopifyDevSeedOrdersEnabled()) {
+    sendJson(res, 404, { error: "API route not found." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "Admin access required." });
+    return;
+  }
 
   let body = {};
   try {
@@ -15367,6 +15543,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/billing/checkout" && req.method === "POST") {
     await handleBillingCheckout(req, res);
+    return true;
+  }
+  if (pathname === "/api/label-generations" && req.method === "POST") {
+    await handleLabelGenerationCreate(req, res);
     return true;
   }
   if (pathname === "/api/documents-preview/send-test-email" && req.method === "POST") {

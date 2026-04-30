@@ -21,14 +21,15 @@ create index if not exists provider_connections_user_provider_idx
 alter table public.provider_connections enable row level security;
 
 drop policy if exists "provider_connections_insert_own" on public.provider_connections;
-create policy "provider_connections_insert_own"
-  on public.provider_connections
-  for insert
-  with check (auth.uid() = user_id);
 
 drop policy if exists "provider_connections_update_own" on public.provider_connections;
-create policy "provider_connections_update_own"
-  on public.provider_connections
-  for update
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+
+alter table public.provider_connections
+  drop constraint if exists provider_connections_access_token_encrypted_check;
+
+alter table public.provider_connections
+  add constraint provider_connections_access_token_encrypted_check
+  check (access_token like 'v1:%') not valid;
+
+revoke insert, update, delete on public.provider_connections from anon, authenticated;
+grant select, insert, update, delete on public.provider_connections to service_role;

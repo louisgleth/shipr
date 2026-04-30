@@ -10297,44 +10297,6 @@ async function importWooCommerceOrders(
   }
 }
 
-async function seedShopifyDevOrders(count = 10, shop = shopifyConnection?.shop) {
-  const normalizedShop = normalizeShopDomain(shop);
-  if (!normalizedShop) {
-    throw new Error(tr("Connect Shopify before importing."));
-  }
-
-  const safeCount = Number.isFinite(Number(count))
-    ? Math.max(1, Math.min(25, Math.trunc(Number(count))))
-    : 10;
-
-  setProviderStatus(`Creating ${safeCount} bogus Shopify orders in ${normalizedShop}...`, {
-    persist: true,
-  });
-  const data = await fetchApiWithAuth("/api/shopify/dev-seed-orders", {
-    method: "POST",
-    body: JSON.stringify({
-      shop: normalizedShop,
-      count: safeCount,
-    }),
-  });
-  setProviderStatus(`Created ${Number(data?.count || 0)} bogus Shopify orders in ${normalizedShop}.`, {
-    kind: "success",
-  });
-  return data;
-}
-
-if (typeof window !== "undefined") {
-  window.__shipideSeedShopifyOrders = async (count = 10) => {
-    try {
-      return await seedShopifyDevOrders(count);
-    } catch (error) {
-      const message = String(error?.message || "Shopify bogus order creation failed.");
-      setProviderStatus(message, { kind: "error" });
-      throw error;
-    }
-  };
-}
-
 async function handleWixProviderAction() {
   if (!currentUser) {
     setProviderStatus(tr("Sign in before connecting Wix."), { kind: "error" });
@@ -14108,31 +14070,28 @@ async function persistGenerationHistory() {
     return;
   }
 
-  if (supabaseClient && currentUser?.id) {
-    const { data, error } = await supabaseClient
-      .from(HISTORY_TABLE)
-      .insert({
-        user_id: currentUser.id,
-        service_type: record.service_type,
-        quantity: record.quantity,
-        total_price: record.total_price,
-        payload: record.payload,
-      })
-      .select("id, created_at, service_type, quantity, total_price, payload")
-      .single();
-
-    if (!error && data) {
-      historyStore = "supabase";
-      historyRecords = [data, ...historyRecords].slice(0, HISTORY_LIMIT);
-      saveServerHistoryCache(currentUser.id, historyRecords);
-      setAccountHistoryStatus("");
-      renderAccountHistoryList();
-      refreshReportsIfVisible();
-      loadBillingOverview({ quiet: true });
-      return;
+  if (currentUser?.id) {
+    try {
+      const response = await fetchApiWithAuth("/api/label-generations", {
+        method: "POST",
+        body: JSON.stringify(record),
+        timeoutMs: 15000,
+      });
+      const data = response?.generation || response;
+      if (data?.id) {
+        historyStore = "supabase";
+        historyRecords = [data, ...historyRecords].slice(0, HISTORY_LIMIT);
+        saveServerHistoryCache(currentUser.id, historyRecords);
+        setAccountHistoryStatus("");
+        renderAccountHistoryList();
+        refreshReportsIfVisible();
+        loadBillingOverview({ quiet: true });
+        return;
+      }
+      throw new Error(tr("History save returned no record."));
+    } catch (error) {
+      console.warn("History insert failed; saving this generation locally.", error);
     }
-
-    console.warn("History insert failed; saving this generation locally.", error);
     historyStore = "local";
     setAccountHistoryStatus("");
   }

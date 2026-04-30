@@ -4,7 +4,7 @@ import puppeteer from "@cloudflare/puppeteer";
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_SHOPIFY_SCOPES = "read_orders,write_orders,read_locations";
+const DEFAULT_SHOPIFY_SCOPES = "read_orders,read_locations";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
 const DEFAULT_WOOCOMMERCE_APP_NAME = "Shipide";
 const DEFAULT_WIX_APP_INSTALL_URL = "";
@@ -479,6 +479,9 @@ export default {
       }
       if (pathname === "/api/billing/checkout" && request.method === "POST") {
         return handleBillingCheckout(request, env);
+      }
+      if (pathname === "/api/label-generations" && request.method === "POST") {
+        return handleLabelGenerationCreate(request, env);
       }
       if (pathname === "/invoice-view" && request.method === "GET") {
         return handleInvoicePdfView(request, env, url);
@@ -1108,9 +1111,34 @@ function getShopifyScopes(env) {
     .filter(Boolean);
 }
 
+function getRequiredSecret(env, name) {
+  const secret = String(env?.[name] || "").trim();
+  if (!secret) {
+    throw new Error(`${name} is required.`);
+  }
+  return secret;
+}
+
+function getRuntimeEnvironmentName(env) {
+  return String(env?.NODE_ENV || env?.APP_ENV || env?.ENVIRONMENT || "").trim().toLowerCase();
+}
+
+function isProductionRuntime(env) {
+  const environment = getRuntimeEnvironmentName(env);
+  return environment === "production" || environment === "prod";
+}
+
+function isShopifyDevSeedOrdersEnabled(env) {
+  if (isProductionRuntime(env)) return false;
+  return /^(1|true|yes)$/i.test(String(env?.ENABLE_SHOPIFY_DEV_SEED_ORDERS || "").trim());
+}
+
 function assertConfig(env) {
   if (!env.SHOPIFY_API_KEY || !env.SHOPIFY_API_SECRET) {
     throw new Error("SHOPIFY_API_KEY and SHOPIFY_API_SECRET are required.");
+  }
+  if (!env.OAUTH_STATE_SECRET || !env.SHOPIFY_TOKEN_ENCRYPTION_KEY) {
+    throw new Error("OAUTH_STATE_SECRET and SHOPIFY_TOKEN_ENCRYPTION_KEY are required.");
   }
   if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
@@ -1268,15 +1296,19 @@ async function verifyWiseWebhookSignature(env, rawBody, receivedSignature) {
 }
 
 function getStateSecret(env) {
-  const secret = String(env.OAUTH_STATE_SECRET || env.SHOPIFY_API_SECRET || "").trim();
-  if (!secret) {
-    throw new Error("OAUTH_STATE_SECRET is required.");
-  }
-  return secret;
+  return getRequiredSecret(env, "OAUTH_STATE_SECRET");
+}
+
+function getInvoiceViewLinkSecret(env) {
+  return getRequiredSecret(env, "INVOICE_VIEW_LINK_SECRET");
+}
+
+function getClickwrapProofSecret(env) {
+  return getRequiredSecret(env, "CLICKWRAP_PROOF_SECRET");
 }
 
 function getTokenSecretCandidates(env) {
-  const candidates = [env.SHOPIFY_TOKEN_ENCRYPTION_KEY, env.SHOPIFY_API_SECRET]
+  const candidates = [env.SHOPIFY_TOKEN_ENCRYPTION_KEY]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const unique = [];
@@ -1413,7 +1445,7 @@ async function parseStateToken(env, token) {
   return payload;
 }
 
-async function makeSignedPayloadToken(env, payload, ttlMs = OAUTH_STATE_TTL_MS) {
+async function makeSignedPayloadToken(env, payload, ttlMs = OAUTH_STATE_TTL_MS, secret = getStateSecret(env)) {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   const tokenPayload = {
@@ -1422,16 +1454,16 @@ async function makeSignedPayloadToken(env, payload, ttlMs = OAUTH_STATE_TTL_MS) 
     exp: Date.now() + Math.max(60 * 1000, Number(ttlMs) || OAUTH_STATE_TTL_MS),
   };
   const encoded = toBase64Url(textEncoder.encode(JSON.stringify(tokenPayload)));
-  const signature = await hmacSha256Hex(getStateSecret(env), encoded);
+  const signature = await hmacSha256Hex(secret, encoded);
   return `${encoded}.${signature}`;
 }
 
-async function parseSignedPayloadToken(env, token) {
+async function parseSignedPayloadToken(env, token, secret = getStateSecret(env)) {
   const parts = String(token || "").split(".");
   if (parts.length !== 2) return null;
   const [encoded, signature] = parts;
   if (!encoded || !signature) return null;
-  const expected = await hmacSha256Hex(getStateSecret(env), encoded);
+  const expected = await hmacSha256Hex(secret, encoded);
   if (!timingSafeEqual(signature, expected)) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encoded)));
@@ -1453,7 +1485,8 @@ async function buildInvoiceViewUrl(env, invoice, reminderStage, options = {}) {
       invoiceId,
       stage: normalizeInvoicePdfVariantStage(reminderStage),
     },
-    DEFAULT_INVOICE_VIEW_LINK_TTL_MS
+    DEFAULT_INVOICE_VIEW_LINK_TTL_MS,
+    getInvoiceViewLinkSecret(env)
   );
   const publicAppUrl =
     String(options?.publicAppUrl || "").trim().replace(/\/+$/, "")
@@ -1514,7 +1547,7 @@ async function encryptToken(env, token) {
 
 async function decryptToken(env, token) {
   const raw = String(token || "");
-  if (!raw.startsWith("v1:")) return raw;
+  if (!raw.startsWith("v1:")) throw createTokenDecryptError();
   const parts = raw.split(":");
   const secrets = getTokenSecretCandidates(env);
 
@@ -2005,7 +2038,7 @@ async function buildClickwrapEvidence(
   }
   const payloadCanonical = JSON.stringify(payload);
   const digest = await sha256Hex(payloadCanonical);
-  const signature = await hmacSha256Hex(getStateSecret(env), payloadCanonical);
+  const signature = await hmacSha256Hex(getClickwrapProofSecret(env), payloadCanonical);
   return {
     payload,
     digest,
@@ -2896,7 +2929,11 @@ async function loadQueuedDocumentArtifact(env, kind, hash, filename = "document.
 }
 
 async function handleInvoicePdfView(request, env, url) {
-  const payload = await parseSignedPayloadToken(env, url.searchParams.get("token"));
+  const payload = await parseSignedPayloadToken(
+    env,
+    url.searchParams.get("token"),
+    getInvoiceViewLinkSecret(env)
+  );
   if (!payload || payload.type !== "invoice_view") {
     return new Response("Invoice not found.", {
       status: 404,
@@ -3614,7 +3651,8 @@ async function buildClickwrapPreviewPublicContract(env, previewPayload) {
       pdfSha256: String(previewPayload?.pdfSha256 || "").trim().toLowerCase(),
       downloadName: String(previewPayload?.downloadName || "").trim(),
     },
-    CLICKWRAP_PREVIEW_TTL_MS
+    CLICKWRAP_PREVIEW_TTL_MS,
+    getClickwrapProofSecret(env)
   );
   return {
     ...mapClickwrapContractToPublic(contract),
@@ -4091,6 +4129,45 @@ function resolveWalletAccessIssue(details, tableName) {
   return null;
 }
 
+function extractSupabaseErrorMessage(details) {
+  const raw = String(details || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return String(parsed.message || parsed.details || parsed.hint || raw).trim();
+    }
+  } catch (_error) {}
+  return raw;
+}
+
+function resolveWalletRpcIssue(details) {
+  const raw = String(details || "");
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("apply_billing_wallet_transaction") ||
+    lower.includes("schema cache") ||
+    lower.includes("\"code\":\"pgrst202\"") ||
+    lower.includes("\"code\":\"42883\"")
+  ) {
+    if (lower.includes("schema cache") || lower.includes("could not find the function") || lower.includes("42883")) {
+      return {
+        kind: "missing",
+        message:
+          "Wallet transaction RPC missing or stale. Run supabase_wallet_billing.sql, then run: NOTIFY pgrst, 'reload schema';",
+      };
+    }
+  }
+  if (lower.includes("permission denied") || lower.includes("\"code\":\"42501\"")) {
+    return {
+      kind: "permission",
+      message:
+        "Wallet transaction RPC access denied. Grant execute to service_role, then run: NOTIFY pgrst, 'reload schema';",
+    };
+  }
+  return null;
+}
+
 function normalizeTopupStatus(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (["pending", "received", "credited", "cancelled", "failed"].includes(normalized)) {
@@ -4518,27 +4595,94 @@ async function updateBillingTopupFields(env, topupId, patch = {}) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function saveWalletTransaction(env, payload) {
+function mapBillingWalletRpcResult(row, fallback = {}) {
+  const safeUserId = String(row?.wallet_user_id || fallback.userId || "").trim();
+  const balanceCents = Number(row?.wallet_balance_cents);
+  const amountCents = Number(fallback.amountCents) || 0;
+  const transactionReference = String(row?.transaction_reference || fallback.reference || "").trim();
+  return {
+    wallet: {
+      user_id: safeUserId,
+      balance_cents: Number.isFinite(balanceCents) ? balanceCents : 0,
+      currency: String(row?.wallet_currency || fallback.currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+      updated_at: row?.wallet_updated_at || null,
+    },
+    transaction: {
+      id: row?.transaction_id || null,
+      user_id: safeUserId,
+      source: String(fallback.source || "").trim(),
+      amount_cents: amountCents,
+      balance_after_cents: Number.isFinite(balanceCents) ? balanceCents : 0,
+      reference: transactionReference || null,
+      metadata: fallback.metadata && typeof fallback.metadata === "object" ? fallback.metadata : {},
+    },
+    transaction_reference: transactionReference,
+  };
+}
+
+async function applyBillingWalletTransaction(
+  env,
+  {
+    userId,
+    amountCents,
+    source,
+    reference = null,
+    metadata = {},
+    currency = DEFAULT_BILLING_CURRENCY,
+  } = {}
+) {
+  const safeUserId = String(userId || "").trim();
+  const safeSource = String(source || "").trim();
+  const safeAmountCents = Number(amountCents);
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  if (!Number.isFinite(safeAmountCents) || safeAmountCents === 0) {
+    throw new Error("A non-zero wallet transaction amount is required.");
+  }
+  if (!safeSource) {
+    throw new Error("Wallet transaction source is required.");
+  }
+
   const response = await supabaseServiceRequest(
     env,
-    `/rest/v1/${BILLING_WALLET_TRANSACTIONS_TABLE}`,
+    "/rest/v1/rpc/apply_billing_wallet_transaction",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Prefer: "return=representation",
       },
-      body: JSON.stringify([payload]),
+      body: JSON.stringify({
+        p_user_id: safeUserId,
+        p_amount_cents: Math.trunc(safeAmountCents),
+        p_source: safeSource,
+        p_reference: String(reference || "").trim() || null,
+        p_metadata: metadata && typeof metadata === "object" ? metadata : {},
+        p_currency: String(currency || DEFAULT_BILLING_CURRENCY).trim() || DEFAULT_BILLING_CURRENCY,
+      }),
     }
   );
+
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TRANSACTIONS_TABLE);
-    if (walletIssue) throw new Error(walletIssue.message);
-    throw new Error(`Could not save wallet transaction (${response.status}) ${details}`.trim());
+    const rpcIssue = resolveWalletRpcIssue(details);
+    if (rpcIssue) throw new Error(rpcIssue.message);
+    throw new Error(extractSupabaseErrorMessage(details) || `Could not apply wallet transaction (${response.status}).`);
   }
+
   const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length ? rows[0] : payload;
+  const row = Array.isArray(rows) && rows.length ? rows[0] : rows && typeof rows === "object" ? rows : null;
+  if (!row) {
+    throw new Error("Wallet transaction did not return a result.");
+  }
+  return mapBillingWalletRpcResult(row, {
+    userId: safeUserId,
+    amountCents: Math.trunc(safeAmountCents),
+    source: safeSource,
+    reference,
+    metadata,
+    currency,
+  });
 }
 
 async function debitWalletForCheckout(env, user, amountEur, metadata = {}) {
@@ -4550,57 +4694,28 @@ async function debitWalletForCheckout(env, user, amountEur, metadata = {}) {
   if (!Number.isFinite(debitCents) || debitCents <= 0) {
     throw new Error("Invalid checkout amount.");
   }
-  const wallet = await getOrCreateBillingWallet(env, userId);
-  const currentBalanceCents = Number(wallet?.balance_cents) || 0;
-  if (currentBalanceCents < debitCents) {
-    const missing = fromCents(debitCents - currentBalanceCents).toFixed(2);
-    throw new Error(`Insufficient wallet balance. Add at least €${missing} by bank transfer.`);
-  }
-  const nextBalanceCents = Math.max(0, currentBalanceCents - debitCents);
-  const updateResponse = await supabaseServiceRequest(
-    env,
-    `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(userId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        balance_cents: nextBalanceCents,
-        updated_at: new Date().toISOString(),
-      }),
-    }
-  );
-  if (!updateResponse.ok) {
-    const details = await updateResponse.text().catch(() => "");
-    throw new Error(`Could not update wallet balance (${updateResponse.status}) ${details}`.trim());
-  }
-  const updatedRows = await updateResponse.json().catch(() => []);
-  const updatedWallet =
-    Array.isArray(updatedRows) && updatedRows.length
-      ? updatedRows[0]
-      : {
-          user_id: userId,
-          balance_cents: nextBalanceCents,
-          currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
-        };
   const reference = buildTopupReference(userId);
-  await saveWalletTransaction(env, {
-    user_id: userId,
-    source: "label_checkout",
-    amount_cents: -debitCents,
-    balance_after_cents: nextBalanceCents,
-    reference,
-    metadata: {
-      checkout: metadata && typeof metadata === "object" ? metadata : {},
-      actor: normalizeEmail(user?.email || "") || userId,
-    },
-  });
-  return {
-    wallet: updatedWallet,
-    transaction_reference: reference,
-  };
+  try {
+    return await applyBillingWalletTransaction(env, {
+      userId,
+      amountCents: -debitCents,
+      source: "label_checkout",
+      reference,
+      metadata: {
+        checkout: metadata && typeof metadata === "object" ? metadata : {},
+        actor: normalizeEmail(user?.email || "") || userId,
+      },
+      currency: DEFAULT_BILLING_CURRENCY,
+    });
+  } catch (error) {
+    if (/insufficient wallet balance/i.test(String(error?.message || ""))) {
+      const wallet = await getOrCreateBillingWallet(env, userId).catch(() => null);
+      const currentBalanceCents = Number(wallet?.balance_cents) || 0;
+      const missing = fromCents(Math.max(0, debitCents - currentBalanceCents)).toFixed(2);
+      throw new Error(`Insufficient wallet balance. Add at least €${missing} by bank transfer.`);
+    }
+    throw error;
+  }
 }
 
 async function adjustBillingWalletManually(
@@ -4630,52 +4745,13 @@ async function adjustBillingWalletManually(
   const normalizedDirection = String(direction || "credit").trim().toLowerCase() === "debit"
     ? "debit"
     : "credit";
-  const wallet = await getOrCreateBillingWallet(env, safeUserId);
-  const currentBalanceCents = Math.max(0, Number(wallet?.balance_cents) || 0);
-  if (normalizedDirection === "debit" && adjustmentCents > currentBalanceCents) {
-    throw new Error("Cannot subtract more than the current balance.");
-  }
   const signedAmountCents = normalizedDirection === "debit" ? -adjustmentCents : adjustmentCents;
-  const nextBalanceCents = currentBalanceCents + signedAmountCents;
-  const updatedAt = new Date().toISOString();
-  const updateResponse = await supabaseServiceRequest(
-    env,
-    `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(safeUserId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        balance_cents: nextBalanceCents,
-        updated_at: updatedAt,
-      }),
-    }
-  );
-  if (!updateResponse.ok) {
-    const details = await updateResponse.text().catch(() => "");
-    const walletIssue = resolveWalletAccessIssue(details, BILLING_WALLET_TABLE);
-    if (walletIssue) throw new Error(walletIssue.message);
-    throw new Error(`Could not update wallet balance (${updateResponse.status}) ${details}`.trim());
-  }
-  const updatedRows = await updateResponse.json().catch(() => []);
-  const updatedWallet =
-    Array.isArray(updatedRows) && updatedRows.length
-      ? updatedRows[0]
-      : {
-          user_id: safeUserId,
-          balance_cents: nextBalanceCents,
-          currency: wallet?.currency || DEFAULT_BILLING_CURRENCY,
-          updated_at: updatedAt,
-        };
   const reference = buildWalletManualAdjustmentReference(safeUserId, normalizedDirection);
   try {
-    const transaction = await saveWalletTransaction(env, {
-      user_id: safeUserId,
+    const result = await applyBillingWalletTransaction(env, {
+      userId: safeUserId,
+      amountCents: signedAmountCents,
       source: normalizedDirection === "debit" ? "manual_debit" : "manual_credit",
-      amount_cents: signedAmountCents,
-      balance_after_cents: nextBalanceCents,
       reference,
       metadata: {
         actor: String(actor || "admin").trim() || "admin",
@@ -4686,26 +4762,98 @@ async function adjustBillingWalletManually(
       },
     });
     return {
-      wallet: updatedWallet,
-      transaction,
+      wallet: result.wallet,
+      transaction: result.transaction,
       reference,
     };
   } catch (error) {
-    await supabaseServiceRequest(
-      env,
-      `/rest/v1/${BILLING_WALLET_TABLE}?user_id=eq.${encodeURIComponent(safeUserId)}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          balance_cents: currentBalanceCents,
-          updated_at: new Date().toISOString(),
-        }),
-      }
-    ).catch(() => {});
+    if (/insufficient wallet balance/i.test(String(error?.message || ""))) {
+      throw new Error("Cannot subtract more than the current balance.");
+    }
     throw error;
+  }
+}
+
+function normalizeGenerationHistoryInput(user, body = {}) {
+  const userId = String(user?.id || "").trim();
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  const serviceType = String(body?.service_type || body?.serviceType || "").trim();
+  if (!serviceType || serviceType.length > 120) {
+    throw new Error("A valid service type is required.");
+  }
+  const quantity = Number(body?.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 10000) {
+    throw new Error("A valid generation quantity is required.");
+  }
+  const totalPrice = Number(body?.total_price ?? body?.totalPrice);
+  if (!Number.isFinite(totalPrice) || totalPrice < 0 || totalPrice > 1000000) {
+    throw new Error("A valid generation total is required.");
+  }
+  const payload = body?.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("A valid generation payload is required.");
+  }
+  return {
+    user_id: userId,
+    service_type: serviceType,
+    quantity,
+    total_price: Math.round(totalPrice * 100) / 100,
+    payload,
+  };
+}
+
+async function createGenerationHistoryRecord(env, user, body = {}) {
+  const record = normalizeGenerationHistoryInput(user, body);
+  const response = await supabaseServiceRequest(env, `/rest/v1/${HISTORY_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([record]),
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(
+      extractSupabaseErrorMessage(details) || `Could not save generation history (${response.status}).`
+    );
+  }
+
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length
+    ? rows[0]
+    : {
+        id: null,
+        created_at: new Date().toISOString(),
+        service_type: record.service_type,
+        quantity: record.quantity,
+        total_price: record.total_price,
+        payload: record.payload,
+      };
+}
+
+async function handleLabelGenerationCreate(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+  try {
+    const generation = await createGenerationHistoryRecord(env, user, body);
+    return jsonResponse({
+      ok: true,
+      generation,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not save generation history." }, 400);
   }
 }
 
@@ -16544,7 +16692,11 @@ async function handleRegisterContractPreviewFile(request, env, url) {
   if (!previewToken) {
     return jsonResponse({ error: "Agreement preview token required." }, 400);
   }
-  const previewPayload = await parseSignedPayloadToken(env, previewToken);
+  const previewPayload = await parseSignedPayloadToken(
+    env,
+    previewToken,
+    getClickwrapProofSecret(env)
+  );
   if (!previewPayload || previewPayload.type !== "clickwrap-preview") {
     return jsonResponse({ error: "Agreement preview not found or expired." }, 404);
   }
@@ -16616,7 +16768,7 @@ async function handleRegisterWithInvite(request, env) {
   let createdUser = null;
   try {
     const previewPayload = agreement?.previewToken
-      ? await parseSignedPayloadToken(env, agreement.previewToken)
+      ? await parseSignedPayloadToken(env, agreement.previewToken, getClickwrapProofSecret(env))
       : null;
     const activeContract = await getActiveClickwrapContract(env);
     const contract =
@@ -18272,6 +18424,12 @@ async function handleImportOrders(request, env) {
 async function handleDevSeedOrders(request, env) {
   try {
     const user = await requireAuthUser(env, request);
+    if (!isShopifyDevSeedOrdersEnabled(env)) {
+      return jsonResponse({ error: "API route not found." }, 404);
+    }
+    if (!canManageRegistrationInvites(user, env)) {
+      return jsonResponse({ error: "Admin access required." }, 403);
+    }
     const body = await readJsonBody(request);
     const shop = normalizeShopDomain(body?.shop);
     const countRaw = Number(body?.count);
