@@ -5412,7 +5412,7 @@ function buildTopupInvoiceItems(topup = {}) {
   const amount = fromCents(Math.max(0, Number(topup?.amount_cents) || 0));
   return [
     {
-      service_type: "Account balance top-up",
+      service_type: "Prepaid Credit for Shipping Labels",
       quantity: 1,
       amount_ex_vat: amount,
       vat_amount: 0,
@@ -6850,7 +6850,7 @@ function invoiceRequiresManualSettlement(invoice = {}) {
 }
 
 function formatInvoicePaymentModeLabel(invoice = {}) {
-  if (isTopupBillingInvoice(invoice)) return "Account balance top-up";
+  if (isTopupBillingInvoice(invoice)) return "Prepaid Credit for Shipping Labels";
   const mode = String(invoice?.payment_mode || "invoice").trim().toLowerCase();
   if (mode === "invoice") return "Monthly billing";
   return "Account balance";
@@ -15071,7 +15071,7 @@ function buildAdminTopupBillingTestInvoice(toEmail) {
     },
     items: [
       {
-        service_type: "Account balance top-up",
+        service_type: "Prepaid Credit for Shipping Labels",
         quantity: 1,
         amount_ex_vat: 5,
         amount_inc_vat: 5,

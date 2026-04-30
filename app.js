@@ -14591,7 +14591,7 @@ function buildInvoiceServiceRowsFromBillingItems(items = [], invoice = {}) {
     ? items
     : [
         {
-          service_type: invoiceKind === "topup" ? "Account balance top-up" : "Shipping labels",
+          service_type: invoiceKind === "topup" ? "Prepaid Credit for Shipping Labels" : "Shipping labels",
           quantity: Math.max(1, Number(invoice?.labels_count) || 1),
           amount_inc_vat: Number(invoice?.total_inc_vat || invoice?.subtotal_ex_vat || 0),
           sort_index: 0,
@@ -16522,7 +16522,7 @@ function buildAdminTestTopupInvoiceRecord(toEmail) {
     },
     items: [
       {
-        service_type: "Account balance top-up",
+        service_type: "Prepaid Credit for Shipping Labels",
         quantity: 1,
         amount_inc_vat: 5,
         metadata: {
