@@ -2407,6 +2407,17 @@ const openClientInviteHistoryModalButton = document.getElementById("openClientIn
 const clientInviteHistoryModal = document.getElementById("clientInviteHistoryModal");
 const clientInviteHistoryClose = document.getElementById("clientInviteHistoryClose");
 const clientInviteHistoryCancel = document.getElementById("clientInviteHistoryCancel");
+const shipmentExtractEmailInput = document.getElementById("shipmentExtractEmail");
+const shipmentExtractExpirySelect = document.getElementById("shipmentExtractExpiry");
+const shipmentExtractCreateButton = document.getElementById("shipmentExtractCreateButton");
+const shipmentExtractResult = document.getElementById("shipmentExtractResult");
+const shipmentExtractUrlInput = document.getElementById("shipmentExtractUrl");
+const shipmentExtractCopyButton = document.getElementById("shipmentExtractCopyButton");
+const shipmentExtractStatus = document.getElementById("shipmentExtractStatus");
+const shipmentExtractResultEmail = document.getElementById("shipmentExtractResultEmail");
+const shipmentExtractResultExpiry = document.getElementById("shipmentExtractResultExpiry");
+const shipmentExtractHistoryEmpty = document.getElementById("shipmentExtractHistoryEmpty");
+const shipmentExtractHistoryList = document.getElementById("shipmentExtractHistoryList");
 const adminSummaryClients = document.getElementById("adminSummaryClients");
 const adminSummaryActiveClients = document.getElementById("adminSummaryActiveClients");
 const adminSummaryInvites = document.getElementById("adminSummaryInvites");
@@ -3021,6 +3032,9 @@ let woocommerceAutoRefreshTimer = 0;
 let woocommerceAutoRefreshInFlight = false;
 let clientInviteBusy = false;
 let clientInviteHistory = [];
+let shipmentExtractBusy = false;
+let shipmentExtractHistory = [];
+const shipmentExtractRegistrationBusyIds = new Set();
 let authKeepAliveTimer = 0;
 const translationTextNodeBase = new WeakMap();
 const translationAttrBase = new WeakMap();
@@ -5834,6 +5848,253 @@ async function revokeClientInvite(inviteId) {
   }
 }
 
+function getShipmentExtractStatus(row) {
+  const status = String(row?.status || "").trim();
+  if (status) return status;
+  if (row?.submitted_at) return "submitted";
+  const expiresAt = Date.parse(String(row?.expires_at || ""));
+  if (Number.isFinite(expiresAt) && Date.now() > expiresAt) return "expired";
+  return "open";
+}
+
+function formatShipmentExtractStatus(row) {
+  const status = getShipmentExtractStatus(row);
+  if (status === "submitted") return tr("Submitted");
+  if (status === "expired") return tr("Expired");
+  return tr("Open");
+}
+
+function renderShipmentExtractHistory(rows = []) {
+  if (!shipmentExtractHistoryList || !shipmentExtractHistoryEmpty) return;
+  shipmentExtractHistory = Array.isArray(rows) ? rows.slice() : [];
+  shipmentExtractHistoryList.innerHTML = "";
+  if (!shipmentExtractHistory.length) {
+    shipmentExtractHistoryEmpty.textContent = tr("No extract links yet.");
+    shipmentExtractHistoryEmpty.classList.remove("is-hidden");
+    return;
+  }
+  shipmentExtractHistoryEmpty.classList.add("is-hidden");
+  shipmentExtractHistory.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "invite-history-item";
+
+    const main = document.createElement("div");
+    main.className = "invite-history-main";
+
+    const top = document.createElement("div");
+    top.className = "invite-history-top";
+    const email = document.createElement("div");
+    email.className = "invite-history-email";
+    email.textContent = row?.client_email ? String(row.client_email) : "--";
+    const status = getShipmentExtractStatus(row);
+    const badge = document.createElement("div");
+    badge.className = `invite-history-badge is-${status === "submitted" ? "claimed" : status}`;
+    badge.textContent = formatShipmentExtractStatus(row);
+    top.appendChild(email);
+    top.appendChild(badge);
+
+    const urlRow = document.createElement("div");
+    urlRow.className = "invite-history-url-row";
+    const requestUrl = String(row?.request_url || "").trim();
+    const urlValue = document.createElement("div");
+    urlValue.className = `invite-history-url${requestUrl ? "" : " is-unavailable"}`;
+    urlValue.textContent = requestUrl || tr("Stored URL unavailable for this request.");
+    urlRow.appendChild(urlValue);
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "btn btn-secondary btn-sm";
+    copyButton.dataset.shipmentExtractCopy = String(row?.id || "");
+    copyButton.disabled = !requestUrl;
+    copyButton.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="1"/><rect x="3" y="3" width="12" height="12" rx="1"/></svg>
+      <span>${tr("Copy URL")}</span>
+    `;
+    urlRow.appendChild(copyButton);
+
+    const inviteButton = document.createElement("button");
+    inviteButton.type = "button";
+    inviteButton.className = "btn btn-ghost btn-sm";
+    inviteButton.dataset.shipmentExtractInvite = String(row?.id || "");
+    inviteButton.disabled = shipmentExtractRegistrationBusyIds.has(String(row?.id || ""));
+    inviteButton.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      <span>${shipmentExtractRegistrationBusyIds.has(String(row?.id || "")) ? tr("Creating...") : tr("Create Invite")}</span>
+    `;
+    urlRow.appendChild(inviteButton);
+
+    const meta = document.createElement("div");
+    meta.className = "invite-history-meta";
+    const createdText = tr("Created {date}", { date: formatHistoryDate(row?.created_at) });
+    const expiresText = tr("Expires {date}", { date: formatHistoryDate(row?.expires_at) });
+    const submittedText = row?.submitted_at
+      ? tr("Submitted {date}", { date: formatHistoryDate(row.submitted_at) })
+      : "";
+    const rowsText = row?.submitted_rows ? `${row.submitted_rows} rows` : "";
+    meta.textContent = [createdText, expiresText, submittedText, rowsText].filter(Boolean).join(" • ");
+
+    main.appendChild(top);
+    main.appendChild(urlRow);
+    main.appendChild(meta);
+    item.appendChild(main);
+    shipmentExtractHistoryList.appendChild(item);
+  });
+}
+
+function setShipmentExtractStatus(message = "", options = {}) {
+  const { tone = "info", toast = Boolean(message) } = options;
+  const text = String(message || "").trim();
+  if (shipmentExtractStatus) {
+    shipmentExtractStatus.hidden = true;
+    shipmentExtractStatus.textContent = "";
+    shipmentExtractStatus.classList.remove("is-error", "is-success");
+  }
+  if (toast && text) {
+    showStatusToast(text, { tone: tone === "muted" ? "info" : tone });
+  }
+}
+
+function setShipmentExtractResult(url = "", meta = {}) {
+  if (!shipmentExtractResult || !shipmentExtractUrlInput) return;
+  const value = String(url || "").trim();
+  if (!value) {
+    shipmentExtractResult.classList.add("is-hidden");
+    shipmentExtractUrlInput.value = "";
+    if (shipmentExtractResultEmail) shipmentExtractResultEmail.textContent = "--";
+    if (shipmentExtractResultExpiry) shipmentExtractResultExpiry.textContent = "--";
+    if (shipmentExtractCopyButton) shipmentExtractCopyButton.disabled = true;
+    return;
+  }
+  shipmentExtractUrlInput.value = value;
+  if (shipmentExtractResultEmail) {
+    shipmentExtractResultEmail.textContent = String(meta?.clientEmail || "").trim() || "--";
+  }
+  if (shipmentExtractResultExpiry) {
+    shipmentExtractResultExpiry.textContent = meta?.expiresAt ? formatHistoryDate(meta.expiresAt) : "--";
+  }
+  shipmentExtractResult.classList.remove("is-hidden");
+  if (shipmentExtractCopyButton) shipmentExtractCopyButton.disabled = false;
+}
+
+function setShipmentExtractBusy(isBusy) {
+  shipmentExtractBusy = Boolean(isBusy);
+  if (shipmentExtractEmailInput) shipmentExtractEmailInput.disabled = shipmentExtractBusy;
+  if (shipmentExtractExpirySelect) shipmentExtractExpirySelect.disabled = shipmentExtractBusy;
+  if (shipmentExtractCreateButton) {
+    shipmentExtractCreateButton.disabled = shipmentExtractBusy;
+    const label = shipmentExtractCreateButton.querySelector("span");
+    const nextLabel = shipmentExtractBusy ? tr("Creating link...") : tr("Create Link");
+    if (label) label.textContent = nextLabel;
+    else shipmentExtractCreateButton.textContent = nextLabel;
+  }
+  if (shipmentExtractCopyButton) {
+    shipmentExtractCopyButton.disabled =
+      shipmentExtractBusy || !String(shipmentExtractUrlInput?.value || "").trim();
+  }
+}
+
+async function createShipmentExtractRequest() {
+  if (shipmentExtractBusy) return;
+  const clientEmail = String(shipmentExtractEmailInput?.value || "").trim().toLowerCase();
+  if (!clientEmail) {
+    setShipmentExtractStatus(tr("Client email is required."), { tone: "error" });
+    return;
+  }
+  if (!isValidEmailFormat(clientEmail)) {
+    setShipmentExtractStatus(tr("Invalid client email format."), { tone: "error" });
+    return;
+  }
+  const expiresInDays = Math.max(1, Math.min(90, Number(shipmentExtractExpirySelect?.value) || 14));
+  setShipmentExtractStatus("");
+  setShipmentExtractBusy(true);
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/shipment-extract-requests", {
+      method: "POST",
+      body: JSON.stringify({ clientEmail, expiresInDays }),
+    });
+    const requestUrl = String(payload?.requestUrl || "").trim();
+    if (!requestUrl) throw new Error(tr("Could not create shipment extract link."));
+    setShipmentExtractResult(requestUrl, {
+      clientEmail,
+      expiresAt: payload?.expiresAt,
+    });
+    setShipmentExtractStatus(tr("Shipment extract link created."), { tone: "success" });
+    if (shipmentExtractEmailInput) shipmentExtractEmailInput.value = "";
+    await loadAdminDashboard({ quiet: true });
+  } catch (error) {
+    setShipmentExtractStatus(error?.message || tr("Could not create shipment extract link."), {
+      tone: "error",
+    });
+  } finally {
+    setShipmentExtractBusy(false);
+  }
+}
+
+async function copyShipmentExtractUrl() {
+  const requestUrl = String(shipmentExtractUrlInput?.value || "").trim();
+  if (!requestUrl) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(requestUrl);
+    } else {
+      shipmentExtractUrlInput.focus();
+      shipmentExtractUrlInput.select();
+      document.execCommand("copy");
+    }
+    setShipmentExtractStatus(tr("Shipment extract URL copied."), { tone: "success" });
+  } catch (_error) {
+    setShipmentExtractStatus(requestUrl, { tone: "info" });
+  }
+}
+
+async function copyShipmentExtractHistoryUrl(requestId) {
+  const row = shipmentExtractHistory.find((entry) => String(entry?.id || "") === String(requestId || ""));
+  const requestUrl = String(row?.request_url || "").trim();
+  if (!requestUrl) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(requestUrl);
+    } else {
+      setShipmentExtractResult(requestUrl, { clientEmail: row?.client_email, expiresAt: row?.expires_at });
+      await copyShipmentExtractUrl();
+      return;
+    }
+    showToast(tr("Shipment extract URL copied."), { tone: "success" });
+  } catch (_error) {
+    showToast(requestUrl, { tone: "info" });
+  }
+}
+
+async function createRegistrationInviteFromShipmentExtract(requestId) {
+  const safeId = String(requestId || "").trim();
+  if (!safeId || shipmentExtractRegistrationBusyIds.has(safeId)) return;
+  shipmentExtractRegistrationBusyIds.add(safeId);
+  renderShipmentExtractHistory(shipmentExtractHistory);
+  try {
+    const payload = await fetchApiWithAuth(
+      "/api/admin/shipment-extract-requests/create-registration-invite",
+      {
+        method: "POST",
+        body: JSON.stringify({ requestId: safeId }),
+      }
+    );
+    const inviteUrl = String(payload?.inviteUrl || "").trim();
+    if (inviteUrl) {
+      setClientInviteResult(inviteUrl, {
+        invitedEmail: payload?.invitedEmail,
+        expiresAt: payload?.expiresAt,
+      });
+    }
+    showToast(tr("Registration invite created."), { tone: "success" });
+    await loadAdminDashboard({ quiet: true });
+  } catch (error) {
+    showToast(error?.message || tr("Could not create registration invite."), { tone: "error" });
+  } finally {
+    shipmentExtractRegistrationBusyIds.delete(safeId);
+    renderShipmentExtractHistory(shipmentExtractHistory);
+  }
+}
+
 function formatPercent(value) {
   return `${Number(value || 0).toFixed(1).replace(/\.0$/, "")}%`;
 }
@@ -7278,6 +7539,9 @@ async function loadAdminDashboard(options = {}) {
     adminMockSnapshot = null;
     adminDashboardState = payload && typeof payload === "object" ? payload : {};
     clientInviteHistory = Array.isArray(adminDashboardState?.invites) ? adminDashboardState.invites : [];
+    shipmentExtractHistory = Array.isArray(adminDashboardState?.shipment_extract_requests)
+      ? adminDashboardState.shipment_extract_requests
+      : [];
     adminClients = Array.isArray(adminDashboardState?.clients) ? adminDashboardState.clients : [];
     adminPlatformHistory = Array.isArray(adminDashboardState?.platform_history)
       ? adminDashboardState.platform_history
@@ -7285,6 +7549,7 @@ async function loadAdminDashboard(options = {}) {
     syncAdminBillingFromDashboard(adminDashboardState);
     renderAdminSummary(adminDashboardState?.summary || {});
     renderClientInviteHistory(clientInviteHistory);
+    renderShipmentExtractHistory(shipmentExtractHistory);
     applyAdminSettings(adminDashboardState?.settings || {});
     await loadAdminInvoices({ quiet: true });
     adminDashboardLoaded = true;
@@ -19701,14 +19966,18 @@ function setAuthView(session, options = {}) {
     adminPlatformHistory = [];
     adminBillingInvoices = [];
     clientInviteHistory = [];
+    shipmentExtractHistory = [];
     adminClientBillingBusyIds = new Set();
     adminMockModeEnabled = false;
     adminMockSnapshot = null;
     billingOverview = null;
     refreshAdminOnlyTestTools();
     renderClientInviteHistory([]);
+    renderShipmentExtractHistory([]);
     setClientInviteStatus("");
     setClientInviteResult("");
+    setShipmentExtractStatus("");
+    setShipmentExtractResult("");
     renderAdminSummary({});
     renderAdminMockDataButton();
     renderAdminClientsList();
@@ -19778,8 +20047,13 @@ function setAuthView(session, options = {}) {
     syncShopifyAutoRefreshState();
     setClientInviteResult("");
     setClientInviteStatus("");
+    setShipmentExtractResult("");
+    setShipmentExtractStatus("");
     if (clientInviteEmailInput) {
       clientInviteEmailInput.value = "";
+    }
+    if (shipmentExtractEmailInput) {
+      shipmentExtractEmailInput.value = "";
     }
     leadProspects = [];
     leadProspectsLoaded = false;
@@ -24267,6 +24541,18 @@ if (clientInviteCopyButton) {
   });
 }
 
+if (shipmentExtractCreateButton) {
+  shipmentExtractCreateButton.addEventListener("click", async () => {
+    await createShipmentExtractRequest();
+  });
+}
+
+if (shipmentExtractCopyButton) {
+  shipmentExtractCopyButton.addEventListener("click", async () => {
+    await copyShipmentExtractUrl();
+  });
+}
+
 if (openClientInviteHistoryModalButton) {
   openClientInviteHistoryModalButton.addEventListener("click", () => {
     setClientInviteHistoryModalOpen(true);
@@ -24449,6 +24735,34 @@ if (clientInviteEmailInput) {
 if (clientInviteExpirySelect) {
   clientInviteExpirySelect.addEventListener("change", () => {
     setClientInviteStatus("");
+  });
+}
+
+if (shipmentExtractEmailInput) {
+  shipmentExtractEmailInput.addEventListener("input", () => {
+    setShipmentExtractStatus("");
+  });
+}
+
+if (shipmentExtractExpirySelect) {
+  shipmentExtractExpirySelect.addEventListener("change", () => {
+    setShipmentExtractStatus("");
+  });
+}
+
+if (shipmentExtractHistoryList) {
+  shipmentExtractHistoryList.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const copyButton = target.closest("[data-shipment-extract-copy]");
+    if (copyButton instanceof HTMLElement) {
+      await copyShipmentExtractHistoryUrl(copyButton.dataset.shipmentExtractCopy);
+      return;
+    }
+    const inviteButton = target.closest("[data-shipment-extract-invite]");
+    if (inviteButton instanceof HTMLElement) {
+      await createRegistrationInviteFromShipmentExtract(inviteButton.dataset.shipmentExtractInvite);
+    }
   });
 }
 

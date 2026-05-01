@@ -111,6 +111,9 @@ const state = {
   mapping: {},
   step: "upload",
   transitionToken: 0,
+  requestToken: new URLSearchParams(window.location.search).get("token")?.trim() || "",
+  requestEmail: "",
+  requestReady: false,
 };
 
 const STEP_OUT_MS = 220;
@@ -146,6 +149,17 @@ const els = {
   submit: document.getElementById("cleanerSubmit"),
   pixelCanvas: document.getElementById("cleanerPixelCanvas"),
 };
+
+function setUploadEnabled(enabled) {
+  const isEnabled = Boolean(enabled);
+  if (els.fileInput) {
+    els.fileInput.disabled = !isEnabled;
+  }
+  if (els.dropzone) {
+    els.dropzone.classList.toggle("is-disabled", !isEnabled);
+    els.dropzone.setAttribute("aria-disabled", String(!isEnabled));
+  }
+}
 
 function setStatus(message = "", tone = "") {
   const text = String(message || "").trim();
@@ -841,6 +855,10 @@ async function submitCleanData() {
     setStatus("Confirm the information is truthful before submitting.", "error");
     return;
   }
+  if (!state.requestReady || !state.requestToken) {
+    setStatus("This cleaner link is invalid or expired. Ask Shipide for a new link.", "error");
+    return;
+  }
   els.submit.disabled = true;
   if (els.confirmApprove) els.confirmApprove.disabled = true;
   showStatusToast("Submitting cleaned data to Shipide...", { tone: "info" });
@@ -849,6 +867,7 @@ async function submitCleanData() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        token: state.requestToken,
         fileName: state.fileName,
         headers: cleaned.headers,
         rows: cleaned.rows,
@@ -888,6 +907,10 @@ function handleMatrix(matrix, fileName) {
 }
 
 function handleFile(file) {
+  if (!state.requestReady) {
+    setStatus("This cleaner link is not ready. Ask Shipide for a valid shipment extract link.", "error");
+    return;
+  }
   if (!file) return;
   const name = file.name || "shipping-export.csv";
   const extension = name.split(".").pop().toLowerCase();
@@ -948,6 +971,34 @@ function drawBackground() {
   requestAnimationFrame(render);
 }
 
+async function validateShipmentExtractRequest() {
+  setUploadEnabled(false);
+  if (!state.requestToken) {
+    setStatus("This cleaner page requires a client-specific Shipide link.", "error");
+    return;
+  }
+  try {
+    const response = await fetch(
+      `/api/public/shipping-data-cleaner/request?token=${encodeURIComponent(state.requestToken)}`,
+      { headers: { Accept: "application/json" } }
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "This shipment extract link is invalid or expired.");
+    }
+    state.requestReady = true;
+    state.requestEmail = String(payload?.request?.clientEmail || "").trim();
+    setUploadEnabled(true);
+    if (state.requestEmail) {
+      showStatusToast(`Cleaner link ready for ${state.requestEmail}.`, { tone: "success" });
+    }
+  } catch (error) {
+    state.requestReady = false;
+    setUploadEnabled(false);
+    setStatus(error?.message || "This shipment extract link is invalid or expired.", "error");
+  }
+}
+
 els.dropzone.addEventListener("dragover", (event) => {
   event.preventDefault();
   els.dropzone.classList.add("is-dragover");
@@ -992,3 +1043,4 @@ els.confirmModal?.addEventListener("click", (event) => {
 
 drawBackground();
 setStep("upload");
+void validateShipmentExtractRequest();

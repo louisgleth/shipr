@@ -94,6 +94,7 @@ const INVOICE_VIEW_LINK_SECRET = String(process.env.INVOICE_VIEW_LINK_SECRET || 
 const OAUTH_STATE_SECRET = String(process.env.OAUTH_STATE_SECRET || "").trim();
 const CLICKWRAP_PROOF_SECRET = String(process.env.CLICKWRAP_PROOF_SECRET || "").trim();
 const REGISTRATION_INVITES_TABLE = "registration_invites";
+const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -175,7 +176,7 @@ const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "billing@shipi
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
 const RESEND_REPLY_TO = String(process.env.RESEND_REPLY_TO || "").trim();
 const DATA_CLEANER_SUBMISSION_EMAIL = String(
-  process.env.DATA_CLEANER_SUBMISSION_EMAIL || "hello@shipide.com"
+  process.env.DATA_CLEANER_SUBMISSION_EMAIL || "shipextract@shipide.com"
 ).trim();
 const BILLING_IBAN_BENEFICIARY = String(
   process.env.BILLING_IBAN_BENEFICIARY || DEFAULT_IBAN_BENEFICIARY
@@ -2701,11 +2702,33 @@ async function handleShippingDataCleanerSubmission(req, res) {
     return;
   }
 
+  const token = normalizeInviteToken(body?.token || "");
+  if (!token) {
+    sendJson(res, 400, { error: "Shipment extract link token is required." });
+    return;
+  }
+
+  let extractRequest = null;
+  try {
+    extractRequest = await getShipmentExtractRequestByToken(token);
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not validate shipment extract link." });
+    return;
+  }
+  if (!extractRequest?.id) {
+    sendJson(res, 404, { error: "Shipment extract link not found." });
+    return;
+  }
+  if (shipmentExtractRequestIsExpired(extractRequest)) {
+    sendJson(res, 410, { error: "Shipment extract link has expired." });
+    return;
+  }
+
   const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
   const outputFilename = sanitizeSubmissionFilename(
     `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
   );
-  const contactEmail = normalizeEmail(body?.contactEmail || "");
+  const contactEmail = normalizeEmail(extractRequest?.client_email || "");
   const removedColumns = Array.isArray(body?.removedColumns)
     ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
     : [];
@@ -2715,20 +2738,22 @@ async function handleShippingDataCleanerSubmission(req, res) {
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
       <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Client email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not assigned"}</li>
+      <li><strong>Request id:</strong> ${escapeHtml(extractRequest.id)}</li>
       <li><strong>Rows:</strong> ${rows.length}</li>
       <li><strong>Columns kept:</strong> ${headers.map(escapeHtml).join(", ")}</li>
       <li><strong>Columns removed:</strong> ${removedColumns.length ? removedColumns.map(escapeHtml).join(", ") : "None reported"}</li>
-      <li><strong>Contact email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not provided"}</li>
       <li><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</li>
     </ul>
   `;
   const text = [
     "A sanitized shipping data extract was submitted from the public cleaner.",
     `Source file: ${sourceFilename}`,
+    `Client email: ${contactEmail || "Not assigned"}`,
+    `Request id: ${extractRequest.id}`,
     `Rows: ${rows.length}`,
     `Columns kept: ${headers.join(", ")}`,
     `Columns removed: ${removedColumns.length ? removedColumns.join(", ") : "None reported"}`,
-    `Contact email: ${contactEmail || "Not provided"}`,
     `Submitted at: ${submittedAt}`,
   ].join("\n");
 
@@ -2749,9 +2774,23 @@ async function handleShippingDataCleanerSubmission(req, res) {
         },
       ],
     });
+    await updateShipmentExtractRequestSubmitted(extractRequest.id, {
+      submittedAt,
+      sourceFilename,
+      rows: rows.length,
+      columns: headers.length,
+      keptColumns: headers,
+      removedColumns,
+      metadata: {
+        resend_email_id: response?.id || null,
+        output_filename: outputFilename,
+      },
+    });
     sendJson(res, 200, {
       ok: true,
       id: response?.id || null,
+      requestId: extractRequest.id,
+      clientEmail: contactEmail || null,
       rows: rows.length,
       columns: headers.length,
     });
@@ -3323,7 +3362,7 @@ async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy
     const token = crypto.randomBytes(32).toString("hex");
     const tokenHash = hashInviteToken(token);
     try {
-      await insertRegistrationInvite({
+      const row = await insertRegistrationInvite({
         tokenHash,
         tokenEncrypted: encryptToken(token),
         invitedEmail: safeInvitedEmail,
@@ -3331,6 +3370,7 @@ async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy
         createdBy,
       });
       return {
+        id: row?.id || null,
         token,
         expiresAt,
       };
@@ -3369,6 +3409,194 @@ async function listRegistrationInvites({ createdBy, limit = 20 }) {
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows : [];
+}
+
+function shipmentExtractRequestIsExpired(request) {
+  const expiresAt = String(request?.expires_at || "").trim();
+  if (!expiresAt) return true;
+  const expiresMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresMs)) return true;
+  return Date.now() > expiresMs;
+}
+
+async function getShipmentExtractRequestByToken(token) {
+  const requestToken = normalizeInviteToken(token);
+  if (!requestToken) return null;
+  const tokenHash = hashInviteToken(requestToken);
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("token_hash", `eq.${tokenHash}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract request lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getShipmentExtractRequestById(requestId) {
+  const safeRequestId = String(requestId || "").trim();
+  if (!safeRequestId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("id", `eq.${safeRequestId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract request lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function insertShipmentExtractRequest({
+  tokenHash,
+  tokenEncrypted,
+  clientEmail,
+  expiresAt,
+  createdBy,
+}) {
+  const response = await supabaseServiceRequest(`/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([
+      {
+        token_hash: tokenHash,
+        token_encrypted: tokenEncrypted || null,
+        client_email: clientEmail,
+        expires_at: expiresAt,
+        created_by: createdBy || null,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not create shipment extract link (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function createShipmentExtractRequest({ clientEmail, expiresInDays, createdBy }) {
+  const safeClientEmail = normalizeEmail(clientEmail || "");
+  const expiryDays = parseInviteExpiryDays(expiresInDays);
+  const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashInviteToken(token);
+    try {
+      const row = await insertShipmentExtractRequest({
+        tokenHash,
+        tokenEncrypted: encryptToken(token),
+        clientEmail: safeClientEmail,
+        expiresAt,
+        createdBy,
+      });
+      return { row, token, expiresAt };
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("23505") || message.includes("duplicate key")) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Could not create shipment extract link. Please try again.");
+}
+
+async function listShipmentExtractRequests({ limit = 50 }) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("order", "created_at.desc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract history lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function updateShipmentExtractRequestSubmitted(requestId, payload = {}) {
+  const safeRequestId = String(requestId || "").trim();
+  if (!safeRequestId) return null;
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeRequestId}`);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        submitted_at: payload.submittedAt || new Date().toISOString(),
+        submitted_filename: payload.sourceFilename || null,
+        submitted_rows: Number(payload.rows) || 0,
+        submitted_columns: Number(payload.columns) || 0,
+        kept_columns: Array.isArray(payload.keptColumns) ? payload.keptColumns : [],
+        removed_columns: Array.isArray(payload.removedColumns) ? payload.removedColumns : [],
+        metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not update shipment extract request (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function linkShipmentExtractRequestToRegistrationInvite(requestId, inviteId) {
+  const safeRequestId = String(requestId || "").trim();
+  const safeInviteId = String(inviteId || "").trim();
+  if (!safeRequestId || !safeInviteId) return;
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeRequestId}`);
+  const response = await supabaseServiceRequest(
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ registration_invite_id: safeInviteId }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not link registration invite (${response.status}) ${details}`.trim());
+  }
 }
 
 async function revokeRegistrationInvite(inviteId, revokedBy) {
@@ -8296,15 +8524,53 @@ function mapInviteHistoryRow(invite, baseUrl) {
   };
 }
 
+function buildShipmentExtractRequestUrl(baseUrl, request) {
+  const encrypted = String(request?.token_encrypted || "").trim();
+  if (!encrypted) return "";
+  try {
+    const token = decryptToken(encrypted);
+    const requestUrl = new URL("/shipping-data-cleaner", baseUrl);
+    requestUrl.searchParams.set("token", token);
+    return requestUrl.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getShipmentExtractRequestStatus(row) {
+  if (row?.submitted_at) return "submitted";
+  if (shipmentExtractRequestIsExpired(row)) return "expired";
+  return "open";
+}
+
+function mapShipmentExtractRequestRow(row, baseUrl) {
+  return {
+    id: row?.id || null,
+    client_email: normalizeEmail(row?.client_email || ""),
+    expires_at: row?.expires_at || null,
+    created_at: row?.created_at || null,
+    submitted_at: row?.submitted_at || null,
+    submitted_filename: row?.submitted_filename || "",
+    submitted_rows: Number(row?.submitted_rows) || 0,
+    submitted_columns: Number(row?.submitted_columns) || 0,
+    kept_columns: Array.isArray(row?.kept_columns) ? row.kept_columns : [],
+    removed_columns: Array.isArray(row?.removed_columns) ? row.removed_columns : [],
+    registration_invite_id: row?.registration_invite_id || null,
+    request_url: buildShipmentExtractRequestUrl(baseUrl, row),
+    status: getShipmentExtractRequestStatus(row),
+  };
+}
+
 function shouldIncludeAdminClient(user) {
   if (!user?.id) return false;
   return !canManageRegistrationInvites(user);
 }
 
 async function buildAdminDashboard(baseUrl) {
-  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts] = await Promise.all([
+  const [settings, invites, shipmentExtractRequests, users, historyRows, billingPreferences, invoices, wiseReceipts] = await Promise.all([
     getAdminSettings(),
     listRegistrationInvites({ limit: 50 }),
+    listShipmentExtractRequests({ limit: 50 }).catch(() => []),
     listSupabaseUsers(1000),
     listGenerationHistoryRows(10000),
     listClientBillingPreferences(2000),
@@ -8405,9 +8671,13 @@ async function buildAdminDashboard(baseUrl) {
     });
 
   const inviteHistory = invites.map((invite) => mapInviteHistoryRow(invite, baseUrl));
+  const shipmentExtractHistory = shipmentExtractRequests.map((request) =>
+    mapShipmentExtractRequestRow(request, baseUrl)
+  );
   return {
     settings,
     invites: inviteHistory,
+    shipment_extract_requests: shipmentExtractHistory,
     clients,
     summary: buildAdminClientSummary(clients, invites),
     billing: {
@@ -11916,6 +12186,159 @@ async function handleListRegistrationInvites(req, res, requestUrl) {
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not load invite history." });
+  }
+}
+
+async function handleCreateShipmentExtractRequest(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to create shipment extract links." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const clientEmail = normalizeEmail(body?.clientEmail || "");
+  if (!clientEmail) {
+    sendJson(res, 400, { error: "Client email is required." });
+    return;
+  }
+  if (!isValidEmailFormat(clientEmail)) {
+    sendJson(res, 400, { error: "Invalid client email format." });
+    return;
+  }
+
+  try {
+    const created = await createShipmentExtractRequest({
+      clientEmail,
+      expiresInDays: body?.expiresInDays,
+      createdBy: user.id,
+    });
+    const requestUrl = new URL("/shipping-data-cleaner", buildPublicBaseUrl(req));
+    requestUrl.searchParams.set("token", created.token);
+    sendJson(res, 200, {
+      ok: true,
+      requestUrl: requestUrl.toString(),
+      expiresAt: created.expiresAt,
+      clientEmail,
+      request: mapShipmentExtractRequestRow(created.row, buildPublicBaseUrl(req)),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not create shipment extract link." });
+  }
+}
+
+async function handleListShipmentExtractRequests(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to view shipment extract links." });
+    return;
+  }
+
+  const limit = Number(requestUrl.searchParams.get("limit") || "50");
+  try {
+    const rows = await listShipmentExtractRequests({ limit });
+    sendJson(res, 200, {
+      requests: rows.map((row) => mapShipmentExtractRequestRow(row, buildPublicBaseUrl(req))),
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load shipment extract links." });
+  }
+}
+
+async function handleCreateRegistrationInviteFromShipmentExtract(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to create client invites." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  try {
+    const extractRequest = await getShipmentExtractRequestById(body?.requestId);
+    const invitedEmail = normalizeEmail(extractRequest?.client_email || "");
+    if (!extractRequest?.id || !invitedEmail) {
+      sendJson(res, 404, { error: "Shipment extract request not found." });
+      return;
+    }
+    if (!isValidEmailFormat(invitedEmail)) {
+      sendJson(res, 400, { error: "Invalid client email format." });
+      return;
+    }
+    const created = await createRegistrationInvite({
+      invitedEmail,
+      expiresInDays: body?.expiresInDays,
+      createdBy: user.id,
+    });
+    if (created?.id) {
+      await linkShipmentExtractRequestToRegistrationInvite(extractRequest.id, created.id);
+    }
+    const inviteUrl = new URL("/register", buildPublicBaseUrl(req));
+    inviteUrl.searchParams.set("invite", created.token);
+    sendJson(res, 200, {
+      ok: true,
+      inviteUrl: inviteUrl.toString(),
+      expiresAt: created.expiresAt,
+      invitedEmail,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not create registration invite." });
+  }
+}
+
+async function handleShippingDataCleanerRequestValidate(req, res, requestUrl) {
+  const token = normalizeInviteToken(requestUrl.searchParams.get("token"));
+  if (!token) {
+    sendJson(res, 400, { error: "Shipment extract link token is required." });
+    return;
+  }
+
+  try {
+    const request = await getShipmentExtractRequestByToken(token);
+    if (!request?.id) {
+      sendJson(res, 404, { error: "Shipment extract link not found." });
+      return;
+    }
+    if (shipmentExtractRequestIsExpired(request)) {
+      sendJson(res, 410, { error: "Shipment extract link has expired." });
+      return;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      request: {
+        id: request.id,
+        clientEmail: normalizeEmail(request.client_email || ""),
+        expiresAt: request.expires_at || null,
+        submittedAt: request.submitted_at || null,
+      },
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not validate shipment extract link." });
   }
 }
 
@@ -15437,6 +15860,21 @@ async function handleApi(req, res, requestUrl) {
     await handleCreateRegistrationInvite(req, res);
     return true;
   }
+  if (pathname === "/api/admin/shipment-extract-requests" && req.method === "GET") {
+    await handleListShipmentExtractRequests(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/admin/shipment-extract-requests" && req.method === "POST") {
+    await handleCreateShipmentExtractRequest(req, res);
+    return true;
+  }
+  if (
+    pathname === "/api/admin/shipment-extract-requests/create-registration-invite" &&
+    req.method === "POST"
+  ) {
+    await handleCreateRegistrationInviteFromShipmentExtract(req, res);
+    return true;
+  }
   if (pathname === "/api/auth/register-invite" && req.method === "GET") {
     await handleRegisterInviteValidate(req, res, requestUrl);
     return true;
@@ -15455,6 +15893,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/public/shipping-data-cleaner/submit" && req.method === "POST") {
     await handleShippingDataCleanerSubmission(req, res);
+    return true;
+  }
+  if (pathname === "/api/public/shipping-data-cleaner/request" && req.method === "GET") {
+    await handleShippingDataCleanerRequestValidate(req, res, requestUrl);
     return true;
   }
   if (pathname === "/api/privacy/export" && req.method === "GET") {

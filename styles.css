@@ -2167,6 +2167,15 @@ body.is-auth-view {
   gap: 8px;
 }
 
+.shipment-extract-history {
+  border-top: 1px solid var(--stroke);
+  display: grid;
+  gap: 8px;
+  max-height: 330px;
+  overflow: auto;
+  padding-top: 10px;
+}
+
 .invite-history-item {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
@@ -2606,6 +2615,10 @@ body.is-auth-view {
 
 .admin-panel-card {
   min-height: 0;
+}
+
+.admin-billing-panel {
+  grid-column: 1 / -1;
 }
 
 .admin-panel-sub {

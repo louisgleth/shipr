@@ -49,6 +49,7 @@ const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
 ]);
 const DEFAULT_WOOCOMMERCE_IMPORT_STATUSES = Object.freeze(["pending", "processing", "on-hold"]);
 const REGISTRATION_INVITES_TABLE = "registration_invites";
+const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -308,6 +309,18 @@ export default {
       if (pathname === "/api/auth/invites" && request.method === "POST") {
         return handleCreateRegistrationInvite(request, env);
       }
+      if (pathname === "/api/admin/shipment-extract-requests" && request.method === "GET") {
+        return handleListShipmentExtractRequests(request, env, url);
+      }
+      if (pathname === "/api/admin/shipment-extract-requests" && request.method === "POST") {
+        return handleCreateShipmentExtractRequest(request, env);
+      }
+      if (
+        pathname === "/api/admin/shipment-extract-requests/create-registration-invite" &&
+        request.method === "POST"
+      ) {
+        return handleCreateRegistrationInviteFromShipmentExtract(request, env);
+      }
       if (pathname === "/api/auth/register-invite" && request.method === "GET") {
         return handleRegisterInviteValidate(request, env, url);
       }
@@ -322,6 +335,9 @@ export default {
       }
       if (pathname === "/api/public/shipping-data-cleaner/submit" && request.method === "POST") {
         return handleShippingDataCleanerSubmission(request, env);
+      }
+      if (pathname === "/api/public/shipping-data-cleaner/request" && request.method === "GET") {
+        return handleShippingDataCleanerRequestValidate(request, env, url);
       }
       if (pathname === "/api/privacy/export" && request.method === "GET") {
         return handlePrivacyExport(request, env);
@@ -2563,7 +2579,7 @@ async function sendResendEmail(env, payload) {
 }
 
 function getDataCleanerSubmissionEmail(env) {
-  return String(env.DATA_CLEANER_SUBMISSION_EMAIL || "hello@shipide.com").trim();
+  return String(env.DATA_CLEANER_SUBMISSION_EMAIL || "shipextract@shipide.com").trim();
 }
 
 function sanitizeSubmissionFilename(value, fallback = "shipide-cleaned-shipping-data.csv") {
@@ -2612,11 +2628,29 @@ async function handleShippingDataCleanerSubmission(request, env) {
     return jsonResponse({ error: "Too many cleaned columns." }, 400);
   }
 
+  const token = normalizeInviteToken(body?.token || "");
+  if (!token) {
+    return jsonResponse({ error: "Shipment extract link token is required." }, 400);
+  }
+
+  let extractRequest = null;
+  try {
+    extractRequest = await getShipmentExtractRequestByToken(env, token);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Could not validate shipment extract link." }, 500);
+  }
+  if (!extractRequest?.id) {
+    return jsonResponse({ error: "Shipment extract link not found." }, 404);
+  }
+  if (shipmentExtractRequestIsExpired(extractRequest)) {
+    return jsonResponse({ error: "Shipment extract link has expired." }, 410);
+  }
+
   const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
   const outputFilename = sanitizeSubmissionFilename(
     `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
   );
-  const contactEmail = normalizeEmail(body?.contactEmail || "");
+  const contactEmail = normalizeEmail(extractRequest?.client_email || "");
   const removedColumns = Array.isArray(body?.removedColumns)
     ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
     : [];
@@ -2626,20 +2660,22 @@ async function handleShippingDataCleanerSubmission(request, env) {
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
       <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Client email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not assigned"}</li>
+      <li><strong>Request id:</strong> ${escapeHtml(extractRequest.id)}</li>
       <li><strong>Rows:</strong> ${rows.length}</li>
       <li><strong>Columns kept:</strong> ${headers.map(escapeHtml).join(", ")}</li>
       <li><strong>Columns removed:</strong> ${removedColumns.length ? removedColumns.map(escapeHtml).join(", ") : "None reported"}</li>
-      <li><strong>Contact email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not provided"}</li>
       <li><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</li>
     </ul>
   `;
   const text = [
     "A sanitized shipping data extract was submitted from the public cleaner.",
     `Source file: ${sourceFilename}`,
+    `Client email: ${contactEmail || "Not assigned"}`,
+    `Request id: ${extractRequest.id}`,
     `Rows: ${rows.length}`,
     `Columns kept: ${headers.join(", ")}`,
     `Columns removed: ${removedColumns.length ? removedColumns.join(", ") : "None reported"}`,
-    `Contact email: ${contactEmail || "Not provided"}`,
     `Submitted at: ${submittedAt}`,
   ].join("\n");
 
@@ -2660,9 +2696,23 @@ async function handleShippingDataCleanerSubmission(request, env) {
         },
       ],
     });
+    await updateShipmentExtractRequestSubmitted(env, extractRequest.id, {
+      submittedAt,
+      sourceFilename,
+      rows: rows.length,
+      columns: headers.length,
+      keptColumns: headers,
+      removedColumns,
+      metadata: {
+        resend_email_id: response?.id || null,
+        output_filename: outputFilename,
+      },
+    });
     return jsonResponse({
       ok: true,
       id: response?.id || null,
+      requestId: extractRequest.id,
+      clientEmail: contactEmail || null,
       rows: rows.length,
       columns: headers.length,
     });
@@ -3896,7 +3946,7 @@ async function createRegistrationInvite(env, { invitedEmail, expiresInDays, crea
     const token = createInviteToken();
     const tokenHash = await sha256Hex(token);
     try {
-      await insertRegistrationInvite(env, {
+      const row = await insertRegistrationInvite(env, {
         tokenHash,
         tokenEncrypted: await encryptToken(env, token),
         invitedEmail: safeInvitedEmail,
@@ -3904,6 +3954,7 @@ async function createRegistrationInvite(env, { invitedEmail, expiresInDays, crea
         createdBy,
       });
       return {
+        id: row?.id || null,
         token,
         expiresAt,
       };
@@ -3943,6 +3994,191 @@ async function listRegistrationInvites(env, { createdBy, limit = 20 }) {
   }
   const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows : [];
+}
+
+function shipmentExtractRequestIsExpired(row) {
+  const expiresAt = String(row?.expires_at || "").trim();
+  if (!expiresAt) return true;
+  const expiresMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresMs)) return true;
+  return Date.now() > expiresMs;
+}
+
+async function getShipmentExtractRequestByToken(env, token) {
+  const requestToken = normalizeInviteToken(token);
+  if (!requestToken) return null;
+  const tokenHash = await sha256Hex(requestToken);
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("token_hash", `eq.${tokenHash}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract request lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function getShipmentExtractRequestById(env, requestId) {
+  const safeRequestId = String(requestId || "").trim();
+  if (!safeRequestId) return null;
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("id", `eq.${safeRequestId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract request lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function insertShipmentExtractRequest(env, { tokenHash, tokenEncrypted, clientEmail, expiresAt, createdBy }) {
+  const response = await supabaseServiceRequest(env, `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([
+      {
+        token_hash: tokenHash,
+        token_encrypted: tokenEncrypted || null,
+        client_email: clientEmail,
+        expires_at: expiresAt,
+        created_by: createdBy || null,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not create shipment extract link (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function createShipmentExtractRequest(env, { clientEmail, expiresInDays, createdBy }) {
+  const safeClientEmail = normalizeEmail(clientEmail || "");
+  const expiryDays = parseInviteExpiryDays(expiresInDays);
+  const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = createInviteToken();
+    const tokenHash = await sha256Hex(token);
+    try {
+      const row = await insertShipmentExtractRequest(env, {
+        tokenHash,
+        tokenEncrypted: await encryptToken(env, token),
+        clientEmail: safeClientEmail,
+        expiresAt,
+        createdBy,
+      });
+      return { row, token, expiresAt };
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (message.includes("23505") || message.includes("duplicate key")) continue;
+      throw error;
+    }
+  }
+  throw new Error("Could not create shipment extract link. Please try again.");
+}
+
+async function listShipmentExtractRequests(env, { limit = 50 }) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const params = new URLSearchParams();
+  params.set(
+    "select",
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+  );
+  params.set("order", "created_at.desc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Shipment extract history lookup failed (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function updateShipmentExtractRequestSubmitted(env, requestId, payload = {}) {
+  const safeRequestId = String(requestId || "").trim();
+  if (!safeRequestId) return null;
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeRequestId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        submitted_at: payload.submittedAt || new Date().toISOString(),
+        submitted_filename: payload.sourceFilename || null,
+        submitted_rows: Number(payload.rows) || 0,
+        submitted_columns: Number(payload.columns) || 0,
+        kept_columns: Array.isArray(payload.keptColumns) ? payload.keptColumns : [],
+        removed_columns: Array.isArray(payload.removedColumns) ? payload.removedColumns : [],
+        metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+      }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not update shipment extract request (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function linkShipmentExtractRequestToRegistrationInvite(env, requestId, inviteId) {
+  const safeRequestId = String(requestId || "").trim();
+  const safeInviteId = String(inviteId || "").trim();
+  if (!safeRequestId || !safeInviteId) return;
+  const params = new URLSearchParams();
+  params.set("id", `eq.${safeRequestId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ registration_invite_id: safeInviteId }),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not link registration invite (${response.status}) ${details}`.trim());
+  }
 }
 
 async function revokeRegistrationInvite(env, inviteId, revokedBy) {
@@ -9581,6 +9817,43 @@ async function mapInviteHistoryRow(request, env, invite) {
   };
 }
 
+async function buildShipmentExtractRequestUrl(request, env, row) {
+  const encrypted = String(row?.token_encrypted || "").trim();
+  if (!encrypted) return "";
+  try {
+    const token = await decryptToken(env, encrypted);
+    const requestUrl = new URL("/shipping-data-cleaner", getPublicOrigin(request));
+    requestUrl.searchParams.set("token", token);
+    return requestUrl.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getShipmentExtractRequestStatus(row) {
+  if (row?.submitted_at) return "submitted";
+  if (shipmentExtractRequestIsExpired(row)) return "expired";
+  return "open";
+}
+
+async function mapShipmentExtractRequestRow(request, env, row) {
+  return {
+    id: row?.id || null,
+    client_email: normalizeEmail(row?.client_email || ""),
+    expires_at: row?.expires_at || null,
+    created_at: row?.created_at || null,
+    submitted_at: row?.submitted_at || null,
+    submitted_filename: row?.submitted_filename || "",
+    submitted_rows: Number(row?.submitted_rows) || 0,
+    submitted_columns: Number(row?.submitted_columns) || 0,
+    kept_columns: Array.isArray(row?.kept_columns) ? row.kept_columns : [],
+    removed_columns: Array.isArray(row?.removed_columns) ? row.removed_columns : [],
+    registration_invite_id: row?.registration_invite_id || null,
+    request_url: await buildShipmentExtractRequestUrl(request, env, row),
+    status: getShipmentExtractRequestStatus(row),
+  };
+}
+
 function shouldIncludeAdminClient(user, env, currentAdminUserId = "") {
   if (!user?.id) return false;
   if (String(currentAdminUserId || "").trim() === String(user.id || "").trim()) {
@@ -9590,9 +9863,10 @@ function shouldIncludeAdminClient(user, env, currentAdminUserId = "") {
 }
 
 async function buildAdminDashboard(request, env, currentAdminUserId = "") {
-  const [settings, invites, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets, recentTopups, recentManualWalletTransactions] = await Promise.all([
+  const [settings, invites, shipmentExtractRequests, users, historyRows, billingPreferences, invoices, wiseReceipts, wallets, recentTopups, recentManualWalletTransactions] = await Promise.all([
     getAdminSettings(env),
     listRegistrationInvites(env, { limit: 50 }),
+    listShipmentExtractRequests(env, { limit: 50 }).catch(() => []),
     listSupabaseUsers(env, 1000),
     listGenerationHistoryRows(env, 10000),
     listClientBillingPreferences(env, 2000),
@@ -9732,6 +10006,9 @@ async function buildAdminDashboard(request, env, currentAdminUserId = "") {
   const inviteHistory = await Promise.all(
     invites.map((invite) => mapInviteHistoryRow(request, env, invite))
   );
+  const shipmentExtractHistory = await Promise.all(
+    shipmentExtractRequests.map((row) => mapShipmentExtractRequestRow(request, env, row))
+  );
   const platformHistory = buildAdminPlatformHistoryEntries(
     users,
     historyRows,
@@ -9742,6 +10019,7 @@ async function buildAdminDashboard(request, env, currentAdminUserId = "") {
   return {
     settings,
     invites: inviteHistory,
+    shipment_extract_requests: shipmentExtractHistory,
     clients,
     platform_history: platformHistory,
     summary: buildAdminClientSummary(summaryClients, invites),
@@ -13982,6 +14260,140 @@ async function handleListRegistrationInvites(request, env, url) {
     return jsonResponse({ invites: payload });
   } catch (error) {
     return jsonResponse({ error: error.message || "Could not load invite history." }, 500);
+  }
+}
+
+async function handleCreateShipmentExtractRequest(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to create shipment extract links." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  const clientEmail = normalizeEmail(body?.clientEmail || "");
+  if (!clientEmail) {
+    return jsonResponse({ error: "Client email is required." }, 400);
+  }
+  if (!isValidEmailFormat(clientEmail)) {
+    return jsonResponse({ error: "Invalid client email format." }, 400);
+  }
+
+  try {
+    const created = await createShipmentExtractRequest(env, {
+      clientEmail,
+      expiresInDays: body?.expiresInDays,
+      createdBy: user.id,
+    });
+    const requestUrl = new URL("/shipping-data-cleaner", getPublicOrigin(request));
+    requestUrl.searchParams.set("token", created.token);
+    return jsonResponse({
+      ok: true,
+      requestUrl: requestUrl.toString(),
+      expiresAt: created.expiresAt,
+      clientEmail,
+      request: await mapShipmentExtractRequestRow(request, env, created.row),
+    });
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Could not create shipment extract link." }, 500);
+  }
+}
+
+async function handleListShipmentExtractRequests(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to view shipment extract links." }, 403);
+  }
+
+  const limit = Number(url.searchParams.get("limit") || "50");
+  try {
+    const rows = await listShipmentExtractRequests(env, { limit });
+    const requests = await Promise.all(
+      rows.map((row) => mapShipmentExtractRequestRow(request, env, row))
+    );
+    return jsonResponse({ requests });
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Could not load shipment extract links." }, 500);
+  }
+}
+
+async function handleCreateRegistrationInviteFromShipmentExtract(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to create client invites." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+    const extractRequest = await getShipmentExtractRequestById(env, body?.requestId);
+    const invitedEmail = normalizeEmail(extractRequest?.client_email || "");
+    if (!extractRequest?.id || !invitedEmail) {
+      return jsonResponse({ error: "Shipment extract request not found." }, 404);
+    }
+    if (!isValidEmailFormat(invitedEmail)) {
+      return jsonResponse({ error: "Invalid client email format." }, 400);
+    }
+    const created = await createRegistrationInvite(env, {
+      invitedEmail,
+      expiresInDays: body?.expiresInDays,
+      createdBy: user.id,
+    });
+    if (created?.id) {
+      await linkShipmentExtractRequestToRegistrationInvite(env, extractRequest.id, created.id);
+    }
+    const inviteUrl = new URL("/register", getPublicOrigin(request));
+    inviteUrl.searchParams.set("invite", created.token);
+    return jsonResponse({
+      ok: true,
+      inviteUrl: inviteUrl.toString(),
+      expiresAt: created.expiresAt,
+      invitedEmail,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Could not create registration invite." }, 500);
+  }
+}
+
+async function handleShippingDataCleanerRequestValidate(request, env, url) {
+  const token = normalizeInviteToken(url.searchParams.get("token"));
+  if (!token) {
+    return jsonResponse({ error: "Shipment extract link token is required." }, 400);
+  }
+
+  try {
+    const row = await getShipmentExtractRequestByToken(env, token);
+    if (!row?.id) {
+      return jsonResponse({ error: "Shipment extract link not found." }, 404);
+    }
+    if (shipmentExtractRequestIsExpired(row)) {
+      return jsonResponse({ error: "Shipment extract link has expired." }, 410);
+    }
+    return jsonResponse({
+      ok: true,
+      request: {
+        id: row.id,
+        clientEmail: normalizeEmail(row.client_email || ""),
+        expiresAt: row.expires_at || null,
+        submittedAt: row.submitted_at || null,
+      },
+    });
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Could not validate shipment extract link." }, 500);
   }
 }
 
