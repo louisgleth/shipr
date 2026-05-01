@@ -123,6 +123,11 @@ select {
   width: min(1040px, 100%);
 }
 
+.cleaner-card.is-step-mapping,
+.cleaner-card.is-step-review {
+  max-height: calc(100dvh - 40px);
+}
+
 .cleaner-card.is-step-transitioning {
   overflow: hidden;
 }
@@ -668,7 +673,7 @@ select {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
-  max-height: min(300px, calc(100dvh - 390px));
+  max-height: clamp(360px, calc(100dvh - 300px), 680px);
   overflow: auto;
 }
 

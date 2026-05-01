@@ -104,6 +104,33 @@ const REMOVE_PATTERNS = [
   /(^|_)(order|order_id|order_number|tracking|tracking_number|reference|note|notes|comment)(_|$)/,
 ];
 
+const CLEANER_TOKEN_STORAGE_KEY = "shipide-shipment-extract-token";
+
+function readCleanerTokenFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const directToken = params.get("token") || params.get("extract") || "";
+  if (directToken) return String(directToken).trim();
+  const hash = String(window.location.hash || "").replace(/^#/, "");
+  if (!hash) return "";
+  const hashQuery = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : hash;
+  return String(new URLSearchParams(hashQuery).get("token") || "").trim();
+}
+
+function getCurrentCleanerToken() {
+  const urlToken = readCleanerTokenFromUrl();
+  if (urlToken) {
+    try {
+      window.sessionStorage?.setItem(CLEANER_TOKEN_STORAGE_KEY, urlToken);
+    } catch (_error) {}
+    return urlToken;
+  }
+  try {
+    return String(window.sessionStorage?.getItem(CLEANER_TOKEN_STORAGE_KEY) || "").trim();
+  } catch (_error) {
+    return "";
+  }
+}
+
 const state = {
   fileName: "",
   headers: [],
@@ -111,7 +138,7 @@ const state = {
   mapping: {},
   step: "upload",
   transitionToken: 0,
-  requestToken: new URLSearchParams(window.location.search).get("token")?.trim() || "",
+  requestToken: getCurrentCleanerToken(),
   requestEmail: "",
   requestReady: false,
 };
@@ -855,7 +882,9 @@ async function submitCleanData() {
     setStatus("Confirm the information is truthful before submitting.", "error");
     return;
   }
-  if (!state.requestReady || !state.requestToken) {
+  const requestToken = getCurrentCleanerToken();
+  state.requestToken = requestToken;
+  if (!state.requestReady || !requestToken) {
     setStatus("This cleaner link is invalid or expired. Ask Shipide for a new link.", "error");
     return;
   }
@@ -867,7 +896,7 @@ async function submitCleanData() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        token: state.requestToken,
+        token: requestToken,
         fileName: state.fileName,
         headers: cleaned.headers,
         rows: cleaned.rows,
@@ -973,6 +1002,7 @@ function drawBackground() {
 
 async function validateShipmentExtractRequest() {
   setUploadEnabled(false);
+  state.requestToken = getCurrentCleanerToken();
   if (!state.requestToken) {
     setStatus("This cleaner page requires a client-specific Shipide link.", "error");
     return;
