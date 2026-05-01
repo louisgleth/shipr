@@ -320,6 +320,9 @@ export default {
       if (pathname === "/api/auth/register" && request.method === "POST") {
         return handleRegisterWithInvite(request, env);
       }
+      if (pathname === "/api/public/shipping-data-cleaner/submit" && request.method === "POST") {
+        return handleShippingDataCleanerSubmission(request, env);
+      }
       if (pathname === "/api/privacy/export" && request.method === "GET") {
         return handlePrivacyExport(request, env);
       }
@@ -2557,6 +2560,115 @@ async function sendResendEmail(env, payload) {
     throw new Error(String(message).trim());
   }
   return payloadJson;
+}
+
+function getDataCleanerSubmissionEmail(env) {
+  return String(env.DATA_CLEANER_SUBMISSION_EMAIL || "hello@shipide.com").trim();
+}
+
+function sanitizeSubmissionFilename(value, fallback = "shipide-cleaned-shipping-data.csv") {
+  const sanitized = String(value || "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96);
+  return sanitized || fallback;
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\n\r;]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsvFromMatrix(headers = [], rows = []) {
+  return [headers, ...rows]
+    .map((row) => (Array.isArray(row) ? row : []).map(escapeCsvCell).join(","))
+    .join("\n");
+}
+
+async function handleShippingDataCleanerSubmission(request, env) {
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  const headers = Array.isArray(body?.headers)
+    ? body.headers.map((header) => String(header || "").trim()).filter(Boolean)
+    : [];
+  const rows = Array.isArray(body?.rows)
+    ? body.rows
+        .filter((row) => Array.isArray(row))
+        .slice(0, 5000)
+        .map((row) => row.slice(0, headers.length).map((cell) => String(cell || "").trim()))
+    : [];
+  if (!headers.length || !rows.length) {
+    return jsonResponse({ error: "Cleaned shipment data is required." }, 400);
+  }
+  if (headers.length > 32) {
+    return jsonResponse({ error: "Too many cleaned columns." }, 400);
+  }
+
+  const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
+  const outputFilename = sanitizeSubmissionFilename(
+    `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
+  );
+  const contactEmail = normalizeEmail(body?.contactEmail || "");
+  const removedColumns = Array.isArray(body?.removedColumns)
+    ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
+    : [];
+  const csv = buildCsvFromMatrix(headers, rows);
+  const submittedAt = new Date().toISOString();
+  const html = `
+    <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
+    <ul>
+      <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Rows:</strong> ${rows.length}</li>
+      <li><strong>Columns kept:</strong> ${headers.map(escapeHtml).join(", ")}</li>
+      <li><strong>Columns removed:</strong> ${removedColumns.length ? removedColumns.map(escapeHtml).join(", ") : "None reported"}</li>
+      <li><strong>Contact email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not provided"}</li>
+      <li><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</li>
+    </ul>
+  `;
+  const text = [
+    "A sanitized shipping data extract was submitted from the public cleaner.",
+    `Source file: ${sourceFilename}`,
+    `Rows: ${rows.length}`,
+    `Columns kept: ${headers.join(", ")}`,
+    `Columns removed: ${removedColumns.length ? removedColumns.join(", ") : "None reported"}`,
+    `Contact email: ${contactEmail || "Not provided"}`,
+    `Submitted at: ${submittedAt}`,
+  ].join("\n");
+
+  try {
+    const response = await sendResendEmail(env, {
+      to: getDataCleanerSubmissionEmail(env),
+      fromName: "Shipide Data Cleaner",
+      fromEmail: String(env.REPORTS_FROM_EMAIL || env.RESEND_FROM_EMAIL || "reports@shipide.com").trim(),
+      replyTo: contactEmail || String(env.RESEND_REPLY_TO || "").trim(),
+      subject: `Cleaned shipping data: ${sourceFilename}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename: outputFilename,
+          content: textEncoder.encode(csv),
+          contentType: "text/csv",
+        },
+      ],
+    });
+    return jsonResponse({
+      ok: true,
+      id: response?.id || null,
+      rows: rows.length,
+      columns: headers.length,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not submit cleaned data." }, 500);
+  }
 }
 
 async function ensureClickwrapStorageBucket(env) {

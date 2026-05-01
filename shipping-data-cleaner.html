@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipide Shipping Data Cleaner</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="stylesheet" href="shipping-data-cleaner.css" />
+  </head>
+  <body>
+    <main class="cleaner-shell">
+      <div class="cleaner-background" aria-hidden="true">
+        <canvas id="cleanerPixelCanvas"></canvas>
+      </div>
+
+      <section class="cleaner-card" aria-labelledby="cleanerTitle">
+        <header class="cleaner-head">
+          <div class="cleaner-brand">
+            <img src="shipide_logo.png" alt="Shipide" />
+            <span></span>
+            <strong>Data Cleaner</strong>
+          </div>
+          <div class="cleaner-step mono" id="cleanerStepLabel">Step 1 of 3</div>
+        </header>
+
+        <div class="cleaner-copy">
+          <p class="cleaner-kicker mono">Shipment extract sanitization</p>
+          <h1 id="cleanerTitle">Clean your shipping data before sending it to Shipide.</h1>
+          <p>
+            Upload your carrier, marketplace, or store export. We keep only useful shipment-analysis fields
+            and remove customer names, addresses, emails, phones, notes, and identifiers before submission.
+          </p>
+        </div>
+
+        <div class="cleaner-progress" aria-hidden="true">
+          <span class="is-active" data-progress-step="1"></span>
+          <span data-progress-step="2"></span>
+          <span data-progress-step="3"></span>
+        </div>
+
+        <section class="cleaner-panel is-active" id="uploadPanel">
+          <div class="cleaner-dropzone" id="cleanerDropzone">
+            <input
+              type="file"
+              id="cleanerFileInput"
+              accept=".csv,.tsv,.txt,.xls,.xlsx"
+              aria-label="Upload shipping export"
+            />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M12 4v11" />
+              <polyline points="7 10 12 4 17 10" />
+              <path d="M5 20h14" />
+            </svg>
+            <div>
+              <strong>Drop your CSV, TXT, TSV, XLS export here</strong>
+              <span>or browse from your computer</span>
+            </div>
+          </div>
+
+          <div class="cleaner-spec-grid">
+            <div>
+              <span class="cleaner-spec-label">Kept by default</span>
+              <p>Date, origin postcode, destination country/postcode, weight, dimensions, service type, quantity.</p>
+            </div>
+            <div>
+              <span class="cleaner-spec-label">Removed by default</span>
+              <p>Names, street addresses, email, phone, company, order IDs, notes, tracking references.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="cleaner-panel" id="mappingPanel">
+          <div class="cleaner-panel-head">
+            <div>
+              <h2>Review detected columns</h2>
+              <p id="cleanerFileMeta">No file loaded</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToUpload">Change file</button>
+          </div>
+
+          <div class="cleaner-summary-grid">
+            <div class="cleaner-summary-card keep">
+              <span class="mono" id="keptCount">0</span>
+              <strong>Columns kept</strong>
+              <p>These will be included in the sanitized file.</p>
+            </div>
+            <div class="cleaner-summary-card remove">
+              <span class="mono" id="removedCount">0</span>
+              <strong>Columns removed</strong>
+              <p>These stay out of the submission.</p>
+            </div>
+            <div class="cleaner-summary-card">
+              <span class="mono" id="rowCount">0</span>
+              <strong>Rows detected</strong>
+              <p>Preview uses the first usable rows.</p>
+            </div>
+          </div>
+
+          <div class="cleaner-map-wrap">
+            <table class="cleaner-map-table">
+              <thead>
+                <tr>
+                  <th>Uploaded column</th>
+                  <th>Action</th>
+                  <th>Sample</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="cleanerMappingBody"></tbody>
+            </table>
+          </div>
+
+          <div class="cleaner-actions">
+            <button type="button" class="btn btn-secondary" id="cleanerDownloadFromMap">Download cleaned CSV</button>
+            <button type="button" class="btn btn-primary" id="cleanerContinue">Preview cleaned data</button>
+          </div>
+        </section>
+
+        <section class="cleaner-panel" id="reviewPanel">
+          <div class="cleaner-panel-head">
+            <div>
+              <h2>Cleaned file preview</h2>
+              <p id="cleanerReviewMeta">Only sanitized shipment-analysis data is shown below.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToMapping">Edit mapping</button>
+          </div>
+
+          <div class="cleaner-privacy-callout">
+            <span></span>
+            <p>
+              Raw customer details are not submitted. We only send the columns currently marked as kept.
+            </p>
+          </div>
+
+          <div class="cleaner-preview-wrap">
+            <table class="cleaner-preview-table">
+              <thead id="cleanerPreviewHead"></thead>
+              <tbody id="cleanerPreviewBody"></tbody>
+            </table>
+          </div>
+
+          <label class="field cleaner-contact-field">
+            <span>Your email, optional</span>
+            <input type="email" id="cleanerContactEmail" placeholder="you@company.com" autocomplete="email" />
+          </label>
+
+          <div class="cleaner-actions">
+            <button type="button" class="btn btn-secondary" id="cleanerDownload">Download cleaned CSV</button>
+            <button type="button" class="btn btn-primary" id="cleanerSubmit">Submit cleaned data to Shipide</button>
+          </div>
+        </section>
+
+        <div class="cleaner-status" id="cleanerStatus" role="status" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="shipping-data-cleaner.js"></script>
+  </body>
+</html>

@@ -16,6 +16,7 @@ const INVOICE_PREVIEW_FILE = path.join(ROOT, "invoice-preview.html");
 const DOCUMENTS_PREVIEW_FILE = path.join(ROOT, "documents-preview.html");
 const IBAN_TOPUP_PREVIEW_FILE = path.join(ROOT, "iban-topup-preview.html");
 const LANDING_PLATFORM_MOCK_FILE = path.join(ROOT, "landing-platform-mock.html");
+const SHIPPING_DATA_CLEANER_FILE = path.join(ROOT, "shipping-data-cleaner.html");
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -173,6 +174,9 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || "billing@shipide.com").trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || "Shipide Billing").trim();
 const RESEND_REPLY_TO = String(process.env.RESEND_REPLY_TO || "").trim();
+const DATA_CLEANER_SUBMISSION_EMAIL = String(
+  process.env.DATA_CLEANER_SUBMISSION_EMAIL || "hello@shipide.com"
+).trim();
 const BILLING_IBAN_BENEFICIARY = String(
   process.env.BILLING_IBAN_BENEFICIARY || DEFAULT_IBAN_BENEFICIARY
 ).trim();
@@ -341,6 +345,7 @@ const MIME_TYPES = {
   ".webp": "image/webp",
   ".ico": "image/x-icon",
   ".pdf": "application/pdf",
+  ".csv": "text/csv; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".html": "text/html; charset=utf-8",
 };
@@ -2645,6 +2650,114 @@ async function sendResendEmail(payload) {
     throw new Error(String(message).trim());
   }
   return payloadJson;
+}
+
+function sanitizeSubmissionFilename(value, fallback = "shipide-cleaned-shipping-data.csv") {
+  const sanitized = String(value || "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96);
+  return sanitized || fallback;
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\n\r;]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsvFromMatrix(headers = [], rows = []) {
+  return [headers, ...rows]
+    .map((row) => (Array.isArray(row) ? row : []).map(escapeCsvCell).join(","))
+    .join("\n");
+}
+
+async function handleShippingDataCleanerSubmission(req, res) {
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  const headers = Array.isArray(body?.headers)
+    ? body.headers.map((header) => String(header || "").trim()).filter(Boolean)
+    : [];
+  const rows = Array.isArray(body?.rows)
+    ? body.rows
+        .filter((row) => Array.isArray(row))
+        .slice(0, 5000)
+        .map((row) => row.slice(0, headers.length).map((cell) => String(cell || "").trim()))
+    : [];
+  if (!headers.length || !rows.length) {
+    sendJson(res, 400, { error: "Cleaned shipment data is required." });
+    return;
+  }
+  if (headers.length > 32) {
+    sendJson(res, 400, { error: "Too many cleaned columns." });
+    return;
+  }
+
+  const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
+  const outputFilename = sanitizeSubmissionFilename(
+    `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
+  );
+  const contactEmail = normalizeEmail(body?.contactEmail || "");
+  const removedColumns = Array.isArray(body?.removedColumns)
+    ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
+    : [];
+  const csv = buildCsvFromMatrix(headers, rows);
+  const submittedAt = new Date().toISOString();
+  const html = `
+    <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
+    <ul>
+      <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Rows:</strong> ${rows.length}</li>
+      <li><strong>Columns kept:</strong> ${headers.map(escapeHtml).join(", ")}</li>
+      <li><strong>Columns removed:</strong> ${removedColumns.length ? removedColumns.map(escapeHtml).join(", ") : "None reported"}</li>
+      <li><strong>Contact email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not provided"}</li>
+      <li><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</li>
+    </ul>
+  `;
+  const text = [
+    "A sanitized shipping data extract was submitted from the public cleaner.",
+    `Source file: ${sourceFilename}`,
+    `Rows: ${rows.length}`,
+    `Columns kept: ${headers.join(", ")}`,
+    `Columns removed: ${removedColumns.length ? removedColumns.join(", ") : "None reported"}`,
+    `Contact email: ${contactEmail || "Not provided"}`,
+    `Submitted at: ${submittedAt}`,
+  ].join("\n");
+
+  try {
+    const response = await sendResendEmail({
+      to: DATA_CLEANER_SUBMISSION_EMAIL,
+      fromName: "Shipide Data Cleaner",
+      fromEmail: REPORTS_FROM_EMAIL || RESEND_FROM_EMAIL,
+      replyTo: contactEmail || RESEND_REPLY_TO,
+      subject: `Cleaned shipping data: ${sourceFilename}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename: outputFilename,
+          content: Buffer.from(csv, "utf8"),
+          contentType: "text/csv",
+        },
+      ],
+    });
+    sendJson(res, 200, {
+      ok: true,
+      id: response?.id || null,
+      rows: rows.length,
+      columns: headers.length,
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not submit cleaned data." });
+  }
 }
 
 async function handleDocumentsPreviewSendTestEmail(req, res) {
@@ -15340,6 +15453,10 @@ async function handleApi(req, res, requestUrl) {
     await handleRegisterWithInvite(req, res);
     return true;
   }
+  if (pathname === "/api/public/shipping-data-cleaner/submit" && req.method === "POST") {
+    await handleShippingDataCleanerSubmission(req, res);
+    return true;
+  }
   if (pathname === "/api/privacy/export" && req.method === "GET") {
     await handlePrivacyExport(req, res);
     return true;
@@ -15602,6 +15719,11 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/landing-platform-mock" || pathname === "/landing-platform-mock/") {
     sendFile(res, LANDING_PLATFORM_MOCK_FILE);
+    return;
+  }
+
+  if (pathname === "/shipping-data-cleaner" || pathname === "/shipping-data-cleaner/") {
+    sendFile(res, SHIPPING_DATA_CLEANER_FILE);
     return;
   }
 
