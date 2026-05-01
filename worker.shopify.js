@@ -333,10 +333,18 @@ export default {
       if (pathname === "/api/auth/register" && request.method === "POST") {
         return handleRegisterWithInvite(request, env);
       }
-      if (pathname === "/api/public/shipping-data-cleaner/submit" && request.method === "POST") {
+      if (
+        (pathname === "/api/public/clean-data/submit" ||
+          pathname === "/api/public/shipping-data-cleaner/submit") &&
+        request.method === "POST"
+      ) {
         return handleShippingDataCleanerSubmission(request, env);
       }
-      if (pathname === "/api/public/shipping-data-cleaner/request" && request.method === "GET") {
+      if (
+        (pathname === "/api/public/clean-data/request" ||
+          pathname === "/api/public/shipping-data-cleaner/request") &&
+        request.method === "GET"
+      ) {
         return handleShippingDataCleanerRequestValidate(request, env, url);
       }
       if (pathname === "/api/privacy/export" && request.method === "GET") {
@@ -3902,11 +3910,9 @@ async function getRegistrationInviteByToken(env, token) {
 }
 
 function createInviteToken() {
-  const bytes = new Uint8Array(32);
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
+  return toBase64Url(bytes);
 }
 
 async function insertRegistrationInvite(
@@ -9822,7 +9828,7 @@ async function buildShipmentExtractRequestUrl(request, env, row) {
   if (!encrypted) return "";
   try {
     const token = await decryptToken(env, encrypted);
-    const requestUrl = new URL("/shipping-data-cleaner", getPublicOrigin(request));
+    const requestUrl = new URL("/clean-data", getPublicOrigin(request));
     requestUrl.searchParams.set("token", token);
     return requestUrl.toString();
   } catch (_error) {
@@ -14293,7 +14299,7 @@ async function handleCreateShipmentExtractRequest(request, env) {
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
-    const requestUrl = new URL("/shipping-data-cleaner", getPublicOrigin(request));
+    const requestUrl = new URL("/clean-data", getPublicOrigin(request));
     requestUrl.searchParams.set("token", created.token);
     return jsonResponse({
       ok: true,

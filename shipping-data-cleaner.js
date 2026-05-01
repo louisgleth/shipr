@@ -892,7 +892,7 @@ async function submitCleanData() {
   if (els.confirmApprove) els.confirmApprove.disabled = true;
   showStatusToast("Submitting cleaned data to Shipide...", { tone: "info" });
   try {
-    const response = await fetch("/api/public/shipping-data-cleaner/submit", {
+    const response = await fetch("/api/public/clean-data/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1009,7 +1009,7 @@ async function validateShipmentExtractRequest() {
   }
   try {
     const response = await fetch(
-      `/api/public/shipping-data-cleaner/request?token=${encodeURIComponent(state.requestToken)}`,
+      `/api/public/clean-data/request?token=${encodeURIComponent(state.requestToken)}`,
       { headers: { Accept: "application/json" } }
     );
     const payload = await response.json().catch(() => ({}));

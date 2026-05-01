@@ -770,6 +770,10 @@ function fromBase64Url(value) {
   return Buffer.from(padded, "base64");
 }
 
+function createPublicLinkToken(byteLength = 16) {
+  return crypto.randomBytes(byteLength).toString("base64url");
+}
+
 function normalizeShopifySessionShop(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -3359,7 +3363,7 @@ async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const token = crypto.randomBytes(32).toString("hex");
+    const token = createPublicLinkToken();
     const tokenHash = hashInviteToken(token);
     try {
       const row = await insertRegistrationInvite({
@@ -3501,7 +3505,7 @@ async function createShipmentExtractRequest({ clientEmail, expiresInDays, create
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const token = crypto.randomBytes(32).toString("hex");
+    const token = createPublicLinkToken();
     const tokenHash = hashInviteToken(token);
     try {
       const row = await insertShipmentExtractRequest({
@@ -8529,7 +8533,7 @@ function buildShipmentExtractRequestUrl(baseUrl, request) {
   if (!encrypted) return "";
   try {
     const token = decryptToken(encrypted);
-    const requestUrl = new URL("/shipping-data-cleaner", baseUrl);
+    const requestUrl = new URL("/clean-data", baseUrl);
     requestUrl.searchParams.set("token", token);
     return requestUrl.toString();
   } catch (_error) {
@@ -12224,7 +12228,7 @@ async function handleCreateShipmentExtractRequest(req, res) {
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
-    const requestUrl = new URL("/shipping-data-cleaner", buildPublicBaseUrl(req));
+    const requestUrl = new URL("/clean-data", buildPublicBaseUrl(req));
     requestUrl.searchParams.set("token", created.token);
     sendJson(res, 200, {
       ok: true,
@@ -15891,11 +15895,19 @@ async function handleApi(req, res, requestUrl) {
     await handleRegisterWithInvite(req, res);
     return true;
   }
-  if (pathname === "/api/public/shipping-data-cleaner/submit" && req.method === "POST") {
+  if (
+    (pathname === "/api/public/clean-data/submit" ||
+      pathname === "/api/public/shipping-data-cleaner/submit") &&
+    req.method === "POST"
+  ) {
     await handleShippingDataCleanerSubmission(req, res);
     return true;
   }
-  if (pathname === "/api/public/shipping-data-cleaner/request" && req.method === "GET") {
+  if (
+    (pathname === "/api/public/clean-data/request" ||
+      pathname === "/api/public/shipping-data-cleaner/request") &&
+    req.method === "GET"
+  ) {
     await handleShippingDataCleanerRequestValidate(req, res, requestUrl);
     return true;
   }
@@ -16164,7 +16176,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === "/shipping-data-cleaner" || pathname === "/shipping-data-cleaner/") {
+  if (
+    pathname === "/clean-data" ||
+    pathname === "/clean-data/" ||
+    pathname === "/shipping-data-cleaner" ||
+    pathname === "/shipping-data-cleaner/"
+  ) {
     sendFile(res, SHIPPING_DATA_CLEANER_FILE);
     return;
   }
