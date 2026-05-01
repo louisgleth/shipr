@@ -122,6 +122,7 @@ const els = {
     upload: document.getElementById("uploadPanel"),
     mapping: document.getElementById("mappingPanel"),
     review: document.getElementById("reviewPanel"),
+    thanks: document.getElementById("thanksPanel"),
   },
   progress: Array.from(document.querySelectorAll("[data-progress-step]")),
   stepLabel: document.getElementById("cleanerStepLabel"),
@@ -268,6 +269,7 @@ function getStepPanel(step) {
 function getStepWidth(step) {
   const shellWidth = els.card?.parentElement?.getBoundingClientRect().width || window.innerWidth;
   if (step === "upload") return Math.min(640, shellWidth);
+  if (step === "thanks") return Math.min(760, shellWidth);
   return Math.min(1040, shellWidth);
 }
 
@@ -313,7 +315,7 @@ function measurePanelHeight(panel) {
 }
 
 function applyStepView(step) {
-  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-review");
+  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-review", "is-step-thanks");
   els.card?.classList.add(`is-step-${step}`);
   Object.entries(els.panels).forEach(([key, panel]) => {
     panel.classList.toggle("is-active", key === step);
@@ -328,14 +330,15 @@ function applyStepView(step) {
     upload: "Clean your shipping data before sending it to Shipide.",
     mapping: "Review detected columns",
     review: "Cleaned file preview",
+    thanks: "Submission complete",
   };
   if (els.title) {
     els.title.textContent = titles[step] || titles.upload;
   }
   els.progress.forEach((item) => {
-    item.classList.toggle("is-active", Number(item.dataset.progressStep) <= stepIndex);
+    item.classList.toggle("is-active", step === "thanks" || Number(item.dataset.progressStep) <= stepIndex);
   });
-  els.stepLabel.textContent = `Step ${stepIndex} of 3`;
+  els.stepLabel.textContent = step === "thanks" ? "Complete" : `Step ${stepIndex} of 3`;
 }
 
 function resetStepTransitionState() {
@@ -355,7 +358,7 @@ function resetStepTransitionState() {
 }
 
 function setStep(step, options = {}) {
-  const nextStep = ["upload", "mapping", "review"].includes(step) ? step : "upload";
+  const nextStep = ["upload", "mapping", "review", "thanks"].includes(step) ? step : "upload";
   const previousStep = state.step || "upload";
   const shouldAnimate =
     options.animate !== false &&
@@ -855,7 +858,7 @@ async function submitCleanData() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.error || "Could not submit the cleaned data.");
     setConfirmModalOpen(false);
-    setStatus("Cleaned data submitted. We only received the sanitized columns shown above.", "success");
+    setStep("thanks");
   } catch (error) {
     setStatus(`${error.message || "Submission failed."} Download the cleaned CSV and send it to Shipide if needed.`, "error");
   } finally {
