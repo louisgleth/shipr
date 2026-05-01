@@ -24,7 +24,7 @@
         </header>
 
         <div class="cleaner-copy">
-          <p class="cleaner-kicker mono">Shipment extract sanitization</p>
+          <p class="cleaner-kicker mono"><span></span>Shipment extract sanitization</p>
           <h1 id="cleanerTitle">Clean your shipping data before sending it to Shipide.</h1>
           <p>
             Upload your carrier, marketplace, or store export. We keep shipment-analysis fields and strip names,
@@ -73,27 +73,15 @@
           <div class="cleaner-panel-head">
             <div>
               <h2>Review detected columns</h2>
-              <p id="cleanerFileMeta">No file loaded</p>
             </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToUpload">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
-            <span>Change file</span>
-          </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="cleanerDownloadFromMap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 4v10" /><polyline points="7 11 12 16 17 11" /><path d="M5 19h14" /></svg>
+              <span>Download CSV</span>
+            </button>
           </div>
 
-          <div class="cleaner-summary-grid">
-            <div class="cleaner-summary-card keep">
-              <span class="mono" id="keptCount">0</span>
-              <strong>Columns kept</strong>
-            </div>
-            <div class="cleaner-summary-card remove">
-              <span class="mono" id="removedCount">0</span>
-              <strong>Columns removed</strong>
-            </div>
-            <div class="cleaner-summary-card">
-              <span class="mono" id="rowCount">0</span>
-              <strong>Rows detected</strong>
-            </div>
+          <div class="cleaner-optional-note" id="cleanerOptionalNote">
+            Useful fields are optional. Keep whatever is present in the export.
           </div>
 
           <div class="cleaner-map-wrap">
@@ -111,13 +99,13 @@
           </div>
 
           <div class="cleaner-actions">
-            <button type="button" class="btn btn-secondary" id="cleanerDownloadFromMap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 4v10" /><polyline points="7 11 12 16 17 11" /><path d="M5 19h14" /></svg>
-              <span>Download CSV</span>
+            <button type="button" class="btn btn-primary" id="cleanerBackToUpload">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
+              <span>Change file</span>
             </button>
             <button type="button" class="btn btn-primary" id="cleanerContinue">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12h14" /><polyline points="13 6 19 12 13 18" /></svg>
               <span>Preview cleaned data</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12h14" /><polyline points="13 6 19 12 13 18" /></svg>
             </button>
           </div>
         </section>

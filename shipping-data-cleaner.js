@@ -84,6 +84,17 @@ const EXTRACTED_FIELDS = [
   },
 ];
 
+const EXPECTED_OPTIONAL_FIELD_GROUPS = [
+  { label: "Shipment date", keys: ["shipment_date"] },
+  { label: "Origin postcode", keys: ["origin_postcode"] },
+  { label: "Destination country", keys: ["destination_country"] },
+  { label: "Destination postcode", keys: ["destination_postcode"] },
+  { label: "Weight", keys: ["weight"] },
+  { label: "Dimensions", keys: ["dimensions", "length", "width", "height"] },
+  { label: "Service type", keys: ["service_type"] },
+  { label: "Quantity", keys: ["quantity"] },
+];
+
 const REMOVE_PATTERNS = [
   /(^|_)(name|first_name|last_name|full_name|customer|buyer|consignee)(_|$)/,
   /(^|_)(email|e_mail|mail)(_|$)/,
@@ -117,11 +128,8 @@ const els = {
   stepLabel: document.getElementById("cleanerStepLabel"),
   dropzone: document.getElementById("cleanerDropzone"),
   fileInput: document.getElementById("cleanerFileInput"),
-  fileMeta: document.getElementById("cleanerFileMeta"),
   mappingBody: document.getElementById("cleanerMappingBody"),
-  keptCount: document.getElementById("keptCount"),
-  removedCount: document.getElementById("removedCount"),
-  rowCount: document.getElementById("rowCount"),
+  optionalNote: document.getElementById("cleanerOptionalNote"),
   previewHead: document.getElementById("cleanerPreviewHead"),
   previewBody: document.getElementById("cleanerPreviewBody"),
   reviewMeta: document.getElementById("cleanerReviewMeta"),
@@ -489,6 +497,21 @@ function getAvailableExtractedFields() {
   });
 }
 
+function getKeptFieldKeys() {
+  const direct = Object.values(state.mapping)
+    .map((item) => item.action)
+    .filter((action) => action && action !== "remove");
+  return Array.from(new Set([...direct, ...getAvailableExtractedFields().map((field) => field.key)]));
+}
+
+function getCleanedDataReadiness() {
+  const cleaned = buildCleanRows();
+  return {
+    cleaned,
+    isReady: cleaned.headers.length > 0 && cleaned.rows.length > 0,
+  };
+}
+
 function getSampleForColumn(index) {
   for (const row of state.rows.slice(0, 20)) {
     const value = String(row[index] || "").trim();
@@ -497,93 +520,121 @@ function getSampleForColumn(index) {
   return "No sample";
 }
 
+function createMappingRow(header, index) {
+  const row = document.createElement("tr");
+  const nameCell = document.createElement("td");
+  const name = document.createElement("div");
+  name.className = "cleaner-column-name";
+  name.innerHTML = `<strong></strong><span class="mono"></span>`;
+  name.querySelector("strong").textContent = header || `Column ${index + 1}`;
+  name.querySelector("span").textContent = normalizeHeader(header) || "untitled";
+  nameCell.appendChild(name);
+
+  const actionCell = document.createElement("td");
+  const select = document.createElement("select");
+  select.className = `cleaner-map-select ${state.mapping[index]?.action === "remove" ? "is-remove" : "is-keep"}`;
+  select.dataset.columnIndex = String(index);
+  const removeOption = new Option("Remove from submission", "remove");
+  select.appendChild(removeOption);
+  DATA_FIELDS.forEach((field) => select.appendChild(new Option(`Keep as ${field.label}`, field.key)));
+  select.value = state.mapping[index]?.action || "remove";
+  select.addEventListener("change", () => {
+    const nextField = DATA_FIELDS.find((field) => field.key === select.value);
+    state.mapping[index] = {
+      action: select.value,
+      reason:
+        select.value === "remove"
+          ? "Likely personal or identifying data."
+          : nextField
+            ? "Matched useful shipment field."
+            : "Looks like shipment-analysis data.",
+    };
+    renderMapping();
+  });
+  actionCell.appendChild(select);
+
+  const sampleCell = document.createElement("td");
+  const sample = document.createElement("span");
+  sample.className = "cleaner-sample";
+  sample.textContent = getSampleForColumn(index);
+  sampleCell.appendChild(sample);
+
+  const reasonCell = document.createElement("td");
+  reasonCell.className = "cleaner-reason";
+  reasonCell.textContent = state.mapping[index]?.reason || "";
+
+  row.append(nameCell, actionCell, sampleCell, reasonCell);
+  return row;
+}
+
+function createExtractedMappingRow(field) {
+  const row = document.createElement("tr");
+  const nameCell = document.createElement("td");
+  const name = document.createElement("div");
+  name.className = "cleaner-column-name";
+  name.innerHTML = `<strong></strong><span class="mono"></span>`;
+  name.querySelector("strong").textContent = field.label;
+  name.querySelector("span").textContent = "extracted, not raw address";
+  nameCell.appendChild(name);
+
+  const actionCell = document.createElement("td");
+  const select = document.createElement("select");
+  select.className = "cleaner-map-select is-keep";
+  select.disabled = true;
+  select.appendChild(new Option(`Keep as ${field.label}`, field.key));
+  select.value = field.key;
+  actionCell.appendChild(select);
+
+  const sampleCell = document.createElement("td");
+  const sample = document.createElement("span");
+  sample.className = "cleaner-sample";
+  sample.textContent = getExtractedValue(state.rows[0] || [], field.key) || "No sample";
+  sampleCell.appendChild(sample);
+
+  const reasonCell = document.createElement("td");
+  reasonCell.className = "cleaner-reason";
+  reasonCell.textContent = "Looks like shipment-analysis data.";
+
+  row.append(nameCell, actionCell, sampleCell, reasonCell);
+  return row;
+}
+
 function renderMapping() {
   els.mappingBody.innerHTML = "";
-  state.headers.forEach((header, index) => {
-    const row = document.createElement("tr");
-    const nameCell = document.createElement("td");
-    const name = document.createElement("div");
-    name.className = "cleaner-column-name";
-    name.innerHTML = `<strong></strong><span class="mono"></span>`;
-    name.querySelector("strong").textContent = header || `Column ${index + 1}`;
-    name.querySelector("span").textContent = normalizeHeader(header) || "untitled";
-    nameCell.appendChild(name);
-
-    const actionCell = document.createElement("td");
-    const select = document.createElement("select");
-    select.className = `cleaner-map-select ${state.mapping[index]?.action === "remove" ? "is-remove" : "is-keep"}`;
-    select.dataset.columnIndex = String(index);
-    const removeOption = new Option("Remove from submission", "remove");
-    select.appendChild(removeOption);
-    DATA_FIELDS.forEach((field) => select.appendChild(new Option(`Keep as ${field.label}`, field.key)));
-    select.value = state.mapping[index]?.action || "remove";
-    select.addEventListener("change", () => {
-      const nextField = DATA_FIELDS.find((field) => field.key === select.value);
-      state.mapping[index] = {
-        action: select.value,
-        reason:
-          select.value === "remove"
-            ? "Likely personal or identifying data."
-            : nextField
-              ? "Matched useful shipment field."
-              : "Looks like shipment-analysis data.",
-      };
-      renderMapping();
-    });
-    actionCell.appendChild(select);
-
-    const sampleCell = document.createElement("td");
-    const sample = document.createElement("span");
-    sample.className = "cleaner-sample";
-    sample.textContent = getSampleForColumn(index);
-    sampleCell.appendChild(sample);
-
-    const reasonCell = document.createElement("td");
-    reasonCell.className = "cleaner-reason";
-    reasonCell.textContent = state.mapping[index]?.reason || "";
-
-    row.append(nameCell, actionCell, sampleCell, reasonCell);
-    els.mappingBody.appendChild(row);
-  });
+  const uploadedColumns = state.headers.map((header, index) => ({ header, index }));
+  uploadedColumns
+    .filter((item) => state.mapping[item.index]?.action !== "remove")
+    .forEach((item) => els.mappingBody.appendChild(createMappingRow(item.header, item.index)));
   getAvailableExtractedFields().forEach((field) => {
-    const row = document.createElement("tr");
-    const nameCell = document.createElement("td");
-    const name = document.createElement("div");
-    name.className = "cleaner-column-name";
-    name.innerHTML = `<strong></strong><span class="mono"></span>`;
-    name.querySelector("strong").textContent = field.label;
-    name.querySelector("span").textContent = "extracted, not raw address";
-    nameCell.appendChild(name);
-
-    const actionCell = document.createElement("td");
-    const select = document.createElement("select");
-    select.className = "cleaner-map-select is-keep";
-    select.disabled = true;
-    select.appendChild(new Option(`Keep as ${field.label}`, field.key));
-    select.value = field.key;
-    actionCell.appendChild(select);
-
-    const sampleCell = document.createElement("td");
-    const sample = document.createElement("span");
-    sample.className = "cleaner-sample";
-    sample.textContent = getExtractedValue(state.rows[0] || [], field.key) || "No sample";
-    sampleCell.appendChild(sample);
-
-    const reasonCell = document.createElement("td");
-    reasonCell.className = "cleaner-reason";
-    reasonCell.textContent = "Looks like shipment-analysis data.";
-
-    row.append(nameCell, actionCell, sampleCell, reasonCell);
-    els.mappingBody.appendChild(row);
+    els.mappingBody.appendChild(createExtractedMappingRow(field));
   });
+  uploadedColumns
+    .filter((item) => state.mapping[item.index]?.action === "remove")
+    .forEach((item) => els.mappingBody.appendChild(createMappingRow(item.header, item.index)));
   updateCounters();
 }
 
 function updateCounters() {
-  const actions = Object.values(state.mapping).map((item) => item.action);
-  els.keptCount.textContent = String(actions.filter((action) => action !== "remove").length + getAvailableExtractedFields().length);
-  els.removedCount.textContent = String(actions.filter((action) => action === "remove").length);
-  els.rowCount.textContent = String(state.rows.length);
+  renderOptionalFieldStatus();
+}
+
+function renderOptionalFieldStatus() {
+  if (!els.optionalNote) return;
+  const kept = new Set(getKeptFieldKeys());
+  const found = EXPECTED_OPTIONAL_FIELD_GROUPS.filter((group) => group.keys.some((key) => kept.has(key))).map(
+    (group) => group.label
+  );
+  const missing = EXPECTED_OPTIONAL_FIELD_GROUPS.filter((group) => !group.keys.some((key) => kept.has(key))).map(
+    (group) => group.label
+  );
+  if (!found.length) {
+    els.optionalNote.innerHTML =
+      "<strong>No shipment-analysis field is currently kept.</strong> Select at least one useful field to continue. Dimensions, service type, date, quantity, and other details remain optional.";
+    return;
+  }
+  els.optionalNote.innerHTML = `<strong>Found:</strong> <span>${found.join(", ")}</span>. ${
+    missing.length ? `Optional not found: ${missing.join(", ")}. ` : ""
+  }You can continue with the fields available in this export.`;
 }
 
 function buildCleanRows() {
@@ -619,7 +670,7 @@ function buildCleanCsv() {
 }
 
 function renderPreview() {
-  const cleaned = buildCleanRows();
+  const { cleaned } = getCleanedDataReadiness();
   els.previewHead.innerHTML = "";
   els.previewBody.innerHTML = "";
   const headRow = document.createElement("tr");
@@ -642,6 +693,11 @@ function renderPreview() {
 }
 
 function downloadCleanCsv() {
+  const { isReady } = getCleanedDataReadiness();
+  if (!isReady) {
+    setStatus("Select at least one shipment-analysis field. Dimensions, service type, date, and quantity are optional.", "error");
+    return;
+  }
   const csv = buildCleanCsv();
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -656,9 +712,9 @@ function downloadCleanCsv() {
 }
 
 async function submitCleanData() {
-  const cleaned = buildCleanRows();
-  if (!cleaned.headers.length || !cleaned.rows.length) {
-    setStatus("Keep at least one useful column before submitting.", "error");
+  const { cleaned, isReady } = getCleanedDataReadiness();
+  if (!isReady) {
+    setStatus("Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.", "error");
     return;
   }
   els.submit.disabled = true;
@@ -697,7 +753,6 @@ function handleMatrix(matrix, fileName) {
   state.headers.forEach((header, index) => {
     state.mapping[index] = detectField(header);
   });
-  els.fileMeta.textContent = `${state.fileName} - ${state.rows.length} rows - ${state.headers.length} columns`;
   renderMapping();
   setStep("mapping");
   setStatus("");
@@ -781,6 +836,12 @@ els.fileInput.addEventListener("change", () => {
 els.backToUpload.addEventListener("click", () => setStep("upload"));
 els.backToMapping.addEventListener("click", () => setStep("mapping"));
 els.continueBtn.addEventListener("click", () => {
+  const { isReady } = getCleanedDataReadiness();
+  if (!isReady) {
+    setStatus("Select at least one shipment-analysis field. Missing optional fields are fine.", "error");
+    return;
+  }
+  setStatus("");
   renderPreview();
   setStep("review");
 });
