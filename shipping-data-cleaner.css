@@ -128,7 +128,8 @@ select {
 
 .cleaner-head,
 .cleaner-panel-head,
-.cleaner-actions {
+.cleaner-actions,
+.cleaner-top-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -142,7 +143,7 @@ select {
 }
 
 .cleaner-brand img {
-  width: 82px;
+  width: 76px;
   height: auto;
   display: block;
 }
@@ -161,7 +162,7 @@ select {
 }
 
 .cleaner-brand strong {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--muted);
 }
 
@@ -175,6 +176,7 @@ select {
   gap: 6px;
   width: 100%;
   max-width: none;
+  margin-top: 4px;
 }
 
 .cleaner-kicker {
@@ -188,8 +190,8 @@ select {
 }
 
 .cleaner-kicker span {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   background: var(--accent);
   flex: 0 0 auto;
 }
@@ -202,12 +204,39 @@ select {
 
 .cleaner-copy p,
 .cleaner-panel-head p,
-.cleaner-spec-list p,
-.cleaner-privacy-callout p {
+.cleaner-spec-list p {
   margin: 0;
   color: var(--muted);
   font-size: var(--fs-xs);
   line-height: 1.32;
+}
+
+.cleaner-card.is-step-mapping .cleaner-copy,
+.cleaner-card.is-step-review .cleaner-copy {
+  gap: 0;
+}
+
+.cleaner-card.is-step-mapping .cleaner-kicker,
+.cleaner-card.is-step-review .cleaner-kicker,
+.cleaner-card.is-step-mapping #cleanerIntroCopy,
+.cleaner-card.is-step-review #cleanerIntroCopy {
+  display: none;
+}
+
+.cleaner-top-actions {
+  display: none;
+  justify-content: flex-end;
+}
+
+.cleaner-card.is-step-mapping .cleaner-top-actions,
+.cleaner-card.is-step-review .cleaner-top-actions {
+  display: flex;
+}
+
+.cleaner-card.is-step-upload .cleaner-top-actions,
+.cleaner-card.is-step-mapping #cleanerDownload,
+.cleaner-card.is-step-review #cleanerDownloadFromMap {
+  display: none;
 }
 
 .cleaner-progress {
@@ -333,14 +362,6 @@ select {
   padding-block: 4px;
 }
 
-.cleaner-optional-note,
-.cleaner-privacy-callout {
-  border: 1px solid var(--stroke);
-  background: var(--card-bg);
-  border-radius: var(--radius);
-  padding: 14px;
-}
-
 .cleaner-spec-item {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
@@ -384,22 +405,6 @@ select {
   color: var(--text);
   font-size: var(--fs-xs);
   font-family: var(--font-regular);
-}
-
-.cleaner-optional-note {
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  line-height: 1.35;
-}
-
-.cleaner-optional-note strong {
-  color: var(--text);
-  font-family: var(--font-regular);
-  font-weight: 400;
-}
-
-.cleaner-optional-note span {
-  color: var(--success);
 }
 
 .cleaner-map-wrap,
@@ -499,20 +504,6 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
-}
-
-.cleaner-privacy-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.cleaner-privacy-callout span {
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  margin-top: 4px;
-  flex: 0 0 auto;
 }
 
 .field {
@@ -882,7 +873,8 @@ select {
 
   .cleaner-head,
   .cleaner-panel-head,
-  .cleaner-actions {
+  .cleaner-actions,
+  .cleaner-top-actions {
     align-items: stretch;
     flex-direction: column;
   }
@@ -898,7 +890,8 @@ select {
     min-height: 1px;
   }
 
-  .cleaner-actions .btn {
+  .cleaner-actions .btn,
+  .cleaner-top-actions .btn {
     width: 100%;
   }
 

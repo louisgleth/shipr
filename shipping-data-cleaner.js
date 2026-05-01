@@ -94,18 +94,6 @@ const EXTRACTED_FIELDS = [
   },
 ];
 
-const EXPECTED_OPTIONAL_FIELD_GROUPS = [
-  { label: "Shipment date", keys: ["shipment_date"] },
-  { label: "Origin country", keys: ["origin_country"] },
-  { label: "Origin postcode", keys: ["origin_postcode"] },
-  { label: "Destination country", keys: ["destination_country"] },
-  { label: "Destination postcode", keys: ["destination_postcode"] },
-  { label: "Weight", keys: ["weight"] },
-  { label: "Dimensions", keys: ["dimensions", "length", "width", "height"] },
-  { label: "Service type", keys: ["service_type"] },
-  { label: "Quantity", keys: ["quantity"] },
-];
-
 const REMOVE_PATTERNS = [
   /(^|_)(name|first_name|last_name|full_name|customer|buyer|consignee)(_|$)/,
   /(^|_)(email|e_mail|mail)(_|$)/,
@@ -140,10 +128,9 @@ const els = {
   dropzone: document.getElementById("cleanerDropzone"),
   fileInput: document.getElementById("cleanerFileInput"),
   mappingBody: document.getElementById("cleanerMappingBody"),
-  optionalNote: document.getElementById("cleanerOptionalNote"),
+  title: document.getElementById("cleanerTitle"),
   previewHead: document.getElementById("cleanerPreviewHead"),
   previewBody: document.getElementById("cleanerPreviewBody"),
-  reviewMeta: document.getElementById("cleanerReviewMeta"),
   card: document.querySelector(".cleaner-card"),
   toastStack: document.getElementById("toastStack"),
   confirmModal: document.getElementById("cleanerConfirmModal"),
@@ -337,6 +324,14 @@ function applyStepView(step) {
     );
   });
   const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
+  const titles = {
+    upload: "Clean your shipping data before sending it to Shipide.",
+    mapping: "Review detected columns",
+    review: "Cleaned file preview",
+  };
+  if (els.title) {
+    els.title.textContent = titles[step] || titles.upload;
+  }
   els.progress.forEach((item) => {
     item.classList.toggle("is-active", Number(item.dataset.progressStep) <= stepIndex);
   });
@@ -737,30 +732,6 @@ function renderMapping() {
   uploadedColumns
     .filter((item) => state.mapping[item.index]?.action === "remove")
     .forEach((item) => els.mappingBody.appendChild(createMappingRow(item.header, item.index)));
-  updateCounters();
-}
-
-function updateCounters() {
-  renderOptionalFieldStatus();
-}
-
-function renderOptionalFieldStatus() {
-  if (!els.optionalNote) return;
-  const kept = new Set(getKeptFieldKeys());
-  const found = EXPECTED_OPTIONAL_FIELD_GROUPS.filter((group) => group.keys.some((key) => kept.has(key))).map(
-    (group) => group.label
-  );
-  const missing = EXPECTED_OPTIONAL_FIELD_GROUPS.filter((group) => !group.keys.some((key) => kept.has(key))).map(
-    (group) => group.label
-  );
-  if (!found.length) {
-    els.optionalNote.innerHTML =
-      "<strong>No shipment-analysis field is currently kept.</strong> Select at least one useful field to continue. Dimensions, service type, date, quantity, and other details remain optional.";
-    return;
-  }
-  els.optionalNote.innerHTML = `<strong>Found:</strong> <span>${found.join(", ")}</span>. ${
-    missing.length ? `Optional not found: ${missing.join(", ")}. ` : ""
-  }You can continue with the fields available in this export.`;
 }
 
 function buildCleanRows() {
@@ -815,7 +786,6 @@ function renderPreview() {
     });
     els.previewBody.appendChild(tr);
   });
-  els.reviewMeta.textContent = `${cleaned.rows.length} rows, ${cleaned.headers.length} sanitized columns.`;
 }
 
 function downloadCleanCsv() {
