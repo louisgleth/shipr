@@ -380,12 +380,12 @@ function parseHtmlTable(text) {
 function detectField(header) {
   const normalized = normalizeHeader(header);
   if (isOriginAddressHeader(normalized)) {
-    return { action: "remove", reason: "Full origin address removed. Origin postcode can be extracted from it." };
+    return { action: "remove", reason: "Likely personal or identifying data." };
   }
   if (isDestinationAddressHeader(normalized)) {
     return {
       action: "remove",
-      reason: "Full destination address removed. Destination postcode and country can be extracted from it.",
+      reason: "Likely personal or identifying data.",
     };
   }
   const direct = DATA_FIELDS.find((field) => {
@@ -405,7 +405,7 @@ function detectField(header) {
   if (REMOVE_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return { action: "remove", reason: "Likely personal or identifying data." };
   }
-  return { action: "remove", reason: "Not needed for shipping-rate analysis." };
+  return { action: "remove", reason: "Looks like shipment-analysis data." };
 }
 
 function isOriginAddressHeader(normalized) {
@@ -511,7 +511,7 @@ function renderMapping() {
 
     const actionCell = document.createElement("td");
     const select = document.createElement("select");
-    select.className = "cleaner-map-select";
+    select.className = `cleaner-map-select ${state.mapping[index]?.action === "remove" ? "is-remove" : "is-keep"}`;
     select.dataset.columnIndex = String(index);
     const removeOption = new Option("Remove from submission", "remove");
     select.appendChild(removeOption);
@@ -521,7 +521,12 @@ function renderMapping() {
       const nextField = DATA_FIELDS.find((field) => field.key === select.value);
       state.mapping[index] = {
         action: select.value,
-        reason: select.value === "remove" ? "Manually removed." : `Manually kept as ${nextField?.label || select.value}.`,
+        reason:
+          select.value === "remove"
+            ? "Likely personal or identifying data."
+            : nextField
+              ? "Matched useful shipment field."
+              : "Looks like shipment-analysis data.",
       };
       renderMapping();
     });
@@ -551,10 +556,12 @@ function renderMapping() {
     nameCell.appendChild(name);
 
     const actionCell = document.createElement("td");
-    const badge = document.createElement("span");
-    badge.className = "cleaner-derived-badge";
-    badge.textContent = "Keep extracted field";
-    actionCell.appendChild(badge);
+    const select = document.createElement("select");
+    select.className = "cleaner-map-select is-keep";
+    select.disabled = true;
+    select.appendChild(new Option(`Keep as ${field.label}`, field.key));
+    select.value = field.key;
+    actionCell.appendChild(select);
 
     const sampleCell = document.createElement("td");
     const sample = document.createElement("span");
@@ -564,7 +571,7 @@ function renderMapping() {
 
     const reasonCell = document.createElement("td");
     reasonCell.className = "cleaner-reason";
-    reasonCell.textContent = "Parsed from combined address column without keeping the full address.";
+    reasonCell.textContent = "Looks like shipment-analysis data.";
 
     row.append(nameCell, actionCell, sampleCell, reasonCell);
     els.mappingBody.appendChild(row);
