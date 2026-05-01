@@ -218,6 +218,11 @@ select {
   gap: 0;
 }
 
+.cleaner-card.is-step-mapping .cleaner-copy,
+.cleaner-card.is-step-review .cleaner-copy {
+  align-self: center;
+}
+
 .cleaner-card.is-step-mapping .cleaner-kicker,
 .cleaner-card.is-step-review .cleaner-kicker,
 .cleaner-card.is-step-thanks .cleaner-kicker,
@@ -229,12 +234,31 @@ select {
 
 .cleaner-top-actions {
   display: none;
+  align-self: center;
   justify-content: flex-end;
 }
 
 .cleaner-card.is-step-mapping .cleaner-top-actions,
 .cleaner-card.is-step-review .cleaner-top-actions {
   display: flex;
+}
+
+.cleaner-card.is-step-mapping .cleaner-copy,
+.cleaner-card.is-step-review .cleaner-copy {
+  grid-row: 3;
+  grid-column: 1;
+}
+
+.cleaner-card.is-step-mapping .cleaner-top-actions,
+.cleaner-card.is-step-review .cleaner-top-actions {
+  grid-row: 3;
+  grid-column: 1;
+  justify-self: end;
+}
+
+.cleaner-card.is-step-mapping .cleaner-copy h1,
+.cleaner-card.is-step-review .cleaner-copy h1 {
+  padding-right: 190px;
 }
 
 .cleaner-card.is-step-upload .cleaner-top-actions,
@@ -1119,6 +1143,20 @@ select {
   .cleaner-actions .btn,
   .cleaner-top-actions .btn {
     width: 100%;
+  }
+
+  .cleaner-card.is-step-mapping .cleaner-copy,
+  .cleaner-card.is-step-review .cleaner-copy,
+  .cleaner-card.is-step-mapping .cleaner-top-actions,
+  .cleaner-card.is-step-review .cleaner-top-actions {
+    grid-row: auto;
+    grid-column: auto;
+    justify-self: stretch;
+  }
+
+  .cleaner-card.is-step-mapping .cleaner-copy h1,
+  .cleaner-card.is-step-review .cleaner-copy h1 {
+    padding-right: 0;
   }
 
   .toast-stack {
