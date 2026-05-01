@@ -10,6 +10,11 @@ const DATA_FIELDS = [
     aliases: ["origin_postcode", "origin_postal_code", "from_postcode", "from_zip", "sender_zip", "warehouse_postcode"],
   },
   {
+    key: "origin_country",
+    label: "Origin country",
+    aliases: ["origin_country", "from_country", "sender_country", "warehouse_country"],
+  },
+  {
     key: "destination_country",
     label: "Destination country",
     aliases: ["destination_country", "dest_country", "to_country", "shipping_country", "recipient_country", "country"],
@@ -73,6 +78,11 @@ const EXTRACTED_FIELDS = [
     sourceType: "origin_address",
   },
   {
+    key: "origin_country",
+    label: "Origin country",
+    sourceType: "origin_address",
+  },
+  {
     key: "destination_postcode",
     label: "Destination postcode",
     sourceType: "destination_address",
@@ -86,6 +96,7 @@ const EXTRACTED_FIELDS = [
 
 const EXPECTED_OPTIONAL_FIELD_GROUPS = [
   { label: "Shipment date", keys: ["shipment_date"] },
+  { label: "Origin country", keys: ["origin_country"] },
   { label: "Origin postcode", keys: ["origin_postcode"] },
   { label: "Destination country", keys: ["destination_country"] },
   { label: "Destination postcode", keys: ["destination_postcode"] },
@@ -134,7 +145,11 @@ const els = {
   previewBody: document.getElementById("cleanerPreviewBody"),
   reviewMeta: document.getElementById("cleanerReviewMeta"),
   card: document.querySelector(".cleaner-card"),
-  status: document.getElementById("cleanerStatus"),
+  toastStack: document.getElementById("toastStack"),
+  confirmModal: document.getElementById("cleanerConfirmModal"),
+  confirmCancel: document.getElementById("cleanerConfirmCancel"),
+  confirmApprove: document.getElementById("cleanerConfirmApprove"),
+  truthConfirm: document.getElementById("cleanerTruthConfirm"),
   backToUpload: document.getElementById("cleanerBackToUpload"),
   backToMapping: document.getElementById("cleanerBackToMapping"),
   continueBtn: document.getElementById("cleanerContinue"),
@@ -145,9 +160,118 @@ const els = {
 };
 
 function setStatus(message = "", tone = "") {
-  els.status.textContent = message;
-  els.status.classList.toggle("is-error", tone === "error");
-  els.status.classList.toggle("is-success", tone === "success");
+  const text = String(message || "").trim();
+  if (!text) return;
+  const normalizedTone = tone === "success" ? "success" : tone === "error" ? "error" : "info";
+  showStatusToast(text, { tone: normalizedTone });
+}
+
+function getToastIconSvg(tone) {
+  if (tone === "success") {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.4l2.3 2.3 4.7-5.1"/></svg>';
+  }
+  if (tone === "error") {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.7 21 19.3H3L12 3.7Z"/><path d="M12 9v4.6"/><circle cx="12" cy="16.9" r="0.8" fill="currentColor" stroke="none"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.2v5"/><circle cx="12" cy="7.3" r="0.8" fill="currentColor" stroke="none"/></svg>';
+}
+
+function updateToastStackLayout() {
+  if (!els.toastStack) return;
+  const toasts = Array.from(els.toastStack.querySelectorAll(".toast"));
+  toasts.forEach((toast, index) => {
+    const depth = Math.min(index, 3);
+    const offset = depth * 14;
+    const scale = 1 - depth * 0.035;
+    const opacity = 1 - depth * 0.14;
+    toast.style.setProperty("--stack-offset", `${offset}px`);
+    toast.style.setProperty("--stack-scale", `${scale}`);
+    toast.style.setProperty("--stack-opacity", `${Math.max(0.45, opacity)}`);
+    toast.style.setProperty("--stack-z", `${100 - index}`);
+  });
+}
+
+let lastStatusToast = {
+  message: "",
+  tone: "",
+  title: "",
+  at: 0,
+};
+
+function showStatusToast(message, options = {}) {
+  const text = String(message || "").trim();
+  if (!text || !els.toastStack) return;
+  const title = String(options?.title || "").trim();
+  const rawTone = String(options?.tone || "info").trim().toLowerCase();
+  const tone = rawTone === "success" ? "success" : rawTone === "error" || rawTone === "warning" ? "error" : "info";
+  const now = Date.now();
+  if (
+    lastStatusToast.message === text &&
+    lastStatusToast.tone === tone &&
+    lastStatusToast.title === title &&
+    now - lastStatusToast.at < 900
+  ) {
+    return;
+  }
+  lastStatusToast = { message: text, tone, title, at: now };
+  showToast(text, { ...options, title, tone });
+}
+
+function showToast(message, options = {}) {
+  if (!els.toastStack) return;
+  const text = String(message || "").trim();
+  if (!text) return;
+  const rawTone = String(options?.tone || "info").trim().toLowerCase();
+  const tone = rawTone === "success" ? "success" : rawTone === "error" || rawTone === "warning" ? "error" : "info";
+  const { title = "", duration = 3400 } = options;
+  const toast = document.createElement("div");
+  toast.className = `toast is-${tone}`;
+
+  const main = document.createElement("div");
+  main.className = "toast-main";
+
+  const icon = document.createElement("span");
+  icon.className = `toast-icon is-${tone}`;
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getToastIconSvg(tone);
+
+  const body = document.createElement("div");
+  body.className = "toast-body";
+
+  if (title) {
+    const titleEl = document.createElement("div");
+    titleEl.className = "toast-title";
+    titleEl.textContent = String(title).trim();
+    body.appendChild(titleEl);
+  }
+
+  const messageEl = document.createElement("div");
+  messageEl.className = "toast-message";
+  messageEl.textContent = text;
+  body.appendChild(messageEl);
+
+  main.appendChild(icon);
+  main.appendChild(body);
+  toast.appendChild(main);
+  els.toastStack.prepend(toast);
+  updateToastStackLayout();
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      toast.classList.add("is-visible");
+    });
+  });
+
+  const dismiss = () => {
+    toast.classList.remove("is-visible");
+    toast.classList.add("is-exit");
+    window.setTimeout(() => {
+      toast.remove();
+      updateToastStackLayout();
+    }, 420);
+  };
+
+  window.setTimeout(dismiss, Math.max(1800, Number(duration) || 3400));
 }
 
 function getStepPanel(step) {
@@ -465,7 +589,9 @@ function getExtractedValue(row, fieldKey) {
   for (let index = 0; index < state.headers.length; index += 1) {
     const sourceType = getAddressSourceType(state.headers[index]);
     if (!sourceType) continue;
-    if (fieldKey === "origin_postcode" && sourceType !== "origin_address") continue;
+    if ((fieldKey === "origin_postcode" || fieldKey === "origin_country") && sourceType !== "origin_address") {
+      continue;
+    }
     if (
       (fieldKey === "destination_postcode" || fieldKey === "destination_country") &&
       sourceType !== "destination_address"
@@ -476,7 +602,7 @@ function getExtractedValue(row, fieldKey) {
     if (fieldKey === "origin_postcode" || fieldKey === "destination_postcode") {
       if (parsed.postcode) return parsed.postcode;
     }
-    if (fieldKey === "destination_country" && parsed.country) return parsed.country;
+    if ((fieldKey === "origin_country" || fieldKey === "destination_country") && parsed.country) return parsed.country;
   }
   return "";
 }
@@ -711,14 +837,40 @@ function downloadCleanCsv() {
   URL.revokeObjectURL(url);
 }
 
+function setConfirmModalOpen(open) {
+  if (!els.confirmModal) return;
+  els.confirmModal.classList.toggle("is-closed", !open);
+  if (open) {
+    if (els.truthConfirm) els.truthConfirm.checked = false;
+    if (els.confirmApprove) els.confirmApprove.disabled = true;
+    window.setTimeout(() => {
+      els.truthConfirm?.focus();
+    }, 50);
+  }
+}
+
+function requestSubmitConfirmation() {
+  const { isReady } = getCleanedDataReadiness();
+  if (!isReady) {
+    setStatus("Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.", "error");
+    return;
+  }
+  setConfirmModalOpen(true);
+}
+
 async function submitCleanData() {
   const { cleaned, isReady } = getCleanedDataReadiness();
   if (!isReady) {
     setStatus("Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.", "error");
     return;
   }
+  if (!els.truthConfirm?.checked) {
+    setStatus("Confirm the information is truthful before submitting.", "error");
+    return;
+  }
   els.submit.disabled = true;
-  setStatus("Submitting cleaned data to Shipide...");
+  if (els.confirmApprove) els.confirmApprove.disabled = true;
+  showStatusToast("Submitting cleaned data to Shipide...", { tone: "info" });
   try {
     const response = await fetch("/api/public/shipping-data-cleaner/submit", {
       method: "POST",
@@ -732,11 +884,15 @@ async function submitCleanData() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.error || "Could not submit the cleaned data.");
+    setConfirmModalOpen(false);
     setStatus("Cleaned data submitted. We only received the sanitized columns shown above.", "success");
   } catch (error) {
     setStatus(`${error.message || "Submission failed."} Download the cleaned CSV and send it to Shipide if needed.`, "error");
   } finally {
     els.submit.disabled = false;
+    if (els.confirmApprove) {
+      els.confirmApprove.disabled = !els.truthConfirm?.checked;
+    }
   }
 }
 
@@ -847,7 +1003,19 @@ els.continueBtn.addEventListener("click", () => {
 });
 els.download.addEventListener("click", downloadCleanCsv);
 els.downloadFromMap.addEventListener("click", downloadCleanCsv);
-els.submit.addEventListener("click", submitCleanData);
+els.submit.addEventListener("click", requestSubmitConfirmation);
+els.confirmCancel?.addEventListener("click", () => setConfirmModalOpen(false));
+els.confirmApprove?.addEventListener("click", submitCleanData);
+els.truthConfirm?.addEventListener("change", () => {
+  if (els.confirmApprove) {
+    els.confirmApprove.disabled = !els.truthConfirm.checked;
+  }
+});
+els.confirmModal?.addEventListener("click", (event) => {
+  if (event.target === els.confirmModal) {
+    setConfirmModalOpen(false);
+  }
+});
 
 drawBackground();
 setStep("upload");

@@ -57,14 +57,25 @@
             </div>
           </div>
 
-          <div class="cleaner-spec-grid">
-            <div>
-              <span class="cleaner-spec-label">Kept by default</span>
-              <p>Date, origin postcode, destination country/postcode, weight, dimensions, service type, quantity.</p>
+          <div class="cleaner-spec-list">
+            <div class="cleaner-spec-item cleaner-spec-item-keep">
+              <span class="cleaner-spec-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.4l2.3 2.3 4.7-5.1"/></svg>
+              </span>
+              <div>
+                <span class="cleaner-spec-label">Kept by default</span>
+                <p>Date, origin and destination country/postcode, weight, dimensions, service type, quantity.</p>
+              </div>
             </div>
-            <div>
-              <span class="cleaner-spec-label">Removed by default</span>
-              <p>Names, street addresses, email, phone, company, order IDs, notes, tracking references.</p>
+            <span class="cleaner-spec-divider" aria-hidden="true"></span>
+            <div class="cleaner-spec-item cleaner-spec-item-remove">
+              <span class="cleaner-spec-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8M16 8l-8 8"/></svg>
+              </span>
+              <div>
+                <span class="cleaner-spec-label">Removed by default</span>
+                <p>Names, street addresses, email, phone, company, order IDs, notes, tracking references.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -148,8 +159,42 @@
           </div>
         </section>
 
-        <div class="cleaner-status" id="cleanerStatus" role="status" aria-live="polite"></div>
       </section>
+
+      <div class="cleaner-confirm-overlay is-closed" id="cleanerConfirmModal">
+        <div class="cleaner-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="cleanerConfirmTitle">
+          <div class="cleaner-confirm-body">
+            <div class="cleaner-confirm-hero">
+              <div class="cleaner-confirm-copy">
+                <div class="cleaner-confirm-kicker">
+                  <span class="cleaner-confirm-kicker-dot" aria-hidden="true"></span>
+                  <span>Submission Check</span>
+                </div>
+                <h2 id="cleanerConfirmTitle">Have you checked that the provided information is truthful?</h2>
+                <p class="cleaner-confirm-note">
+                  Please confirm that the sanitized shipment data you are sending is accurate and provided in good faith.
+                </p>
+                <label class="cleaner-confirm-check">
+                  <input type="checkbox" id="cleanerTruthConfirm" />
+                  <span class="cleaner-confirm-check-box" aria-hidden="true"></span>
+                  <span>I confirm the information provided is truthful and accurate.</span>
+                </label>
+              </div>
+              <div class="cleaner-confirm-actions">
+                <button type="button" class="btn btn-primary" id="cleanerConfirmApprove" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5l4.2 4.2L19 7.4"/></svg>
+                  <span>I've Checked</span>
+                </button>
+                <button type="button" class="cleaner-confirm-review-link" id="cleanerConfirmCancel">
+                  <span>Review Again</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
     </main>
 
     <script src="shipping-data-cleaner.js"></script>
