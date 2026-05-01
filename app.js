@@ -5864,6 +5864,27 @@ function formatShipmentExtractStatus(row) {
   return tr("Open");
 }
 
+function normalizeShipmentExtractPublicUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "") || "/";
+    if (
+      normalizedPath === "/shipping-data-cleaner" ||
+      normalizedPath === "/shipping-data-cleaner.html" ||
+      normalizedPath === "/clean-data.html"
+    ) {
+      parsed.pathname = "/clean-data";
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return raw
+      .replace(/\/shipping-data-cleaner(?:\.html)?(?=([?#]|$))/, "/clean-data")
+      .replace(/\/clean-data\.html(?=([?#]|$))/, "/clean-data");
+  }
+}
+
 function renderShipmentExtractHistory(rows = []) {
   if (!shipmentExtractHistoryList || !shipmentExtractHistoryEmpty) return;
   shipmentExtractHistory = Array.isArray(rows) ? rows.slice() : [];
@@ -5895,7 +5916,7 @@ function renderShipmentExtractHistory(rows = []) {
 
     const urlRow = document.createElement("div");
     urlRow.className = "invite-history-url-row";
-    const requestUrl = String(row?.request_url || "").trim();
+    const requestUrl = normalizeShipmentExtractPublicUrl(row?.request_url);
     const urlValue = document.createElement("div");
     urlValue.className = `invite-history-url${requestUrl ? "" : " is-unavailable"}`;
     urlValue.textContent = requestUrl || tr("Stored URL unavailable for this request.");
@@ -5956,7 +5977,7 @@ function setShipmentExtractStatus(message = "", options = {}) {
 
 function setShipmentExtractResult(url = "", meta = {}) {
   if (!shipmentExtractResult || !shipmentExtractUrlInput) return;
-  const value = String(url || "").trim();
+  const value = normalizeShipmentExtractPublicUrl(url);
   if (!value) {
     shipmentExtractResult.classList.add("is-hidden");
     shipmentExtractUrlInput.value = "";
@@ -6012,7 +6033,7 @@ async function createShipmentExtractRequest() {
       method: "POST",
       body: JSON.stringify({ clientEmail, expiresInDays }),
     });
-    const requestUrl = String(payload?.requestUrl || "").trim();
+    const requestUrl = normalizeShipmentExtractPublicUrl(payload?.requestUrl);
     if (!requestUrl) throw new Error(tr("Could not create shipment extract link."));
     setShipmentExtractResult(requestUrl, {
       clientEmail,
@@ -6031,8 +6052,9 @@ async function createShipmentExtractRequest() {
 }
 
 async function copyShipmentExtractUrl() {
-  const requestUrl = String(shipmentExtractUrlInput?.value || "").trim();
+  const requestUrl = normalizeShipmentExtractPublicUrl(shipmentExtractUrlInput?.value);
   if (!requestUrl) return;
+  if (shipmentExtractUrlInput) shipmentExtractUrlInput.value = requestUrl;
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(requestUrl);
@@ -6049,7 +6071,7 @@ async function copyShipmentExtractUrl() {
 
 async function copyShipmentExtractHistoryUrl(requestId) {
   const row = shipmentExtractHistory.find((entry) => String(entry?.id || "") === String(requestId || ""));
-  const requestUrl = String(row?.request_url || "").trim();
+  const requestUrl = normalizeShipmentExtractPublicUrl(row?.request_url);
   if (!requestUrl) return;
   try {
     if (navigator.clipboard?.writeText) {
