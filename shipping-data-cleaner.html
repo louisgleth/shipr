@@ -27,8 +27,8 @@
           <p class="cleaner-kicker mono">Shipment extract sanitization</p>
           <h1 id="cleanerTitle">Clean your shipping data before sending it to Shipide.</h1>
           <p>
-            Upload your carrier, marketplace, or store export. We keep only useful shipment-analysis fields
-            and remove customer names, addresses, emails, phones, notes, and identifiers before submission.
+            Upload your carrier, marketplace, or store export. We keep shipment-analysis fields and strip names,
+            full addresses, emails, phones, notes, and identifiers before submission.
           </p>
         </div>
 
@@ -75,24 +75,24 @@
               <h2>Review detected columns</h2>
               <p id="cleanerFileMeta">No file loaded</p>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToUpload">Change file</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToUpload">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
+            <span>Change file</span>
+          </button>
           </div>
 
           <div class="cleaner-summary-grid">
             <div class="cleaner-summary-card keep">
               <span class="mono" id="keptCount">0</span>
               <strong>Columns kept</strong>
-              <p>These will be included in the sanitized file.</p>
             </div>
             <div class="cleaner-summary-card remove">
               <span class="mono" id="removedCount">0</span>
               <strong>Columns removed</strong>
-              <p>These stay out of the submission.</p>
             </div>
             <div class="cleaner-summary-card">
               <span class="mono" id="rowCount">0</span>
               <strong>Rows detected</strong>
-              <p>Preview uses the first usable rows.</p>
             </div>
           </div>
 
@@ -111,8 +111,14 @@
           </div>
 
           <div class="cleaner-actions">
-            <button type="button" class="btn btn-secondary" id="cleanerDownloadFromMap">Download cleaned CSV</button>
-            <button type="button" class="btn btn-primary" id="cleanerContinue">Preview cleaned data</button>
+            <button type="button" class="btn btn-secondary" id="cleanerDownloadFromMap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 4v10" /><polyline points="7 11 12 16 17 11" /><path d="M5 19h14" /></svg>
+              <span>Download CSV</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="cleanerContinue">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12h14" /><polyline points="13 6 19 12 13 18" /></svg>
+              <span>Preview cleaned data</span>
+            </button>
           </div>
         </section>
 
@@ -122,7 +128,10 @@
               <h2>Cleaned file preview</h2>
               <p id="cleanerReviewMeta">Only sanitized shipment-analysis data is shown below.</p>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToMapping">Edit mapping</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="cleanerBackToMapping">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
+              <span>Edit mapping</span>
+            </button>
           </div>
 
           <div class="cleaner-privacy-callout">
@@ -139,14 +148,15 @@
             </table>
           </div>
 
-          <label class="field cleaner-contact-field">
-            <span>Your email, optional</span>
-            <input type="email" id="cleanerContactEmail" placeholder="you@company.com" autocomplete="email" />
-          </label>
-
           <div class="cleaner-actions">
-            <button type="button" class="btn btn-secondary" id="cleanerDownload">Download cleaned CSV</button>
-            <button type="button" class="btn btn-primary" id="cleanerSubmit">Submit cleaned data to Shipide</button>
+            <button type="button" class="btn btn-secondary" id="cleanerDownload">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 4v10" /><polyline points="7 11 12 16 17 11" /><path d="M5 19h14" /></svg>
+              <span>Download CSV</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="cleanerSubmit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M22 2 11 13" /><path d="m22 2-7 20-4-9-9-4 20-7z" /></svg>
+              <span>Submit to Shipide</span>
+            </button>
           </div>
         </section>
 

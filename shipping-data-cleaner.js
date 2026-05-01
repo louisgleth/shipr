@@ -66,6 +66,24 @@ const DATA_FIELDS = [
   },
 ];
 
+const EXTRACTED_FIELDS = [
+  {
+    key: "origin_postcode",
+    label: "Origin postcode",
+    sourceType: "origin_address",
+  },
+  {
+    key: "destination_postcode",
+    label: "Destination postcode",
+    sourceType: "destination_address",
+  },
+  {
+    key: "destination_country",
+    label: "Destination country",
+    sourceType: "destination_address",
+  },
+];
+
 const REMOVE_PATTERNS = [
   /(^|_)(name|first_name|last_name|full_name|customer|buyer|consignee)(_|$)/,
   /(^|_)(email|e_mail|mail)(_|$)/,
@@ -81,7 +99,13 @@ const state = {
   headers: [],
   rows: [],
   mapping: {},
+  step: "upload",
+  transitionToken: 0,
 };
+
+const STEP_OUT_MS = 220;
+const STEP_RESIZE_MS = 520;
+const STEP_IN_MS = 260;
 
 const els = {
   panels: {
@@ -101,7 +125,7 @@ const els = {
   previewHead: document.getElementById("cleanerPreviewHead"),
   previewBody: document.getElementById("cleanerPreviewBody"),
   reviewMeta: document.getElementById("cleanerReviewMeta"),
-  contactEmail: document.getElementById("cleanerContactEmail"),
+  card: document.querySelector(".cleaner-card"),
   status: document.getElementById("cleanerStatus"),
   backToUpload: document.getElementById("cleanerBackToUpload"),
   backToMapping: document.getElementById("cleanerBackToMapping"),
@@ -118,15 +142,149 @@ function setStatus(message = "", tone = "") {
   els.status.classList.toggle("is-success", tone === "success");
 }
 
-function setStep(step) {
+function getStepPanel(step) {
+  return els.panels[step] || els.panels.upload;
+}
+
+function getStepWidth(step) {
+  const shellWidth = els.card?.parentElement?.getBoundingClientRect().width || window.innerWidth;
+  if (step === "upload") return Math.min(640, shellWidth);
+  return Math.min(1040, shellWidth);
+}
+
+function measurePanelHeight(panel) {
+  if (!panel || !els.card) return 0;
+  const wasActive = panel.classList.contains("is-active");
+  const previousStyles = {
+    position: panel.style.position,
+    inset: panel.style.inset,
+    width: panel.style.width,
+    visibility: panel.style.visibility,
+    pointerEvents: panel.style.pointerEvents,
+    zIndex: panel.style.zIndex,
+  };
+
+  panel.classList.add("is-active");
+  panel.classList.remove(
+    "is-step-transition-exit",
+    "is-step-transition-hidden",
+    "is-step-transition-enter-start"
+  );
+  panel.style.position = "absolute";
+  panel.style.inset = "0 auto auto 0";
+  panel.style.width = `${Math.floor(els.card.getBoundingClientRect().width)}px`;
+  panel.style.visibility = "hidden";
+  panel.style.pointerEvents = "none";
+  panel.style.zIndex = "-1";
+
+  const height = panel.getBoundingClientRect().height;
+
+  panel.style.position = previousStyles.position;
+  panel.style.inset = previousStyles.inset;
+  panel.style.width = previousStyles.width;
+  panel.style.visibility = previousStyles.visibility;
+  panel.style.pointerEvents = previousStyles.pointerEvents;
+  panel.style.zIndex = previousStyles.zIndex;
+
+  if (!wasActive) {
+    panel.classList.remove("is-active");
+  }
+
+  return height;
+}
+
+function applyStepView(step) {
+  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-review");
+  els.card?.classList.add(`is-step-${step}`);
   Object.entries(els.panels).forEach(([key, panel]) => {
     panel.classList.toggle("is-active", key === step);
+    panel.classList.remove(
+      "is-step-transition-exit",
+      "is-step-transition-hidden",
+      "is-step-transition-enter-start"
+    );
   });
   const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
   els.progress.forEach((item) => {
     item.classList.toggle("is-active", Number(item.dataset.progressStep) <= stepIndex);
   });
   els.stepLabel.textContent = `Step ${stepIndex} of 3`;
+}
+
+function resetStepTransitionState() {
+  state.transitionToken += 1;
+  els.card?.classList.remove("is-step-transitioning");
+  if (els.card) {
+    els.card.style.width = "";
+    els.card.style.height = "";
+  }
+  Object.values(els.panels).forEach((panel) => {
+    panel.classList.remove(
+      "is-step-transition-exit",
+      "is-step-transition-hidden",
+      "is-step-transition-enter-start"
+    );
+  });
+}
+
+function setStep(step, options = {}) {
+  const nextStep = ["upload", "mapping", "review"].includes(step) ? step : "upload";
+  const previousStep = state.step || "upload";
+  const shouldAnimate =
+    options.animate !== false &&
+    previousStep !== nextStep &&
+    els.card &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (!shouldAnimate) {
+    resetStepTransitionState();
+    state.step = nextStep;
+    applyStepView(nextStep);
+    return;
+  }
+
+  const transitionToken = ++state.transitionToken;
+  const currentPanel = getStepPanel(previousStep);
+  const incomingPanel = getStepPanel(nextStep);
+  const cardRect = els.card.getBoundingClientRect();
+  const currentPanelHeight = Math.max(1, currentPanel.getBoundingClientRect().height);
+  const incomingPanelHeight = Math.max(1, measurePanelHeight(incomingPanel));
+  const chromeHeight = Math.max(0, cardRect.height - currentPanelHeight);
+  const targetHeight = Math.max(1, chromeHeight + incomingPanelHeight);
+  const targetWidth = getStepWidth(nextStep);
+
+  els.card.style.width = `${Math.round(cardRect.width)}px`;
+  els.card.style.height = `${Math.round(cardRect.height)}px`;
+  els.card.classList.add("is-step-transitioning");
+  currentPanel.classList.add("is-step-transition-exit");
+
+  window.setTimeout(() => {
+    if (transitionToken !== state.transitionToken) return;
+    currentPanel.classList.remove("is-step-transition-exit", "is-active");
+    currentPanel.classList.add("is-step-transition-hidden");
+    state.step = nextStep;
+    applyStepView(nextStep);
+    incomingPanel.classList.add("is-step-transition-hidden");
+    els.card.style.width = `${Math.round(targetWidth)}px`;
+    els.card.style.height = `${Math.round(targetHeight)}px`;
+  }, STEP_OUT_MS);
+
+  window.setTimeout(() => {
+    if (transitionToken !== state.transitionToken) return;
+    incomingPanel.classList.remove("is-step-transition-hidden");
+    incomingPanel.classList.add("is-step-transition-enter-start");
+    window.requestAnimationFrame(() => {
+      if (transitionToken !== state.transitionToken) return;
+      incomingPanel.classList.remove("is-step-transition-enter-start");
+    });
+  }, STEP_OUT_MS + STEP_RESIZE_MS);
+
+  window.setTimeout(() => {
+    if (transitionToken !== state.transitionToken) return;
+    resetStepTransitionState();
+    state.step = nextStep;
+    applyStepView(nextStep);
+  }, STEP_OUT_MS + STEP_RESIZE_MS + STEP_IN_MS);
 }
 
 function normalizeHeader(value) {
@@ -221,6 +379,15 @@ function parseHtmlTable(text) {
 
 function detectField(header) {
   const normalized = normalizeHeader(header);
+  if (isOriginAddressHeader(normalized)) {
+    return { action: "remove", reason: "Full origin address removed. Origin postcode can be extracted from it." };
+  }
+  if (isDestinationAddressHeader(normalized)) {
+    return {
+      action: "remove",
+      reason: "Full destination address removed. Destination postcode and country can be extracted from it.",
+    };
+  }
   const direct = DATA_FIELDS.find((field) => {
     const aliases = [field.key, field.label, ...field.aliases].map(normalizeHeader);
     return aliases.includes(normalized);
@@ -239,6 +406,87 @@ function detectField(header) {
     return { action: "remove", reason: "Likely personal or identifying data." };
   }
   return { action: "remove", reason: "Not needed for shipping-rate analysis." };
+}
+
+function isOriginAddressHeader(normalized) {
+  return (
+    normalized.includes("shipped_from_address") ||
+    normalized.includes("ship_from_address") ||
+    normalized.includes("from_address") ||
+    normalized.includes("sender_address") ||
+    normalized.includes("origin_address")
+  );
+}
+
+function isDestinationAddressHeader(normalized) {
+  return (
+    normalized.includes("shipped_to_address") ||
+    normalized.includes("ship_to_address") ||
+    normalized.includes("to_address") ||
+    normalized.includes("recipient_address") ||
+    normalized.includes("destination_address") ||
+    normalized.includes("delivery_address") ||
+    normalized.includes("shipping_address")
+  );
+}
+
+function getAddressSourceType(header) {
+  const normalized = normalizeHeader(header);
+  if (isOriginAddressHeader(normalized)) return "origin_address";
+  if (isDestinationAddressHeader(normalized)) return "destination_address";
+  return "";
+}
+
+function parseCombinedAddress(value) {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const country = parts.length ? parts[parts.length - 1] : "";
+  const cityPostcodePart = parts.length >= 2 ? parts[parts.length - 2] : String(value || "");
+  const postcodeMatch =
+    cityPostcodePart.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i) ||
+    cityPostcodePart.match(/\b(\d{4,6}(?:-\d{3,4})?)\b/);
+  return {
+    postcode: postcodeMatch ? postcodeMatch[1].trim() : "",
+    country,
+  };
+}
+
+function getExtractedValue(row, fieldKey) {
+  for (let index = 0; index < state.headers.length; index += 1) {
+    const sourceType = getAddressSourceType(state.headers[index]);
+    if (!sourceType) continue;
+    if (fieldKey === "origin_postcode" && sourceType !== "origin_address") continue;
+    if (
+      (fieldKey === "destination_postcode" || fieldKey === "destination_country") &&
+      sourceType !== "destination_address"
+    ) {
+      continue;
+    }
+    const parsed = parseCombinedAddress(row[index]);
+    if (fieldKey === "origin_postcode" || fieldKey === "destination_postcode") {
+      if (parsed.postcode) return parsed.postcode;
+    }
+    if (fieldKey === "destination_country" && parsed.country) return parsed.country;
+  }
+  return "";
+}
+
+function getAvailableExtractedFields() {
+  const hasOriginAddress = state.headers.some((header) => getAddressSourceType(header) === "origin_address");
+  const hasDestinationAddress = state.headers.some((header) => getAddressSourceType(header) === "destination_address");
+  const directlyMapped = new Set(
+    Object.values(state.mapping)
+      .map((item) => item.action)
+      .filter((action) => action && action !== "remove")
+  );
+  return EXTRACTED_FIELDS.filter((field) => {
+    if (directlyMapped.has(field.key)) return false;
+    if (field.sourceType === "origin_address") return hasOriginAddress;
+    if (field.sourceType === "destination_address") return hasDestinationAddress;
+    return false;
+  });
 }
 
 function getSampleForColumn(index) {
@@ -292,12 +540,41 @@ function renderMapping() {
     row.append(nameCell, actionCell, sampleCell, reasonCell);
     els.mappingBody.appendChild(row);
   });
+  getAvailableExtractedFields().forEach((field) => {
+    const row = document.createElement("tr");
+    const nameCell = document.createElement("td");
+    const name = document.createElement("div");
+    name.className = "cleaner-column-name";
+    name.innerHTML = `<strong></strong><span class="mono"></span>`;
+    name.querySelector("strong").textContent = field.label;
+    name.querySelector("span").textContent = "extracted, not raw address";
+    nameCell.appendChild(name);
+
+    const actionCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "cleaner-derived-badge";
+    badge.textContent = "Keep extracted field";
+    actionCell.appendChild(badge);
+
+    const sampleCell = document.createElement("td");
+    const sample = document.createElement("span");
+    sample.className = "cleaner-sample";
+    sample.textContent = getExtractedValue(state.rows[0] || [], field.key) || "No sample";
+    sampleCell.appendChild(sample);
+
+    const reasonCell = document.createElement("td");
+    reasonCell.className = "cleaner-reason";
+    reasonCell.textContent = "Parsed from combined address column without keeping the full address.";
+
+    row.append(nameCell, actionCell, sampleCell, reasonCell);
+    els.mappingBody.appendChild(row);
+  });
   updateCounters();
 }
 
 function updateCounters() {
   const actions = Object.values(state.mapping).map((item) => item.action);
-  els.keptCount.textContent = String(actions.filter((action) => action !== "remove").length);
+  els.keptCount.textContent = String(actions.filter((action) => action !== "remove").length + getAvailableExtractedFields().length);
   els.removedCount.textContent = String(actions.filter((action) => action === "remove").length);
   els.rowCount.textContent = String(state.rows.length);
 }
@@ -306,14 +583,18 @@ function buildCleanRows() {
   const kept = Object.entries(state.mapping)
     .map(([index, config]) => ({ index: Number(index), key: config.action }))
     .filter((item) => item.key && item.key !== "remove");
+  const extracted = getAvailableExtractedFields();
   const outputHeaders = [];
   const seen = new Map();
-  kept.forEach((item) => {
+  [...kept, ...extracted.map((field) => ({ key: field.key, extracted: true }))].forEach((item) => {
     const count = seen.get(item.key) || 0;
     seen.set(item.key, count + 1);
     outputHeaders.push(count ? `${item.key}_${count + 1}` : item.key);
   });
-  const rows = state.rows.map((row) => kept.map((item) => String(row[item.index] || "").trim()));
+  const rows = state.rows.map((row) => [
+    ...kept.map((item) => String(row[item.index] || "").trim()),
+    ...extracted.map((field) => getExtractedValue(row, field.key)),
+  ]);
   return { headers: outputHeaders, rows };
 }
 
@@ -381,7 +662,6 @@ async function submitCleanData() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fileName: state.fileName,
-        contactEmail: els.contactEmail.value.trim(),
         headers: cleaned.headers,
         rows: cleaned.rows,
         removedColumns: state.headers.filter((_, index) => state.mapping[index]?.action === "remove"),
@@ -502,3 +782,4 @@ els.downloadFromMap.addEventListener("click", downloadCleanCsv);
 els.submit.addEventListener("click", submitCleanData);
 
 drawBackground();
+setStep("upload");

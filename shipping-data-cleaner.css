@@ -46,7 +46,7 @@
   --fs-sm: 14px;
   --fs-md: 18px;
   --fs-lg: 22px;
-  --fs-xl: 32px;
+  --fs-xl: 28px;
   --letter-tight: -0.01em;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -79,7 +79,7 @@ select {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 32px 18px;
+  padding: 20px 18px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -100,18 +100,30 @@ select {
 
 .cleaner-card {
   width: min(920px, 100%);
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
   position: relative;
   z-index: 2;
   background: rgba(28, 32, 38, 0.96);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: 18px;
   display: grid;
-  gap: 18px;
+  gap: 12px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(18px);
+  transition: width 0.52s var(--ease-out-expo), height 0.52s var(--ease-out-expo), transform 0.42s var(--ease-out-expo);
+}
+
+.cleaner-card.is-step-upload {
+  width: min(640px, 100%);
+}
+
+.cleaner-card.is-step-mapping,
+.cleaner-card.is-step-review {
+  width: min(1040px, 100%);
+}
+
+.cleaner-card.is-step-transitioning {
+  overflow: hidden;
 }
 
 .cleaner-head,
@@ -161,7 +173,7 @@ select {
 
 .cleaner-copy {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   max-width: 760px;
 }
 
@@ -174,19 +186,18 @@ select {
 
 .cleaner-copy h1 {
   margin: 0;
-  font-size: clamp(28px, 4vw, 46px);
-  line-height: 0.98;
+  font-size: var(--fs-lg);
+  line-height: 1.03;
 }
 
 .cleaner-copy p,
 .cleaner-panel-head p,
-.cleaner-summary-card p,
 .cleaner-spec-grid p,
 .cleaner-privacy-callout p {
   margin: 0;
   color: var(--muted);
   font-size: var(--fs-xs);
-  line-height: 1.45;
+  line-height: 1.32;
 }
 
 .cleaner-progress {
@@ -207,22 +218,65 @@ select {
 
 .cleaner-panel {
   display: none;
-  gap: 16px;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(10px);
+  filter: blur(2px);
+  transition: opacity 0.16s ease, transform 0.26s var(--ease-out-expo), filter 0.2s ease;
 }
 
 .cleaner-panel.is-active {
   display: grid;
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  animation: cleanerPanelEnter 0.34s var(--ease-out-expo);
+}
+
+.cleaner-panel.is-step-transition-exit {
+  opacity: 0;
+  transform: translateY(-14px);
+  filter: blur(2px);
+}
+
+.cleaner-panel.is-step-transition-hidden {
+  display: grid;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cleaner-panel.is-step-transition-enter-start {
+  display: grid;
+  opacity: 0;
+  visibility: visible;
+  pointer-events: none;
+  transform: translateY(18px);
+  filter: blur(2px);
+}
+
+@keyframes cleanerPanelEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
 }
 
 .cleaner-dropzone {
-  min-height: 210px;
+  min-height: 170px;
   border-radius: var(--radius-lg);
   background: var(--card-bg);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Crect width='100%25' height='100%25' fill='none' rx='6' ry='6' stroke='%232e2e2e' stroke-width='1' stroke-dasharray='6%2C 6'/%3E%3C/svg%3E");
   display: grid;
   place-items: center;
   text-align: center;
-  gap: 12px;
+  gap: 8px;
   color: var(--muted);
   position: relative;
   cursor: pointer;
@@ -243,7 +297,7 @@ select {
 }
 
 .cleaner-dropzone svg {
-  width: 34px;
+  width: 28px;
   opacity: 0.45;
 }
 
@@ -291,11 +345,11 @@ select {
 
 .cleaner-summary-card {
   display: grid;
-  gap: 5px;
+  gap: 2px;
 }
 
 .cleaner-summary-card > span {
-  font-size: 24px;
+  font-size: var(--fs-md);
   color: var(--text);
 }
 
@@ -312,7 +366,7 @@ select {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
-  max-height: 330px;
+  max-height: min(300px, calc(100dvh - 390px));
   overflow: auto;
 }
 
@@ -328,7 +382,7 @@ select {
 .cleaner-preview-table td {
   text-align: left;
   border-bottom: 1px solid var(--stroke);
-  padding: 9px 10px;
+  padding: 7px 9px;
   font-size: var(--fs-2xs);
   vertical-align: middle;
   white-space: nowrap;
@@ -366,10 +420,9 @@ select {
   color: var(--muted);
 }
 
-.cleaner-map-select,
-.cleaner-contact-field input {
+.cleaner-map-select {
   width: 100%;
-  height: 34px;
+  height: 30px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
   background: var(--surface);
@@ -377,8 +430,18 @@ select {
   padding: 0 10px;
 }
 
-.cleaner-map-select:focus,
-.cleaner-contact-field input:focus {
+.cleaner-derived-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid rgba(143, 226, 178, 0.48);
+  color: var(--success);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: var(--fs-2xs);
+}
+
+.cleaner-map-select:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -416,32 +479,58 @@ select {
 }
 
 .btn {
-  min-height: 42px;
+  height: 42px;
   border-radius: var(--radius);
-  border: 1px solid var(--stroke);
-  padding: 0 15px;
+  border: 1px solid transparent;
+  padding: 0 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   cursor: pointer;
   color: var(--text);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--letter-tight);
   background: var(--surface);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .btn-sm {
-  min-height: 34px;
+  height: 34px;
+  padding: 0 12px;
   font-size: var(--fs-xs);
 }
 
+.btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.btn-sm svg {
+  width: 13px;
+  height: 13px;
+}
+
 .btn-primary {
-  border-color: var(--accent);
+  border-color: var(--stroke);
+  background: var(--secondary);
+}
+
+.btn-primary:hover {
   background: var(--accent);
+  border-color: var(--stroke);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--card-bg);
+  border-color: var(--stroke);
 }
 
 .btn-secondary:hover {
   background: var(--panel-active);
+  border-color: var(--panel-active);
 }
 
 .btn:disabled {
