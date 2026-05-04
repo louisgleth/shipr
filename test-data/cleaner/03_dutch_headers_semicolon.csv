@@ -1,0 +1,13 @@
+verzenddatum;land_van_herkomst;postcode_van_herkomst;land_bestemming;postcode_bestemming;gewicht;gewichtseenheid;afmetingen;verzendmethode;aantal;klantnaam;e_mail;telefoon;straat;bestelnummer;trackingreferentie;opmerking
+2026-06-01;België;1000;Nederland;1012;0,65;kg;20x14x5 cm;Economy;1;Daan Peeters;daan.peeters@example.com;+32471111101;Teststraat 1;NL-30001;3S30001;Bel klant niet
+2026-06-02;België;2000;Frankrijk;75001;1,20;kg;31x22x10 cm;Standard;2;Sofie Janssens;sofie.janssens@example.com;+32471111102;Demolaan 2;FR-30002;3S30002;
+2026-06-03;België;9000;Duitsland;10115;2,45;kg;42x30x18 cm;Standard;1;Bram Claes;bram.claes@example.com;+32471111103;Voorbeeldweg 3;DE-30003;3S30003;Breekbaar
+2026-06-04;België;3000;Spanje;28013;0,80;kg;25x18x7 cm;Economy;1;Lotte Vermeulen;lotte.vermeulen@example.com;+32471111104;Straat 4;ES-30004;3S30004;
+2026-06-05;België;8500;Italië;20121;3,10;kg;46x32x18 cm;Standard;3;Milan Maes;milan.maes@example.com;+32471111105;Adres 5;IT-30005;3S30005;
+2026-06-06;België;3500;Luxemburg;1246;0,31;kg;18x12x3 cm;Economy;1;Ella Willems;ella.willems@example.com;+32471111106;Demo 6;LU-30006;3S30006;
+2026-06-07;België;5000;Oostenrijk;1010;1,70;kg;34x24x12 cm;Standard;2;Nora Smets;nora.smets@example.com;+32471111107;Test 7;AT-30007;3S30007;
+2026-06-08;België;6000;Denemarken;1050;0,54;kg;21x15x5 cm;Economy;1;Seppe Hermans;seppe.hermans@example.com;+32471111108;Voorbeeld 8;DK-30008;3S30008;
+2026-06-09;België;7000;Zweden;11122;4,60;kg;55x38x24 cm;Standard;1;Fien Martens;fien.martens@example.com;+32471111109;Laan 9;SE-30009;3S30009;
+2026-06-10;België;8000;Portugal;1100;1,18;kg;29x20x9 cm;Economy;2;Tuur Jacobs;tuur.jacobs@example.com;+32471111110;Plein 10;PT-30010;3S30010;
+2026-06-11;België;1180;Ierland;D02;0,44;kg;20x14x4 cm;Standard;1;Jules Goossens;jules.goossens@example.com;+32471111111;Ring 11;IE-30011;3S30011;
+2026-06-12;België;2600;Polen;00120;2,85;kg;43x30x16 cm;Economy;1;Mila Mertens;mila.mertens@example.com;+32471111112;Pad 12;PL-30012;3S30012;

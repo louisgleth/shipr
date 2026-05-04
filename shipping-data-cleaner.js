@@ -2,72 +2,176 @@ const DATA_FIELDS = [
   {
     key: "shipment_date",
     label: "Shipment date",
-    aliases: ["date", "shipment_date", "created_at", "order_date", "shipping_date", "label_date"],
+    aliases: [
+      "date",
+      "shipment_date",
+      "created_at",
+      "order_date",
+      "shipping_date",
+      "label_date",
+      "verzenddatum",
+      "verzend_datum",
+      "datum",
+      "date_expedition",
+      "date_d_expedition",
+      "date_envoi",
+    ],
   },
   {
     key: "origin_postcode",
     label: "Origin postcode",
-    aliases: ["origin_postcode", "origin_postal_code", "from_postcode", "from_zip", "sender_zip", "warehouse_postcode"],
+    aliases: [
+      "origin_postcode",
+      "origin_postal_code",
+      "from_postcode",
+      "from_zip",
+      "sender_zip",
+      "warehouse_postcode",
+      "postcode_van_herkomst",
+      "postcode_herkomst",
+      "herkomst_postcode",
+      "afzender_postcode",
+      "code_postal_origine",
+      "code_postal_expediteur",
+      "cp_origine",
+    ],
   },
   {
     key: "origin_country",
     label: "Origin country",
-    aliases: ["origin_country", "from_country", "sender_country", "warehouse_country"],
+    aliases: [
+      "origin_country",
+      "from_country",
+      "sender_country",
+      "warehouse_country",
+      "land_van_herkomst",
+      "land_herkomst",
+      "herkomst_land",
+      "afzender_land",
+      "pays_origine",
+      "pays_d_origine",
+      "pays_expediteur",
+    ],
   },
   {
     key: "destination_country",
     label: "Destination country",
-    aliases: ["destination_country", "dest_country", "to_country", "shipping_country", "recipient_country", "country"],
+    aliases: [
+      "destination_country",
+      "dest_country",
+      "to_country",
+      "shipping_country",
+      "recipient_country",
+      "country",
+      "land_bestemming",
+      "bestemmingsland",
+      "bestemming_land",
+      "ontvanger_land",
+      "pays_destination",
+      "pays_de_destination",
+      "pays_destinataire",
+    ],
   },
   {
     key: "destination_postcode",
     label: "Destination postcode",
-    aliases: ["destination_postcode", "destination_postal_code", "dest_zip", "to_zip", "shipping_zip", "recipient_postcode", "postcode", "postal_code"],
+    aliases: [
+      "destination_postcode",
+      "destination_postal_code",
+      "dest_zip",
+      "to_zip",
+      "shipping_zip",
+      "recipient_postcode",
+      "postcode",
+      "postal_code",
+      "postcode_bestemming",
+      "bestemming_postcode",
+      "postcode_van_bestemming",
+      "ontvanger_postcode",
+      "code_postal_destination",
+      "code_postal_destinataire",
+      "cp_destination",
+    ],
   },
   {
     key: "weight",
     label: "Weight",
-    aliases: ["weight", "package_weight", "parcel_weight", "shipment_weight", "weight_kg", "weight_g", "poids"],
+    aliases: [
+      "weight",
+      "package_weight",
+      "parcel_weight",
+      "shipment_weight",
+      "weight_kg",
+      "weight_g",
+      "gewicht",
+      "pakketgewicht",
+      "zendinggewicht",
+      "poids",
+      "poids_colis",
+      "poids_expedition",
+    ],
   },
   {
     key: "weight_unit",
     label: "Weight unit",
-    aliases: ["weight_unit", "unit_weight", "weight_units"],
+    aliases: ["weight_unit", "unit_weight", "weight_units", "gewichtseenheid", "eenheid_gewicht", "unite_poids"],
   },
   {
     key: "length",
     label: "Length",
-    aliases: ["length", "package_length", "parcel_length", "dim_length"],
+    aliases: ["length", "package_length", "parcel_length", "dim_length", "lengte", "longueur"],
   },
   {
     key: "width",
     label: "Width",
-    aliases: ["width", "package_width", "parcel_width", "dim_width"],
+    aliases: ["width", "package_width", "parcel_width", "dim_width", "breedte", "largeur"],
   },
   {
     key: "height",
     label: "Height",
-    aliases: ["height", "package_height", "parcel_height", "dim_height"],
+    aliases: ["height", "package_height", "parcel_height", "dim_height", "hoogte", "hauteur"],
   },
   {
     key: "dimensions",
     label: "Dimensions",
-    aliases: ["dimensions", "dims", "size", "package_dims", "parcel_dimensions"],
+    aliases: [
+      "dimensions",
+      "dims",
+      "size",
+      "package_dims",
+      "parcel_dimensions",
+      "afmetingen",
+      "pakketafmetingen",
+      "dimensies",
+    ],
   },
   {
     key: "dimension_unit",
     label: "Dimension unit",
-    aliases: ["dimension_unit", "dims_unit", "length_unit", "unit_dimension"],
+    aliases: ["dimension_unit", "dims_unit", "length_unit", "unit_dimension", "afmetingseenheid", "unite_dimension"],
   },
   {
     key: "service_type",
     label: "Service type",
-    aliases: ["service", "service_type", "shipping_method", "carrier_service", "delivery_method", "transporteur"],
+    aliases: [
+      "service",
+      "service_type",
+      "shipping_method",
+      "carrier_service",
+      "delivery_method",
+      "verzendmethode",
+      "verzendservice",
+      "dienst",
+      "transporteur",
+      "type_service",
+      "mode_expedition",
+      "methode_expedition",
+    ],
   },
   {
     key: "quantity",
     label: "Quantity",
-    aliases: ["quantity", "qty", "labels", "label_count", "number_of_labels"],
+    aliases: ["quantity", "qty", "labels", "label_count", "number_of_labels", "aantal", "hoeveelheid", "quantite"],
   },
 ];
 
@@ -371,6 +475,60 @@ const REMOVE_PATTERNS = [
   /(^|_)(company|organization|organisation)(_|$)/,
   /(^|_)(order|order_id|order_number|tracking|tracking_number|reference|note|notes|comment)(_|$)/,
 ];
+
+const SHOPIFY_EXACT_FIELD_MAP = {
+  created_at: "shipment_date",
+  shipping_method: "service_type",
+  lineitem_quantity: "quantity",
+  shipping_zip: "destination_postcode",
+  shipping_country: "destination_country",
+};
+
+const SHOPIFY_EXACT_REMOVE_HEADERS = new Set([
+  "name",
+  "email",
+  "financial_status",
+  "paid_at",
+  "fulfillment_status",
+  "fulfilled_at",
+  "accepts_marketing",
+  "currency",
+  "subtotal",
+  "shipping",
+  "taxes",
+  "total",
+  "discount_code",
+  "discount_amount",
+  "lineitem_name",
+  "lineitem_price",
+  "lineitem_compare_at_price",
+  "lineitem_sku",
+  "lineitem_requires_shipping",
+  "lineitem_taxable",
+  "lineitem_fulfillment_status",
+  "cancelled_at",
+  "payment_method",
+  "payment_reference",
+  "refunded_amount",
+  "vendor",
+  "outstanding_balance",
+  "employee",
+  "location",
+  "device_id",
+  "id",
+  "tags",
+  "risk_level",
+  "source",
+  "lineitem_discount",
+  "receipt_number",
+  "duties",
+  "payment_id",
+  "payment_terms_name",
+  "next_payment_due_at",
+  "payment_references",
+]);
+
+const SHOPIFY_REMOVE_PREFIXES = ["billing_", "tax_"];
 
 const CLEANER_TOKEN_STORAGE_KEY = "shipide-shipment-extract-token";
 
@@ -869,8 +1027,23 @@ function parseHtmlTable(text) {
     .filter((row) => row.some(Boolean));
 }
 
+function detectShopifyField(normalized) {
+  if (SHOPIFY_EXACT_FIELD_MAP[normalized]) {
+    return { action: SHOPIFY_EXACT_FIELD_MAP[normalized], reason: t("matchedUseful") };
+  }
+  if (
+    SHOPIFY_EXACT_REMOVE_HEADERS.has(normalized) ||
+    SHOPIFY_REMOVE_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+  ) {
+    return { action: "remove", reason: t("likelyPersonal") };
+  }
+  return null;
+}
+
 function detectField(header) {
   const normalized = normalizeHeader(header);
+  const shopifyField = detectShopifyField(normalized);
+  if (shopifyField) return shopifyField;
   if (isOriginAddressHeader(normalized)) {
     return { action: "remove", reason: t("likelyPersonal") };
   }
@@ -889,7 +1062,7 @@ function detectField(header) {
   }
   const fuzzy = DATA_FIELDS.find((field) => {
     const aliases = [field.key, ...field.aliases].map(normalizeHeader);
-    return aliases.some((alias) => alias && (normalized.includes(alias) || alias.includes(normalized)));
+    return aliases.some((alias) => alias && alias.length >= 4 && normalized.includes(alias));
   });
   if (fuzzy) {
     return { action: fuzzy.key, reason: t("looksUseful") };

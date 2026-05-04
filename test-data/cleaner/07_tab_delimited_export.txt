@@ -1,0 +1,11 @@
+shipping_date	from_postcode	from_country	to_country	to_zip	parcel_weight	weight_unit	length	width	height	unit_dimension	delivery_method	qty	full_name	mail	mobile	line_1	order_number	note
+2026-09-01	1000	BE	FR	75001	0.44	kg	20	14	4	cm	Standard	1	Alex Martin	alex.martin@example.com	+32473333301	1 Private Street	TAB-70001	Remove this
+2026-09-02	2000	BE	NL	1012	1.28	kg	31	22	11	cm	Economy	2	Julia Janssen	julia.janssen@example.com	+32473333302	2 Private Street	TAB-70002	
+2026-09-03	9000	BE	DE	10115	2.31	kg	40	28	18	cm	Standard	1	Tobias Klein	tobias.klein@example.com	+32473333303	3 Private Street	TAB-70003	Fragile
+2026-09-04	3000	BE	ES	28013	0.86	kg	25	19	6	cm	Economy	1	Elena Ruiz	elena.ruiz@example.com	+32473333304	4 Private Street	TAB-70004	
+2026-09-05	8500	BE	IT	20121	3.66	kg	47	33	20	cm	Standard	3	Giulia Conti	giulia.conti@example.com	+32473333305	5 Private Street	TAB-70005	
+2026-09-06	3500	BE	LU	1246	0.32	kg	18	12	3	cm	Economy	1	Marie Hoffmann	marie.hoffmann@example.com	+32473333306	6 Private Street	TAB-70006	
+2026-09-07	5000	BE	AT	1010	1.68	kg	34	24	12	cm	Standard	2	Paul Gruber	paul.gruber@example.com	+32473333307	7 Private Street	TAB-70007	
+2026-09-08	6000	BE	DK	1050	0.60	kg	21	15	5	cm	Economy	1	Ida Jensen	ida.jensen@example.com	+32473333308	8 Private Street	TAB-70008	
+2026-09-09	7000	BE	SE	11122	4.40	kg	55	38	24	cm	Standard	1	Elsa Andersson	elsa.andersson@example.com	+32473333309	9 Private Street	TAB-70009	
+2026-09-10	8000	BE	PT	1100	1.09	kg	29	20	9	cm	Economy	2	Tiago Costa	tiago.costa@example.com	+32473333310	10 Private Street	TAB-70010	

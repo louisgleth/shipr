@@ -1,0 +1,13 @@
+created_at,from_zip,from_country,shipping_country,shipping_zip,shipment_weight,weight_units,dims,carrier_service,label_count,recipient_name,recipient_company,recipient_email,recipient_phone,recipient_address,recipient_city,internal_reference,utm_source,gift_message,tracking_number
+2026-08-01,1000,BE,FR,75001,0.62,kg,"22*16*5",Standard,1,Paul Renaud,Maison Test,paul.renaud@example.com,+33111111101,"1 Rue Hidden",Paris,REF-60001,newsletter,"Happy birthday",TRK60001
+2026-08-02,2000,BE,NL,1012,1.33,kg,"33*24*11",Economy,2,Sara Bakker,Studio Demo,sara.bakker@example.com,+312011111102,"2 Hiddenstraat",Amsterdam,REF-60002,instagram,"",TRK60002
+2026-08-03,9000,BE,DE,10115,2.42,kg,"41*30*18",Standard,1,Max Bauer,GmbH Test,max.bauer@example.com,+493011111103,"3 Hiddenstrasse",Berlin,REF-60003,google,"Please wrap",TRK60003
+2026-08-04,3000,BE,ES,28013,0.79,kg,"25*18*7",Economy,1,Luna Garcia,Tienda Demo,luna.garcia@example.com,+349111111104,"4 Calle Hidden",Madrid,REF-60004,tiktok,"",TRK60004
+2026-08-05,8500,BE,IT,20121,3.95,kg,"49*34*20",Standard,3,Marco Bianchi,Negozio Test,marco.bianchi@example.com,+390211111105,"5 Via Hidden",Milan,REF-60005,direct,"",TRK60005
+2026-08-06,3500,BE,LU,1246,0.29,kg,"18*12*3",Economy,1,Lea Muller,Boutique Demo,lea.muller@example.com,+35211111106,"6 Avenue Hidden",Luxembourg,REF-60006,email,"",TRK60006
+2026-08-07,5000,BE,AT,1010,1.73,kg,"35*25*12",Standard,2,Jonas Weber,Shop Test,jonas.weber@example.com,+43111111107,"7 Hidden Ring",Vienna,REF-60007,affiliate,"Call first",TRK60007
+2026-08-08,6000,BE,DK,1050,0.61,kg,"22*15*6",Economy,1,Freja Hansen,Demo ApS,freja.hansen@example.com,+45111111108,"8 Hiddenvej",Copenhagen,REF-60008,organic,"",TRK60008
+2026-08-09,7000,BE,SE,11122,4.75,kg,"56*39*24",Standard,1,Oskar Nilsson,Test AB,oskar.nilsson@example.com,+46811111109,"9 Hiddengatan",Stockholm,REF-60009,linkedin,"",TRK60009
+2026-08-10,8000,BE,PT,1100,1.16,kg,"29*20*9",Economy,2,Marta Silva,Loja Demo,marta.silva@example.com,+351211111110,"10 Rua Hidden",Lisbon,REF-60010,facebook,"",TRK60010
+2026-08-11,1180,BE,IE,D02,0.51,kg,"20*14*4",Standard,1,Sean Murphy,Demo Ltd,sean.murphy@example.com,+353111111111,"11 Hidden Road",Dublin,REF-60011,ads,"",TRK60011
+2026-08-12,2600,BE,PL,00120,2.88,kg,"43*31*17",Economy,1,Ewa Kowalska,Sklep Test,ewa.kowalska@example.com,+482211111112,"12 Hidden Ulica",Warsaw,REF-60012,referral,"",TRK60012

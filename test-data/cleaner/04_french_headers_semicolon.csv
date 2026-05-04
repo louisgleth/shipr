@@ -1,0 +1,13 @@
+date_expedition;pays_origine;code_postal_origine;pays_destination;code_postal_destination;poids;unite_poids;longueur;largeur;hauteur;unite_dimension;type_service;quantite;nom_client;email;telephone;adresse;numero_commande;reference_suivi;notes
+2026-07-01;Belgique;1000;France;75001;0,72;kg;21;15;5;cm;Economy;1;Claire Dupont;claire.dupont@example.com;+32472222201;Rue Test 1;FR-40001;FRTRK40001;Ne pas appeler
+2026-07-02;Belgique;2000;Pays-Bas;1012;1,40;kg;32;23;11;cm;Standard;2;Louis Martin;louis.martin@example.com;+32472222202;Avenue Exemple 2;NL-40002;NLTRK40002;
+2026-07-03;Belgique;9000;Allemagne;10115;2,20;kg;41;29;17;cm;Standard;1;Amelie Bernard;amelie.bernard@example.com;+32472222203;Boulevard Demo 3;DE-40003;DETRK40003;Fragile
+2026-07-04;Belgique;3000;Espagne;28013;0,91;kg;26;18;7;cm;Economy;1;Hugo Petit;hugo.petit@example.com;+32472222204;Rue Sample 4;ES-40004;ESTRK40004;
+2026-07-05;Belgique;8500;Italie;20121;3,70;kg;48;33;20;cm;Standard;3;Manon Leroy;manon.leroy@example.com;+32472222205;Chemin Test 5;IT-40005;ITTRK40005;
+2026-07-06;Belgique;3500;Luxembourg;1246;0,36;kg;19;13;4;cm;Economy;1;Noah Laurent;noah.laurent@example.com;+32472222206;Rue Demo 6;LU-40006;LUTRK40006;
+2026-07-07;Belgique;5000;Autriche;1010;1,88;kg;35;25;12;cm;Standard;2;Ines Simon;ines.simon@example.com;+32472222207;Route Exemple 7;AT-40007;ATTRK40007;
+2026-07-08;Belgique;6000;Danemark;1050;0,63;kg;22;15;6;cm;Economy;1;Arthur Moreau;arthur.moreau@example.com;+32472222208;Place Test 8;DK-40008;DKTRK40008;
+2026-07-09;Belgique;7000;Suède;11122;4,80;kg;56;39;24;cm;Standard;1;Nina Fontaine;nina.fontaine@example.com;+32472222209;Impasse Demo 9;SE-40009;SETRK40009;
+2026-07-10;Belgique;8000;Portugal;1100;1,11;kg;28;20;8;cm;Economy;2;Elias Renard;elias.renard@example.com;+32472222210;Rue Exemple 10;PT-40010;PTTRK40010;
+2026-07-11;Belgique;1180;Irlande;D02;0,50;kg;20;14;4;cm;Standard;1;Eva Colin;eva.colin@example.com;+32472222211;Avenue Test 11;IE-40011;IETRK40011;
+2026-07-12;Belgique;2600;Pologne;00120;2,92;kg;43;31;17;cm;Economy;1;Tom Lambert;tom.lambert@example.com;+32472222212;Rue Demo 12;PL-40012;PLTRK40012;

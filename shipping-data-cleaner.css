@@ -686,7 +686,8 @@ select {
 .cleaner-map-table,
 .cleaner-preview-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .cleaner-map-table th,
@@ -705,11 +706,13 @@ select {
 .cleaner-preview-table th {
   position: sticky;
   top: 0;
-  z-index: 2;
-  background: var(--secondary);
+  z-index: 4;
+  background: #1c2026;
   color: var(--muted);
   font-weight: 300;
   text-transform: uppercase;
+  box-shadow: 0 1px 0 var(--stroke), 0 8px 14px rgba(0, 6, 15, 0.2);
+  background-clip: padding-box;
 }
 
 .cleaner-map-table tr:last-child td,
