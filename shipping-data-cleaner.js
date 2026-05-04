@@ -94,6 +94,274 @@ const EXTRACTED_FIELDS = [
   },
 ];
 
+const LOCALE = (() => {
+  const preferredLanguage = Array.isArray(navigator.languages) && navigator.languages.length
+    ? navigator.languages[0]
+    : navigator.language || navigator.userLanguage || "en";
+  const language = String(preferredLanguage).toLowerCase();
+  if (language.startsWith("nl")) return "nl";
+  if (language.startsWith("fr")) return "fr";
+  return "en";
+})();
+
+const COPY = {
+  en: {
+    documentTitle: "Shipide Data Cleaner",
+    step: "Step {index} of 3",
+    complete: "Complete",
+    brand: "Data Cleaner",
+    kicker: "Shipment extract sanitization",
+    uploadTitle: "Clean your shipping data before sending it to Shipide.",
+    mappingTitle: "Review detected columns",
+    reviewTitle: "Cleaned file preview",
+    thanksTitleStep: "Submission complete",
+    intro:
+      "Upload your carrier, marketplace, or store export. We keep shipment-analysis fields and strip names, full addresses, emails, phones, notes, and identifiers before submission.",
+    downloadCsv: "Download CSV",
+    dropStrong: "Drop your CSV, TXT, TSV, XLS export here",
+    dropSub: "or browse from your computer",
+    uploadAria: "Upload shipping export",
+    keptByDefault: "Kept by default",
+    keptByDefaultCopy: "Date, origin and destination country/postcode, weight, dimensions, service type, quantity.",
+    removedByDefault: "Removed by default",
+    removedByDefaultCopy: "Names, street addresses, email, phone, company, order IDs, notes, tracking references.",
+    uploadedColumn: "Uploaded column",
+    action: "Action",
+    sample: "Sample",
+    reason: "Reason",
+    changeFile: "Change file",
+    previewCleanedData: "Preview cleaned data",
+    editMapping: "Edit mapping",
+    submitToShipide: "Submit to Shipide",
+    dataReceived: "Data received",
+    thankYou: "Thank you.",
+    thanksCopy: "We received the cleaned shipment data. We’ll review your shipment profile and get back to you as soon as possible.",
+    submissionCheck: "Submission Check",
+    confirmTitle: "Have you checked that the provided information is truthful?",
+    confirmNote: "Please confirm that the sanitized shipment data you are sending is accurate and provided in good faith.",
+    confirmCheckbox: "I confirm the information provided is truthful and accurate.",
+    checked: "I've Checked",
+    reviewAgain: "Review Again",
+    removeFromSubmission: "Remove from submission",
+    keepAs: "Keep as {label}",
+    extractedSource: "extracted, not raw address",
+    noSample: "No sample",
+    untitled: "untitled",
+    column: "Column {index}",
+    likelyPersonal: "Likely personal or identifying data.",
+    matchedUseful: "Matched useful shipment field.",
+    looksUseful: "Looks like shipment-analysis data.",
+    selectFieldOptional: "Select at least one shipment-analysis field. Dimensions, service type, date, and quantity are optional.",
+    selectFieldBeforeSubmit: "Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.",
+    confirmTruthful: "Confirm the information is truthful before submitting.",
+    invalidLink: "This cleaner link is invalid or expired. Ask Shipide for a new link.",
+    submitting: "Submitting cleaned data to Shipide...",
+    submitFailedSuffix: "Download the cleaned CSV and send it to Shipide if needed.",
+    submissionFailed: "Submission failed.",
+    noUsableTable: "No usable table was detected. Export the file as CSV or TXT and try again.",
+    linkNotReady: "This cleaner link is not ready. Ask Shipide for a valid shipment extract link.",
+    readFailed: "Could not read the file. Please try again.",
+    parseFailed: "Could not parse this file.",
+    xlsxDisabled: "XLSX parsing is not enabled in this first version. Export as CSV or TXT and upload that file.",
+    tokenRequired: "This cleaner page requires a client-specific Shipide link.",
+    linkInvalidOrExpired: "This shipment extract link is invalid or expired.",
+    selectAtLeastOne: "Select at least one shipment-analysis field. Missing optional fields are fine.",
+    submitFailed: "Could not submit the cleaned data.",
+    fields: {
+      shipment_date: "Shipment date",
+      origin_postcode: "Origin postcode",
+      origin_country: "Origin country",
+      destination_country: "Destination country",
+      destination_postcode: "Destination postcode",
+      weight: "Weight",
+      weight_unit: "Weight unit",
+      length: "Length",
+      width: "Width",
+      height: "Height",
+      dimensions: "Dimensions",
+      dimension_unit: "Dimension unit",
+      service_type: "Service type",
+      quantity: "Quantity",
+    },
+  },
+  fr: {
+    documentTitle: "Nettoyeur de données Shipide",
+    step: "Étape {index} sur 3",
+    complete: "Terminé",
+    brand: "Nettoyeur de données",
+    kicker: "Nettoyage d’extrait d’expédition",
+    uploadTitle: "Nettoyez vos données d’expédition avant de les envoyer à Shipide.",
+    mappingTitle: "Vérifier les colonnes détectées",
+    reviewTitle: "Aperçu du fichier nettoyé",
+    thanksTitleStep: "Envoi terminé",
+    intro:
+      "Importez votre export transporteur, marketplace ou boutique. Nous conservons les champs utiles à l’analyse d’expédition et retirons les noms, adresses complètes, e-mails, téléphones, notes et identifiants avant l’envoi.",
+    downloadCsv: "Télécharger le CSV",
+    dropStrong: "Déposez votre export CSV, TXT, TSV ou XLS ici",
+    dropSub: "ou parcourez votre ordinateur",
+    uploadAria: "Importer un export d’expédition",
+    keptByDefault: "Conservé par défaut",
+    keptByDefaultCopy: "Date, pays/code postal d’origine et de destination, poids, dimensions, type de service, quantité.",
+    removedByDefault: "Retiré par défaut",
+    removedByDefaultCopy: "Noms, adresses, e-mails, téléphones, société, numéros de commande, notes, références de suivi.",
+    uploadedColumn: "Colonne importée",
+    action: "Action",
+    sample: "Exemple",
+    reason: "Raison",
+    changeFile: "Changer le fichier",
+    previewCleanedData: "Prévisualiser les données nettoyées",
+    editMapping: "Modifier le mapping",
+    submitToShipide: "Envoyer à Shipide",
+    dataReceived: "Données reçues",
+    thankYou: "Merci.",
+    thanksCopy: "Nous avons reçu les données d’expédition nettoyées. Nous analyserons votre profil d’expédition et reviendrons vers vous dès que possible.",
+    submissionCheck: "Vérification de l’envoi",
+    confirmTitle: "Avez-vous vérifié que les informations fournies sont exactes ?",
+    confirmNote: "Veuillez confirmer que les données d’expédition nettoyées que vous envoyez sont exactes et fournies de bonne foi.",
+    confirmCheckbox: "Je confirme que les informations fournies sont exactes.",
+    checked: "J’ai vérifié",
+    reviewAgain: "Revoir",
+    removeFromSubmission: "Retirer de l’envoi",
+    keepAs: "Conserver comme {label}",
+    extractedSource: "extrait, pas l’adresse brute",
+    noSample: "Aucun exemple",
+    untitled: "sans titre",
+    column: "Colonne {index}",
+    likelyPersonal: "Données probablement personnelles ou identifiantes.",
+    matchedUseful: "Champ utile d’expédition reconnu.",
+    looksUseful: "Semble être une donnée utile d’expédition.",
+    selectFieldOptional: "Sélectionnez au moins un champ d’analyse d’expédition. Les dimensions, le service, la date et la quantité sont optionnels.",
+    selectFieldBeforeSubmit: "Sélectionnez au moins un champ d’analyse d’expédition avant l’envoi. Les dimensions ou le service manquants ne bloquent pas l’envoi.",
+    confirmTruthful: "Confirmez que les informations sont exactes avant l’envoi.",
+    invalidLink: "Ce lien de nettoyage est invalide ou expiré. Demandez un nouveau lien à Shipide.",
+    submitting: "Envoi des données nettoyées à Shipide...",
+    submitFailedSuffix: "Téléchargez le CSV nettoyé et envoyez-le à Shipide si nécessaire.",
+    submissionFailed: "Échec de l’envoi.",
+    noUsableTable: "Aucun tableau exploitable n’a été détecté. Exportez le fichier en CSV ou TXT puis réessayez.",
+    linkNotReady: "Ce lien de nettoyage n’est pas prêt. Demandez un lien d’extrait valide à Shipide.",
+    readFailed: "Impossible de lire le fichier. Veuillez réessayer.",
+    parseFailed: "Impossible d’analyser ce fichier.",
+    xlsxDisabled: "L’analyse XLSX n’est pas activée dans cette première version. Exportez en CSV ou TXT puis importez ce fichier.",
+    tokenRequired: "Cette page nécessite un lien Shipide spécifique au client.",
+    linkInvalidOrExpired: "Ce lien d’extrait d’expédition est invalide ou expiré.",
+    selectAtLeastOne: "Sélectionnez au moins un champ d’analyse d’expédition. Les champs optionnels manquants ne posent pas problème.",
+    submitFailed: "Impossible d’envoyer les données nettoyées.",
+    fields: {
+      shipment_date: "Date d’expédition",
+      origin_postcode: "Code postal d’origine",
+      origin_country: "Pays d’origine",
+      destination_country: "Pays de destination",
+      destination_postcode: "Code postal de destination",
+      weight: "Poids",
+      weight_unit: "Unité de poids",
+      length: "Longueur",
+      width: "Largeur",
+      height: "Hauteur",
+      dimensions: "Dimensions",
+      dimension_unit: "Unité de dimension",
+      service_type: "Type de service",
+      quantity: "Quantité",
+    },
+  },
+  nl: {
+    documentTitle: "Shipide Data Cleaner",
+    step: "Stap {index} van 3",
+    complete: "Voltooid",
+    brand: "Data Cleaner",
+    kicker: "Opschonning van verzendextract",
+    uploadTitle: "Schoon je verzenddata op voordat je die naar Shipide stuurt.",
+    mappingTitle: "Gedetecteerde kolommen controleren",
+    reviewTitle: "Voorbeeld van opgeschoond bestand",
+    thanksTitleStep: "Indiening voltooid",
+    intro:
+      "Upload je export van vervoerder, marketplace of webshop. We bewaren velden voor verzendanalyse en verwijderen namen, volledige adressen, e-mails, telefoons, notities en identificatoren vóór verzending.",
+    downloadCsv: "CSV downloaden",
+    dropStrong: "Sleep je CSV-, TXT-, TSV- of XLS-export hierheen",
+    dropSub: "of kies een bestand op je computer",
+    uploadAria: "Verzendexport uploaden",
+    keptByDefault: "Standaard behouden",
+    keptByDefaultCopy: "Datum, land/postcode van oorsprong en bestemming, gewicht, afmetingen, servicetype, hoeveelheid.",
+    removedByDefault: "Standaard verwijderd",
+    removedByDefaultCopy: "Namen, straatadressen, e-mail, telefoon, bedrijf, order-ID’s, notities, trackingreferenties.",
+    uploadedColumn: "Geüploade kolom",
+    action: "Actie",
+    sample: "Voorbeeld",
+    reason: "Reden",
+    changeFile: "Bestand wijzigen",
+    previewCleanedData: "Opgeschoonde data bekijken",
+    editMapping: "Mapping aanpassen",
+    submitToShipide: "Naar Shipide sturen",
+    dataReceived: "Data ontvangen",
+    thankYou: "Bedankt.",
+    thanksCopy: "We hebben de opgeschoonde verzenddata ontvangen. We bekijken je verzendprofiel en komen zo snel mogelijk bij je terug.",
+    submissionCheck: "Controle voor verzending",
+    confirmTitle: "Heb je gecontroleerd dat de verstrekte informatie waarheidsgetrouw is?",
+    confirmNote: "Bevestig dat de opgeschoonde verzenddata die je verzendt correct is en te goeder trouw wordt aangeleverd.",
+    confirmCheckbox: "Ik bevestig dat de verstrekte informatie waarheidsgetrouw en correct is.",
+    checked: "Ik heb gecontroleerd",
+    reviewAgain: "Opnieuw bekijken",
+    removeFromSubmission: "Verwijderen uit inzending",
+    keepAs: "Behouden als {label}",
+    extractedSource: "geëxtraheerd, niet het ruwe adres",
+    noSample: "Geen voorbeeld",
+    untitled: "zonder titel",
+    column: "Kolom {index}",
+    likelyPersonal: "Waarschijnlijk persoonlijke of identificerende data.",
+    matchedUseful: "Nuttig verzendveld herkend.",
+    looksUseful: "Lijkt op verzendanalyse-data.",
+    selectFieldOptional: "Selecteer minstens één verzendanalyseveld. Afmetingen, servicetype, datum en hoeveelheid zijn optioneel.",
+    selectFieldBeforeSubmit: "Selecteer minstens één verzendanalyseveld voordat je indient. Ontbrekende afmetingen of servicetype blokkeren de inzending niet.",
+    confirmTruthful: "Bevestig dat de informatie waarheidsgetrouw is voordat je indient.",
+    invalidLink: "Deze cleaner-link is ongeldig of verlopen. Vraag Shipide om een nieuwe link.",
+    submitting: "Opgeschoonde data naar Shipide verzenden...",
+    submitFailedSuffix: "Download de opgeschoonde CSV en stuur die indien nodig naar Shipide.",
+    submissionFailed: "Indienen mislukt.",
+    noUsableTable: "Er werd geen bruikbare tabel gevonden. Exporteer het bestand als CSV of TXT en probeer opnieuw.",
+    linkNotReady: "Deze cleaner-link is niet klaar. Vraag Shipide om een geldige extractlink.",
+    readFailed: "Het bestand kon niet worden gelezen. Probeer opnieuw.",
+    parseFailed: "Dit bestand kon niet worden verwerkt.",
+    xlsxDisabled: "XLSX-verwerking is niet ingeschakeld in deze eerste versie. Exporteer als CSV of TXT en upload dat bestand.",
+    tokenRequired: "Deze pagina vereist een klant-specifieke Shipide-link.",
+    linkInvalidOrExpired: "Deze verzendextractlink is ongeldig of verlopen.",
+    selectAtLeastOne: "Selecteer minstens één verzendanalyseveld. Ontbrekende optionele velden zijn geen probleem.",
+    submitFailed: "De opgeschoonde data kon niet worden ingediend.",
+    fields: {
+      shipment_date: "Verzenddatum",
+      origin_postcode: "Postcode oorsprong",
+      origin_country: "Land oorsprong",
+      destination_country: "Land bestemming",
+      destination_postcode: "Postcode bestemming",
+      weight: "Gewicht",
+      weight_unit: "Gewichtseenheid",
+      length: "Lengte",
+      width: "Breedte",
+      height: "Hoogte",
+      dimensions: "Afmetingen",
+      dimension_unit: "Afmetingseenheid",
+      service_type: "Servicetype",
+      quantity: "Hoeveelheid",
+    },
+  },
+};
+
+const copy = COPY[LOCALE] || COPY.en;
+
+function t(key, replacements = {}) {
+  const value = key.includes(".")
+    ? key.split(".").reduce((acc, part) => (acc && acc[part] != null ? acc[part] : undefined), copy)
+    : copy[key];
+  const fallback = key.includes(".")
+    ? key.split(".").reduce((acc, part) => (acc && acc[part] != null ? acc[part] : undefined), COPY.en)
+    : COPY.en[key];
+  return String(value || fallback || key).replace(/\{(\w+)\}/g, (_, name) =>
+    replacements[name] == null ? "" : String(replacements[name])
+  );
+}
+
+function fieldLabel(key) {
+  return t(`fields.${key}`);
+}
+
 const REMOVE_PATTERNS = [
   /(^|_)(name|first_name|last_name|full_name|customer|buyer|consignee)(_|$)/,
   /(^|_)(email|e_mail|mail)(_|$)/,
@@ -136,6 +404,7 @@ const state = {
   headers: [],
   rows: [],
   mapping: {},
+  extractedMapping: {},
   mappingOrder: [],
   extractedInsertAfter: 0,
   step: "upload",
@@ -178,6 +447,56 @@ const els = {
   submit: document.getElementById("cleanerSubmit"),
   pixelCanvas: document.getElementById("cleanerPixelCanvas"),
 };
+
+function setText(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.textContent = value;
+}
+
+function applyLocalization() {
+  document.documentElement.lang = LOCALE;
+  document.title = t("documentTitle");
+  setText(".cleaner-brand strong", t("brand"));
+  if (els.fileInput) els.fileInput.setAttribute("aria-label", t("uploadAria"));
+  setText(".cleaner-kicker", t("kicker"));
+  const kickerDot = document.createElement("span");
+  document.querySelector(".cleaner-kicker")?.prepend(kickerDot);
+  const intro = document.getElementById("cleanerIntroCopy");
+  if (intro) intro.textContent = t("intro");
+  document.querySelectorAll("#cleanerDownloadFromMap span, #cleanerDownload span").forEach((node) => {
+    node.textContent = t("downloadCsv");
+  });
+  setText(".cleaner-dropzone strong", t("dropStrong"));
+  setText(".cleaner-dropzone span", t("dropSub"));
+  const specs = document.querySelectorAll(".cleaner-spec-item");
+  if (specs[0]) {
+    specs[0].querySelector(".cleaner-spec-label").textContent = t("keptByDefault");
+    specs[0].querySelector("p").textContent = t("keptByDefaultCopy");
+  }
+  if (specs[1]) {
+    specs[1].querySelector(".cleaner-spec-label").textContent = t("removedByDefault");
+    specs[1].querySelector("p").textContent = t("removedByDefaultCopy");
+  }
+  const mapHeaders = document.querySelectorAll(".cleaner-map-table th");
+  [t("uploadedColumn"), t("action"), t("sample"), t("reason")].forEach((label, index) => {
+    if (mapHeaders[index]) mapHeaders[index].textContent = label;
+  });
+  setText("#cleanerBackToUpload span", t("changeFile"));
+  setText("#cleanerContinue span", t("previewCleanedData"));
+  setText("#cleanerBackToMapping span", t("editMapping"));
+  setText("#cleanerSubmit span", t("submitToShipide"));
+  setText(".cleaner-thanks-kicker", t("dataReceived"));
+  const thanksKickerDot = document.createElement("span");
+  document.querySelector(".cleaner-thanks-kicker")?.prepend(thanksKickerDot);
+  setText(".cleaner-thanks-copy h2", t("thankYou"));
+  setText(".cleaner-thanks-copy p:not(.cleaner-thanks-kicker)", t("thanksCopy"));
+  setText(".cleaner-confirm-kicker span:last-child", t("submissionCheck"));
+  setText("#cleanerConfirmTitle", t("confirmTitle"));
+  setText(".cleaner-confirm-note", t("confirmNote"));
+  setText(".cleaner-confirm-check > span:last-child", t("confirmCheckbox"));
+  setText("#cleanerConfirmApprove span", t("checked"));
+  setText("#cleanerConfirmCancel span", t("reviewAgain"));
+}
 
 function setUploadEnabled(enabled) {
   const isEnabled = Boolean(enabled);
@@ -370,10 +689,10 @@ function applyStepView(step) {
   });
   const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
   const titles = {
-    upload: "Clean your shipping data before sending it to Shipide.",
-    mapping: "Review detected columns",
-    review: "Cleaned file preview",
-    thanks: "Submission complete",
+    upload: t("uploadTitle"),
+    mapping: t("mappingTitle"),
+    review: t("reviewTitle"),
+    thanks: t("thanksTitleStep"),
   };
   if (els.title) {
     els.title.textContent = titles[step] || titles.upload;
@@ -381,7 +700,7 @@ function applyStepView(step) {
   els.progress.forEach((item) => {
     item.classList.toggle("is-active", step === "thanks" || Number(item.dataset.progressStep) <= stepIndex);
   });
-  els.stepLabel.textContent = step === "thanks" ? "Complete" : `Step ${stepIndex} of 3`;
+  els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex });
 }
 
 function resetStepTransitionState() {
@@ -553,12 +872,12 @@ function parseHtmlTable(text) {
 function detectField(header) {
   const normalized = normalizeHeader(header);
   if (isOriginAddressHeader(normalized)) {
-    return { action: "remove", reason: "Likely personal or identifying data." };
+    return { action: "remove", reason: t("likelyPersonal") };
   }
   if (isDestinationAddressHeader(normalized)) {
     return {
       action: "remove",
-      reason: "Likely personal or identifying data.",
+      reason: t("likelyPersonal"),
     };
   }
   const direct = DATA_FIELDS.find((field) => {
@@ -566,19 +885,19 @@ function detectField(header) {
     return aliases.includes(normalized);
   });
   if (direct) {
-    return { action: direct.key, reason: "Matched useful shipment field." };
+    return { action: direct.key, reason: t("matchedUseful") };
   }
   const fuzzy = DATA_FIELDS.find((field) => {
     const aliases = [field.key, ...field.aliases].map(normalizeHeader);
     return aliases.some((alias) => alias && (normalized.includes(alias) || alias.includes(normalized)));
   });
   if (fuzzy) {
-    return { action: fuzzy.key, reason: "Looks like shipment-analysis data." };
+    return { action: fuzzy.key, reason: t("looksUseful") };
   }
   if (REMOVE_PATTERNS.some((pattern) => pattern.test(normalized))) {
-    return { action: "remove", reason: "Likely personal or identifying data." };
+    return { action: "remove", reason: t("likelyPersonal") };
   }
-  return { action: "remove", reason: "Looks like shipment-analysis data." };
+  return { action: "remove", reason: t("looksUseful") };
 }
 
 function isOriginAddressHeader(normalized) {
@@ -648,7 +967,7 @@ function getExtractedValue(row, fieldKey) {
   return "";
 }
 
-function getAvailableExtractedFields() {
+function getExtractedFieldCandidates() {
   const hasOriginAddress = state.headers.some((header) => getAddressSourceType(header) === "origin_address");
   const hasDestinationAddress = state.headers.some((header) => getAddressSourceType(header) === "destination_address");
   const directlyMapped = new Set(
@@ -661,6 +980,13 @@ function getAvailableExtractedFields() {
     if (field.sourceType === "origin_address") return hasOriginAddress;
     if (field.sourceType === "destination_address") return hasDestinationAddress;
     return false;
+  });
+}
+
+function getAvailableExtractedFields() {
+  return getExtractedFieldCandidates().filter((field) => {
+    const action = state.extractedMapping[field.key]?.action || field.key;
+    return action !== "remove";
   });
 }
 
@@ -684,7 +1010,7 @@ function getSampleForColumn(index) {
     const value = String(row[index] || "").trim();
     if (value) return value;
   }
-  return "No sample";
+  return t("noSample");
 }
 
 function createMappingRow(header, index) {
@@ -693,17 +1019,17 @@ function createMappingRow(header, index) {
   const name = document.createElement("div");
   name.className = "cleaner-column-name";
   name.innerHTML = `<strong></strong><span class="mono"></span>`;
-  name.querySelector("strong").textContent = header || `Column ${index + 1}`;
-  name.querySelector("span").textContent = normalizeHeader(header) || "untitled";
+  name.querySelector("strong").textContent = header || t("column", { index: index + 1 });
+  name.querySelector("span").textContent = normalizeHeader(header) || t("untitled");
   nameCell.appendChild(name);
 
   const actionCell = document.createElement("td");
   const select = document.createElement("select");
   select.className = `cleaner-map-select ${state.mapping[index]?.action === "remove" ? "is-remove" : "is-keep"}`;
   select.dataset.columnIndex = String(index);
-  const removeOption = new Option("Remove from submission", "remove");
+  const removeOption = new Option(t("removeFromSubmission"), "remove");
   select.appendChild(removeOption);
-  DATA_FIELDS.forEach((field) => select.appendChild(new Option(`Keep as ${field.label}`, field.key)));
+  DATA_FIELDS.forEach((field) => select.appendChild(new Option(t("keepAs", { label: fieldLabel(field.key) }), field.key)));
   select.value = state.mapping[index]?.action || "remove";
   select.addEventListener("change", () => {
     const nextField = DATA_FIELDS.find((field) => field.key === select.value);
@@ -711,10 +1037,10 @@ function createMappingRow(header, index) {
       action: select.value,
       reason:
         select.value === "remove"
-          ? "Likely personal or identifying data."
+          ? t("likelyPersonal")
           : nextField
-            ? "Matched useful shipment field."
-            : "Looks like shipment-analysis data.",
+            ? t("matchedUseful")
+            : t("looksUseful"),
     };
     renderMapping();
   });
@@ -740,27 +1066,39 @@ function createExtractedMappingRow(field) {
   const name = document.createElement("div");
   name.className = "cleaner-column-name";
   name.innerHTML = `<strong></strong><span class="mono"></span>`;
-  name.querySelector("strong").textContent = field.label;
-  name.querySelector("span").textContent = "extracted, not raw address";
+  name.querySelector("strong").textContent = fieldLabel(field.key);
+  name.querySelector("span").textContent = t("extractedSource");
   nameCell.appendChild(name);
 
   const actionCell = document.createElement("td");
   const select = document.createElement("select");
-  select.className = "cleaner-map-select is-keep";
-  select.disabled = true;
-  select.appendChild(new Option(`Keep as ${field.label}`, field.key));
-  select.value = field.key;
+  const currentAction = state.extractedMapping[field.key]?.action || field.key;
+  select.className = `cleaner-map-select ${currentAction === "remove" ? "is-remove" : "is-keep"}`;
+  select.appendChild(new Option(t("keepAs", { label: fieldLabel(field.key) }), field.key));
+  select.appendChild(new Option(t("removeFromSubmission"), "remove"));
+  select.value = currentAction;
+  select.addEventListener("change", () => {
+    state.extractedMapping[field.key] = {
+      action: select.value,
+      reason:
+        select.value === "remove"
+          ? t("likelyPersonal")
+          : t("looksUseful"),
+    };
+    renderMapping();
+  });
   actionCell.appendChild(select);
 
   const sampleCell = document.createElement("td");
   const sample = document.createElement("span");
   sample.className = "cleaner-sample";
-  sample.textContent = getExtractedValue(state.rows[0] || [], field.key) || "No sample";
+  sample.textContent = getExtractedValue(state.rows[0] || [], field.key) || t("noSample");
   sampleCell.appendChild(sample);
 
   const reasonCell = document.createElement("td");
   reasonCell.className = "cleaner-reason";
-  reasonCell.textContent = "Looks like shipment-analysis data.";
+  reasonCell.textContent =
+    state.extractedMapping[field.key]?.reason || t("looksUseful");
 
   row.append(nameCell, actionCell, sampleCell, reasonCell);
   return row;
@@ -776,14 +1114,14 @@ function renderMapping() {
     : uploadedColumns;
   orderedColumns.forEach((item, position) => {
     if (position === state.extractedInsertAfter) {
-      getAvailableExtractedFields().forEach((field) => {
+      getExtractedFieldCandidates().forEach((field) => {
         els.mappingBody.appendChild(createExtractedMappingRow(field));
       });
     }
     els.mappingBody.appendChild(createMappingRow(item.header, item.index));
   });
   if (state.extractedInsertAfter >= orderedColumns.length) {
-    getAvailableExtractedFields().forEach((field) => {
+    getExtractedFieldCandidates().forEach((field) => {
       els.mappingBody.appendChild(createExtractedMappingRow(field));
     });
   }
@@ -846,7 +1184,7 @@ function renderPreview() {
 function downloadCleanCsv() {
   const { isReady } = getCleanedDataReadiness();
   if (!isReady) {
-    setStatus("Select at least one shipment-analysis field. Dimensions, service type, date, and quantity are optional.", "error");
+    setStatus(t("selectFieldOptional"), "error");
     return;
   }
   const csv = buildCleanCsv();
@@ -877,7 +1215,7 @@ function setConfirmModalOpen(open) {
 function requestSubmitConfirmation() {
   const { isReady } = getCleanedDataReadiness();
   if (!isReady) {
-    setStatus("Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.", "error");
+    setStatus(t("selectFieldBeforeSubmit"), "error");
     return;
   }
   setConfirmModalOpen(true);
@@ -886,22 +1224,22 @@ function requestSubmitConfirmation() {
 async function submitCleanData() {
   const { cleaned, isReady } = getCleanedDataReadiness();
   if (!isReady) {
-    setStatus("Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.", "error");
+    setStatus(t("selectFieldBeforeSubmit"), "error");
     return;
   }
   if (!els.truthConfirm?.checked) {
-    setStatus("Confirm the information is truthful before submitting.", "error");
+    setStatus(t("confirmTruthful"), "error");
     return;
   }
   const requestToken = getCurrentCleanerToken();
   state.requestToken = requestToken;
   if (!state.requestReady || !requestToken) {
-    setStatus("This cleaner link is invalid or expired. Ask Shipide for a new link.", "error");
+    setStatus(t("invalidLink"), "error");
     return;
   }
   els.submit.disabled = true;
   if (els.confirmApprove) els.confirmApprove.disabled = true;
-  showStatusToast("Submitting cleaned data to Shipide...", { tone: "info" });
+  showStatusToast(t("submitting"), { tone: "info" });
   try {
     const response = await fetch("/api/public/clean-data/submit", {
       method: "POST",
@@ -914,12 +1252,12 @@ async function submitCleanData() {
         removedColumns: state.headers.filter((_, index) => state.mapping[index]?.action === "remove"),
       }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || "Could not submit the cleaned data.");
+    await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(t("submitFailed"));
     setConfirmModalOpen(false);
     setStep("thanks");
   } catch (error) {
-    setStatus(`${error.message || "Submission failed."} Download the cleaned CSV and send it to Shipide if needed.`, "error");
+    setStatus(`${error.message || t("submissionFailed")} ${t("submitFailedSuffix")}`, "error");
   } finally {
     els.submit.disabled = false;
     if (els.confirmApprove) {
@@ -930,14 +1268,15 @@ async function submitCleanData() {
 
 function handleMatrix(matrix, fileName) {
   if (!matrix || matrix.length < 2) {
-    throw new Error("No usable table was detected. Export the file as CSV or TXT and try again.");
+    throw new Error(t("noUsableTable"));
   }
   state.fileName = fileName || "shipping-export.csv";
-  state.headers = matrix[0].map((header, index) => String(header || `Column ${index + 1}`).trim());
+  state.headers = matrix[0].map((header, index) => String(header || t("column", { index: index + 1 })).trim());
   state.rows = matrix
     .slice(1)
     .filter((row) => row.some((cell) => String(cell || "").trim()));
   state.mapping = {};
+  state.extractedMapping = {};
   state.headers.forEach((header, index) => {
     state.mapping[index] = detectField(header);
   });
@@ -959,14 +1298,14 @@ function handleMatrix(matrix, fileName) {
 
 function handleFile(file) {
   if (!state.requestReady) {
-    setStatus("This cleaner link is not ready. Ask Shipide for a valid shipment extract link.", "error");
+    setStatus(t("linkNotReady"), "error");
     return;
   }
   if (!file) return;
   const name = file.name || "shipping-export.csv";
   const extension = name.split(".").pop().toLowerCase();
   const reader = new FileReader();
-  reader.onerror = () => setStatus("Could not read the file. Please try again.", "error");
+  reader.onerror = () => setStatus(t("readFailed"), "error");
   reader.onload = () => {
     try {
       const text = String(reader.result || "");
@@ -979,11 +1318,11 @@ function handleFile(file) {
       }
       handleMatrix(matrix, name);
     } catch (error) {
-      setStatus(error.message || "Could not parse this file.", "error");
+      setStatus(error.message || t("parseFailed"), "error");
     }
   };
   if (extension === "xlsx") {
-    setStatus("XLSX parsing is not enabled in this first version. Export as CSV or TXT and upload that file.", "error");
+    setStatus(t("xlsxDisabled"), "error");
     return;
   }
   reader.readAsText(file);
@@ -1004,7 +1343,7 @@ function drawBackground() {
     x: Math.random(),
     y: Math.random(),
     size: 3 + Math.random() * 8,
-    speed: 0.00008 + Math.random() * 0.00018,
+    speed: 0.00002 + Math.random() * 0.000045,
     alpha: 0.22 + Math.random() * 0.58,
   }));
   const render = (time) => {
@@ -1026,7 +1365,7 @@ async function validateShipmentExtractRequest() {
   setUploadEnabled(false);
   state.requestToken = getCurrentCleanerToken();
   if (!state.requestToken) {
-    setStatus("This cleaner page requires a client-specific Shipide link.", "error");
+    setStatus(t("tokenRequired"), "error");
     return;
   }
   try {
@@ -1036,7 +1375,7 @@ async function validateShipmentExtractRequest() {
     );
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error || "This shipment extract link is invalid or expired.");
+      throw new Error(t("linkInvalidOrExpired"));
     }
     state.requestReady = true;
     state.requestEmail = String(payload?.request?.clientEmail || "").trim();
@@ -1044,7 +1383,7 @@ async function validateShipmentExtractRequest() {
   } catch (error) {
     state.requestReady = false;
     setUploadEnabled(false);
-    setStatus(error?.message || "This shipment extract link is invalid or expired.", "error");
+    setStatus(error?.message || t("linkInvalidOrExpired"), "error");
   }
 }
 
@@ -1067,7 +1406,7 @@ els.backToMapping.addEventListener("click", () => setStep("mapping"));
 els.continueBtn.addEventListener("click", () => {
   const { isReady } = getCleanedDataReadiness();
   if (!isReady) {
-    setStatus("Select at least one shipment-analysis field. Missing optional fields are fine.", "error");
+    setStatus(t("selectAtLeastOne"), "error");
     return;
   }
   setStatus("");
@@ -1090,6 +1429,7 @@ els.confirmModal?.addEventListener("click", (event) => {
   }
 });
 
+applyLocalization();
 drawBackground();
 setStep("upload");
 void validateShipmentExtractRequest();
