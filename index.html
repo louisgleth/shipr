@@ -1199,6 +1199,15 @@
             </p>
             <div class="invite-fields invite-fields-compact">
               <label class="field">
+                <span>Company Name</span>
+                <input
+                  type="text"
+                  id="clientInviteCompany"
+                  autocomplete="organization"
+                  placeholder="Company Ltd"
+                />
+              </label>
+              <label class="field">
                 <span>Client Email</span>
                 <input
                   type="email"
@@ -1219,6 +1228,10 @@
             </div>
             <div class="invite-result is-hidden" id="clientInviteResult">
               <div class="invite-result-grid">
+                <div class="invite-result-cell">
+                  <div class="invite-result-label">Company</div>
+                  <div class="invite-result-meta mono" id="clientInviteResultCompany">--</div>
+                </div>
                 <div class="invite-result-cell">
                   <div class="invite-result-label">Client Email</div>
                   <div class="invite-result-meta mono" id="clientInviteResultEmail">--</div>
@@ -1244,6 +1257,10 @@
             <div class="invite-head">
               <div class="preview-title">Shipment Extract Links</div>
               <div class="invite-head-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="openShipmentExtractHistoryModal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="8"/></svg>
+                  <span>Recent Requests</span>
+                </button>
                 <button type="button" class="btn btn-primary btn-sm" id="shipmentExtractCreateButton">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span>Create Link</span>
@@ -1254,6 +1271,15 @@
               Create a client-specific cleaner URL. Submitted CSVs are emailed to shipextract@shipide.com.
             </p>
             <div class="invite-fields invite-fields-compact">
+              <label class="field">
+                <span>Company Name</span>
+                <input
+                  type="text"
+                  id="shipmentExtractCompany"
+                  autocomplete="organization"
+                  placeholder="Company Ltd"
+                />
+              </label>
               <label class="field">
                 <span>Client Email</span>
                 <input
@@ -1276,6 +1302,10 @@
             <div class="invite-result is-hidden" id="shipmentExtractResult">
               <div class="invite-result-grid">
                 <div class="invite-result-cell">
+                  <div class="invite-result-label">Company</div>
+                  <div class="invite-result-meta mono" id="shipmentExtractResultCompany">--</div>
+                </div>
+                <div class="invite-result-cell">
                   <div class="invite-result-label">Client Email</div>
                   <div class="invite-result-meta mono" id="shipmentExtractResultEmail">--</div>
                 </div>
@@ -1294,11 +1324,6 @@
               </div>
             </div>
             <div class="invite-status" id="shipmentExtractStatus"></div>
-            <div class="shipment-extract-history">
-              <div class="invite-result-label">Recent Extract Requests</div>
-              <div class="invite-history-empty" id="shipmentExtractHistoryEmpty">No extract links yet.</div>
-              <div class="invite-history-list" id="shipmentExtractHistoryList"></div>
-            </div>
           </div>
 
           <div class="admin-billing-panel admin-panel-card">
@@ -1382,6 +1407,28 @@
               </div>
               <div class="panel-actions">
                 <button type="button" class="btn btn-primary" id="clientInviteHistoryCancel">
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shopify-settings-overlay is-closed" id="shipmentExtractHistoryModal">
+          <div class="shopify-settings-modal invite-history-modal">
+            <div class="csv-modal-header">
+              <span class="csv-modal-title">Recent Extract Requests</span>
+              <button type="button" class="csv-modal-close" id="shipmentExtractHistoryClose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="shopify-settings-body invite-history-modal-body">
+              <div class="invite-history">
+                <div class="invite-history-empty" id="shipmentExtractHistoryEmpty">No extract links yet.</div>
+                <div class="invite-history-list" id="shipmentExtractHistoryList"></div>
+              </div>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary" id="shipmentExtractHistoryCancel">
                   <span>Close</span>
                 </button>
               </div>

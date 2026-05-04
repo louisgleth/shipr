@@ -2598,6 +2598,16 @@ function sanitizeSubmissionFilename(value, fallback = "shipide-cleaned-shipping-
   return sanitized || fallback;
 }
 
+function normalizeClientCompanyName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function getShipmentExtractCompanyName(row) {
+  return normalizeClientCompanyName(
+    row?.client_company_name || row?.clientCompanyName || row?.metadata?.client_company_name || ""
+  );
+}
+
 function escapeCsvCell(value) {
   const text = String(value ?? "");
   if (/[",\n\r;]/.test(text)) {
@@ -2655,10 +2665,11 @@ async function handleShippingDataCleanerSubmission(request, env) {
   }
 
   const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
-  const outputFilename = sanitizeSubmissionFilename(
-    `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
-  );
   const contactEmail = normalizeEmail(extractRequest?.client_email || "");
+  const companyName = getShipmentExtractCompanyName(extractRequest);
+  const outputFilename = sanitizeSubmissionFilename(
+    `${companyName || "client"}_${contactEmail || "no-email"}_${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
+  );
   const removedColumns = Array.isArray(body?.removedColumns)
     ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
     : [];
@@ -2668,6 +2679,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
       <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Company:</strong> ${companyName ? escapeHtml(companyName) : "Not assigned"}</li>
       <li><strong>Client email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not assigned"}</li>
       <li><strong>Request id:</strong> ${escapeHtml(extractRequest.id)}</li>
       <li><strong>Rows:</strong> ${rows.length}</li>
@@ -2679,6 +2691,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
   const text = [
     "A sanitized shipping data extract was submitted from the public cleaner.",
     `Source file: ${sourceFilename}`,
+    `Company: ${companyName || "Not assigned"}`,
     `Client email: ${contactEmail || "Not assigned"}`,
     `Request id: ${extractRequest.id}`,
     `Rows: ${rows.length}`,
@@ -2693,7 +2706,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
       fromName: "Shipide Data Cleaner",
       fromEmail: String(env.REPORTS_FROM_EMAIL || env.RESEND_FROM_EMAIL || "reports@shipide.com").trim(),
       replyTo: contactEmail || String(env.RESEND_REPLY_TO || "").trim(),
-      subject: `Cleaned shipping data: ${sourceFilename}`,
+      subject: `Cleaned shipping data: ${companyName || contactEmail || sourceFilename}`,
       html,
       text,
       attachments: [
@@ -2714,6 +2727,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
       metadata: {
         resend_email_id: response?.id || null,
         output_filename: outputFilename,
+        client_company_name: companyName || null,
       },
     });
     return jsonResponse({
@@ -3917,7 +3931,7 @@ function createInviteToken() {
 
 async function insertRegistrationInvite(
   env,
-  { tokenHash, tokenEncrypted, invitedEmail, expiresAt, createdBy }
+  { tokenHash, tokenEncrypted, invitedEmail, companyName, expiresAt, createdBy }
 ) {
   const response = await supabaseServiceRequest(env, `/rest/v1/${REGISTRATION_INVITES_TABLE}`, {
     method: "POST",
@@ -3930,6 +3944,7 @@ async function insertRegistrationInvite(
         token_hash: tokenHash,
         token_encrypted: tokenEncrypted || null,
         invited_email: invitedEmail || null,
+        company_name: normalizeClientCompanyName(companyName) || null,
         expires_at: expiresAt,
         created_by: createdBy || null,
       },
@@ -3943,8 +3958,9 @@ async function insertRegistrationInvite(
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function createRegistrationInvite(env, { invitedEmail, expiresInDays, createdBy }) {
+async function createRegistrationInvite(env, { invitedEmail, companyName, expiresInDays, createdBy }) {
   const safeInvitedEmail = normalizeEmail(invitedEmail || "");
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const expiryDays = parseInviteExpiryDays(expiresInDays);
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -3956,6 +3972,7 @@ async function createRegistrationInvite(env, { invitedEmail, expiresInDays, crea
         tokenHash,
         tokenEncrypted: await encryptToken(env, token),
         invitedEmail: safeInvitedEmail,
+        companyName: safeCompanyName,
         expiresAt,
         createdBy,
       });
@@ -3980,7 +3997,7 @@ async function listRegistrationInvites(env, { createdBy, limit = 20 }) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,invited_email,expires_at,created_at,claimed_at,claimed_email,created_by,token_encrypted,revoked_at,revoked_by"
+    "id,invited_email,company_name,expires_at,created_at,claimed_at,claimed_email,created_by,token_encrypted,revoked_at,revoked_by"
   );
   params.set("order", "created_at.desc");
   params.set("limit", String(safeLimit));
@@ -4017,7 +4034,7 @@ async function getShipmentExtractRequestByToken(env, token) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("token_hash", `eq.${tokenHash}`);
   params.set("limit", "1");
@@ -4040,7 +4057,7 @@ async function getShipmentExtractRequestById(env, requestId) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("id", `eq.${safeRequestId}`);
   params.set("limit", "1");
@@ -4057,7 +4074,8 @@ async function getShipmentExtractRequestById(env, requestId) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function insertShipmentExtractRequest(env, { tokenHash, tokenEncrypted, clientEmail, expiresAt, createdBy }) {
+async function insertShipmentExtractRequest(env, { tokenHash, tokenEncrypted, clientEmail, companyName, expiresAt, createdBy }) {
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const response = await supabaseServiceRequest(env, `/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}`, {
     method: "POST",
     headers: {
@@ -4071,6 +4089,7 @@ async function insertShipmentExtractRequest(env, { tokenHash, tokenEncrypted, cl
         client_email: clientEmail,
         expires_at: expiresAt,
         created_by: createdBy || null,
+        metadata: safeCompanyName ? { client_company_name: safeCompanyName } : {},
       },
     ]),
   });
@@ -4082,8 +4101,9 @@ async function insertShipmentExtractRequest(env, { tokenHash, tokenEncrypted, cl
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function createShipmentExtractRequest(env, { clientEmail, expiresInDays, createdBy }) {
+async function createShipmentExtractRequest(env, { clientEmail, companyName, expiresInDays, createdBy }) {
   const safeClientEmail = normalizeEmail(clientEmail || "");
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const expiryDays = parseInviteExpiryDays(expiresInDays);
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -4095,6 +4115,7 @@ async function createShipmentExtractRequest(env, { clientEmail, expiresInDays, c
         tokenHash,
         tokenEncrypted: await encryptToken(env, token),
         clientEmail: safeClientEmail,
+        companyName: safeCompanyName,
         expiresAt,
         createdBy,
       });
@@ -4113,7 +4134,7 @@ async function listShipmentExtractRequests(env, { limit = 50 }) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("order", "created_at.desc");
   params.set("limit", String(safeLimit));
@@ -9814,6 +9835,7 @@ async function mapInviteHistoryRow(request, env, invite) {
   return {
     id: invite?.id || null,
     invited_email: normalizeEmail(invite?.invited_email || ""),
+    company_name: normalizeClientCompanyName(invite?.company_name || ""),
     expires_at: invite?.expires_at || null,
     created_at: invite?.created_at || null,
     claimed_at: invite?.claimed_at || null,
@@ -9846,6 +9868,7 @@ async function mapShipmentExtractRequestRow(request, env, row) {
   return {
     id: row?.id || null,
     client_email: normalizeEmail(row?.client_email || ""),
+    client_company_name: getShipmentExtractCompanyName(row),
     expires_at: row?.expires_at || null,
     created_at: row?.created_at || null,
     submitted_at: row?.submitted_at || null,
@@ -14219,6 +14242,10 @@ async function handleCreateRegistrationInvite(request, env) {
   }
 
   const invitedEmail = normalizeEmail(body?.invitedEmail || "");
+  const companyName = normalizeClientCompanyName(body?.companyName || "");
+  if (!companyName) {
+    return jsonResponse({ error: "Company name is required." }, 400);
+  }
   if (!invitedEmail) {
     return jsonResponse({ error: "Client email is required." }, 400);
   }
@@ -14229,6 +14256,7 @@ async function handleCreateRegistrationInvite(request, env) {
   try {
     const created = await createRegistrationInvite(env, {
       invitedEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -14239,6 +14267,7 @@ async function handleCreateRegistrationInvite(request, env) {
       inviteUrl: inviteUrl.toString(),
       expiresAt: created.expiresAt,
       invitedEmail: invitedEmail || null,
+      companyName,
     });
   } catch (error) {
     return jsonResponse({ error: error.message || "Could not create invite." }, 500);
@@ -14286,6 +14315,10 @@ async function handleCreateShipmentExtractRequest(request, env) {
   }
 
   const clientEmail = normalizeEmail(body?.clientEmail || "");
+  const companyName = normalizeClientCompanyName(body?.companyName || "");
+  if (!companyName) {
+    return jsonResponse({ error: "Company name is required." }, 400);
+  }
   if (!clientEmail) {
     return jsonResponse({ error: "Client email is required." }, 400);
   }
@@ -14296,6 +14329,7 @@ async function handleCreateShipmentExtractRequest(request, env) {
   try {
     const created = await createShipmentExtractRequest(env, {
       clientEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -14306,6 +14340,7 @@ async function handleCreateShipmentExtractRequest(request, env) {
       requestUrl: requestUrl.toString(),
       expiresAt: created.expiresAt,
       clientEmail,
+      companyName,
       request: await mapShipmentExtractRequestRow(request, env, created.row),
     });
   } catch (error) {
@@ -14354,8 +14389,10 @@ async function handleCreateRegistrationInviteFromShipmentExtract(request, env) {
     if (!isValidEmailFormat(invitedEmail)) {
       return jsonResponse({ error: "Invalid client email format." }, 400);
     }
+    const companyName = getShipmentExtractCompanyName(extractRequest);
     const created = await createRegistrationInvite(env, {
       invitedEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -14369,6 +14406,7 @@ async function handleCreateRegistrationInviteFromShipmentExtract(request, env) {
       inviteUrl: inviteUrl.toString(),
       expiresAt: created.expiresAt,
       invitedEmail,
+      companyName,
     });
   } catch (error) {
     return jsonResponse({ error: error.message || "Could not create registration invite." }, 500);
@@ -14394,6 +14432,7 @@ async function handleShippingDataCleanerRequestValidate(request, env, url) {
       request: {
         id: row.id,
         clientEmail: normalizeEmail(row.client_email || ""),
+        companyName: getShipmentExtractCompanyName(row),
         expiresAt: row.expires_at || null,
         submittedAt: row.submitted_at || null,
       },

@@ -136,6 +136,8 @@ const state = {
   headers: [],
   rows: [],
   mapping: {},
+  mappingOrder: [],
+  extractedInsertAfter: 0,
   step: "upload",
   transitionToken: 0,
   requestToken: getCurrentCleanerToken(),
@@ -767,15 +769,24 @@ function createExtractedMappingRow(field) {
 function renderMapping() {
   els.mappingBody.innerHTML = "";
   const uploadedColumns = state.headers.map((header, index) => ({ header, index }));
-  uploadedColumns
-    .filter((item) => state.mapping[item.index]?.action !== "remove")
-    .forEach((item) => els.mappingBody.appendChild(createMappingRow(item.header, item.index)));
-  getAvailableExtractedFields().forEach((field) => {
-    els.mappingBody.appendChild(createExtractedMappingRow(field));
+  const orderedColumns = state.mappingOrder.length
+    ? state.mappingOrder
+        .map((index) => uploadedColumns.find((item) => item.index === index))
+        .filter(Boolean)
+    : uploadedColumns;
+  orderedColumns.forEach((item, position) => {
+    if (position === state.extractedInsertAfter) {
+      getAvailableExtractedFields().forEach((field) => {
+        els.mappingBody.appendChild(createExtractedMappingRow(field));
+      });
+    }
+    els.mappingBody.appendChild(createMappingRow(item.header, item.index));
   });
-  uploadedColumns
-    .filter((item) => state.mapping[item.index]?.action === "remove")
-    .forEach((item) => els.mappingBody.appendChild(createMappingRow(item.header, item.index)));
+  if (state.extractedInsertAfter >= orderedColumns.length) {
+    getAvailableExtractedFields().forEach((field) => {
+      els.mappingBody.appendChild(createExtractedMappingRow(field));
+    });
+  }
 }
 
 function buildCleanRows() {
@@ -930,6 +941,17 @@ function handleMatrix(matrix, fileName) {
   state.headers.forEach((header, index) => {
     state.mapping[index] = detectField(header);
   });
+  state.mappingOrder = state.headers
+    .map((_, index) => index)
+    .sort((left, right) => {
+      const leftRemoved = state.mapping[left]?.action === "remove";
+      const rightRemoved = state.mapping[right]?.action === "remove";
+      if (leftRemoved === rightRemoved) return left - right;
+      return leftRemoved ? 1 : -1;
+    });
+  state.extractedInsertAfter = state.mappingOrder.filter(
+    (index) => state.mapping[index]?.action !== "remove"
+  ).length;
   renderMapping();
   setStep("mapping");
   setStatus("");
@@ -1019,9 +1041,6 @@ async function validateShipmentExtractRequest() {
     state.requestReady = true;
     state.requestEmail = String(payload?.request?.clientEmail || "").trim();
     setUploadEnabled(true);
-    if (state.requestEmail) {
-      showStatusToast(`Cleaner link ready for ${state.requestEmail}.`, { tone: "success" });
-    }
   } catch (error) {
     state.requestReady = false;
     setUploadEnabled(false);

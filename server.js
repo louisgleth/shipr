@@ -2665,6 +2665,16 @@ function sanitizeSubmissionFilename(value, fallback = "shipide-cleaned-shipping-
   return sanitized || fallback;
 }
 
+function normalizeClientCompanyName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function getShipmentExtractCompanyName(row) {
+  return normalizeClientCompanyName(
+    row?.client_company_name || row?.clientCompanyName || row?.metadata?.client_company_name || ""
+  );
+}
+
 function escapeCsvCell(value) {
   const text = String(value ?? "");
   if (/[",\n\r;]/.test(text)) {
@@ -2729,10 +2739,11 @@ async function handleShippingDataCleanerSubmission(req, res) {
   }
 
   const sourceFilename = sanitizeSubmissionFilename(body?.fileName || "shipping-export.csv");
-  const outputFilename = sanitizeSubmissionFilename(
-    `${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
-  );
   const contactEmail = normalizeEmail(extractRequest?.client_email || "");
+  const companyName = getShipmentExtractCompanyName(extractRequest);
+  const outputFilename = sanitizeSubmissionFilename(
+    `${companyName || "client"}_${contactEmail || "no-email"}_${sourceFilename.replace(/\.[^.]+$/, "")}-shipide-cleaned.csv`
+  );
   const removedColumns = Array.isArray(body?.removedColumns)
     ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
     : [];
@@ -2742,6 +2753,7 @@ async function handleShippingDataCleanerSubmission(req, res) {
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
       <li><strong>Source file:</strong> ${escapeHtml(sourceFilename)}</li>
+      <li><strong>Company:</strong> ${companyName ? escapeHtml(companyName) : "Not assigned"}</li>
       <li><strong>Client email:</strong> ${contactEmail ? escapeHtml(contactEmail) : "Not assigned"}</li>
       <li><strong>Request id:</strong> ${escapeHtml(extractRequest.id)}</li>
       <li><strong>Rows:</strong> ${rows.length}</li>
@@ -2753,6 +2765,7 @@ async function handleShippingDataCleanerSubmission(req, res) {
   const text = [
     "A sanitized shipping data extract was submitted from the public cleaner.",
     `Source file: ${sourceFilename}`,
+    `Company: ${companyName || "Not assigned"}`,
     `Client email: ${contactEmail || "Not assigned"}`,
     `Request id: ${extractRequest.id}`,
     `Rows: ${rows.length}`,
@@ -2767,7 +2780,7 @@ async function handleShippingDataCleanerSubmission(req, res) {
       fromName: "Shipide Data Cleaner",
       fromEmail: REPORTS_FROM_EMAIL || RESEND_FROM_EMAIL,
       replyTo: contactEmail || RESEND_REPLY_TO,
-      subject: `Cleaned shipping data: ${sourceFilename}`,
+      subject: `Cleaned shipping data: ${companyName || contactEmail || sourceFilename}`,
       html,
       text,
       attachments: [
@@ -2788,6 +2801,7 @@ async function handleShippingDataCleanerSubmission(req, res) {
       metadata: {
         resend_email_id: response?.id || null,
         output_filename: outputFilename,
+        client_company_name: companyName || null,
       },
     });
     sendJson(res, 200, {
@@ -3330,6 +3344,7 @@ async function insertRegistrationInvite({
   tokenHash,
   tokenEncrypted,
   invitedEmail,
+  companyName,
   expiresAt,
   createdBy,
 }) {
@@ -3344,6 +3359,7 @@ async function insertRegistrationInvite({
         token_hash: tokenHash,
         token_encrypted: tokenEncrypted || null,
         invited_email: invitedEmail || null,
+        company_name: normalizeClientCompanyName(companyName) || null,
         expires_at: expiresAt,
         created_by: createdBy || null,
       },
@@ -3357,8 +3373,9 @@ async function insertRegistrationInvite({
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy }) {
+async function createRegistrationInvite({ invitedEmail, companyName, expiresInDays, createdBy }) {
   const safeInvitedEmail = normalizeEmail(invitedEmail || "");
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const expiryDays = parseInviteExpiryDays(expiresInDays);
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -3370,6 +3387,7 @@ async function createRegistrationInvite({ invitedEmail, expiresInDays, createdBy
         tokenHash,
         tokenEncrypted: encryptToken(token),
         invitedEmail: safeInvitedEmail,
+        companyName: safeCompanyName,
         expiresAt,
         createdBy,
       });
@@ -3394,7 +3412,7 @@ async function listRegistrationInvites({ createdBy, limit = 20 }) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,invited_email,expires_at,created_at,claimed_at,claimed_email,created_by,token_encrypted,revoked_at,revoked_by"
+    "id,invited_email,company_name,expires_at,created_at,claimed_at,claimed_email,created_by,token_encrypted,revoked_at,revoked_by"
   );
   params.set("order", "created_at.desc");
   params.set("limit", String(safeLimit));
@@ -3430,7 +3448,7 @@ async function getShipmentExtractRequestByToken(token) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("token_hash", `eq.${tokenHash}`);
   params.set("limit", "1");
@@ -3452,7 +3470,7 @@ async function getShipmentExtractRequestById(requestId) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("id", `eq.${safeRequestId}`);
   params.set("limit", "1");
@@ -3472,9 +3490,11 @@ async function insertShipmentExtractRequest({
   tokenHash,
   tokenEncrypted,
   clientEmail,
+  companyName,
   expiresAt,
   createdBy,
 }) {
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const response = await supabaseServiceRequest(`/rest/v1/${SHIPMENT_EXTRACT_REQUESTS_TABLE}`, {
     method: "POST",
     headers: {
@@ -3488,6 +3508,7 @@ async function insertShipmentExtractRequest({
         client_email: clientEmail,
         expires_at: expiresAt,
         created_by: createdBy || null,
+        metadata: safeCompanyName ? { client_company_name: safeCompanyName } : {},
       },
     ]),
   });
@@ -3499,8 +3520,9 @@ async function insertShipmentExtractRequest({
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-async function createShipmentExtractRequest({ clientEmail, expiresInDays, createdBy }) {
+async function createShipmentExtractRequest({ clientEmail, companyName, expiresInDays, createdBy }) {
   const safeClientEmail = normalizeEmail(clientEmail || "");
+  const safeCompanyName = normalizeClientCompanyName(companyName);
   const expiryDays = parseInviteExpiryDays(expiresInDays);
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -3512,6 +3534,7 @@ async function createShipmentExtractRequest({ clientEmail, expiresInDays, create
         tokenHash,
         tokenEncrypted: encryptToken(token),
         clientEmail: safeClientEmail,
+        companyName: safeCompanyName,
         expiresAt,
         createdBy,
       });
@@ -3532,7 +3555,7 @@ async function listShipmentExtractRequests({ limit = 50 }) {
   const params = new URLSearchParams();
   params.set(
     "select",
-    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted"
+    "id,client_email,expires_at,created_at,created_by,submitted_at,submitted_filename,submitted_rows,submitted_columns,kept_columns,removed_columns,registration_invite_id,token_encrypted,metadata"
   );
   params.set("order", "created_at.desc");
   params.set("limit", String(safeLimit));
@@ -8519,6 +8542,7 @@ function mapInviteHistoryRow(invite, baseUrl) {
   return {
     id: invite?.id || null,
     invited_email: normalizeEmail(invite?.invited_email || ""),
+    company_name: normalizeClientCompanyName(invite?.company_name || ""),
     expires_at: invite?.expires_at || null,
     created_at: invite?.created_at || null,
     claimed_at: invite?.claimed_at || null,
@@ -8551,6 +8575,7 @@ function mapShipmentExtractRequestRow(row, baseUrl) {
   return {
     id: row?.id || null,
     client_email: normalizeEmail(row?.client_email || ""),
+    client_company_name: getShipmentExtractCompanyName(row),
     expires_at: row?.expires_at || null,
     created_at: row?.created_at || null,
     submitted_at: row?.submitted_at || null,
@@ -12140,6 +12165,11 @@ async function handleCreateRegistrationInvite(req, res) {
   }
 
   const invitedEmail = normalizeEmail(body?.invitedEmail || "");
+  const companyName = normalizeClientCompanyName(body?.companyName || "");
+  if (!companyName) {
+    sendJson(res, 400, { error: "Company name is required." });
+    return;
+  }
   if (!invitedEmail) {
     sendJson(res, 400, { error: "Client email is required." });
     return;
@@ -12152,6 +12182,7 @@ async function handleCreateRegistrationInvite(req, res) {
   try {
     const created = await createRegistrationInvite({
       invitedEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -12162,6 +12193,7 @@ async function handleCreateRegistrationInvite(req, res) {
       inviteUrl: inviteUrl.toString(),
       expiresAt: created.expiresAt,
       invitedEmail: invitedEmail || null,
+      companyName,
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not create invite." });
@@ -12213,6 +12245,11 @@ async function handleCreateShipmentExtractRequest(req, res) {
   }
 
   const clientEmail = normalizeEmail(body?.clientEmail || "");
+  const companyName = normalizeClientCompanyName(body?.companyName || "");
+  if (!companyName) {
+    sendJson(res, 400, { error: "Company name is required." });
+    return;
+  }
   if (!clientEmail) {
     sendJson(res, 400, { error: "Client email is required." });
     return;
@@ -12225,6 +12262,7 @@ async function handleCreateShipmentExtractRequest(req, res) {
   try {
     const created = await createShipmentExtractRequest({
       clientEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -12235,6 +12273,7 @@ async function handleCreateShipmentExtractRequest(req, res) {
       requestUrl: requestUrl.toString(),
       expiresAt: created.expiresAt,
       clientEmail,
+      companyName,
       request: mapShipmentExtractRequestRow(created.row, buildPublicBaseUrl(req)),
     });
   } catch (error) {
@@ -12294,8 +12333,10 @@ async function handleCreateRegistrationInviteFromShipmentExtract(req, res) {
       sendJson(res, 400, { error: "Invalid client email format." });
       return;
     }
+    const companyName = getShipmentExtractCompanyName(extractRequest);
     const created = await createRegistrationInvite({
       invitedEmail,
+      companyName,
       expiresInDays: body?.expiresInDays,
       createdBy: user.id,
     });
@@ -12309,6 +12350,7 @@ async function handleCreateRegistrationInviteFromShipmentExtract(req, res) {
       inviteUrl: inviteUrl.toString(),
       expiresAt: created.expiresAt,
       invitedEmail,
+      companyName,
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not create registration invite." });
@@ -12337,6 +12379,7 @@ async function handleShippingDataCleanerRequestValidate(req, res, requestUrl) {
       request: {
         id: request.id,
         clientEmail: normalizeEmail(request.client_email || ""),
+        companyName: getShipmentExtractCompanyName(request),
         expiresAt: request.expires_at || null,
         submittedAt: request.submitted_at || null,
       },

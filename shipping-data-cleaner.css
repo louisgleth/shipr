@@ -123,6 +123,12 @@ select {
   width: min(1040px, 100%);
 }
 
+.cleaner-card.is-step-review {
+  width: fit-content;
+  min-width: min(1040px, 100%);
+  max-width: calc(100vw - 40px);
+}
+
 .cleaner-card.is-step-mapping,
 .cleaner-card.is-step-review {
   max-height: calc(100dvh - 40px);
@@ -734,7 +740,11 @@ select {
   border: 1px solid var(--stroke);
   background: var(--surface);
   color: var(--text);
-  padding: 0 10px;
+  padding: 0 30px 0 10px;
+  cursor: pointer;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
 }
 
 .cleaner-map-select.is-keep {
@@ -757,6 +767,16 @@ select {
 .cleaner-map-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.cleaner-card.is-step-review .cleaner-preview-wrap {
+  max-height: none;
+  overflow: visible;
+}
+
+.cleaner-card.is-step-review .cleaner-preview-table {
+  width: max-content;
+  min-width: 100%;
 }
 
 .cleaner-sample {

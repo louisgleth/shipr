@@ -2392,6 +2392,7 @@ const warehouseStatusRow = warehouseStatus?.closest(".warehouse-status-row") || 
 const warehouseList = document.getElementById("warehouseList");
 const warehouseAddButton = document.getElementById("warehouseAdd");
 const warehouseSaveButton = document.getElementById("warehouseSave");
+const clientInviteCompanyInput = document.getElementById("clientInviteCompany");
 const clientInviteEmailInput = document.getElementById("clientInviteEmail");
 const clientInviteExpirySelect = document.getElementById("clientInviteExpiry");
 const clientInviteCreateButton = document.getElementById("clientInviteCreateButton");
@@ -2402,11 +2403,13 @@ const clientInviteStatus = document.getElementById("clientInviteStatus");
 const clientInviteHistoryEmpty = document.getElementById("clientInviteHistoryEmpty");
 const clientInviteHistoryList = document.getElementById("clientInviteHistoryList");
 const clientInviteResultEmail = document.getElementById("clientInviteResultEmail");
+const clientInviteResultCompany = document.getElementById("clientInviteResultCompany");
 const clientInviteResultExpiry = document.getElementById("clientInviteResultExpiry");
 const openClientInviteHistoryModalButton = document.getElementById("openClientInviteHistoryModal");
 const clientInviteHistoryModal = document.getElementById("clientInviteHistoryModal");
 const clientInviteHistoryClose = document.getElementById("clientInviteHistoryClose");
 const clientInviteHistoryCancel = document.getElementById("clientInviteHistoryCancel");
+const shipmentExtractCompanyInput = document.getElementById("shipmentExtractCompany");
 const shipmentExtractEmailInput = document.getElementById("shipmentExtractEmail");
 const shipmentExtractExpirySelect = document.getElementById("shipmentExtractExpiry");
 const shipmentExtractCreateButton = document.getElementById("shipmentExtractCreateButton");
@@ -2415,9 +2418,14 @@ const shipmentExtractUrlInput = document.getElementById("shipmentExtractUrl");
 const shipmentExtractCopyButton = document.getElementById("shipmentExtractCopyButton");
 const shipmentExtractStatus = document.getElementById("shipmentExtractStatus");
 const shipmentExtractResultEmail = document.getElementById("shipmentExtractResultEmail");
+const shipmentExtractResultCompany = document.getElementById("shipmentExtractResultCompany");
 const shipmentExtractResultExpiry = document.getElementById("shipmentExtractResultExpiry");
 const shipmentExtractHistoryEmpty = document.getElementById("shipmentExtractHistoryEmpty");
 const shipmentExtractHistoryList = document.getElementById("shipmentExtractHistoryList");
+const openShipmentExtractHistoryModalButton = document.getElementById("openShipmentExtractHistoryModal");
+const shipmentExtractHistoryModal = document.getElementById("shipmentExtractHistoryModal");
+const shipmentExtractHistoryClose = document.getElementById("shipmentExtractHistoryClose");
+const shipmentExtractHistoryCancel = document.getElementById("shipmentExtractHistoryCancel");
 const adminSummaryClients = document.getElementById("adminSummaryClients");
 const adminSummaryActiveClients = document.getElementById("adminSummaryActiveClients");
 const adminSummaryInvites = document.getElementById("adminSummaryInvites");
@@ -5525,6 +5533,10 @@ function isValidEmailFormat(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+function normalizeClientCompanyName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
 function isInviteExpired(invite) {
   const expiresAt = String(invite?.expires_at || "").trim();
   if (!expiresAt) return true;
@@ -5587,7 +5599,10 @@ function renderClientInviteHistory(invites = []) {
 
     const email = document.createElement("div");
     email.className = "invite-history-email";
-    email.textContent = invite?.invited_email ? String(invite.invited_email) : "--";
+    const companyName = normalizeClientCompanyName(invite?.company_name || invite?.companyName || "");
+    email.textContent = [companyName, invite?.invited_email ? String(invite.invited_email) : ""]
+      .filter(Boolean)
+      .join(" • ") || "--";
 
     const badge = document.createElement("div");
     badge.className = `invite-history-badge is-${status}`;
@@ -5694,6 +5709,9 @@ function setClientInviteResult(url = "", meta = {}) {
   if (!value) {
     clientInviteResult.classList.add("is-hidden");
     clientInviteUrlInput.value = "";
+    if (clientInviteResultCompany) {
+      clientInviteResultCompany.textContent = "--";
+    }
     if (clientInviteResultEmail) {
       clientInviteResultEmail.textContent = "--";
     }
@@ -5706,6 +5724,9 @@ function setClientInviteResult(url = "", meta = {}) {
     return;
   }
   clientInviteUrlInput.value = value;
+  if (clientInviteResultCompany) {
+    clientInviteResultCompany.textContent = normalizeClientCompanyName(meta?.companyName) || "--";
+  }
   if (clientInviteResultEmail) {
     clientInviteResultEmail.textContent = String(meta?.invitedEmail || "").trim() || "--";
   }
@@ -5720,6 +5741,9 @@ function setClientInviteResult(url = "", meta = {}) {
 
 function setClientInviteBusy(isBusy) {
   clientInviteBusy = Boolean(isBusy);
+  if (clientInviteCompanyInput) {
+    clientInviteCompanyInput.disabled = clientInviteBusy;
+  }
   if (clientInviteEmailInput) {
     clientInviteEmailInput.disabled = clientInviteBusy;
   }
@@ -5744,6 +5768,11 @@ function setClientInviteBusy(isBusy) {
 
 async function createClientInvite() {
   if (clientInviteBusy) return;
+  const companyName = normalizeClientCompanyName(clientInviteCompanyInput?.value);
+  if (!companyName) {
+    setClientInviteStatus(tr("Company name is required."), { tone: "error" });
+    return;
+  }
   const invitedEmail = String(clientInviteEmailInput?.value || "").trim().toLowerCase();
   if (!invitedEmail) {
     setClientInviteStatus(tr("Client email is required."), { tone: "error" });
@@ -5761,6 +5790,7 @@ async function createClientInvite() {
       method: "POST",
       body: JSON.stringify({
         invitedEmail: invitedEmail || null,
+        companyName,
         expiresInDays,
       }),
     });
@@ -5769,12 +5799,16 @@ async function createClientInvite() {
       throw new Error(tr("Could not create account."));
     }
     setClientInviteResult(inviteUrl, {
+      companyName,
       invitedEmail,
       expiresAt: payload?.expiresAt,
     });
     setClientInviteStatus(tr("Invite link created."), { tone: "success" });
     if (clientInviteEmailInput) {
       clientInviteEmailInput.value = "";
+    }
+    if (clientInviteCompanyInput) {
+      clientInviteCompanyInput.value = "";
     }
     await loadAdminDashboard({ quiet: true });
   } catch (error) {
@@ -5906,7 +5940,10 @@ function renderShipmentExtractHistory(rows = []) {
     top.className = "invite-history-top";
     const email = document.createElement("div");
     email.className = "invite-history-email";
-    email.textContent = row?.client_email ? String(row.client_email) : "--";
+    const companyName = normalizeClientCompanyName(row?.client_company_name || row?.clientCompanyName || "");
+    email.textContent = [companyName, row?.client_email ? String(row.client_email) : ""]
+      .filter(Boolean)
+      .join(" • ") || "--";
     const status = getShipmentExtractStatus(row);
     const badge = document.createElement("div");
     badge.className = `invite-history-badge is-${status === "submitted" ? "claimed" : status}`;
@@ -5981,12 +6018,16 @@ function setShipmentExtractResult(url = "", meta = {}) {
   if (!value) {
     shipmentExtractResult.classList.add("is-hidden");
     shipmentExtractUrlInput.value = "";
+    if (shipmentExtractResultCompany) shipmentExtractResultCompany.textContent = "--";
     if (shipmentExtractResultEmail) shipmentExtractResultEmail.textContent = "--";
     if (shipmentExtractResultExpiry) shipmentExtractResultExpiry.textContent = "--";
     if (shipmentExtractCopyButton) shipmentExtractCopyButton.disabled = true;
     return;
   }
   shipmentExtractUrlInput.value = value;
+  if (shipmentExtractResultCompany) {
+    shipmentExtractResultCompany.textContent = normalizeClientCompanyName(meta?.companyName) || "--";
+  }
   if (shipmentExtractResultEmail) {
     shipmentExtractResultEmail.textContent = String(meta?.clientEmail || "").trim() || "--";
   }
@@ -5999,6 +6040,7 @@ function setShipmentExtractResult(url = "", meta = {}) {
 
 function setShipmentExtractBusy(isBusy) {
   shipmentExtractBusy = Boolean(isBusy);
+  if (shipmentExtractCompanyInput) shipmentExtractCompanyInput.disabled = shipmentExtractBusy;
   if (shipmentExtractEmailInput) shipmentExtractEmailInput.disabled = shipmentExtractBusy;
   if (shipmentExtractExpirySelect) shipmentExtractExpirySelect.disabled = shipmentExtractBusy;
   if (shipmentExtractCreateButton) {
@@ -6016,6 +6058,11 @@ function setShipmentExtractBusy(isBusy) {
 
 async function createShipmentExtractRequest() {
   if (shipmentExtractBusy) return;
+  const companyName = normalizeClientCompanyName(shipmentExtractCompanyInput?.value);
+  if (!companyName) {
+    setShipmentExtractStatus(tr("Company name is required."), { tone: "error" });
+    return;
+  }
   const clientEmail = String(shipmentExtractEmailInput?.value || "").trim().toLowerCase();
   if (!clientEmail) {
     setShipmentExtractStatus(tr("Client email is required."), { tone: "error" });
@@ -6031,16 +6078,18 @@ async function createShipmentExtractRequest() {
   try {
     const payload = await fetchApiWithAuth("/api/admin/shipment-extract-requests", {
       method: "POST",
-      body: JSON.stringify({ clientEmail, expiresInDays }),
+      body: JSON.stringify({ clientEmail, companyName, expiresInDays }),
     });
     const requestUrl = normalizeShipmentExtractPublicUrl(payload?.requestUrl);
     if (!requestUrl) throw new Error(tr("Could not create shipment extract link."));
     setShipmentExtractResult(requestUrl, {
+      companyName,
       clientEmail,
       expiresAt: payload?.expiresAt,
     });
     setShipmentExtractStatus(tr("Shipment extract link created."), { tone: "success" });
     if (shipmentExtractEmailInput) shipmentExtractEmailInput.value = "";
+    if (shipmentExtractCompanyInput) shipmentExtractCompanyInput.value = "";
     await loadAdminDashboard({ quiet: true });
   } catch (error) {
     setShipmentExtractStatus(error?.message || tr("Could not create shipment extract link."), {
@@ -6103,6 +6152,7 @@ async function createRegistrationInviteFromShipmentExtract(requestId) {
     const inviteUrl = String(payload?.inviteUrl || "").trim();
     if (inviteUrl) {
       setClientInviteResult(inviteUrl, {
+        companyName: payload?.companyName,
         invitedEmail: payload?.invitedEmail,
         expiresAt: payload?.expiresAt,
       });
@@ -13593,6 +13643,11 @@ function setReceiptModalOpen(open) {
 function setClientInviteHistoryModalOpen(open) {
   if (!clientInviteHistoryModal) return;
   clientInviteHistoryModal.classList.toggle("is-closed", !open);
+}
+
+function setShipmentExtractHistoryModalOpen(open) {
+  if (!shipmentExtractHistoryModal) return;
+  shipmentExtractHistoryModal.classList.toggle("is-closed", !open);
 }
 
 function setAdminBillingToolsModalOpen(open) {
@@ -24602,6 +24657,33 @@ if (clientInviteHistoryModal) {
   });
 }
 
+if (openShipmentExtractHistoryModalButton) {
+  openShipmentExtractHistoryModalButton.addEventListener("click", () => {
+    setShipmentExtractHistoryModalOpen(true);
+    renderShipmentExtractHistory(shipmentExtractHistory);
+  });
+}
+
+if (shipmentExtractHistoryClose) {
+  shipmentExtractHistoryClose.addEventListener("click", () => {
+    setShipmentExtractHistoryModalOpen(false);
+  });
+}
+
+if (shipmentExtractHistoryCancel) {
+  shipmentExtractHistoryCancel.addEventListener("click", () => {
+    setShipmentExtractHistoryModalOpen(false);
+  });
+}
+
+if (shipmentExtractHistoryModal) {
+  shipmentExtractHistoryModal.addEventListener("click", (event) => {
+    if (event.target === shipmentExtractHistoryModal) {
+      setShipmentExtractHistoryModalOpen(false);
+    }
+  });
+}
+
 if (openAdminBillingToolsModalButton) {
   openAdminBillingToolsModalButton.addEventListener("click", () => {
     setAdminBillingToolsModalOpen(true);
@@ -24748,6 +24830,12 @@ if (labelConfirmModal) {
   });
 }
 
+if (clientInviteCompanyInput) {
+  clientInviteCompanyInput.addEventListener("input", () => {
+    setClientInviteStatus("");
+  });
+}
+
 if (clientInviteEmailInput) {
   clientInviteEmailInput.addEventListener("input", () => {
     setClientInviteStatus("");
@@ -24757,6 +24845,12 @@ if (clientInviteEmailInput) {
 if (clientInviteExpirySelect) {
   clientInviteExpirySelect.addEventListener("change", () => {
     setClientInviteStatus("");
+  });
+}
+
+if (shipmentExtractCompanyInput) {
+  shipmentExtractCompanyInput.addEventListener("input", () => {
+    setShipmentExtractStatus("");
   });
 }
 
@@ -25808,6 +25902,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (clientInviteHistoryModal && !clientInviteHistoryModal.classList.contains("is-closed")) {
     setClientInviteHistoryModalOpen(false);
+    return;
+  }
+  if (shipmentExtractHistoryModal && !shipmentExtractHistoryModal.classList.contains("is-closed")) {
+    setShipmentExtractHistoryModalOpen(false);
     return;
   }
   if (adminSettingsModal && !adminSettingsModal.classList.contains("is-closed")) {
