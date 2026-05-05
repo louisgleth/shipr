@@ -226,7 +226,7 @@ const LOCALE = (() => {
 const COPY = {
   en: {
     documentTitle: "Shipide Data Cleaner",
-    step: "Step {index} of {total}",
+    step: "Step {index} of 3",
     complete: "Complete",
     brand: "Data Cleaner",
     kicker: "Shipment extract sanitization",
@@ -313,7 +313,7 @@ const COPY = {
   },
   fr: {
     documentTitle: "Nettoyeur de données Shipide",
-    step: "Étape {index} sur {total}",
+    step: "Étape {index} sur 3",
     complete: "Terminé",
     brand: "Nettoyeur de données",
     kicker: "Nettoyage d’extrait d’expédition",
@@ -400,7 +400,7 @@ const COPY = {
   },
   nl: {
     documentTitle: "Shipide Data Cleaner",
-    step: "Stap {index} van {total}",
+    step: "Stap {index} van 3",
     complete: "Voltooid",
     brand: "Data Cleaner",
     kicker: "Opschonning van verzendextract",
@@ -895,10 +895,8 @@ function applyStepView(step) {
       "is-step-transition-enter-start"
     );
   });
-  const needsOrigin = needsManualOriginAddress();
-  const stepIndex =
-    step === "upload" ? 1 : step === "mapping" ? 2 : step === "origin" ? 3 : needsOrigin ? 4 : 3;
-  const stepTotal = needsOrigin ? 4 : 3;
+  const stepIndex = step === "upload" ? 1 : step === "mapping" || step === "origin" ? 2 : 3;
+  const stepTotal = 3;
   const titles = {
     upload: t("uploadTitle"),
     mapping: t("mappingTitle"),
@@ -916,7 +914,7 @@ function applyStepView(step) {
     item.hidden = itemStep > stepTotal;
     item.classList.toggle("is-active", step === "thanks" || itemStep <= stepIndex);
   });
-  els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex, total: stepTotal });
+  els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex });
   document.querySelector(".cleaner-progress")?.style.setProperty("--cleaner-progress-steps", String(stepTotal));
 }
 
@@ -1394,7 +1392,17 @@ function renderOriginInputs() {
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "cleaner-origin-remove";
-      remove.textContent = t("removeOriginAddress");
+      remove.setAttribute("aria-label", t("removeOriginAddress"));
+      remove.title = t("removeOriginAddress");
+      remove.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h16" />
+          <path d="M10 11v6" />
+          <path d="M14 11v6" />
+          <path d="M6.5 7l.8 13h9.4l.8-13" />
+          <path d="M9 7V4h6v3" />
+        </svg>
+      `;
       remove.addEventListener("click", () => {
         row.classList.add("is-removing");
         window.setTimeout(() => {
