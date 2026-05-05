@@ -1271,7 +1271,14 @@ const TRANSLATIONS = {
   "Upload CSV": { fr: "Importer CSV", nl: "CSV uploaden" },
   "Auto-fill": { fr: "Auto-remplir", nl: "Auto-invullen" },
   "Auto CSV": { fr: "Auto CSV", nl: "Auto CSV" },
-  "Complete all required fields or use Auto-generate CSV.": { fr: "Complétez tous les champs requis ou utilisez la génération CSV automatique.", nl: "Vul alle verplichte velden in of gebruik Auto-generate CSV." },
+  "Complete all required fields.": {
+    fr: "Complétez tous les champs requis.",
+    nl: "Vul alle verplichte velden in.",
+  },
+  "Needs to be filled": {
+    fr: "À compléter",
+    nl: "Moet worden ingevuld",
+  },
   "Sender": { fr: "Expéditeur", nl: "Afzender" },
   "Recipient": { fr: "Destinataire", nl: "Ontvanger" },
   "Name": { fr: "Nom", nl: "Naam" },
@@ -2671,6 +2678,7 @@ const adminOnlyTestTools = document.getElementById("adminOnlyTestTools");
 const autoCsvButton = document.getElementById("autoCsv");
 const csvEditToggle = document.getElementById("csvEditToggle");
 const csvSection = document.getElementById("csvSection");
+const csvTableHead = document.querySelector("#csvTable thead");
 const csvTableBody = document.querySelector("#csvTable tbody");
 const csvPagePrev = document.getElementById("csvPagePrev");
 const csvPageNext = document.getElementById("csvPageNext");
@@ -2794,7 +2802,7 @@ const csvMapError = document.getElementById("csvMapError");
 const csvDropzone = document.getElementById("csvDropzone");
 const csvFileInput = document.getElementById("csvFileInput");
 const defaultLabelErrorMessage = String(labelError?.textContent || "").trim()
-  || "Complete all required fields or use Auto-generate CSV.";
+  || "Complete all required fields.";
 const defaultPaymentMethodErrorMessage = String(paymentMethodError?.textContent || "").trim()
   || "Select a payment method to continue.";
 
@@ -2852,7 +2860,6 @@ const labelRequiredFields = [
   "recipientState",
   "recipientZip",
   "packageWeight",
-  "packageDims",
 ];
 
 const previewService = document.getElementById("previewService");
@@ -10868,6 +10875,12 @@ const csvReviewColumns = csvColumns.filter(
     column.key !== "senderState" &&
     column.key !== "senderZip"
 );
+
+function getActiveCsvReviewColumns() {
+  const rows = Array.isArray(state.csvRows) ? state.csvRows : [];
+  const hasDimensions = rows.some((row) => String(row?.packageDims || "").trim());
+  return csvReviewColumns.filter((column) => column.key !== "packageDims" || hasDimensions);
+}
 
 const CSV_REQUIRED_FIELDS = new Set([
   "recipientName",
@@ -23127,16 +23140,27 @@ function renderCsvTable() {
   const totalPages = getCsvPageCount();
   const safePage = Math.max(1, Math.min(totalPages, state.csvPage || 1));
   state.csvPage = safePage;
+  const activeReviewColumns = getActiveCsvReviewColumns();
 
   const startIndex = Math.max(0, (safePage - 1) * CSV_TABLE_PAGE_SIZE);
   const endIndex = Math.min(totalRows, startIndex + CSV_TABLE_PAGE_SIZE);
   const visibleRows = state.csvRows.slice(startIndex, endIndex);
 
+  if (csvTableHead) {
+    const headerRow = document.createElement("tr");
+    activeReviewColumns.forEach((column) => {
+      const th = document.createElement("th");
+      th.textContent = column.key === "packageDims" ? tr("Dims (L x W x H, cm)") : tr(column.label);
+      headerRow.appendChild(th);
+    });
+    csvTableHead.replaceChildren(headerRow);
+  }
+
   csvTableBody.innerHTML = "";
   visibleRows.forEach((row, offset) => {
     const rowIndex = startIndex + offset;
     const rowEl = document.createElement("tr");
-    csvReviewColumns.forEach((column) => {
+    activeReviewColumns.forEach((column) => {
       const td = document.createElement("td");
       const input = document.createElement("input");
       input.type = "text";
@@ -23144,10 +23168,12 @@ function renderCsvTable() {
       input.dataset.row = String(rowIndex);
       input.dataset.key = column.key;
       input.disabled = !state.csvEditable;
+      const isRequiredInvalid =
+        CSV_REQUIRED_FIELDS.has(column.key) && !isCsvRequiredFieldValid(column.key, row[column.key]);
       if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(column.key)) {
         input.classList.toggle(
           "is-invalid",
-          !isCsvRequiredFieldValid(column.key, row[column.key])
+          isRequiredInvalid
         );
       }
       bindCompositionAwareInput(input, handleCsvInput);
@@ -23162,7 +23188,20 @@ function renderCsvTable() {
         wrapper.appendChild(input);
         td.appendChild(wrapper);
       } else {
-        td.appendChild(input);
+        if (column.key === "packageWeight") {
+          const wrapper = document.createElement("div");
+          wrapper.className = "csv-required-cell";
+          wrapper.appendChild(input);
+          if (isRequiredInvalid) {
+            const hint = document.createElement("span");
+            hint.className = "csv-required-hint";
+            hint.textContent = tr("Needs to be filled");
+            wrapper.appendChild(hint);
+          }
+          td.appendChild(wrapper);
+        } else {
+          td.appendChild(input);
+        }
       }
       rowEl.appendChild(td);
     });
