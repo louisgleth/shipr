@@ -13599,6 +13599,36 @@ async function fetchWixCatalogVersion(accessToken) {
   return "";
 }
 
+function getWixLocationAddress(location) {
+  if (!location || typeof location !== "object") return {};
+  const candidates = [
+    location.address,
+    location.physicalAddress,
+    location.businessAddress,
+    location.location?.address,
+    location.businessLocation?.address,
+    location.addresses?.[0]?.address,
+    location.addresses?.[0],
+    location,
+  ];
+  return candidates.find((candidate) => candidate && typeof candidate === "object") || {};
+}
+
+function getWixLocationDisplayName(location) {
+  if (!location || typeof location !== "object") return "";
+  return String(
+    location.name
+      || location.businessName
+      || location.displayName
+      || location.locationName
+      || location.businessLocation?.name
+      || location.location?.name
+      || location.address?.company
+      || location.address?.businessName
+      || ""
+  ).trim();
+}
+
 function mapWixLocationToSender(location) {
   if (!location || typeof location !== "object") {
     return {
@@ -13609,10 +13639,10 @@ function mapWixLocationToSender(location) {
       senderZip: "",
     };
   }
-  const address = location.address || {};
+  const address = getWixLocationAddress(location);
   const country = getWixAddressValue(address, ["country", "countryCode"]);
   return {
-    senderName: String(location.name || location.businessName || "").trim(),
+    senderName: getWixLocationDisplayName(location),
     senderStreet: formatWixStreet(address),
     senderCity: getWixAddressValue(address, ["city", "address.city"]),
     senderState: normalizeImportedRegion(
@@ -13626,9 +13656,17 @@ function mapWixLocationToSender(location) {
 function indexWixLocationsById(locations) {
   const byId = {};
   (Array.isArray(locations) ? locations : []).forEach((location) => {
-    const id = String(location?.id || location?._id || "").trim();
-    if (!id) return;
-    byId[id] = location;
+    [
+      location?.id,
+      location?._id,
+      location?.locationId,
+      location?.businessLocationId,
+      location?.businessLocation?.id,
+      location?.businessLocation?.locationId,
+    ].forEach((rawId) => {
+      const id = String(rawId || "").trim();
+      if (id) byId[id] = location;
+    });
   });
   return byId;
 }
@@ -13895,6 +13933,40 @@ function getWixOrderContact(order) {
   );
 }
 
+function getWixOrderBusinessLocationCandidates(order) {
+  const candidates = [
+    order?.businessLocation,
+    order?.location,
+    order?.fulfillmentInfo?.businessLocation,
+    order?.fulfillmentInfo?.location,
+    order?.shippingInfo?.businessLocation,
+    order?.shippingInfo?.location,
+    order?.shippingInfo?.logistics?.businessLocation,
+    order?.shippingInfo?.logistics?.location,
+    order?.channelInfo?.businessLocation,
+  ];
+  (Array.isArray(order?.lineItems) ? order.lineItems : []).forEach((item) => {
+    candidates.push(
+      item?.businessLocation,
+      item?.location,
+      item?.fulfillmentLocation,
+      item?.fulfillmentInfo?.businessLocation,
+      item?.fulfillmentInfo?.location
+    );
+    (Array.isArray(item?.locations) ? item.locations : []).forEach((location) => {
+      candidates.push(location, location?.businessLocation, location?.location);
+    });
+  });
+  return candidates.filter((candidate) => candidate && typeof candidate === "object");
+}
+
+function getWixOrderBusinessLocation(order) {
+  return getWixOrderBusinessLocationCandidates(order).find((candidate) => {
+    const sender = mapWixLocationToSender(candidate);
+    return [sender.senderName, sender.senderStreet, sender.senderCity, sender.senderZip].some(Boolean);
+  }) || null;
+}
+
 function getWixOrderBusinessLocationId(order) {
   const candidates = [
     order?.businessLocationId,
@@ -13914,6 +13986,24 @@ function getWixOrderBusinessLocationId(order) {
     order?.shippingInfo?.logistics?.locationId,
     order?.channelInfo?.businessLocationId,
   ];
+  getWixOrderBusinessLocationCandidates(order).forEach((location) => {
+    candidates.push(
+      location?.id,
+      location?._id,
+      location?.locationId,
+      location?.businessLocationId,
+      location?.businessLocation?.id,
+      location?.businessLocation?.locationId,
+      location?.location?.id,
+      location?.location?.locationId
+    );
+  });
+  (Array.isArray(order?.lineItems) ? order.lineItems : []).forEach((item) => {
+    candidates.push(item?.locationId, item?.businessLocationId, item?.fulfillmentLocationId);
+    (Array.isArray(item?.locations) ? item.locations : []).forEach((location) => {
+      candidates.push(location?.id, location?._id, location?.locationId, location?.businessLocationId);
+    });
+  });
   for (const candidate of candidates) {
     const id = String(candidate || "").trim();
     if (id) return id;
@@ -13980,11 +14070,20 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
         || getWixAddressValue(address, ["contactDetails.fullName", "contactDetails.company"]);
       const recipientCountry = getWixAddressValue(address, ["country", "countryCode"]);
       const businessLocationId = getWixOrderBusinessLocationId(order);
-      const sender = mapWixLocationToSender(locationById[businessLocationId]);
+      const embeddedBusinessLocation = getWixOrderBusinessLocation(order);
+      const indexedBusinessLocation = businessLocationId ? locationById[businessLocationId] : null;
+      const businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
+      const sender = mapWixLocationToSender(businessLocation);
       const hasBusinessLocationOrigin = Boolean(
-        businessLocationId &&
         [sender.senderName, sender.senderStreet, sender.senderCity, sender.senderZip].some(Boolean)
       );
+      const businessLocationSource = embeddedBusinessLocation
+        ? "order"
+        : indexedBusinessLocation
+          ? "locations-api"
+          : businessLocationId
+            ? "unmatched-id"
+            : "missing";
       return {
         senderName: sender.senderName,
         senderStreet: sender.senderStreet,
@@ -14013,6 +14112,7 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
           originSource: hasBusinessLocationOrigin ? "wix-business-location" : "shipide-fallback",
           providerOrigin: hasBusinessLocationOrigin,
           businessLocationId,
+          businessLocationSource,
         },
       };
     })

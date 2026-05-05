@@ -10203,6 +10203,7 @@ function mapShopifyImportRows(rows) {
               originSource: String(row.shipideSource.originSource || "").trim(),
               providerOrigin: Boolean(row.shipideSource.providerOrigin),
               businessLocationId: String(row.shipideSource.businessLocationId || "").trim(),
+              businessLocationSource: String(row.shipideSource.businessLocationSource || "").trim(),
             }
           : null;
 
