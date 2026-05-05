@@ -10200,6 +10200,9 @@ function mapShopifyImportRows(rows) {
               importedAt: String(row.shipideSource.importedAt || "").trim(),
               redacted: Boolean(row.shipideSource.redacted),
               redactedAt: String(row.shipideSource.redactedAt || "").trim(),
+              originSource: String(row.shipideSource.originSource || "").trim(),
+              providerOrigin: Boolean(row.shipideSource.providerOrigin),
+              businessLocationId: String(row.shipideSource.businessLocationId || "").trim(),
             }
           : null;
 
@@ -10954,16 +10957,18 @@ const csvReviewColumns = csvColumns.filter(
     column.key !== "senderState" &&
     column.key !== "senderZip"
 );
+const csvShipFromReviewColumn = { key: "shipFromSummary", label: "Ships From", virtual: true };
 
 function getActiveCsvReviewColumns() {
   const rows = Array.isArray(state.csvRows) ? state.csvRows : [];
   const hasDimensions = rows.some((row) => String(row?.packageDims || "").trim());
   const hasRecipientState = rows.some((row) => String(row?.recipientState || "").trim());
-  return csvReviewColumns.filter((column) => {
+  const columns = csvReviewColumns.filter((column) => {
     if (column.key === "packageDims") return hasDimensions;
     if (column.key === "recipientState") return hasRecipientState;
     return true;
   });
+  return state.csvMode ? [csvShipFromReviewColumn, ...columns] : columns;
 }
 
 const CSV_REQUIRED_FIELDS = new Set([
@@ -12631,16 +12636,54 @@ function getWarehouseSenderValues(origin) {
   };
 }
 
+function rowHasProviderSenderOrigin(row) {
+  if (!row || typeof row !== "object") return false;
+  const originSource = String(row?.shipideSource?.originSource || "").trim();
+  if (/^(provider|wix-business-location|shopify-location|woocommerce-store)/i.test(originSource)) {
+    return true;
+  }
+  return Boolean(row?.shipideSource?.providerOrigin);
+}
+
+function getRowSenderSummary(row) {
+  if (!row || typeof row !== "object") return "";
+  const source = String(row?.shipideSource?.originSource || "").trim();
+  const sourceLabel =
+    source === "wix-business-location"
+      ? "Wix"
+      : source === "shopify-location"
+        ? "Shopify"
+        : source === "woocommerce-store"
+          ? "WooCommerce"
+          : "";
+  const parts = [
+    row.senderName,
+    row.senderStreet,
+    formatCityRegionPostal(row.senderCity, row.senderState, row.senderZip),
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+  if (parts.length) {
+    return [sourceLabel, parts.join(" • ")].filter(Boolean).join(": ");
+  }
+  const selected = getSelectedWarehouseRecord();
+  const fallbackName = String(selected?.name || selected?.senderName || "").trim();
+  return fallbackName ? `${tr("Shipide fallback")}: ${fallbackName}` : tr("Choose fallback below");
+}
+
 function applyWarehouseSenderToRows(rows, origin) {
   const sender = getWarehouseSenderValues(origin);
-  return rows.map((row) => ({
-    ...row,
-    senderName: sender.senderName,
-    senderStreet: sender.senderStreet,
-    senderCity: sender.senderCity,
-    senderState: sender.senderState,
-    senderZip: sender.senderZip,
-  }));
+  return rows.map((row) => {
+    if (rowHasProviderSenderOrigin(row)) return row;
+    return {
+      ...row,
+      senderName: sender.senderName,
+      senderStreet: sender.senderStreet,
+      senderCity: sender.senderCity,
+      senderState: sender.senderState,
+      senderZip: sender.senderZip,
+    };
+  });
 }
 
 function csvRowsHaveProviderSenderOrigin(rows) {
@@ -12790,7 +12833,9 @@ function renderCsvShipFromSelector() {
 
   csvShipFromNote.textContent = singleOrigin
     ? tr("Using your only saved ship-from origin.")
-    : tr("Choose which origin to apply to this batch.");
+    : state.csvSource === "provider-wix"
+      ? tr("Choose the fallback origin for Wix rows without a business location.")
+      : tr("Choose which origin to apply to this batch.");
 }
 
 function syncCsvRowsWithSelectedOrigin(options = {}) {
@@ -23234,6 +23279,7 @@ function renderCsvTable() {
     const headerRow = document.createElement("tr");
     activeReviewColumns.forEach((column) => {
       const th = document.createElement("th");
+      th.dataset.key = column.key;
       th.textContent = column.key === "packageDims" ? tr("Dims (L x W x H, cm)") : tr(column.label);
       headerRow.appendChild(th);
     });
@@ -23246,6 +23292,16 @@ function renderCsvTable() {
     const rowEl = document.createElement("tr");
     activeReviewColumns.forEach((column) => {
       const td = document.createElement("td");
+      if (column.virtual && column.key === "shipFromSummary") {
+        const summary = document.createElement("span");
+        summary.className = `csv-ship-from-summary${
+          rowHasProviderSenderOrigin(row) ? " is-provider" : " is-fallback"
+        }`;
+        summary.textContent = getRowSenderSummary(row);
+        td.appendChild(summary);
+        rowEl.appendChild(td);
+        return;
+      }
       const input = document.createElement("input");
       input.type = "text";
       input.value = row[column.key] ?? "";

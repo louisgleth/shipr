@@ -13599,6 +13599,57 @@ async function fetchWixCatalogVersion(accessToken) {
   return "";
 }
 
+function mapWixLocationToSender(location) {
+  if (!location || typeof location !== "object") {
+    return {
+      senderName: "",
+      senderStreet: "",
+      senderCity: "",
+      senderState: "",
+      senderZip: "",
+    };
+  }
+  const address = location.address || {};
+  const country = getWixAddressValue(address, ["country", "countryCode"]);
+  return {
+    senderName: String(location.name || location.businessName || "").trim(),
+    senderStreet: formatWixStreet(address),
+    senderCity: getWixAddressValue(address, ["city", "address.city"]),
+    senderState: normalizeImportedRegion(
+      getWixAddressValue(address, ["subdivision", "state", "region"]),
+      country
+    ),
+    senderZip: getWixAddressValue(address, ["postalCode", "zipCode", "postcode", "zip"]),
+  };
+}
+
+function indexWixLocationsById(locations) {
+  const byId = {};
+  (Array.isArray(locations) ? locations : []).forEach((location) => {
+    const id = String(location?.id || location?._id || "").trim();
+    if (!id) return;
+    byId[id] = location;
+  });
+  return byId;
+}
+
+async function fetchWixLocations(accessToken) {
+  const payload = await fetchWixJson(accessToken, "/locations/v1/locations/query", {
+    method: "POST",
+    body: JSON.stringify({
+      query: {
+        filter: { archived: { $ne: true } },
+        paging: { limit: 100 },
+      },
+    }),
+  }).catch(() => null);
+  return Array.isArray(payload?.locations)
+    ? payload.locations
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : [];
+}
+
 function getWixLineItemProductId(item) {
   return String(
     item?.catalogReference?.catalogItemId
@@ -13844,6 +13895,32 @@ function getWixOrderContact(order) {
   );
 }
 
+function getWixOrderBusinessLocationId(order) {
+  const candidates = [
+    order?.businessLocationId,
+    order?.businessLocation?.id,
+    order?.businessLocation?.locationId,
+    order?.locationId,
+    order?.location?.id,
+    order?.location?.locationId,
+    order?.fulfillmentInfo?.businessLocationId,
+    order?.fulfillmentInfo?.businessLocation?.id,
+    order?.fulfillmentInfo?.locationId,
+    order?.shippingInfo?.businessLocationId,
+    order?.shippingInfo?.businessLocation?.id,
+    order?.shippingInfo?.locationId,
+    order?.shippingInfo?.logistics?.businessLocationId,
+    order?.shippingInfo?.logistics?.businessLocation?.id,
+    order?.shippingInfo?.logistics?.locationId,
+    order?.channelInfo?.businessLocationId,
+  ];
+  for (const candidate of candidates) {
+    const id = String(candidate || "").trim();
+    if (id) return id;
+  }
+  return "";
+}
+
 function formatWixStreet(address) {
   const direct = getWixAddressValue(address, [
     "addressLine1",
@@ -13875,7 +13952,13 @@ function formatWixStreet(address) {
 }
 
 function mapWixOrdersToCsvRows(orders, options = {}) {
-  const { selectedStatuses = [], weightByLineItemKey = {}, instanceId = "", siteUrl = "" } = options;
+  const {
+    selectedStatuses = [],
+    weightByLineItemKey = {},
+    locationById = {},
+    instanceId = "",
+    siteUrl = "",
+  } = options;
   const normalizedStatuses = normalizeWixImportStatuses(selectedStatuses);
   const allowedStatuses = new Set(
     normalizedStatuses.length ? normalizedStatuses : DEFAULT_WIX_IMPORT_STATUSES
@@ -13896,12 +13979,18 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
         || getWixAddressValue(contact, ["fullName", "name", "company"])
         || getWixAddressValue(address, ["contactDetails.fullName", "contactDetails.company"]);
       const recipientCountry = getWixAddressValue(address, ["country", "countryCode"]);
+      const businessLocationId = getWixOrderBusinessLocationId(order);
+      const sender = mapWixLocationToSender(locationById[businessLocationId]);
+      const hasBusinessLocationOrigin = Boolean(
+        businessLocationId &&
+        [sender.senderName, sender.senderStreet, sender.senderCity, sender.senderZip].some(Boolean)
+      );
       return {
-        senderName: "",
-        senderStreet: "",
-        senderCity: "",
-        senderState: "",
-        senderZip: "",
+        senderName: sender.senderName,
+        senderStreet: sender.senderStreet,
+        senderCity: sender.senderCity,
+        senderState: sender.senderState,
+        senderZip: sender.senderZip,
         recipientName,
         recipientStreet: formatWixStreet(address),
         recipientCity: getWixAddressValue(address, ["city", "subdivision", "address.city"]),
@@ -13921,6 +14010,9 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
           customerId: String(order?.buyerInfo?.contactId || order?.buyerInfo?.memberId || "").trim(),
           customerEmail: normalizeEmail(order?.buyerInfo?.email || contact?.email || ""),
           importedAt,
+          originSource: hasBusinessLocationOrigin ? "wix-business-location" : "shipide-fallback",
+          providerOrigin: hasBusinessLocationOrigin,
+          businessLocationId,
         },
       };
     })
@@ -18607,11 +18699,16 @@ async function handleWixImportOrders(request, env) {
     const instanceId = String(stored?.instanceId || connectionInstanceId || "").trim();
     const selectedStatuses = requestedStatuses.length ? requestedStatuses : settings.selectedStatuses;
     const accessToken = await createWixAccessToken(env, instanceId);
-    const orders = await fetchWixOrders(accessToken, limit, selectedStatuses);
+    const [orders, locations] = await Promise.all([
+      fetchWixOrders(accessToken, limit, selectedStatuses),
+      fetchWixLocations(accessToken),
+    ]);
+    const locationById = indexWixLocationsById(locations);
     const lineItemWeights = await fetchWixLineItemWeights(accessToken, orders);
     const rows = mapWixOrdersToCsvRows(orders, {
       selectedStatuses,
       weightByLineItemKey: lineItemWeights,
+      locationById,
       instanceId,
       siteUrl: stored?.siteUrl || "",
     });

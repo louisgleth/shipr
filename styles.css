@@ -8789,6 +8789,10 @@ body.is-auth-view {
   z-index: 1;
 }
 
+.csv-table th[data-key="recipientCountry"] {
+  padding-left: 46px;
+}
+
 .csv-table tbody tr:last-child td {
   border-bottom: none;
 }
@@ -8826,6 +8830,25 @@ body.is-auth-view {
 .csv-table input.is-missing-required::placeholder {
   color: #d16c6c;
   opacity: 1;
+}
+
+.csv-ship-from-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.csv-ship-from-summary.is-provider {
+  color: var(--success);
+}
+
+.csv-ship-from-summary.is-fallback {
+  color: var(--text-muted);
 }
 
 .country-input-wrap {
@@ -8900,7 +8923,7 @@ body.is-auth-view {
 }
 
 .csv-country input {
-  padding-left: 26px;
+  padding-left: 34px;
   padding-right: 8px;
 }
 
@@ -8908,7 +8931,7 @@ body.is-auth-view {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  left: 8px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   font-size: var(--fs-xs);
