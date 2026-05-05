@@ -12471,13 +12471,29 @@ function getWixOrderContact(order) {
 function formatWixStreet(address) {
   const direct = getWixAddressValue(address, [
     "addressLine1",
+    "address.line",
     "address.line1",
+    "addressLine",
+    "line1",
     "street",
+    "streetAddress",
+    "streetAddress.formattedAddressLine",
+    "streetAddress.formattedAddress",
+    "streetAddress.addressLine",
     "formattedAddress",
   ]);
-  const extra = getWixAddressValue(address, ["addressLine2", "address.line2"]);
-  const streetName = getWixAddressValue(address, ["streetAddress.name", "streetAddress.street"]);
-  const streetNumber = getWixAddressValue(address, ["streetAddress.number"]);
+  const extra = getWixAddressValue(address, ["addressLine2", "address.line2", "line2"]);
+  const streetName = getWixAddressValue(address, [
+    "streetAddress.name",
+    "streetAddress.street",
+    "streetAddress.streetName",
+    "streetAddress.route",
+  ]);
+  const streetNumber = getWixAddressValue(address, [
+    "streetAddress.number",
+    "streetAddress.streetNumber",
+    "streetAddress.houseNumber",
+  ]);
   const streetParts = [streetName, streetNumber].filter(Boolean).join(" ");
   return [direct || streetParts, extra].filter(Boolean).join(", ");
 }
