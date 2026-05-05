@@ -25,6 +25,17 @@ const DATA_FIELDS = [
       "origin_postal_code",
       "from_postcode",
       "from_zip",
+      "postal_code_from",
+      "postcode_from",
+      "zip_from",
+      "shipping_from_zip",
+      "shipping_from_postcode",
+      "shipping_from_postal_code",
+      "ship_from_postcode",
+      "ship_from_postal_code",
+      "ship_from_zip",
+      "shipping_origin_postcode",
+      "origin_zip",
       "sender_zip",
       "warehouse_postcode",
       "postcode_van_herkomst",
@@ -42,6 +53,10 @@ const DATA_FIELDS = [
     aliases: [
       "origin_country",
       "from_country",
+      "country_from",
+      "shipping_from_country",
+      "ship_from_country",
+      "shipping_origin_country",
       "sender_country",
       "warehouse_country",
       "land_van_herkomst",
@@ -211,12 +226,13 @@ const LOCALE = (() => {
 const COPY = {
   en: {
     documentTitle: "Shipide Data Cleaner",
-    step: "Step {index} of 3",
+    step: "Step {index} of {total}",
     complete: "Complete",
     brand: "Data Cleaner",
     kicker: "Shipment extract sanitization",
     uploadTitle: "Clean your shipping data before sending it to Shipide.",
     mappingTitle: "Review detected columns",
+    originTitleStep: "Add ship-from address",
     reviewTitle: "Cleaned file preview",
     thanksTitleStep: "Submission complete",
     intro:
@@ -236,7 +252,16 @@ const COPY = {
     changeFile: "Change file",
     previewCleanedData: "Preview cleaned data",
     editMapping: "Edit mapping",
+    editOriginAddress: "Edit ship-from address",
     submitToShipide: "Submit to Shipide",
+    originKicker: "Missing origin address",
+    originTitle: "Add your ship-from address",
+    originCopy:
+      "We could not identify a ship-from address in this export. Add the address you usually ship from so Shipide can analyze your shipment profile correctly.",
+    originPlaceholder: "Company, street, postcode, city, country",
+    addOriginAddress: "Add another ship-from address",
+    removeOriginAddress: "Remove",
+    originRequired: "Add at least one ship-from address before continuing.",
     dataReceived: "Data received",
     thankYou: "Thank you.",
     thanksCopy: "We received the cleaned shipment data. We’ll review your shipment profile and get back to you as soon as possible.",
@@ -290,12 +315,13 @@ const COPY = {
   },
   fr: {
     documentTitle: "Nettoyeur de données Shipide",
-    step: "Étape {index} sur 3",
+    step: "Étape {index} sur {total}",
     complete: "Terminé",
     brand: "Nettoyeur de données",
     kicker: "Nettoyage d’extrait d’expédition",
     uploadTitle: "Nettoyez vos données d’expédition avant de les envoyer à Shipide.",
     mappingTitle: "Vérifier les colonnes détectées",
+    originTitleStep: "Ajouter l’adresse d’expédition",
     reviewTitle: "Aperçu du fichier nettoyé",
     thanksTitleStep: "Envoi terminé",
     intro:
@@ -315,7 +341,16 @@ const COPY = {
     changeFile: "Changer le fichier",
     previewCleanedData: "Prévisualiser les données nettoyées",
     editMapping: "Modifier le mapping",
+    editOriginAddress: "Modifier l’adresse d’expédition",
     submitToShipide: "Envoyer à Shipide",
+    originKicker: "Adresse d’origine manquante",
+    originTitle: "Ajoutez votre adresse d’expédition",
+    originCopy:
+      "Nous n’avons pas identifié d’adresse d’expédition dans cet export. Ajoutez l’adresse depuis laquelle vous expédiez habituellement afin que Shipide puisse analyser correctement votre profil d’expédition.",
+    originPlaceholder: "Société, rue, code postal, ville, pays",
+    addOriginAddress: "Ajouter une autre adresse d’expédition",
+    removeOriginAddress: "Retirer",
+    originRequired: "Ajoutez au moins une adresse d’expédition avant de continuer.",
     dataReceived: "Données reçues",
     thankYou: "Merci.",
     thanksCopy: "Nous avons reçu les données d’expédition nettoyées. Nous analyserons votre profil d’expédition et reviendrons vers vous dès que possible.",
@@ -369,12 +404,13 @@ const COPY = {
   },
   nl: {
     documentTitle: "Shipide Data Cleaner",
-    step: "Stap {index} van 3",
+    step: "Stap {index} van {total}",
     complete: "Voltooid",
     brand: "Data Cleaner",
     kicker: "Opschonning van verzendextract",
     uploadTitle: "Schoon je verzenddata op voordat je die naar Shipide stuurt.",
     mappingTitle: "Gedetecteerde kolommen controleren",
+    originTitleStep: "Verzendadres toevoegen",
     reviewTitle: "Voorbeeld van opgeschoond bestand",
     thanksTitleStep: "Indiening voltooid",
     intro:
@@ -394,7 +430,16 @@ const COPY = {
     changeFile: "Bestand wijzigen",
     previewCleanedData: "Opgeschoonde data bekijken",
     editMapping: "Mapping aanpassen",
+    editOriginAddress: "Verzendadres aanpassen",
     submitToShipide: "Naar Shipide sturen",
+    originKicker: "Oorspronkelijk verzendadres ontbreekt",
+    originTitle: "Voeg je verzendadres toe",
+    originCopy:
+      "We konden geen verzendadres van oorsprong in deze export vinden. Voeg het adres toe vanwaar je meestal verzendt, zodat Shipide je verzendprofiel correct kan analyseren.",
+    originPlaceholder: "Bedrijf, straat, postcode, stad, land",
+    addOriginAddress: "Nog een verzendadres toevoegen",
+    removeOriginAddress: "Verwijderen",
+    originRequired: "Voeg minstens één verzendadres toe voordat je verdergaat.",
     dataReceived: "Data ontvangen",
     thankYou: "Bedankt.",
     thanksCopy: "We hebben de opgeschoonde verzenddata ontvangen. We bekijken je verzendprofiel en komen zo snel mogelijk bij je terug.",
@@ -563,6 +608,7 @@ const state = {
   rows: [],
   mapping: {},
   extractedMapping: {},
+  manualOriginAddresses: [""],
   mappingOrder: [],
   extractedInsertAfter: 0,
   step: "upload",
@@ -580,6 +626,7 @@ const els = {
   panels: {
     upload: document.getElementById("uploadPanel"),
     mapping: document.getElementById("mappingPanel"),
+    origin: document.getElementById("originPanel"),
     review: document.getElementById("reviewPanel"),
     thanks: document.getElementById("thanksPanel"),
   },
@@ -599,7 +646,11 @@ const els = {
   truthConfirm: document.getElementById("cleanerTruthConfirm"),
   backToUpload: document.getElementById("cleanerBackToUpload"),
   backToMapping: document.getElementById("cleanerBackToMapping"),
+  backToMappingFromOrigin: document.getElementById("cleanerBackToMappingFromOrigin"),
   continueBtn: document.getElementById("cleanerContinue"),
+  originContinue: document.getElementById("cleanerOriginContinue"),
+  originInputs: document.getElementById("cleanerOriginInputs"),
+  addOrigin: document.getElementById("cleanerAddOrigin"),
   download: document.getElementById("cleanerDownload"),
   downloadFromMap: document.getElementById("cleanerDownloadFromMap"),
   submit: document.getElementById("cleanerSubmit"),
@@ -642,7 +693,15 @@ function applyLocalization() {
   setText("#cleanerBackToUpload span", t("changeFile"));
   setText("#cleanerContinue span", t("previewCleanedData"));
   setText("#cleanerBackToMapping span", t("editMapping"));
+  setText("#cleanerBackToMappingFromOrigin span", t("editMapping"));
   setText("#cleanerSubmit span", t("submitToShipide"));
+  setText("#cleanerOriginContinue span", t("previewCleanedData"));
+  setText(".cleaner-origin-kicker", t("originKicker"));
+  const originKickerDot = document.createElement("span");
+  document.querySelector(".cleaner-origin-kicker")?.prepend(originKickerDot);
+  setText("#cleanerOriginTitle", t("originTitle"));
+  setText("#cleanerOriginCopy", t("originCopy"));
+  setText("#cleanerAddOrigin span:last-child", t("addOriginAddress"));
   setText(".cleaner-thanks-kicker", t("dataReceived"));
   const thanksKickerDot = document.createElement("span");
   document.querySelector(".cleaner-thanks-kicker")?.prepend(thanksKickerDot);
@@ -790,6 +849,7 @@ function getStepWidth(step) {
   const shellWidth = els.card?.parentElement?.getBoundingClientRect().width || window.innerWidth;
   if (step === "upload") return Math.min(640, shellWidth);
   if (step === "thanks") return Math.min(760, shellWidth);
+  if (step === "origin") return Math.min(760, shellWidth);
   return Math.min(1040, shellWidth);
 }
 
@@ -835,7 +895,7 @@ function measurePanelHeight(panel) {
 }
 
 function applyStepView(step) {
-  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-review", "is-step-thanks");
+  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-origin", "is-step-review", "is-step-thanks");
   els.card?.classList.add(`is-step-${step}`);
   Object.entries(els.panels).forEach(([key, panel]) => {
     panel.classList.toggle("is-active", key === step);
@@ -845,20 +905,29 @@ function applyStepView(step) {
       "is-step-transition-enter-start"
     );
   });
-  const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
+  const needsOrigin = needsManualOriginAddress();
+  const stepIndex =
+    step === "upload" ? 1 : step === "mapping" ? 2 : step === "origin" ? 3 : needsOrigin ? 4 : 3;
+  const stepTotal = needsOrigin ? 4 : 3;
   const titles = {
     upload: t("uploadTitle"),
     mapping: t("mappingTitle"),
+    origin: t("originTitleStep"),
     review: t("reviewTitle"),
     thanks: t("thanksTitleStep"),
   };
   if (els.title) {
     els.title.textContent = titles[step] || titles.upload;
   }
+  const reviewBackLabel = step === "review" && needsOrigin ? t("editOriginAddress") : t("editMapping");
+  setText("#cleanerBackToMapping span", reviewBackLabel);
   els.progress.forEach((item) => {
-    item.classList.toggle("is-active", step === "thanks" || Number(item.dataset.progressStep) <= stepIndex);
+    const itemStep = Number(item.dataset.progressStep);
+    item.hidden = itemStep > stepTotal;
+    item.classList.toggle("is-active", step === "thanks" || itemStep <= stepIndex);
   });
-  els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex });
+  els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex, total: stepTotal });
+  document.querySelector(".cleaner-progress")?.style.setProperty("--cleaner-progress-steps", String(stepTotal));
 }
 
 function resetStepTransitionState() {
@@ -878,7 +947,7 @@ function resetStepTransitionState() {
 }
 
 function setStep(step, options = {}) {
-  const nextStep = ["upload", "mapping", "review", "thanks"].includes(step) ? step : "upload";
+  const nextStep = ["upload", "mapping", "origin", "review", "thanks"].includes(step) ? step : "upload";
   const previousStep = state.step || "upload";
   const shouldAnimate =
     options.animate !== false &&
@@ -1075,7 +1144,10 @@ function detectField(header) {
 
 function isOriginAddressHeader(normalized) {
   return (
+    normalized === "shipping_from" ||
+    normalized === "ship_from" ||
     normalized.includes("shipped_from_address") ||
+    normalized.includes("shipping_from_address") ||
     normalized.includes("ship_from_address") ||
     normalized.includes("from_address") ||
     normalized.includes("sender_address") ||
@@ -1168,6 +1240,15 @@ function getKeptFieldKeys() {
     .map((item) => item.action)
     .filter((action) => action && action !== "remove");
   return Array.from(new Set([...direct, ...getAvailableExtractedFields().map((field) => field.key)]));
+}
+
+function getManualOriginAddresses() {
+  return state.manualOriginAddresses.map((address) => String(address || "").trim()).filter(Boolean);
+}
+
+function needsManualOriginAddress() {
+  const kept = new Set(getKeptFieldKeys());
+  return !kept.has("origin_postcode") || !kept.has("origin_country");
 }
 
 function getCleanedDataReadiness() {
@@ -1300,6 +1381,41 @@ function renderMapping() {
   }
 }
 
+function renderOriginInputs() {
+  if (!els.originInputs) return;
+  if (!state.manualOriginAddresses.length) state.manualOriginAddresses = [""];
+  els.originInputs.innerHTML = "";
+  state.manualOriginAddresses.forEach((address, index) => {
+    const row = document.createElement("div");
+    row.className = "cleaner-origin-row";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = address;
+    input.placeholder = t("originPlaceholder");
+    input.autocomplete = "street-address";
+    input.dataset.originIndex = String(index);
+    input.addEventListener("input", () => {
+      state.manualOriginAddresses[index] = input.value;
+    });
+    row.appendChild(input);
+
+    if (state.manualOriginAddresses.length > 1) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "cleaner-origin-remove";
+      remove.textContent = t("removeOriginAddress");
+      remove.addEventListener("click", () => {
+        state.manualOriginAddresses.splice(index, 1);
+        renderOriginInputs();
+      });
+      row.appendChild(remove);
+    }
+
+    els.originInputs.appendChild(row);
+  });
+}
+
 function buildCleanRows() {
   const kept = Object.entries(state.mapping)
     .map(([index, config]) => ({ index: Number(index), key: config.action }))
@@ -1307,14 +1423,19 @@ function buildCleanRows() {
   const extracted = getAvailableExtractedFields();
   const outputHeaders = [];
   const seen = new Map();
+  const manualOrigins = needsManualOriginAddress() ? getManualOriginAddresses() : [];
   [...kept, ...extracted.map((field) => ({ key: field.key, extracted: true }))].forEach((item) => {
     const count = seen.get(item.key) || 0;
     seen.set(item.key, count + 1);
     outputHeaders.push(count ? `${item.key}_${count + 1}` : item.key);
   });
+  manualOrigins.forEach((_, index) => {
+    outputHeaders.push(`origin_address_${index + 1}`);
+  });
   const rows = state.rows.map((row) => [
     ...kept.map((item) => String(row[item.index] || "").trim()),
     ...extracted.map((field) => getExtractedValue(row, field.key)),
+    ...manualOrigins,
   ]);
   return { headers: outputHeaders, rows };
 }
@@ -1360,6 +1481,10 @@ function downloadCleanCsv() {
     setStatus(t("selectFieldOptional"), "error");
     return;
   }
+  if (needsManualOriginAddress() && !getManualOriginAddresses().length) {
+    setStatus(t("originRequired"), "error");
+    return;
+  }
   const csv = buildCleanCsv();
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1391,6 +1516,10 @@ function requestSubmitConfirmation() {
     setStatus(t("selectFieldBeforeSubmit"), "error");
     return;
   }
+  if (needsManualOriginAddress() && !getManualOriginAddresses().length) {
+    setStatus(t("originRequired"), "error");
+    return;
+  }
   setConfirmModalOpen(true);
 }
 
@@ -1398,6 +1527,10 @@ async function submitCleanData() {
   const { cleaned, isReady } = getCleanedDataReadiness();
   if (!isReady) {
     setStatus(t("selectFieldBeforeSubmit"), "error");
+    return;
+  }
+  if (needsManualOriginAddress() && !getManualOriginAddresses().length) {
+    setStatus(t("originRequired"), "error");
     return;
   }
   if (!els.truthConfirm?.checked) {
@@ -1450,6 +1583,7 @@ function handleMatrix(matrix, fileName) {
     .filter((row) => row.some((cell) => String(cell || "").trim()));
   state.mapping = {};
   state.extractedMapping = {};
+  state.manualOriginAddresses = [""];
   state.headers.forEach((header, index) => {
     state.mapping[index] = detectField(header);
   });
@@ -1575,11 +1709,34 @@ els.fileInput.addEventListener("change", () => {
   els.fileInput.value = "";
 });
 els.backToUpload.addEventListener("click", () => setStep("upload"));
-els.backToMapping.addEventListener("click", () => setStep("mapping"));
+els.backToMapping.addEventListener("click", () => setStep(needsManualOriginAddress() ? "origin" : "mapping"));
+els.backToMappingFromOrigin?.addEventListener("click", () => setStep("mapping"));
 els.continueBtn.addEventListener("click", () => {
   const { isReady } = getCleanedDataReadiness();
   if (!isReady) {
     setStatus(t("selectAtLeastOne"), "error");
+    return;
+  }
+  setStatus("");
+  if (needsManualOriginAddress()) {
+    renderOriginInputs();
+    setStep("origin");
+    return;
+  }
+  renderPreview();
+  setStep("review");
+});
+els.addOrigin?.addEventListener("click", () => {
+  state.manualOriginAddresses.push("");
+  renderOriginInputs();
+  window.setTimeout(() => {
+    const inputs = els.originInputs?.querySelectorAll("input");
+    inputs?.[inputs.length - 1]?.focus();
+  }, 20);
+});
+els.originContinue?.addEventListener("click", () => {
+  if (!getManualOriginAddresses().length) {
+    setStatus(t("originRequired"), "error");
     return;
   }
   setStatus("");

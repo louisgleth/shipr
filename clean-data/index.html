@@ -47,6 +47,7 @@
           <span class="is-active" data-progress-step="1"></span>
           <span data-progress-step="2"></span>
           <span data-progress-step="3"></span>
+          <span data-progress-step="4"></span>
         </div>
 
         <section class="cleaner-panel is-active" id="uploadPanel">
@@ -112,6 +113,35 @@
               <span>Change file</span>
             </button>
             <button type="button" class="btn btn-primary" id="cleanerContinue">
+              <span>Preview cleaned data</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12h14" /><polyline points="13 6 19 12 13 18" /></svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="cleaner-panel" id="originPanel">
+          <div class="cleaner-origin-card">
+            <div class="cleaner-origin-copy">
+              <p class="cleaner-origin-kicker mono"><span></span>Missing origin address</p>
+              <h2 id="cleanerOriginTitle">Add your ship-from address</h2>
+              <p id="cleanerOriginCopy">
+                We could not identify a ship-from address in this export. Add the address you usually ship from so
+                Shipide can analyze your shipment profile correctly.
+              </p>
+            </div>
+            <div class="cleaner-origin-list" id="cleanerOriginInputs"></div>
+            <button type="button" class="cleaner-origin-add" id="cleanerAddOrigin">
+              <span aria-hidden="true">+</span>
+              <span>Add another ship-from address</span>
+            </button>
+          </div>
+
+          <div class="cleaner-actions">
+            <button type="button" class="btn btn-primary" id="cleanerBackToMappingFromOrigin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><polyline points="15 18 9 12 15 6"/><line x1="9" y1="12" x2="21" y2="12"/></svg>
+              <span>Edit mapping</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="cleanerOriginContinue">
               <span>Preview cleaned data</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 12h14" /><polyline points="13 6 19 12 13 18" /></svg>
             </button>
