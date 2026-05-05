@@ -8804,7 +8804,7 @@ body.is-auth-view {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  padding: 0;
+  padding: 0 8px;
   font-size: var(--fs-xs);
   text-align: left;
 }
@@ -8900,14 +8900,15 @@ body.is-auth-view {
 }
 
 .csv-country input {
-  padding-right: 22px;
+  padding-left: 26px;
+  padding-right: 8px;
 }
 
 .csv-country-icon {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  right: 0;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   font-size: var(--fs-xs);
