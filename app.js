@@ -23170,11 +23170,25 @@ function renderCsvTable() {
       input.disabled = !state.csvEditable;
       const isRequiredInvalid =
         CSV_REQUIRED_FIELDS.has(column.key) && !isCsvRequiredFieldValid(column.key, row[column.key]);
+      const isMissingWeight =
+        column.key === "packageWeight" && isRequiredInvalid && !String(row[column.key] ?? "").trim();
       if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(column.key)) {
         input.classList.toggle(
           "is-invalid",
           isRequiredInvalid
         );
+      }
+      if (isMissingWeight) {
+        input.classList.add("is-missing-required");
+        input.placeholder = tr("Needs to be filled");
+        input.addEventListener("focus", () => {
+          input.placeholder = "";
+        });
+        input.addEventListener("blur", () => {
+          if (!String(input.value || "").trim()) {
+            input.placeholder = tr("Needs to be filled");
+          }
+        });
       }
       bindCompositionAwareInput(input, handleCsvInput);
 
@@ -23188,20 +23202,7 @@ function renderCsvTable() {
         wrapper.appendChild(input);
         td.appendChild(wrapper);
       } else {
-        if (column.key === "packageWeight") {
-          const wrapper = document.createElement("div");
-          wrapper.className = "csv-required-cell";
-          wrapper.appendChild(input);
-          if (isRequiredInvalid) {
-            const hint = document.createElement("span");
-            hint.className = "csv-required-hint";
-            hint.textContent = tr("Needs to be filled");
-            wrapper.appendChild(hint);
-          }
-          td.appendChild(wrapper);
-        } else {
-          td.appendChild(input);
-        }
+        td.appendChild(input);
       }
       rowEl.appendChild(td);
     });

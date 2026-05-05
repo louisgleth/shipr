@@ -8804,8 +8804,9 @@ body.is-auth-view {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  padding: 0 8px;
+  padding: 0;
   font-size: var(--fs-xs);
+  text-align: left;
 }
 
 .csv-table input:focus {
@@ -8818,16 +8819,13 @@ body.is-auth-view {
   cursor: not-allowed;
 }
 
-.csv-required-cell {
-  display: grid;
-  gap: 4px;
-  min-width: 150px;
+.csv-table input.is-invalid {
+  animation: none;
 }
 
-.csv-required-hint {
+.csv-table input.is-missing-required::placeholder {
   color: #d16c6c;
-  font-size: var(--fs-2xs);
-  line-height: 1.2;
+  opacity: 1;
 }
 
 .country-input-wrap {
@@ -8898,20 +8896,23 @@ body.is-auth-view {
 }
 
 .csv-country {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  position: relative;
 }
 
 .csv-country input {
-  flex: 1;
+  padding-right: 22px;
 }
 
 .csv-country-icon {
   display: inline-flex;
   align-items: center;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: var(--fs-xs);
   line-height: 1;
+  pointer-events: none;
 }
 
 .form-section {
