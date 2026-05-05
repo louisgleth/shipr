@@ -536,6 +536,8 @@ select {
 .cleaner-origin-add,
 .cleaner-origin-remove {
   appearance: none;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-xs);
@@ -549,6 +551,10 @@ select {
   align-items: center;
   gap: 8px;
   padding: 0;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 24px;
+  line-height: 1;
 }
 
 .cleaner-origin-add:hover {
@@ -575,8 +581,8 @@ select {
 }
 
 .cleaner-origin-remove {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   display: inline-grid;
   place-items: center;
   color: #d98a8a;
