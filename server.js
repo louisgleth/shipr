@@ -11532,6 +11532,19 @@ function mapLocationToSender(location) {
   };
 }
 
+function normalizeImportedRegion(region, country) {
+  const normalizedRegion = String(region || "").trim().toUpperCase();
+  if (!normalizedRegion) return "";
+  const normalizedCountry = String(country || "").trim().toUpperCase();
+  const countriesThatNeedRegion = new Set(["US", "CA", "AU", "BR", "MX", "JP"]);
+  const shortRegion =
+    normalizedCountry && normalizedRegion.startsWith(`${normalizedCountry}-`)
+      ? normalizedRegion.slice(normalizedCountry.length + 1)
+      : normalizedRegion;
+  if (!shortRegion) return "";
+  return countriesThatNeedRegion.has(normalizedCountry) ? shortRegion : "";
+}
+
 function getOrderLocationId(order) {
   const candidates = [];
   candidates.push(order?.location_id);
@@ -11601,6 +11614,7 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
     const sender = mapLocationToSender(locationById[senderLocationId]);
     const customerId = String(order?.customer?.id || "").trim();
     const customerEmail = normalizeEmail(order?.email || order?.customer?.email || "");
+    const recipientCountry = String(shipping?.country_code || shipping?.country || "").trim();
 
     return {
       senderName: sender.senderName,
@@ -11611,9 +11625,12 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
       recipientName,
       recipientStreet: String(shipping?.address1 || "").trim(),
       recipientCity: String(shipping?.city || "").trim(),
-      recipientState: String(shipping?.province_code || shipping?.province || "").trim(),
+      recipientState: normalizeImportedRegion(
+        String(shipping?.province_code || shipping?.province || "").trim(),
+        recipientCountry
+      ),
       recipientZip: String(shipping?.zip || "").trim(),
-      recipientCountry: String(shipping?.country_code || shipping?.country || "").trim(),
+      recipientCountry,
       packageWeight: weightKg,
       packageDims: "",
       shipideSource: {
@@ -11869,6 +11886,7 @@ function mapWooCommerceOrdersToCsvRows(
       const packageWeight = formatWooCommerceWeightKg(
         getWooCommerceOrderWeightKg(order, weightByLineItemKey)
       );
+      const recipientCountry = String(address?.country || "").trim();
 
       return {
         senderName: sender.senderName,
@@ -11879,9 +11897,9 @@ function mapWooCommerceOrdersToCsvRows(
         recipientName,
         recipientStreet,
         recipientCity: String(address?.city || "").trim(),
-        recipientState: String(address?.state || "").trim(),
+        recipientState: normalizeImportedRegion(String(address?.state || "").trim(), recipientCountry),
         recipientZip: String(address?.postcode || "").trim(),
-        recipientCountry: String(address?.country || "").trim(),
+        recipientCountry,
         packageWeight,
         packageDims: "",
       };
@@ -12519,6 +12537,7 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
         [firstName, lastName].filter(Boolean).join(" ").trim()
         || getWixAddressValue(contact, ["fullName", "name", "company"])
         || getWixAddressValue(address, ["contactDetails.fullName", "contactDetails.company"]);
+      const recipientCountry = getWixAddressValue(address, ["country", "countryCode"]);
       return {
         senderName: "",
         senderStreet: "",
@@ -12528,9 +12547,12 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
         recipientName,
         recipientStreet: formatWixStreet(address),
         recipientCity: getWixAddressValue(address, ["city", "subdivision", "address.city"]),
-        recipientState: getWixAddressValue(address, ["subdivision", "state", "region"]),
+        recipientState: normalizeImportedRegion(
+          getWixAddressValue(address, ["subdivision", "state", "region"]),
+          recipientCountry
+        ),
         recipientZip: getWixAddressValue(address, ["postalCode", "zipCode", "postcode", "zip"]),
-        recipientCountry: getWixAddressValue(address, ["country", "countryCode"]),
+        recipientCountry,
         packageWeight: formatWixWeightKg(getWixOrderWeightKg(order, weightByLineItemKey)),
         packageDims: "",
         shipideSource: {

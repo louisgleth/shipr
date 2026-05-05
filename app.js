@@ -10958,7 +10958,12 @@ const csvReviewColumns = csvColumns.filter(
 function getActiveCsvReviewColumns() {
   const rows = Array.isArray(state.csvRows) ? state.csvRows : [];
   const hasDimensions = rows.some((row) => String(row?.packageDims || "").trim());
-  return csvReviewColumns.filter((column) => column.key !== "packageDims" || hasDimensions);
+  const hasRecipientState = rows.some((row) => String(row?.recipientState || "").trim());
+  return csvReviewColumns.filter((column) => {
+    if (column.key === "packageDims") return hasDimensions;
+    if (column.key === "recipientState") return hasRecipientState;
+    return true;
+  });
 }
 
 const CSV_REQUIRED_FIELDS = new Set([
