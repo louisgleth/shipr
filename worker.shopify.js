@@ -384,6 +384,9 @@ export default {
       if (pathname === "/api/wix/link-instance" && request.method === "POST") {
         return handleWixLinkInstance(request, env);
       }
+      if (pathname === "/api/wix/import-orders" && request.method === "POST") {
+        return handleWixImportOrders(request, env);
+      }
       if (
         (pathname === "/api/wix/settings" || pathname === "/api/wix/setting") &&
         request.method === "GET"
@@ -13417,6 +13420,475 @@ async function fetchWooCommerceStoreSenderOrigin(storeUrl, consumerKey, consumer
   return buildWooCommerceSenderOrigin(settings, storeUrl);
 }
 
+function normalizeWixOrderStatus(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return WIX_IMPORT_STATUS_OPTIONS.includes(normalized) ? normalized : "";
+}
+
+function normalizeWixWeightUnit(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["g", "gram", "grams"].includes(normalized)) return "g";
+  if (["lb", "lbs", "pound", "pounds"].includes(normalized)) return "lbs";
+  if (["oz", "ounce", "ounces"].includes(normalized)) return "oz";
+  return "kg";
+}
+
+function convertWixWeightToKg(value, fallbackUnit = "kg") {
+  if (value == null || value === "") return 0;
+  if (typeof value === "object") {
+    const amount = value.value ?? value.amount ?? value.weight ?? value.number;
+    const unit = value.unit ?? value.weightUnit ?? value.measurementUnit ?? fallbackUnit;
+    return convertWixWeightToKg(amount, unit);
+  }
+  const amount = Number(String(value).trim().replace(",", "."));
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const unit = normalizeWixWeightUnit(fallbackUnit);
+  if (unit === "g") return amount / 1000;
+  if (unit === "lbs") return amount * 0.45359237;
+  if (unit === "oz") return amount * 0.028349523125;
+  return amount;
+}
+
+function formatWixWeightKg(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : "";
+}
+
+function getFirstPositiveWixWeight(candidates, fallbackUnit = "kg") {
+  for (const candidate of candidates) {
+    const weight = convertWixWeightToKg(candidate, fallbackUnit);
+    if (weight > 0) return weight;
+  }
+  return 0;
+}
+
+async function createWixAccessToken(env, instanceId) {
+  const appId = String(env.WIX_APP_ID || "").trim();
+  const appSecret = String(env.WIX_APP_SECRET || "").trim();
+  const normalizedInstanceId = String(instanceId || "").trim();
+  if (!appId || !appSecret || !normalizedInstanceId) {
+    const error = new Error("Wix OAuth credentials are not configured.");
+    error.code = "wix_auth_config_missing";
+    throw error;
+  }
+
+  const response = await fetch("https://www.wixapis.com/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      grant_type: "client_credentials",
+      client_id: appId,
+      client_secret: appSecret,
+      instance_id: normalizedInstanceId,
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  let resolvedPayload = payload;
+  if (payload?.body && typeof payload.body === "string") {
+    try {
+      resolvedPayload = JSON.parse(payload.body);
+    } catch (_error) {
+      resolvedPayload = payload;
+    }
+  }
+  const statusCode = Number(payload?.statusCode || response.status);
+  if (!response.ok || statusCode >= 400) {
+    const error = new Error(
+      `Wix access token request failed (${statusCode || response.status})`.trim()
+    );
+    error.code = "wix_auth_invalid";
+    error.status = statusCode || response.status;
+    throw error;
+  }
+  const accessToken = String(resolvedPayload?.access_token || resolvedPayload?.accessToken || "").trim();
+  if (!accessToken) {
+    const error = new Error("Wix access token response was invalid.");
+    error.code = "wix_auth_invalid";
+    throw error;
+  }
+  return accessToken;
+}
+
+async function fetchWixJson(accessToken, path, options = {}) {
+  const response = await fetch(`https://www.wixapis.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text().catch(() => "");
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch (_error) {
+      payload = null;
+    }
+  }
+  if (!response.ok) {
+    const error = new Error(`Wix API request failed (${response.status}) ${text}`.trim());
+    error.status = response.status;
+    error.payload = payload;
+    if (response.status === 401 || response.status === 403) {
+      error.code = "wix_auth_invalid";
+    }
+    throw error;
+  }
+  return payload;
+}
+
+async function fetchWixOrders(accessToken, limit, selectedStatuses = []) {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 50;
+  const normalizedStatuses = normalizeWixImportStatuses(selectedStatuses);
+  const filter = {
+    status: {
+      $in: normalizedStatuses.length ? normalizedStatuses : [...DEFAULT_WIX_IMPORT_STATUSES],
+    },
+  };
+  const payload = await fetchWixJson(accessToken, "/ecom/v1/orders/search", {
+    method: "POST",
+    body: JSON.stringify({
+      search: {
+        filter,
+        sort: [{ fieldName: "createdDate", order: "DESC" }],
+        cursorPaging: { limit: safeLimit },
+      },
+    }),
+  });
+  const orders = Array.isArray(payload?.orders)
+    ? payload.orders
+    : Array.isArray(payload?.results)
+      ? payload.results
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : [];
+  return orders.slice(0, safeLimit);
+}
+
+async function fetchWixCatalogVersion(accessToken) {
+  const payload = await fetchWixJson(accessToken, "/stores/v3/provision/version", {
+    method: "GET",
+  }).catch(() => null);
+  const version = String(payload?.catalogVersion || payload?.version || "").trim().toUpperCase();
+  if (version === "V3_CATALOG" || version === "CATALOG_V3") return "V3_CATALOG";
+  if (version === "V1_CATALOG" || version === "CATALOG_V1") return "V1_CATALOG";
+  return "";
+}
+
+function getWixLineItemProductId(item) {
+  return String(
+    item?.catalogReference?.catalogItemId
+      || item?.catalogReference?.productId
+      || item?.catalogItemId
+      || item?.productId
+      || item?.product?.id
+      || ""
+  ).trim();
+}
+
+function getWixLineItemVariantId(item) {
+  return String(
+    item?.catalogReference?.options?.variantId
+      || item?.catalogReference?.options?.variant_id
+      || item?.catalogReference?.variantId
+      || item?.variantId
+      || item?.product?.variantId
+      || ""
+  ).trim();
+}
+
+function getWixLineItemQuantity(item) {
+  const quantity = Number(item?.quantity || item?.qty || 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function extractWixLineItemWeightKg(item) {
+  return getFirstPositiveWixWeight([
+    item?.physicalProperties?.weight,
+    item?.physicalProperties?.shippingWeight,
+    item?.productDetails?.weight,
+    item?.product?.weight,
+    item?.weight,
+  ]);
+}
+
+function extractWixProductWeightKg(product, variantId = "") {
+  if (!product || typeof product !== "object") return 0;
+  const requestedVariantId = String(variantId || "").trim();
+  const variants = [
+    ...(Array.isArray(product?.variants) ? product.variants : []),
+    ...(Array.isArray(product?.productOptions?.variants) ? product.productOptions.variants : []),
+    ...(Array.isArray(product?.variantsInfo?.variants) ? product.variantsInfo.variants : []),
+  ];
+  if (requestedVariantId && variants.length) {
+    const matchedVariant = variants.find((variant) => {
+      const id = String(variant?.id || variant?._id || variant?.variantId || "").trim();
+      return id === requestedVariantId;
+    });
+    const variantWeight = getFirstPositiveWixWeight([
+      matchedVariant?.physicalProperties?.weight,
+      matchedVariant?.physicalProperties?.shippingWeight,
+      matchedVariant?.weight,
+      matchedVariant?.variant?.weight,
+      matchedVariant?.productData?.weight,
+    ]);
+    if (variantWeight > 0) return variantWeight;
+  }
+  return getFirstPositiveWixWeight([
+    product?.physicalProperties?.weight,
+    product?.physicalProperties?.shippingWeight,
+    product?.weight,
+    product?.shippingWeight,
+    product?.product?.physicalProperties?.weight,
+    product?.product?.weight,
+  ]);
+}
+
+function extractWixVariantWeightKg(variant) {
+  return getFirstPositiveWixWeight([
+    variant?.physicalProperties?.weight,
+    variant?.physicalProperties?.shippingWeight,
+    variant?.weight,
+    variant?.variant?.weight,
+    variant?.productData?.weight,
+    variant?.productData?.physicalProperties?.weight,
+  ]);
+}
+
+async function fetchWixV1ProductWeightKg(accessToken, productId, variantId = "") {
+  if (!productId) return 0;
+  const payload = await fetchWixJson(
+    accessToken,
+    `/stores-reader/v1/products/${encodeURIComponent(productId)}`,
+    { method: "GET" }
+  ).catch(() => null);
+  const product = payload?.product || payload;
+  return extractWixProductWeightKg(product, variantId);
+}
+
+async function fetchWixV3ProductWeights(accessToken, productIds = []) {
+  const ids = Array.from(new Set(productIds.map((id) => String(id || "").trim()).filter(Boolean)));
+  if (!ids.length) return {};
+  const result = {};
+  const variantPayload = await fetchWixJson(accessToken, "/stores/v3/products/query-variants", {
+    method: "POST",
+    body: JSON.stringify({
+      query: {
+        filter: { "productData.productId": { $hasSome: ids } },
+        cursorPaging: { limit: Math.min(1000, Math.max(1, ids.length * 20)) },
+      },
+    }),
+  }).catch(() => null);
+  const variants = Array.isArray(variantPayload?.variants)
+    ? variantPayload.variants
+    : Array.isArray(variantPayload?.items)
+      ? variantPayload.items
+      : [];
+  variants.forEach((variant) => {
+    const productId = String(
+      variant?.productData?.productId || variant?.productId || variant?.product?.id || ""
+    ).trim();
+    const variantId = String(variant?.id || variant?._id || variant?.variantId || "").trim();
+    const weightKg = extractWixVariantWeightKg(variant);
+    if (productId && weightKg > 0) {
+      result[`${productId}:${variantId}`] = weightKg;
+      if (!result[`${productId}:`]) {
+        result[`${productId}:`] = weightKg;
+      }
+    }
+  });
+
+  const missingProductIds = ids.filter((id) => !result[`${id}:`]);
+  if (missingProductIds.length) {
+    const productPayload = await fetchWixJson(accessToken, "/stores/v3/products/query", {
+      method: "POST",
+      body: JSON.stringify({
+        query: {
+          filter: { id: { $hasSome: missingProductIds } },
+          cursorPaging: { limit: Math.min(100, missingProductIds.length) },
+        },
+        fields: ["PHYSICAL_PROPERTIES"],
+      }),
+    }).catch(() => null);
+    const products = Array.isArray(productPayload?.products)
+      ? productPayload.products
+      : Array.isArray(productPayload?.items)
+        ? productPayload.items
+        : [];
+    products.forEach((product) => {
+      const productId = String(product?.id || product?._id || product?.productId || "").trim();
+      const weightKg = extractWixProductWeightKg(product);
+      if (productId && weightKg > 0) {
+        result[`${productId}:`] = weightKg;
+      }
+    });
+  }
+
+  return result;
+}
+
+async function fetchWixLineItemWeights(accessToken, orders = []) {
+  const lineItems = [];
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    (Array.isArray(order?.lineItems) ? order.lineItems : []).forEach((item) => {
+      const productId = getWixLineItemProductId(item);
+      if (!productId) return;
+      lineItems.push({
+        productId,
+        variantId: getWixLineItemVariantId(item),
+      });
+    });
+  });
+  const productIds = Array.from(new Set(lineItems.map((item) => item.productId)));
+  if (!productIds.length) return {};
+  const catalogVersion = await fetchWixCatalogVersion(accessToken);
+  if (catalogVersion === "V3_CATALOG") {
+    return fetchWixV3ProductWeights(accessToken, productIds);
+  }
+
+  const entries = await Promise.all(
+    lineItems.map(async (item) => {
+      const key = `${item.productId}:${item.variantId}`;
+      const fallbackKey = `${item.productId}:`;
+      const weightKg = await fetchWixV1ProductWeightKg(
+        accessToken,
+        item.productId,
+        item.variantId
+      ).catch(() => 0);
+      return [
+        [key, weightKg],
+        [fallbackKey, weightKg],
+      ];
+    })
+  );
+  const result = {};
+  entries.flat().forEach(([key, weightKg]) => {
+    if (!result[key] && Number(weightKg) > 0) {
+      result[key] = weightKg;
+    }
+  });
+  return result;
+}
+
+function getWixOrderWeightKg(order, weightByLineItemKey = {}) {
+  const directWeight = getFirstPositiveWixWeight([
+    order?.shippingInfo?.logistics?.weight,
+    order?.shippingInfo?.logistics?.totalWeight,
+    order?.weight,
+  ]);
+  if (directWeight > 0) return directWeight;
+  return (Array.isArray(order?.lineItems) ? order.lineItems : []).reduce((sum, item) => {
+    const inlineWeight = extractWixLineItemWeightKg(item);
+    const productId = getWixLineItemProductId(item);
+    const variantId = getWixLineItemVariantId(item);
+    const catalogWeight =
+      Number(weightByLineItemKey[`${productId}:${variantId}`] || 0)
+      || Number(weightByLineItemKey[`${productId}:`] || 0);
+    const itemWeightKg = inlineWeight > 0 ? inlineWeight : catalogWeight;
+    if (!Number.isFinite(itemWeightKg) || itemWeightKg <= 0) return sum;
+    return sum + itemWeightKg * getWixLineItemQuantity(item);
+  }, 0);
+}
+
+function getWixAddressValue(address, keys = []) {
+  for (const key of keys) {
+    const value = key.split(".").reduce((current, part) => current?.[part], address);
+    if (String(value || "").trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function getWixOrderShippingAddress(order) {
+  return (
+    order?.shippingInfo?.logistics?.shippingDestination?.address
+    || order?.shippingInfo?.shipmentDetails?.address
+    || order?.shippingInfo?.address
+    || order?.recipientInfo?.address
+    || order?.billingInfo?.address
+    || {}
+  );
+}
+
+function getWixOrderContact(order) {
+  return (
+    order?.shippingInfo?.logistics?.shippingDestination?.contactDetails
+    || order?.shippingInfo?.shipmentDetails?.contactDetails
+    || order?.recipientInfo?.contactDetails
+    || order?.billingInfo?.contactDetails
+    || order?.buyerInfo
+    || {}
+  );
+}
+
+function formatWixStreet(address) {
+  const direct = getWixAddressValue(address, [
+    "addressLine1",
+    "address.line1",
+    "street",
+    "formattedAddress",
+  ]);
+  const extra = getWixAddressValue(address, ["addressLine2", "address.line2"]);
+  const streetName = getWixAddressValue(address, ["streetAddress.name", "streetAddress.street"]);
+  const streetNumber = getWixAddressValue(address, ["streetAddress.number"]);
+  const streetParts = [streetName, streetNumber].filter(Boolean).join(" ");
+  return [direct || streetParts, extra].filter(Boolean).join(", ");
+}
+
+function mapWixOrdersToCsvRows(orders, options = {}) {
+  const { selectedStatuses = [], weightByLineItemKey = {}, instanceId = "", siteUrl = "" } = options;
+  const normalizedStatuses = normalizeWixImportStatuses(selectedStatuses);
+  const allowedStatuses = new Set(
+    normalizedStatuses.length ? normalizedStatuses : DEFAULT_WIX_IMPORT_STATUSES
+  );
+  const importedAt = new Date().toISOString();
+  return (Array.isArray(orders) ? orders : [])
+    .filter((order) => {
+      const status = normalizeWixOrderStatus(order?.status);
+      return !status || allowedStatuses.has(status);
+    })
+    .map((order) => {
+      const address = getWixOrderShippingAddress(order);
+      const contact = getWixOrderContact(order);
+      const firstName = getWixAddressValue(contact, ["firstName", "first_name"]);
+      const lastName = getWixAddressValue(contact, ["lastName", "last_name"]);
+      const recipientName =
+        [firstName, lastName].filter(Boolean).join(" ").trim()
+        || getWixAddressValue(contact, ["fullName", "name", "company"])
+        || getWixAddressValue(address, ["contactDetails.fullName", "contactDetails.company"]);
+      return {
+        senderName: "",
+        senderStreet: "",
+        senderCity: "",
+        senderState: "",
+        senderZip: "",
+        recipientName,
+        recipientStreet: formatWixStreet(address),
+        recipientCity: getWixAddressValue(address, ["city", "subdivision", "address.city"]),
+        recipientState: getWixAddressValue(address, ["subdivision", "state", "region"]),
+        recipientZip: getWixAddressValue(address, ["postalCode", "zipCode", "postcode", "zip"]),
+        recipientCountry: getWixAddressValue(address, ["country", "countryCode"]),
+        packageWeight: formatWixWeightKg(getWixOrderWeightKg(order, weightByLineItemKey)),
+        packageDims: "",
+        shipideSource: {
+          provider: "wix",
+          shop: String(siteUrl || instanceId || "").trim(),
+          orderId: String(order?.id || order?._id || "").trim(),
+          orderName: String(order?.number || order?.displayId || order?.id || "").trim(),
+          customerId: String(order?.buyerInfo?.contactId || order?.buyerInfo?.memberId || "").trim(),
+          customerEmail: normalizeEmail(order?.buyerInfo?.email || contact?.email || ""),
+          importedAt,
+        },
+      };
+    })
+    .filter((row) => row.recipientName || row.recipientStreet || row.recipientCity);
+}
+
 const DEV_SHOPIFY_ORDER_RECIPIENTS = Object.freeze([
   {
     firstName: "Elise",
@@ -18051,6 +18523,90 @@ async function handleWixDisconnect(request, env) {
       return jsonResponse({ error: error.message }, 500);
     }
     return jsonResponse({ error: error?.message || "Failed to disconnect Wix." }, 500);
+  }
+}
+
+async function handleWixImportOrders(request, env) {
+  let authUserId = "";
+  let connectionInstanceId = "";
+  try {
+    const user = await getAuthenticatedUser(request, env);
+    if (!user?.id) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+    authUserId = user.id;
+
+    const body = await readJsonBody(request);
+    const requestedInstanceId = String(body?.instanceId || body?.shop || "").trim();
+    const requestedStatuses = normalizeWixImportStatuses(body?.selectedStatuses);
+    const limit = Number(body?.limit);
+    let connection = null;
+    let settings = {
+      selectedStatuses: [...DEFAULT_WIX_IMPORT_STATUSES],
+      autoRefreshEnabled: false,
+    };
+    try {
+      connection = await getWixConnection(env, user.id, requestedInstanceId, {
+        includeAccessToken: true,
+        includeSettings: true,
+      });
+      if (connection) {
+        settings = getWixImportSettings(connection.import_settings);
+      }
+    } catch (error) {
+      if (error?.code !== "missing_import_settings_column") {
+        throw error;
+      }
+      connection = await getWixConnection(env, user.id, requestedInstanceId, {
+        includeAccessToken: true,
+      });
+    }
+    if (!connection) {
+      return jsonResponse({ error: "Wix is not connected for this account." }, 404);
+    }
+    connectionInstanceId = String(connection.shop_domain || requestedInstanceId || "").trim();
+    const stored = await parseStoredWixConnection(env, connection.access_token);
+    const instanceId = String(stored?.instanceId || connectionInstanceId || "").trim();
+    const selectedStatuses = requestedStatuses.length ? requestedStatuses : settings.selectedStatuses;
+    const accessToken = await createWixAccessToken(env, instanceId);
+    const orders = await fetchWixOrders(accessToken, limit, selectedStatuses);
+    const lineItemWeights = await fetchWixLineItemWeights(accessToken, orders);
+    const rows = mapWixOrdersToCsvRows(orders, {
+      selectedStatuses,
+      weightByLineItemKey: lineItemWeights,
+      instanceId,
+      siteUrl: stored?.siteUrl || "",
+    });
+    return jsonResponse({
+      instanceId,
+      siteUrl: String(stored?.siteUrl || "").trim(),
+      count: rows.length,
+      rows,
+      settings: {
+        selectedStatuses,
+        autoRefreshEnabled: settings.autoRefreshEnabled,
+      },
+    });
+  } catch (error) {
+    if (
+      (error?.code === "token_decrypt_failed" || error?.code === "wix_auth_invalid") &&
+      authUserId &&
+      connectionInstanceId
+    ) {
+      await setWixConnectionStatus(env, authUserId, connectionInstanceId, "token_invalid").catch(
+        () => {}
+      );
+      return jsonResponse(
+        {
+          error: "Wix credentials expired or were rejected. Reconnect Wix and try again.",
+        },
+        409
+      );
+    }
+    if (error?.code === "missing_import_settings_column") {
+      return jsonResponse({ error: error.message }, 500);
+    }
+    return jsonResponse({ error: error?.message || "Wix import failed." }, 500);
   }
 }
 

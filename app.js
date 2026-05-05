@@ -10249,6 +10249,10 @@ function mapWooCommerceImportRows(rows) {
     .filter(Boolean);
 }
 
+function mapWixImportRows(rows) {
+  return mapShopifyImportRows(rows);
+}
+
 function applyImportedRows(rows, sourceLabel, options = {}) {
   const { source = "provider" } = options;
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -10641,12 +10645,87 @@ async function importWooCommerceOrders(
   }
 }
 
-async function handleWixProviderAction() {
-  if (!currentUser) {
-    setProviderStatus(tr("Sign in before connecting Wix."), { kind: "error" });
+function isWixReconnectError(message = "") {
+  return /reconnect wix|wix credentials|wix access token|unauthorized|forbidden/i.test(
+    String(message || "")
+  );
+}
+
+async function importWixOrders(instanceId = wixConnection?.instanceId, options = {}) {
+  const { silent = false, initiatedByAutoRefresh = false } = options;
+  const normalizedInstanceId = String(instanceId || "").trim();
+  if (!normalizedInstanceId) {
+    if (!silent) {
+      setProviderStatus(tr("Connect Wix before importing."), { kind: "error" });
+    }
     return;
   }
-  await openWixSettingsModal();
+
+  try {
+    if (!silent) {
+      setProviderStatus(tr("Importing orders from Wix..."), { persist: true });
+    }
+    const data = await fetchApiWithAuth("/api/wix/import-orders", {
+      method: "POST",
+      body: JSON.stringify({
+        instanceId: normalizedInstanceId,
+        limit: 50,
+      }),
+    });
+    wixSavedImportSettings = normalizeWixImportSettings(data?.settings);
+    wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
+    wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
+    const rows = mapWixImportRows(data?.rows);
+    applyImportedRows(rows, "Wix", { source: "provider-wix" });
+    if (!silent) {
+      setProviderStatus(
+        tr("Imported {count} orders from Wix.", {
+          count: rows.length,
+        }),
+        { kind: "success" }
+      );
+      const triggerText = providerTrigger?.querySelector("span");
+      if (triggerText) {
+        triggerText.textContent = tr("Imported {count} Wix orders", {
+          count: rows.length,
+        });
+        window.setTimeout(() => {
+          triggerText.textContent = tr("Import from provider");
+        }, 2200);
+      }
+    }
+  } catch (error) {
+    const message = String(error?.message || tr("Wix import failed."));
+    if (isWixReconnectError(message)) {
+      wixConnection = null;
+      wixSavedImportSettings = normalizeWixImportSettings(null);
+      wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
+      wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
+      updateWixProviderStatus();
+      if (!silent || initiatedByAutoRefresh) {
+        setProviderStatus(tr("Wix credentials expired or were rejected. Reconnect Wix and try again."), {
+          kind: "error",
+          persist: true,
+        });
+      }
+      return;
+    }
+    if (!silent || initiatedByAutoRefresh) {
+      setProviderStatus(message, { kind: "error" });
+    }
+  }
+}
+
+async function handleWixProviderAction() {
+  if (!currentUser) {
+    setProviderStatus(tr("Sign in before importing from Wix."), { kind: "error" });
+    return;
+  }
+  if (!wixConnection?.instanceId) {
+    await openWixSettingsModal();
+    return;
+  }
+  await importWixOrders(wixConnection.instanceId);
 }
 
 async function handleShopifyProviderAction() {
