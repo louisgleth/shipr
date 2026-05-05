@@ -471,9 +471,7 @@ select {
 .cleaner-origin-card {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(119, 71, 227, 0.1), transparent 34%),
-    var(--card-bg);
+  background: var(--card-bg);
   padding: 16px;
   display: grid;
   gap: 14px;
@@ -483,30 +481,6 @@ select {
   display: grid;
   gap: 6px;
   max-width: 620px;
-}
-
-.cleaner-origin-kicker {
-  margin: 0;
-  color: var(--accent);
-  font-size: var(--fs-2xs);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cleaner-origin-kicker span {
-  width: 6px;
-  height: 6px;
-  background: var(--accent);
-  flex: 0 0 auto;
-}
-
-.cleaner-origin-copy h2 {
-  margin: 0;
-  font-family: var(--font-regular);
-  font-size: var(--fs-md);
-  font-weight: 400;
-  line-height: 1.06;
 }
 
 .cleaner-origin-copy p {
@@ -526,6 +500,15 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  animation: cleanerOriginRowIn 0.28s var(--ease-out-expo) both;
+  transform-origin: top center;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.cleaner-origin-row.is-removing {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+  pointer-events: none;
 }
 
 .cleaner-origin-row input {
@@ -559,6 +542,7 @@ select {
   font: inherit;
   font-size: var(--fs-xs);
   cursor: pointer;
+  transition: color 0.18s ease, transform 0.18s ease;
 }
 
 .cleaner-origin-add {
@@ -569,6 +553,14 @@ select {
   padding: 0;
 }
 
+.cleaner-origin-add:hover {
+  transform: translateY(-1px);
+}
+
+.cleaner-origin-add:active {
+  transform: translateY(0) scale(0.985);
+}
+
 .cleaner-origin-add span:first-child {
   width: 18px;
   height: 18px;
@@ -576,6 +568,13 @@ select {
   place-items: center;
   border: 1px solid rgba(119, 71, 227, 0.55);
   color: var(--accent);
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.cleaner-origin-add:hover span:first-child {
+  border-color: rgba(119, 71, 227, 0.9);
+  background: rgba(119, 71, 227, 0.12);
+  transform: rotate(90deg);
 }
 
 .cleaner-origin-remove {
@@ -586,6 +585,17 @@ select {
 .cleaner-origin-add:hover,
 .cleaner-origin-remove:hover {
   color: var(--text);
+}
+
+@keyframes cleanerOriginRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .cleaner-thanks {

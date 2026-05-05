@@ -254,8 +254,6 @@ const COPY = {
     editMapping: "Edit mapping",
     editOriginAddress: "Edit ship-from address",
     submitToShipide: "Submit to Shipide",
-    originKicker: "Missing origin address",
-    originTitle: "Add your ship-from address",
     originCopy:
       "We could not identify a ship-from address in this export. Add the address you usually ship from so Shipide can analyze your shipment profile correctly.",
     originPlaceholder: "Company, street, postcode, city, country",
@@ -343,8 +341,6 @@ const COPY = {
     editMapping: "Modifier le mapping",
     editOriginAddress: "Modifier l’adresse d’expédition",
     submitToShipide: "Envoyer à Shipide",
-    originKicker: "Adresse d’origine manquante",
-    originTitle: "Ajoutez votre adresse d’expédition",
     originCopy:
       "Nous n’avons pas identifié d’adresse d’expédition dans cet export. Ajoutez l’adresse depuis laquelle vous expédiez habituellement afin que Shipide puisse analyser correctement votre profil d’expédition.",
     originPlaceholder: "Société, rue, code postal, ville, pays",
@@ -432,8 +428,6 @@ const COPY = {
     editMapping: "Mapping aanpassen",
     editOriginAddress: "Verzendadres aanpassen",
     submitToShipide: "Naar Shipide sturen",
-    originKicker: "Oorspronkelijk verzendadres ontbreekt",
-    originTitle: "Voeg je verzendadres toe",
     originCopy:
       "We konden geen verzendadres van oorsprong in deze export vinden. Voeg het adres toe vanwaar je meestal verzendt, zodat Shipide je verzendprofiel correct kan analyseren.",
     originPlaceholder: "Bedrijf, straat, postcode, stad, land",
@@ -696,10 +690,6 @@ function applyLocalization() {
   setText("#cleanerBackToMappingFromOrigin span", t("editMapping"));
   setText("#cleanerSubmit span", t("submitToShipide"));
   setText("#cleanerOriginContinue span", t("previewCleanedData"));
-  setText(".cleaner-origin-kicker", t("originKicker"));
-  const originKickerDot = document.createElement("span");
-  document.querySelector(".cleaner-origin-kicker")?.prepend(originKickerDot);
-  setText("#cleanerOriginTitle", t("originTitle"));
   setText("#cleanerOriginCopy", t("originCopy"));
   setText("#cleanerAddOrigin span:last-child", t("addOriginAddress"));
   setText(".cleaner-thanks-kicker", t("dataReceived"));
@@ -1406,8 +1396,11 @@ function renderOriginInputs() {
       remove.className = "cleaner-origin-remove";
       remove.textContent = t("removeOriginAddress");
       remove.addEventListener("click", () => {
-        state.manualOriginAddresses.splice(index, 1);
-        renderOriginInputs();
+        row.classList.add("is-removing");
+        window.setTimeout(() => {
+          state.manualOriginAddresses.splice(index, 1);
+          renderOriginInputs();
+        }, 170);
       });
       row.appendChild(remove);
     }
@@ -1423,19 +1416,14 @@ function buildCleanRows() {
   const extracted = getAvailableExtractedFields();
   const outputHeaders = [];
   const seen = new Map();
-  const manualOrigins = needsManualOriginAddress() ? getManualOriginAddresses() : [];
   [...kept, ...extracted.map((field) => ({ key: field.key, extracted: true }))].forEach((item) => {
     const count = seen.get(item.key) || 0;
     seen.set(item.key, count + 1);
     outputHeaders.push(count ? `${item.key}_${count + 1}` : item.key);
   });
-  manualOrigins.forEach((_, index) => {
-    outputHeaders.push(`origin_address_${index + 1}`);
-  });
   const rows = state.rows.map((row) => [
     ...kept.map((item) => String(row[item.index] || "").trim()),
     ...extracted.map((field) => getExtractedValue(row, field.key)),
-    ...manualOrigins,
   ]);
   return { headers: outputHeaders, rows };
 }
@@ -1556,6 +1544,7 @@ async function submitCleanData() {
         headers: cleaned.headers,
         rows: cleaned.rows,
         removedColumns: state.headers.filter((_, index) => state.mapping[index]?.action === "remove"),
+        originAddresses: needsManualOriginAddress() ? getManualOriginAddresses() : [],
       }),
     });
     await response.json().catch(() => ({}));
