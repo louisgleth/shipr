@@ -12943,7 +12943,7 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
     const packageWeight =
       Number.isFinite(totalWeightGrams) && totalWeightGrams > 0
         ? (totalWeightGrams / 1000).toFixed(2)
-        : "0.50";
+        : "";
 
     let senderLocationId = "";
     if (singleOverrideId) {
@@ -12972,7 +12972,7 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
       recipientZip: String(shipping?.zip || "").trim(),
       recipientCountry: String(shipping?.country_code || shipping?.country || "").trim(),
       packageWeight,
-      packageDims: "25 x 20 x 10",
+      packageDims: "",
       shipideSource: {
         provider: "shopify",
         shop: normalizedShop,
@@ -13066,7 +13066,132 @@ function buildWooCommerceSenderOrigin(settings, storeUrl) {
   };
 }
 
-function mapWooCommerceOrdersToCsvRows(orders, senderOrigin = null, selectedStatuses = []) {
+function normalizeWooCommerceWeightUnit(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["g", "gram", "grams"].includes(normalized)) return "g";
+  if (["lbs", "lb", "pound", "pounds"].includes(normalized)) return "lbs";
+  if (["oz", "ounce", "ounces"].includes(normalized)) return "oz";
+  return "kg";
+}
+
+function convertWooCommerceWeightToKg(value, unit = "kg") {
+  const normalized = String(value || "").trim().replace(",", ".");
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const normalizedUnit = normalizeWooCommerceWeightUnit(unit);
+  if (normalizedUnit === "g") return amount / 1000;
+  if (normalizedUnit === "lbs") return amount * 0.45359237;
+  if (normalizedUnit === "oz") return amount * 0.028349523125;
+  return amount;
+}
+
+function formatWooCommerceWeightKg(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : "";
+}
+
+function getWooCommerceLineItemWeightKey(item) {
+  const productId = String(item?.product_id || "").trim();
+  const variationId = String(item?.variation_id || "").trim();
+  if (!productId || productId === "0") return "";
+  return `${productId}:${variationId === "0" ? "" : variationId}`;
+}
+
+function getWooCommerceOrderWeightKg(order, weightByLineItemKey = {}) {
+  if (!Array.isArray(order?.line_items)) return 0;
+  return order.line_items.reduce((sum, item) => {
+    const key = getWooCommerceLineItemWeightKey(item);
+    const itemWeightKg = Number(weightByLineItemKey[key] || 0);
+    if (!Number.isFinite(itemWeightKg) || itemWeightKg <= 0) return sum;
+    const quantity = Math.max(1, Number(item?.quantity || 1) || 1);
+    return sum + itemWeightKg * quantity;
+  }, 0);
+}
+
+async function fetchWooCommerceProductWeightKg(
+  storeUrl,
+  consumerKey,
+  consumerSecret,
+  productId,
+  variationId,
+  weightUnit
+) {
+  const safeStoreUrl = assertSafeWooCommerceStoreUrlForFetch(storeUrl);
+  const authHeaders = {
+    Authorization: `Basic ${encodeBasicAuth(consumerKey, consumerSecret)}`,
+    Accept: "application/json",
+  };
+  const fetchWeight = async (url) => {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: authHeaders,
+    });
+    if (!response.ok) return 0;
+    const payload = await response.json().catch(() => null);
+    return convertWooCommerceWeightToKg(payload?.weight, weightUnit);
+  };
+
+  if (variationId) {
+    const variationUrl = new URL(
+      `${safeStoreUrl.replace(/\/+$/, "")}/wp-json/wc/v3/products/${encodeURIComponent(productId)}/variations/${encodeURIComponent(variationId)}`
+    );
+    variationUrl.searchParams.set("_fields", "id,weight");
+    const variationWeight = await fetchWeight(variationUrl);
+    if (variationWeight > 0) return variationWeight;
+  }
+
+  const productUrl = new URL(
+    `${safeStoreUrl.replace(/\/+$/, "")}/wp-json/wc/v3/products/${encodeURIComponent(productId)}`
+  );
+  productUrl.searchParams.set("_fields", "id,weight");
+  return fetchWeight(productUrl);
+}
+
+async function fetchWooCommerceLineItemWeights(
+  storeUrl,
+  consumerKey,
+  consumerSecret,
+  orders,
+  weightUnit
+) {
+  const productKeys = new Map();
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    (Array.isArray(order?.line_items) ? order.line_items : []).forEach((item) => {
+      const key = getWooCommerceLineItemWeightKey(item);
+      if (!key || productKeys.has(key)) return;
+      productKeys.set(key, {
+        productId: String(item?.product_id || "").trim(),
+        variationId:
+          String(item?.variation_id || "").trim() === "0"
+            ? ""
+            : String(item?.variation_id || "").trim(),
+      });
+    });
+  });
+
+  const entries = await Promise.all(
+    Array.from(productKeys.entries()).map(async ([key, item]) => {
+      const weightKg = await fetchWooCommerceProductWeightKg(
+        storeUrl,
+        consumerKey,
+        consumerSecret,
+        item.productId,
+        item.variationId,
+        weightUnit
+      ).catch(() => 0);
+      return [key, weightKg];
+    })
+  );
+
+  return Object.fromEntries(entries.filter(([, weightKg]) => Number(weightKg) > 0));
+}
+
+function mapWooCommerceOrdersToCsvRows(
+  orders,
+  senderOrigin = null,
+  selectedStatuses = [],
+  weightByLineItemKey = {}
+) {
   if (!Array.isArray(orders)) return [];
   const normalizedStatuses = normalizeWooCommerceImportStatuses(selectedStatuses);
   const allowedStatuses = new Set(
@@ -13097,6 +13222,9 @@ function mapWooCommerceOrdersToCsvRows(orders, senderOrigin = null, selectedStat
         .map((part) => String(part || "").trim())
         .filter(Boolean)
         .join(", ");
+      const packageWeight = formatWooCommerceWeightKg(
+        getWooCommerceOrderWeightKg(order, weightByLineItemKey)
+      );
       return {
         senderName: sender.senderName,
         senderStreet: sender.senderStreet,
@@ -13109,8 +13237,8 @@ function mapWooCommerceOrdersToCsvRows(orders, senderOrigin = null, selectedStat
         recipientState: String(address?.state || "").trim(),
         recipientZip: String(address?.postcode || "").trim(),
         recipientCountry: String(address?.country || "").trim(),
-        packageWeight: "0.50",
-        packageDims: "25 x 20 x 10",
+        packageWeight,
+        packageDims: "",
       };
     })
     .filter((row) => row.recipientName || row.recipientStreet || row.recipientCity);
@@ -13220,7 +13348,8 @@ async function fetchWooCommerceOrders(
   ordersUrl.searchParams.set("per_page", String(safeLimit));
   ordersUrl.searchParams.set("orderby", "date");
   ordersUrl.searchParams.set("order", "desc");
-  ordersUrl.searchParams.set("_fields", "id,status,billing,shipping,date_created");
+  ordersUrl.searchParams.set("include_meta", "false");
+  ordersUrl.searchParams.set("_fields", "id,status,billing,shipping,date_created,line_items");
   if (normalizedStatuses.length) {
     ordersUrl.searchParams.set("status", normalizedStatuses.join(","));
   }
@@ -18659,7 +18788,7 @@ async function handleWooCommerceImportOrders(request, env) {
     const selectedStatuses = requestedStatuses.length
       ? requestedStatuses
       : settings.selectedStatuses;
-    const [orders, senderOrigin] = await Promise.all([
+    const [orders, storeSettings] = await Promise.all([
       fetchWooCommerceOrders(
         connectionStoreUrl,
         credentials.consumerKey,
@@ -18667,13 +18796,29 @@ async function handleWooCommerceImportOrders(request, env) {
         limit,
         selectedStatuses
       ),
-      fetchWooCommerceStoreSenderOrigin(
+      fetchWooCommerceGeneralSettings(
         connectionStoreUrl,
         credentials.consumerKey,
         credentials.consumerSecret
       ).catch(() => null),
     ]);
-    const rows = mapWooCommerceOrdersToCsvRows(orders, senderOrigin, selectedStatuses);
+    const senderOrigin = buildWooCommerceSenderOrigin(storeSettings, connectionStoreUrl);
+    const weightUnit = normalizeWooCommerceWeightUnit(
+      getWooCommerceSettingValue(storeSettings, "woocommerce_weight_unit")
+    );
+    const lineItemWeights = await fetchWooCommerceLineItemWeights(
+      connectionStoreUrl,
+      credentials.consumerKey,
+      credentials.consumerSecret,
+      orders,
+      weightUnit
+    );
+    const rows = mapWooCommerceOrdersToCsvRows(
+      orders,
+      senderOrigin,
+      selectedStatuses,
+      lineItemWeights
+    );
     return jsonResponse({
       storeUrl: connectionStoreUrl,
       count: rows.length,

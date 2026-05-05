@@ -10877,8 +10877,15 @@ const CSV_REQUIRED_FIELDS = new Set([
   "recipientZip",
   "recipientCountry",
   "packageWeight",
-  "packageDims",
 ]);
+
+function isCsvRequiredFieldValid(key, value) {
+  const trimmed = String(value ?? "").trim();
+  if (key === "packageWeight") {
+    return parsePackageWeightKg(trimmed) > 0;
+  }
+  return Boolean(trimmed);
+}
 
 const CSV_HEADER_ALIASES = {
   senderName: [
@@ -23138,7 +23145,10 @@ function renderCsvTable() {
       input.dataset.key = column.key;
       input.disabled = !state.csvEditable;
       if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(column.key)) {
-        input.classList.toggle("is-invalid", String(row[column.key] ?? "").trim() === "");
+        input.classList.toggle(
+          "is-invalid",
+          !isCsvRequiredFieldValid(column.key, row[column.key])
+        );
       }
       bindCompositionAwareInput(input, handleCsvInput);
 
@@ -23179,7 +23189,7 @@ function handleCsvInput(event) {
     }
   }
   if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(key)) {
-    input.classList.toggle("is-invalid", input.value.trim() === "");
+    input.classList.toggle("is-invalid", !isCsvRequiredFieldValid(key, input.value));
   }
   updateSummary();
   updatePreview();
@@ -23195,8 +23205,7 @@ function validateCsvRows() {
 
   state.csvRows.forEach((row, rowIndex) => {
     CSV_REQUIRED_FIELDS.forEach((key) => {
-      const value = String(row?.[key] ?? "").trim();
-      if (value) return;
+      if (isCsvRequiredFieldValid(key, row?.[key])) return;
       isValid = false;
       if (firstInvalidRow < 0) {
         firstInvalidRow = rowIndex;
