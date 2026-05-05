@@ -11743,7 +11743,7 @@ async function handleAdminPrivacyMaintenanceRun(request, env) {
   }
 }
 
-async function exchangeShopifyAccessToken(env, payload) {
+async function upsertShopifyConnection(env, payload) {
   const response = await supabaseServiceRequest(
     env,
     "/rest/v1/provider_connections?on_conflict=user_id,provider,shop_domain",

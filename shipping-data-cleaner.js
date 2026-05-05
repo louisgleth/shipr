@@ -183,11 +183,6 @@ const DATA_FIELDS = [
       "methode_expedition",
     ],
   },
-  {
-    key: "quantity",
-    label: "Quantity",
-    aliases: ["quantity", "qty", "labels", "label_count", "number_of_labels", "aantal", "hoeveelheid", "quantite"],
-  },
 ];
 
 const EXTRACTED_FIELDS = [
@@ -242,7 +237,7 @@ const COPY = {
     dropSub: "or browse from your computer",
     uploadAria: "Upload shipping export",
     keptByDefault: "Kept by default",
-    keptByDefaultCopy: "Date, origin and destination country/postcode, weight, dimensions, service type, quantity.",
+    keptByDefaultCopy: "Date, origin and destination country/postcode, weight, dimensions, service type.",
     removedByDefault: "Removed by default",
     removedByDefaultCopy: "Names, street addresses, email, phone, company, order IDs, notes, tracking references.",
     uploadedColumn: "Uploaded column",
@@ -278,7 +273,7 @@ const COPY = {
     likelyPersonal: "Likely personal or identifying data.",
     matchedUseful: "Matched useful shipment field.",
     looksUseful: "Looks like shipment-analysis data.",
-    selectFieldOptional: "Select at least one shipment-analysis field. Dimensions, service type, date, and quantity are optional.",
+    selectFieldOptional: "Select at least one shipment-analysis field. Dimensions, service type, and date are optional.",
     selectFieldBeforeSubmit: "Select at least one shipment-analysis field before submitting. Missing dimensions or service type will not block submission.",
     confirmTruthful: "Confirm the information is truthful before submitting.",
     invalidLink: "This cleaner link is invalid or expired. Ask Shipide for a new link.",
@@ -308,7 +303,6 @@ const COPY = {
       dimensions: "Dimensions",
       dimension_unit: "Dimension unit",
       service_type: "Service type",
-      quantity: "Quantity",
     },
   },
   fr: {
@@ -329,7 +323,7 @@ const COPY = {
     dropSub: "ou parcourez votre ordinateur",
     uploadAria: "Importer un export d’expédition",
     keptByDefault: "Conservé par défaut",
-    keptByDefaultCopy: "Date, pays/code postal d’origine et de destination, poids, dimensions, type de service, quantité.",
+    keptByDefaultCopy: "Date, pays/code postal d’origine et de destination, poids, dimensions, type de service.",
     removedByDefault: "Retiré par défaut",
     removedByDefaultCopy: "Noms, adresses, e-mails, téléphones, société, numéros de commande, notes, références de suivi.",
     uploadedColumn: "Colonne importée",
@@ -365,7 +359,7 @@ const COPY = {
     likelyPersonal: "Données probablement personnelles ou identifiantes.",
     matchedUseful: "Champ utile d’expédition reconnu.",
     looksUseful: "Semble être une donnée utile d’expédition.",
-    selectFieldOptional: "Sélectionnez au moins un champ d’analyse d’expédition. Les dimensions, le service, la date et la quantité sont optionnels.",
+    selectFieldOptional: "Sélectionnez au moins un champ d’analyse d’expédition. Les dimensions, le service et la date sont optionnels.",
     selectFieldBeforeSubmit: "Sélectionnez au moins un champ d’analyse d’expédition avant l’envoi. Les dimensions ou le service manquants ne bloquent pas l’envoi.",
     confirmTruthful: "Confirmez que les informations sont exactes avant l’envoi.",
     invalidLink: "Ce lien de nettoyage est invalide ou expiré. Demandez un nouveau lien à Shipide.",
@@ -395,7 +389,6 @@ const COPY = {
       dimensions: "Dimensions",
       dimension_unit: "Unité de dimension",
       service_type: "Type de service",
-      quantity: "Quantité",
     },
   },
   nl: {
@@ -416,7 +409,7 @@ const COPY = {
     dropSub: "of kies een bestand op je computer",
     uploadAria: "Verzendexport uploaden",
     keptByDefault: "Standaard behouden",
-    keptByDefaultCopy: "Datum, land/postcode van oorsprong en bestemming, gewicht, afmetingen, servicetype, hoeveelheid.",
+    keptByDefaultCopy: "Datum, land/postcode van oorsprong en bestemming, gewicht, afmetingen, servicetype.",
     removedByDefault: "Standaard verwijderd",
     removedByDefaultCopy: "Namen, straatadressen, e-mail, telefoon, bedrijf, order-ID’s, notities, trackingreferenties.",
     uploadedColumn: "Geüploade kolom",
@@ -452,7 +445,7 @@ const COPY = {
     likelyPersonal: "Waarschijnlijk persoonlijke of identificerende data.",
     matchedUseful: "Nuttig verzendveld herkend.",
     looksUseful: "Lijkt op verzendanalyse-data.",
-    selectFieldOptional: "Selecteer minstens één verzendanalyseveld. Afmetingen, servicetype, datum en hoeveelheid zijn optioneel.",
+    selectFieldOptional: "Selecteer minstens één verzendanalyseveld. Afmetingen, servicetype en datum zijn optioneel.",
     selectFieldBeforeSubmit: "Selecteer minstens één verzendanalyseveld voordat je indient. Ontbrekende afmetingen of servicetype blokkeren de inzending niet.",
     confirmTruthful: "Bevestig dat de informatie waarheidsgetrouw is voordat je indient.",
     invalidLink: "Deze cleaner-link is ongeldig of verlopen. Vraag Shipide om een nieuwe link.",
@@ -482,7 +475,6 @@ const COPY = {
       dimensions: "Afmetingen",
       dimension_unit: "Afmetingseenheid",
       service_type: "Servicetype",
-      quantity: "Hoeveelheid",
     },
   },
 };
@@ -518,7 +510,6 @@ const REMOVE_PATTERNS = [
 const SHOPIFY_EXACT_FIELD_MAP = {
   created_at: "shipment_date",
   shipping_method: "service_type",
-  lineitem_quantity: "quantity",
   shipping_zip: "destination_postcode",
   shipping_country: "destination_country",
 };
@@ -615,6 +606,13 @@ const state = {
 const STEP_OUT_MS = 220;
 const STEP_RESIZE_MS = 520;
 const STEP_IN_MS = 260;
+const STEP_CARD_CLASSES = [
+  "is-step-upload",
+  "is-step-mapping",
+  "is-step-origin",
+  "is-step-review",
+  "is-step-thanks",
+];
 
 const els = {
   panels: {
@@ -843,6 +841,17 @@ function getStepWidth(step) {
   return Math.min(1040, shellWidth);
 }
 
+function getStepTitle(step) {
+  const titles = {
+    upload: t("uploadTitle"),
+    mapping: t("mappingTitle"),
+    origin: t("originTitleStep"),
+    review: t("reviewTitle"),
+    thanks: t("thanksTitleStep"),
+  };
+  return titles[step] || titles.upload;
+}
+
 function measurePanelHeight(panel) {
   if (!panel || !els.card) return 0;
   const wasActive = panel.classList.contains("is-active");
@@ -884,8 +893,48 @@ function measurePanelHeight(panel) {
   return height;
 }
 
+function measureStepCardHeight(step, panel, width) {
+  if (!panel || !els.card) return 0;
+  const previousCardClasses = STEP_CARD_CLASSES.filter((className) => els.card.classList.contains(className));
+  const previousCardWidth = els.card.style.width;
+  const previousCardHeight = els.card.style.height;
+  const previousTitle = els.title?.textContent || "";
+  const previousPanelClasses = new Map(
+    Object.entries(els.panels).map(([key, item]) => [key, item.className])
+  );
+
+  els.card.classList.remove(...STEP_CARD_CLASSES);
+  els.card.classList.add(`is-step-${step}`);
+  els.card.style.width = `${Math.round(width)}px`;
+  els.card.style.height = "auto";
+  if (els.title) els.title.textContent = getStepTitle(step);
+
+  Object.entries(els.panels).forEach(([key, item]) => {
+    item.className = previousPanelClasses.get(key) || item.className;
+    item.classList.toggle("is-active", item === panel);
+    item.classList.remove(
+      "is-step-transition-exit",
+      "is-step-transition-hidden",
+      "is-step-transition-enter-start"
+    );
+  });
+
+  const height = Math.max(1, els.card.getBoundingClientRect().height);
+
+  els.card.classList.remove(...STEP_CARD_CLASSES);
+  previousCardClasses.forEach((className) => els.card.classList.add(className));
+  els.card.style.width = previousCardWidth;
+  els.card.style.height = previousCardHeight;
+  if (els.title) els.title.textContent = previousTitle;
+  Object.entries(els.panels).forEach(([key, item]) => {
+    item.className = previousPanelClasses.get(key) || item.className;
+  });
+
+  return height;
+}
+
 function applyStepView(step) {
-  els.card?.classList.remove("is-step-upload", "is-step-mapping", "is-step-origin", "is-step-review", "is-step-thanks");
+  els.card?.classList.remove(...STEP_CARD_CLASSES);
   els.card?.classList.add(`is-step-${step}`);
   Object.entries(els.panels).forEach(([key, panel]) => {
     panel.classList.toggle("is-active", key === step);
@@ -897,15 +946,8 @@ function applyStepView(step) {
   });
   const stepIndex = step === "upload" ? 1 : step === "mapping" || step === "origin" ? 2 : 3;
   const stepTotal = 3;
-  const titles = {
-    upload: t("uploadTitle"),
-    mapping: t("mappingTitle"),
-    origin: t("originTitleStep"),
-    review: t("reviewTitle"),
-    thanks: t("thanksTitleStep"),
-  };
   if (els.title) {
-    els.title.textContent = titles[step] || titles.upload;
+    els.title.textContent = getStepTitle(step);
   }
   const reviewBackLabel = step === "review" && needsOrigin ? t("editOriginAddress") : t("editMapping");
   setText("#cleanerBackToMapping span", reviewBackLabel);
@@ -954,11 +996,8 @@ function setStep(step, options = {}) {
   const currentPanel = getStepPanel(previousStep);
   const incomingPanel = getStepPanel(nextStep);
   const cardRect = els.card.getBoundingClientRect();
-  const currentPanelHeight = Math.max(1, currentPanel.getBoundingClientRect().height);
-  const incomingPanelHeight = Math.max(1, measurePanelHeight(incomingPanel));
-  const chromeHeight = Math.max(0, cardRect.height - currentPanelHeight);
-  const targetHeight = Math.max(1, chromeHeight + incomingPanelHeight);
   const targetWidth = getStepWidth(nextStep);
+  const targetHeight = measureStepCardHeight(nextStep, incomingPanel, targetWidth);
 
   els.card.style.width = `${Math.round(cardRect.width)}px`;
   els.card.style.height = `${Math.round(cardRect.height)}px`;
