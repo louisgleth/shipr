@@ -102,14 +102,20 @@ const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
 ]);
 const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
 const DEFAULT_SHOPIFY_FINANCIAL_STATUSES = Object.freeze([DEFAULT_SHOPIFY_FINANCIAL_STATUS]);
+const SHOPIFY_FULFILLMENT_STATUS_OPTIONS = Object.freeze([
+  { value: "unfulfilled", label: "Unfulfilled" },
+  { value: "unshipped", label: "Unshipped only" },
+  { value: "partial", label: "Partially fulfilled" },
+  { value: "shipped", label: "Fulfilled" },
+]);
+const DEFAULT_SHOPIFY_FULFILLMENT_STATUSES = Object.freeze(["unfulfilled"]);
 const SHOPIFY_AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
 const WIX_IMPORT_STATUS_OPTIONS = Object.freeze([
-  { value: "PENDING", label: "Pending" },
-  { value: "APPROVED", label: "Approved" },
-  { value: "CANCELED", label: "Canceled" },
-  { value: "REJECTED", label: "Rejected" },
+  { value: "NOT_FULFILLED", label: "Not fulfilled" },
+  { value: "PARTIALLY_FULFILLED", label: "Partially fulfilled" },
+  { value: "FULFILLED", label: "Fulfilled" },
 ]);
-const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["APPROVED"]);
+const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["NOT_FULFILLED"]);
 const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
   { value: "pending", label: "Pending" },
   { value: "processing", label: "Processing" },
@@ -1836,6 +1842,10 @@ const TRANSLATIONS = {
   "Could not load Wix settings.": { fr: "Impossible de charger les paramètres Wix.", nl: "Kan Wix-instellingen niet laden." },
   "Connect Wix before saving settings.": { fr: "Connectez Wix avant d’enregistrer les paramètres.", nl: "Verbind Wix voordat je instellingen opslaat." },
   "Select at least one Wix status to import.": { fr: "Sélectionnez au moins un statut Wix à importer.", nl: "Selecteer minstens één Wix-status om te importeren." },
+  "Select at least one Wix fulfillment status to import.": {
+    fr: "Sélectionnez au moins un statut de fulfillment Wix à importer.",
+    nl: "Selecteer minstens één Wix-fulfillmentstatus om te importeren.",
+  },
   "Install the Shipide Wix app to connect your site. After installation, open the app once inside Wix while signed in to Shipide to finish linking.": {
     fr: "Installez l’application Wix Shipide pour connecter votre site. Après l’installation, ouvrez l’application une fois dans Wix tout en étant connecté à Shipide pour terminer l’association.",
     nl: "Installeer de Shipide Wix-app om je site te verbinden. Open daarna de app eenmaal in Wix terwijl je bent aangemeld bij Shipide om de koppeling te voltooien.",
@@ -1900,6 +1910,10 @@ const TRANSLATIONS = {
     fr: "Sélectionnez au moins un statut Shopify à importer.",
     nl: "Selecteer minstens één Shopify-status om te importeren.",
   },
+  "Select at least one Shopify fulfillment status to import.": {
+    fr: "Sélectionnez au moins un statut de fulfillment Shopify à importer.",
+    nl: "Selecteer minstens één Shopify-fulfillmentstatus om te importeren.",
+  },
   "Select at least one Shopify fulfillment location.": {
     fr: "Sélectionnez au moins un emplacement de fulfillment Shopify.",
     nl: "Selecteer minstens één Shopify-fulfillmentlocatie.",
@@ -1907,6 +1921,9 @@ const TRANSLATIONS = {
   "Approved": { fr: "Approuvée", nl: "Goedgekeurd" },
   "Rejected": { fr: "Rejetée", nl: "Afgewezen" },
   "Canceled": { fr: "Annulée", nl: "Geannuleerd" },
+  "Not fulfilled": { fr: "Non expédiée", nl: "Niet verzonden" },
+  "Partially fulfilled": { fr: "Partiellement expédiée", nl: "Gedeeltelijk verzonden" },
+  "Fulfilled": { fr: "Expédiée", nl: "Verzonden" },
   "Order Status": { fr: "Statut de commande", nl: "Bestelstatus" },
   "Shopify settings updated.": {
     fr: "Paramètres Shopify mis à jour.",
@@ -1925,12 +1942,19 @@ const TRANSLATIONS = {
   "Partially Refunded": { fr: "Partiellement remboursé", nl: "Gedeeltelijk terugbetaald" },
   "Voided": { fr: "Annulé", nl: "Nietig" },
   "Unpaid": { fr: "Non payé", nl: "Onbetaald" },
+  "Unfulfilled": { fr: "Non expédiées", nl: "Niet verzonden" },
+  "Unshipped only": { fr: "Non expédiées uniquement", nl: "Alleen niet verzonden" },
   "Saving...": { fr: "Enregistrement...", nl: "Opslaan..." },
   "{count} selected": { fr: "{count} sélectionné(s)", nl: "{count} geselecteerd" },
   "{count} selected (all)": { fr: "{count} sélectionné(s) (tous)", nl: "{count} geselecteerd (alle)" },
   "No locations available": { fr: "Aucun emplacement disponible", nl: "Geen locaties beschikbaar" },
   "All Locations": { fr: "Tous les emplacements", nl: "Alle locaties" },
+  "All Business Locations": { fr: "Tous les emplacements business", nl: "Alle bedrijfslocaties" },
   "Mirror Shopify location routing": { fr: "Reproduire le routage Shopify", nl: "Shopify-locatierouting volgen" },
+  "Mirror Wix business-location routing": {
+    fr: "Reproduire le routage des emplacements business Wix",
+    nl: "Wix-bedrijfslocatierouting volgen",
+  },
   "No address details": { fr: "Aucune adresse", nl: "Geen adresgegevens" },
   "You must be signed in to use provider import.": { fr: "Vous devez être connecté pour utiliser l’import fournisseur.", nl: "Je moet ingelogd zijn om providerimport te gebruiken." },
   "Shopify request timed out. Check Worker route and secrets.": { fr: "La requête Shopify a expiré. Vérifiez la route Worker et les secrets.", nl: "Shopify-verzoek time-out. Controleer Worker-route en secrets." },
@@ -1992,6 +2016,10 @@ const TRANSLATIONS = {
     fr: "Sélectionnez les statuts à importer",
     nl: "Selecteer statussen om te importeren",
   },
+  "Select fulfillment statuses to import": {
+    fr: "Sélectionnez les statuts de fulfillment à importer",
+    nl: "Selecteer fulfillmentstatussen om te importeren",
+  },
   "Enable Automatic Refresh": {
     fr: "Activer l’actualisation automatique",
     nl: "Automatische verversing inschakelen",
@@ -2003,6 +2031,10 @@ const TRANSLATIONS = {
   "Choose which Wix order statuses Shipide should import.": {
     fr: "Choisissez quels statuts de commande Wix Shipide doit importer.",
     nl: "Kies welke Wix-bestelstatussen Shipide moet importeren.",
+  },
+  "Choose which Wix fulfillment statuses Shipide should import. Approved orders are always required.": {
+    fr: "Choisissez quels statuts de fulfillment Wix Shipide doit importer. Les commandes approuvées sont toujours requises.",
+    nl: "Kies welke Wix-fulfillmentstatussen Shipide moet importeren. Goedgekeurde bestellingen blijven altijd verplicht.",
   },
   "When enabled, Shipide refreshes Wix-imported batches automatically while this batch is open.": {
     fr: "Si activé, Shipide actualise automatiquement les lots importés depuis Wix tant que ce lot reste ouvert.",
@@ -2762,6 +2794,8 @@ const wixSettingsHeading = document.getElementById("wixSettingsHeading");
 const wixSettingsNote = document.getElementById("wixSettingsNote");
 const wixStatusesSummary = document.getElementById("wixStatusesSummary");
 const wixStatusesList = document.getElementById("wixStatusesList");
+const wixLocationsSummary = document.getElementById("wixLocationsSummary");
+const wixLocationsList = document.getElementById("wixLocationsList");
 const wixAutoRefreshInput = document.getElementById("wixAutoRefresh");
 const wixDisconnectButton = document.getElementById("wixDisconnectButton");
 const woocommerceSettingsModal = document.getElementById("woocommerceSettingsModal");
@@ -2782,6 +2816,8 @@ const shopifySettingsSave = document.getElementById("shopifySettingsSave");
 const shopifySettingsStatus = document.getElementById("shopifySettingsStatus");
 const shopifyStatusesSummary = document.getElementById("shopifyStatusesSummary");
 const shopifyStatusesList = document.getElementById("shopifyStatusesList");
+const shopifyFulfillmentStatusesSummary = document.getElementById("shopifyFulfillmentStatusesSummary");
+const shopifyFulfillmentStatusesList = document.getElementById("shopifyFulfillmentStatusesList");
 const shopifyAutoRefreshInput = document.getElementById("shopifyAutoRefresh");
 const shopifyLocationsSection = document.getElementById("shopifyLocationsSection");
 const shopifyLocationsSummary = document.getElementById("shopifyLocationsSummary");
@@ -3009,8 +3045,11 @@ let providerStatusTimer = 0;
 let wixConnection = null;
 let wixSettingsBusy = false;
 let wixSettingsBusyMode = "idle";
+let wixLocationsCache = [];
+let wixLocationDraftSelection = new Set();
 let wixStatusDraftSelection = new Set(DEFAULT_WIX_IMPORT_STATUSES);
 let wixSavedImportSettings = {
+  selectedLocationIds: [],
   selectedStatuses: [...DEFAULT_WIX_IMPORT_STATUSES],
   autoRefreshEnabled: false,
 };
@@ -3021,9 +3060,11 @@ let shopifyLocationDraftSelection = new Set();
 let shopifySavedImportSettings = {
   selectedLocationIds: [],
   selectedFinancialStatuses: [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
+  selectedFulfillmentStatuses: [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES],
   autoRefreshEnabled: false,
 };
 let shopifyFinancialStatusDraftSelection = new Set(DEFAULT_SHOPIFY_FINANCIAL_STATUSES);
+let shopifyFulfillmentStatusDraftSelection = new Set(DEFAULT_SHOPIFY_FULFILLMENT_STATUSES);
 let shopifyAutoRefreshDraft = false;
 let shopifyAutoRefreshTimer = 0;
 let shopifyAutoRefreshInFlight = false;
@@ -4312,6 +4353,13 @@ function normalizeShopifyFinancialStatus(value) {
     : "";
 }
 
+function normalizeShopifyFulfillmentStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return SHOPIFY_FULFILLMENT_STATUS_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : "";
+}
+
 function normalizeShopifyFinancialStatusList(values) {
   const rawValues = Array.isArray(values)
     ? values
@@ -4321,6 +4369,17 @@ function normalizeShopifyFinancialStatusList(values) {
   const seen = new Set();
   rawValues.forEach((value) => {
     const normalized = normalizeShopifyFinancialStatus(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+  });
+  return Array.from(seen);
+}
+
+function normalizeShopifyFulfillmentStatusList(values) {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  values.forEach((value) => {
+    const normalized = normalizeShopifyFulfillmentStatus(value);
     if (!normalized || seen.has(normalized)) return;
     seen.add(normalized);
   });
@@ -4350,6 +4409,13 @@ function normalizeWixImportStatusList(values) {
 }
 
 function normalizeWixImportSettings(settings) {
+  const selectedLocationIds = normalizeShopifyLocationIdList(
+    Array.isArray(settings?.selectedLocationIds)
+      ? settings.selectedLocationIds
+      : Array.isArray(settings?.selected_location_ids)
+        ? settings.selected_location_ids
+        : []
+  );
   const selectedStatuses = normalizeWixImportStatusList(
     Array.isArray(settings?.selectedStatuses)
       ? settings.selectedStatuses
@@ -4358,6 +4424,7 @@ function normalizeWixImportSettings(settings) {
         : []
   );
   return {
+    selectedLocationIds,
     selectedStatuses: selectedStatuses.length
       ? selectedStatuses
       : [...DEFAULT_WIX_IMPORT_STATUSES],
@@ -4373,6 +4440,13 @@ function normalizeShopifyImportSettings(settings) {
         ? settings.selected_financial_statuses
         : settings?.financialStatus ?? settings?.financial_status
   );
+  const selectedFulfillmentStatuses = normalizeShopifyFulfillmentStatusList(
+    Array.isArray(settings?.selectedFulfillmentStatuses)
+      ? settings.selectedFulfillmentStatuses
+      : Array.isArray(settings?.selected_fulfillment_statuses)
+        ? settings.selected_fulfillment_statuses
+        : settings?.fulfillmentStatus ?? settings?.fulfillment_status
+  );
   return {
     selectedLocationIds: normalizeShopifyLocationIdList(
       Array.isArray(settings?.selectedLocationIds)
@@ -4384,6 +4458,9 @@ function normalizeShopifyImportSettings(settings) {
     selectedFinancialStatuses: selectedFinancialStatuses.length
       ? selectedFinancialStatuses
       : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
+    selectedFulfillmentStatuses: selectedFulfillmentStatuses.length
+      ? selectedFulfillmentStatuses
+      : [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES],
     autoRefreshEnabled: normalizeShopifyAutoRefreshEnabled(
       settings?.autoRefreshEnabled ?? settings?.auto_refresh_enabled
     ),
@@ -4397,6 +4474,7 @@ function persistPendingShopifySettings(settings = null) {
     SHOPIFY_PENDING_SETTINGS_STORAGE_KEY,
     JSON.stringify({
       selectedFinancialStatuses: normalizedSettings.selectedFinancialStatuses,
+      selectedFulfillmentStatuses: normalizedSettings.selectedFulfillmentStatuses,
       autoRefreshEnabled: normalizedSettings.autoRefreshEnabled,
     })
   );
@@ -4448,6 +4526,7 @@ async function saveShopifySavedSettings(shopDomain, settings = null) {
     shop,
     selectedLocationIds: normalizedSettings.selectedLocationIds,
     selectedFinancialStatuses: normalizedSettings.selectedFinancialStatuses,
+    selectedFulfillmentStatuses: normalizedSettings.selectedFulfillmentStatuses,
     autoRefreshEnabled: normalizedSettings.autoRefreshEnabled,
   };
   try {
@@ -4499,6 +4578,7 @@ async function saveWixSavedSettings(instanceId = wixConnection?.instanceId, sett
   let data = null;
   const payload = {
     instanceId: normalizedInstanceId,
+    selectedLocationIds: normalizedSettings.selectedLocationIds,
     selectedStatuses: normalizedSettings.selectedStatuses,
     autoRefreshEnabled: normalizedSettings.autoRefreshEnabled,
   };
@@ -4521,6 +4601,26 @@ async function saveWixSavedSettings(instanceId = wixConnection?.instanceId, sett
   return normalizeWixImportSettings(data?.settings);
 }
 
+async function fetchWixBusinessLocations(instanceId = wixConnection?.instanceId) {
+  const normalizedInstanceId = String(instanceId || "").trim();
+  if (!normalizedInstanceId) return [];
+  const query = new URLSearchParams();
+  query.set("instanceId", normalizedInstanceId);
+  const data = await fetchApiWithAuth(`/api/wix/locations?${query.toString()}`);
+  const locations = Array.isArray(data?.locations) ? data.locations : [];
+  return locations
+    .map((location) => ({
+      id: normalizeShopifyLocationId(location?.id),
+      name: String(location?.name || "").trim(),
+      city: String(location?.city || "").trim(),
+      region: String(location?.region || "").trim(),
+      country: String(location?.country || "").trim(),
+      street: String(location?.street || "").trim(),
+      postalCode: String(location?.postalCode || "").trim(),
+    }))
+    .filter((location) => location.id && location.name);
+}
+
 function getShopifySelectedLocationSummary(locations, selectedIds) {
   if (!Array.isArray(locations) || locations.length === 0) {
     return tr("No locations available");
@@ -4540,9 +4640,20 @@ function getShopifyFinancialStatusLabel(status) {
   return tr(option?.label || status);
 }
 
+function getShopifyFulfillmentStatusLabel(status) {
+  const option = SHOPIFY_FULFILLMENT_STATUS_OPTIONS.find((item) => item.value === status);
+  return tr(option?.label || status);
+}
+
 function getShopifySelectedStatusesSummary(selectedStatuses) {
   return tr("{count} selected", {
     count: normalizeShopifyFinancialStatusList(selectedStatuses).length,
+  });
+}
+
+function getShopifySelectedFulfillmentStatusesSummary(selectedStatuses) {
+  return tr("{count} selected", {
+    count: normalizeShopifyFulfillmentStatusList(selectedStatuses).length,
   });
 }
 
@@ -4773,10 +4884,39 @@ function setShopifySettingsBusy(isBusy, options = {}) {
   if (shopifyAutoRefreshInput) {
     shopifyAutoRefreshInput.disabled = shopifySettingsBusy;
   }
+  renderShopifyFulfillmentStatusOptions();
   renderShopifyFinancialStatusOptions();
   renderShopifySettingsLocations();
   renderShopifySettingsState();
   renderShopifyDisconnectAction();
+}
+
+function renderShopifyFulfillmentStatusOptions() {
+  if (!shopifyFulfillmentStatusesList || !shopifyFulfillmentStatusesSummary) return;
+
+  const selectedStatuses = normalizeShopifyFulfillmentStatusList(
+    Array.from(shopifyFulfillmentStatusDraftSelection)
+  );
+  shopifyFulfillmentStatusesSummary.textContent =
+    getShopifySelectedFulfillmentStatusesSummary(selectedStatuses);
+  shopifyFulfillmentStatusesList.innerHTML = "";
+
+  SHOPIFY_FULFILLMENT_STATUS_OPTIONS.forEach((option) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `shopify-location-row woocommerce-status-row shopify-fulfillment-status-row${
+      selectedStatuses.includes(option.value) ? " is-selected" : ""
+    }`;
+    row.dataset.status = option.value;
+    row.disabled = shopifySettingsBusy;
+    row.innerHTML = `
+      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
+      <span>
+        <span class="shopify-location-item-title">${escapeHtml(getShopifyFulfillmentStatusLabel(option.value))}</span>
+      </span>
+    `;
+    shopifyFulfillmentStatusesList.appendChild(row);
+  });
 }
 
 function renderShopifyFinancialStatusOptions() {
@@ -4933,6 +5073,9 @@ function getShopifyDraftImportSettings() {
     selectedFinancialStatuses: normalizeShopifyFinancialStatusList(
       Array.from(shopifyFinancialStatusDraftSelection)
     ),
+    selectedFulfillmentStatuses: normalizeShopifyFulfillmentStatusList(
+      Array.from(shopifyFulfillmentStatusDraftSelection)
+    ),
     autoRefreshEnabled: Boolean(shopifyAutoRefreshInput?.checked ?? shopifyAutoRefreshDraft),
   };
 }
@@ -4956,6 +5099,9 @@ async function openShopifySettingsModal() {
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
     );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     setShopifySettingsStatus("", { toast: false });
     populateShopifySettingsForm();
@@ -4974,15 +5120,14 @@ async function openShopifySettingsModal() {
     shopifyLocationsCache = locations;
     shopifySavedImportSettings = savedSettings;
     shopifyFinancialStatusDraftSelection = new Set(savedSettings.selectedFinancialStatuses);
+    shopifyFulfillmentStatusDraftSelection = new Set(savedSettings.selectedFulfillmentStatuses);
     shopifyAutoRefreshDraft = Boolean(savedSettings.autoRefreshEnabled);
     const savedSet = new Set(savedSettings.selectedLocationIds);
     const validSaved = locations
       .map((location) => location.id)
       .filter((id) => savedSet.has(id));
 
-    shopifyLocationDraftSelection = new Set(
-      validSaved.length ? validSaved : locations.map((location) => location.id)
-    );
+    shopifyLocationDraftSelection = new Set(validSaved);
     populateShopifySettingsForm();
     setShopifySettingsStatus("", { toast: false });
   } catch (error) {
@@ -5003,6 +5148,9 @@ async function openShopifySettingsModal() {
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
+    );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
     );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     populateShopifySettingsForm();
@@ -5032,14 +5180,14 @@ async function saveShopifySettings() {
     return;
   }
   const draftSettings = getShopifyDraftImportSettings();
-  if (!draftSettings.selectedFinancialStatuses.length) {
-    setShopifySettingsStatus(tr("Select at least one Shopify status to import."), {
+  if (!draftSettings.selectedFulfillmentStatuses.length) {
+    setShopifySettingsStatus(tr("Select at least one Shopify fulfillment status to import."), {
       kind: "error",
     });
     return;
   }
-  if (!draftSettings.selectedLocationIds.length) {
-    setShopifySettingsStatus(tr("Select at least one Shopify fulfillment location."), {
+  if (!draftSettings.selectedFinancialStatuses.length) {
+    setShopifySettingsStatus(tr("Select at least one Shopify status to import."), {
       kind: "error",
     });
     return;
@@ -5051,6 +5199,9 @@ async function saveShopifySettings() {
     shopifyLocationDraftSelection = new Set(shopifySavedImportSettings.selectedLocationIds);
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
+    );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
     );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     populateShopifySettingsForm();
@@ -5102,6 +5253,9 @@ async function disconnectShopify() {
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
+    );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
     );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     clearPendingShopifySettings();
@@ -9188,16 +9342,96 @@ function renderWixStatusOptions() {
   }
 }
 
+function getProviderLocationMeta(location) {
+  const city = String(location?.city || "").trim();
+  const region = String(location?.region || "").trim();
+  const country = String(location?.country || "").trim();
+  return [city, region, country].filter(Boolean).join(", ");
+}
+
+function renderProviderLocationRows({
+  locations,
+  selectedIds,
+  listEl,
+  summaryEl,
+  busy,
+  allTitle,
+  allMeta,
+}) {
+  if (!listEl || !summaryEl) return;
+  const safeLocations = Array.isArray(locations) ? locations : [];
+  const selectedSet = new Set(normalizeShopifyLocationIdList(Array.from(selectedIds || [])));
+  summaryEl.textContent = getShopifySelectedLocationSummary(safeLocations, Array.from(selectedSet));
+  listEl.innerHTML = "";
+
+  if (!safeLocations.length) {
+    const empty = document.createElement("div");
+    empty.className = "shopify-location-empty";
+    empty.textContent = tr("No locations available");
+    listEl.appendChild(empty);
+    return;
+  }
+
+  const allRow = document.createElement("button");
+  allRow.type = "button";
+  const allChecked = selectedSet.size === safeLocations.length;
+  allRow.className = `shopify-location-row${allChecked ? " is-selected" : ""}`;
+  allRow.dataset.role = "all";
+  allRow.disabled = busy;
+  allRow.setAttribute("aria-pressed", allChecked ? "true" : "false");
+  allRow.innerHTML = `
+      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
+      <div>
+        <div class="shopify-location-item-title">${escapeHtml(allTitle)}</div>
+        <div class="shopify-location-item-meta">${escapeHtml(allMeta)}</div>
+      </div>
+  `;
+  listEl.appendChild(allRow);
+
+  safeLocations.forEach((location) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    const isChecked = selectedSet.has(location.id);
+    row.className = `shopify-location-row${isChecked ? " is-selected" : ""}`;
+    row.dataset.locationId = location.id;
+    row.disabled = busy;
+    row.setAttribute("aria-pressed", isChecked ? "true" : "false");
+    const meta = getProviderLocationMeta(location);
+    row.innerHTML = `
+      <span class="shopify-location-check" aria-hidden="true"><span class="shopify-location-check-fill"></span></span>
+      <div>
+        <div class="shopify-location-item-title">${escapeHtml(location.name)}</div>
+        <div class="shopify-location-item-meta">${escapeHtml(meta || tr("No address details"))}</div>
+      </div>
+    `;
+    listEl.appendChild(row);
+  });
+}
+
+function renderWixSettingsLocations() {
+  renderProviderLocationRows({
+    locations: wixLocationsCache,
+    selectedIds: wixLocationDraftSelection,
+    listEl: wixLocationsList,
+    summaryEl: wixLocationsSummary,
+    busy: wixSettingsBusy,
+    allTitle: tr("All Business Locations"),
+    allMeta: tr("Mirror Wix business-location routing"),
+  });
+}
+
 function renderWixConnectionSummary() {
   renderWixSettingsState();
   renderWixDisconnectAction();
 }
 
 function populateWixSettingsForm() {
+  wixLocationDraftSelection = new Set(wixSavedImportSettings.selectedLocationIds);
   wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
   wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
   renderWixConnectionSummary();
   renderWixStatusOptions();
+  renderWixSettingsLocations();
   if (!wixSettingsBusy) {
     setWixSettingsBusy(false);
   }
@@ -9205,6 +9439,7 @@ function populateWixSettingsForm() {
 
 function getWixDraftImportSettings() {
   return normalizeWixImportSettings({
+    selectedLocationIds: Array.from(wixLocationDraftSelection),
     selectedStatuses: Array.from(wixStatusDraftSelection),
     autoRefreshEnabled: wixAutoRefreshDraft,
   });
@@ -9226,6 +9461,7 @@ function setWixSettingsBusy(isBusy, options = {}) {
   }
   renderWixSettingsState();
   renderWixStatusOptions();
+  renderWixSettingsLocations();
   renderWixDisconnectAction();
 }
 
@@ -9442,6 +9678,9 @@ async function loadShopifyConnectionStatus(options = {}) {
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
     );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     clearPendingShopifySettings();
     if (shopifyStoreUrlInput) {
@@ -9472,6 +9711,9 @@ async function loadShopifyConnectionStatus(options = {}) {
     shopifySavedImportSettings = normalizeShopifyImportSettings(null);
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
+    );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
     );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     syncShopifyAutoRefreshState();
@@ -9613,20 +9855,21 @@ async function consumeShopifyCallbackParams() {
     if (connection?.shop && pendingSettings) {
       try {
         const locations = await fetchShopifyLocations(connection.shop);
-        const selectedLocationIds = locations.map((location) => location.id);
-        if (selectedLocationIds.length) {
-          shopifySavedImportSettings = await saveShopifySavedSettings(connection.shop, {
-            selectedLocationIds,
-            selectedFinancialStatuses: pendingSettings.selectedFinancialStatuses,
-            autoRefreshEnabled: pendingSettings.autoRefreshEnabled,
-          });
-          shopifyLocationsCache = locations;
-          shopifyLocationDraftSelection = new Set(shopifySavedImportSettings.selectedLocationIds);
-          shopifyFinancialStatusDraftSelection = new Set(
-            shopifySavedImportSettings.selectedFinancialStatuses
-          );
-          shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
-        }
+        shopifySavedImportSettings = await saveShopifySavedSettings(connection.shop, {
+          selectedLocationIds: pendingSettings.selectedLocationIds,
+          selectedFinancialStatuses: pendingSettings.selectedFinancialStatuses,
+          selectedFulfillmentStatuses: pendingSettings.selectedFulfillmentStatuses,
+          autoRefreshEnabled: pendingSettings.autoRefreshEnabled,
+        });
+        shopifyLocationsCache = locations;
+        shopifyLocationDraftSelection = new Set(shopifySavedImportSettings.selectedLocationIds);
+        shopifyFinancialStatusDraftSelection = new Set(
+          shopifySavedImportSettings.selectedFinancialStatuses
+        );
+        shopifyFulfillmentStatusDraftSelection = new Set(
+          shopifySavedImportSettings.selectedFulfillmentStatuses
+        );
+        shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
       } catch (_error) {
       } finally {
         clearPendingShopifySettings();
@@ -10065,17 +10308,31 @@ async function openWixSettingsModal() {
   populateWixSettingsForm();
   setWixSettingsStatus("", { toast: false });
   if (!wixConnection?.instanceId) {
+    wixLocationsCache = [];
+    wixLocationDraftSelection = new Set();
+    renderWixSettingsLocations();
     return;
   }
   setWixSettingsBusy(true, { mode: "loading" });
   setWixSettingsStatus(tr("Loading Wix connection..."), { toast: false });
   try {
     await loadWixConnectionStatus({ quiet: true });
-    wixSavedImportSettings = await fetchWixSavedSettings(wixConnection?.instanceId);
+    const [savedSettings, locations] = await Promise.all([
+      fetchWixSavedSettings(wixConnection?.instanceId),
+      fetchWixBusinessLocations(wixConnection?.instanceId),
+    ]);
+    wixSavedImportSettings = savedSettings;
+    wixLocationsCache = locations;
+    const savedSet = new Set(savedSettings.selectedLocationIds);
+    wixLocationDraftSelection = new Set(
+      locations.map((location) => location.id).filter((id) => savedSet.has(id))
+    );
     populateWixSettingsForm();
     setWixSettingsStatus("", { toast: false });
   } catch (_error) {
     wixSavedImportSettings = normalizeWixImportSettings(null);
+    wixLocationsCache = [];
+    wixLocationDraftSelection = new Set();
     populateWixSettingsForm();
     setWixSettingsStatus(tr("Could not load Wix settings."), { kind: "error" });
   } finally {
@@ -10095,7 +10352,7 @@ async function beginWixInstall() {
   }
   const draftSettings = getWixDraftImportSettings();
   if (!draftSettings.selectedStatuses.length) {
-    setWixSettingsStatus(tr("Select at least one Wix status to import."), { kind: "error" });
+    setWixSettingsStatus(tr("Select at least one Wix fulfillment status to import."), { kind: "error" });
     return;
   }
   persistPendingWixSettings(draftSettings);
@@ -10130,15 +10387,17 @@ async function saveWixSettings() {
   }
   const draftSettings = getWixDraftImportSettings();
   if (!draftSettings.selectedStatuses.length) {
-    setWixSettingsStatus(tr("Select at least one Wix status to import."), { kind: "error" });
+    setWixSettingsStatus(tr("Select at least one Wix fulfillment status to import."), { kind: "error" });
     return;
   }
   setWixSettingsBusy(true, { mode: "save" });
   try {
     wixSavedImportSettings = await saveWixSavedSettings(wixConnection.instanceId, draftSettings);
+    wixLocationDraftSelection = new Set(wixSavedImportSettings.selectedLocationIds);
     wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
     wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
     renderWixStatusOptions();
+    renderWixSettingsLocations();
     setProviderStatus(tr("Wix settings updated."), { kind: "success" });
     setWixSettingsStatus(tr("Settings saved."), { kind: "success" });
     window.setTimeout(() => {
@@ -10547,6 +10806,9 @@ async function importShopifyOrders(shop, options = {}) {
       shopifyFinancialStatusDraftSelection = new Set(
         shopifySavedImportSettings.selectedFinancialStatuses
       );
+      shopifyFulfillmentStatusDraftSelection = new Set(
+        shopifySavedImportSettings.selectedFulfillmentStatuses
+      );
       shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
       syncShopifyAutoRefreshState();
       updateShopifyProviderStatus();
@@ -10677,6 +10939,7 @@ async function importWixOrders(instanceId = wixConnection?.instanceId, options =
       }),
     });
     wixSavedImportSettings = normalizeWixImportSettings(data?.settings);
+    wixLocationDraftSelection = new Set(wixSavedImportSettings.selectedLocationIds);
     wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
     wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
     const rows = mapWixImportRows(data?.rows);
@@ -10703,6 +10966,7 @@ async function importWixOrders(instanceId = wixConnection?.instanceId, options =
     if (isWixReconnectError(message)) {
       wixConnection = null;
       wixSavedImportSettings = normalizeWixImportSettings(null);
+      wixLocationDraftSelection = new Set(wixSavedImportSettings.selectedLocationIds);
       wixStatusDraftSelection = new Set(wixSavedImportSettings.selectedStatuses);
       wixAutoRefreshDraft = Boolean(wixSavedImportSettings.autoRefreshEnabled);
       updateWixProviderStatus();
@@ -26923,6 +27187,29 @@ if (wixStatusesList) {
   });
 }
 
+if (wixLocationsList) {
+  wixLocationsList.addEventListener("click", (event) => {
+    const row = event.target?.closest?.(".shopify-location-row");
+    if (!row || !wixLocationsList.contains(row) || wixSettingsBusy) return;
+    if (row.dataset.role === "all") {
+      const shouldSelectAll = !row.classList.contains("is-selected");
+      wixLocationDraftSelection = shouldSelectAll
+        ? new Set(wixLocationsCache.map((location) => location.id))
+        : new Set();
+      renderWixSettingsLocations();
+      return;
+    }
+    const locationId = normalizeShopifyLocationId(row.dataset.locationId);
+    if (!locationId) return;
+    if (wixLocationDraftSelection.size === 1 && wixLocationDraftSelection.has(locationId)) {
+      wixLocationDraftSelection.delete(locationId);
+    } else {
+      wixLocationDraftSelection = new Set([locationId]);
+    }
+    renderWixSettingsLocations();
+  });
+}
+
 if (wixAutoRefreshInput) {
   wixAutoRefreshInput.addEventListener("change", () => {
     wixAutoRefreshDraft = Boolean(wixAutoRefreshInput.checked);
@@ -27012,6 +27299,21 @@ if (shopifyStatusesList) {
   });
 }
 
+if (shopifyFulfillmentStatusesList) {
+  shopifyFulfillmentStatusesList.addEventListener("click", (event) => {
+    const row = event.target?.closest?.(".shopify-fulfillment-status-row");
+    if (!row || !shopifyFulfillmentStatusesList.contains(row) || shopifySettingsBusy) return;
+    const status = normalizeShopifyFulfillmentStatus(row.dataset.status);
+    if (!status) return;
+    if (shopifyFulfillmentStatusDraftSelection.has(status)) {
+      shopifyFulfillmentStatusDraftSelection.delete(status);
+    } else {
+      shopifyFulfillmentStatusDraftSelection.add(status);
+    }
+    renderShopifyFulfillmentStatusOptions();
+  });
+}
+
 if (shopifyLocationsList) {
   shopifyLocationsList.addEventListener("click", (event) => {
     const row = event.target?.closest?.(".shopify-location-row");
@@ -27030,10 +27332,10 @@ if (shopifyLocationsList) {
     }
     const locationId = normalizeShopifyLocationId(row.dataset.locationId);
     if (!locationId) return;
-    if (shopifyLocationDraftSelection.has(locationId)) {
+    if (shopifyLocationDraftSelection.size === 1 && shopifyLocationDraftSelection.has(locationId)) {
       shopifyLocationDraftSelection.delete(locationId);
     } else {
-      shopifyLocationDraftSelection.add(locationId);
+      shopifyLocationDraftSelection = new Set([locationId]);
     }
     renderShopifySettingsLocations();
   });

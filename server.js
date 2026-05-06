@@ -69,8 +69,20 @@ const SHOPIFY_FINANCIAL_STATUS_OPTIONS = Object.freeze([
 ]);
 const DEFAULT_SHOPIFY_FINANCIAL_STATUS = "paid";
 const DEFAULT_SHOPIFY_FINANCIAL_STATUSES = Object.freeze([DEFAULT_SHOPIFY_FINANCIAL_STATUS]);
-const WIX_IMPORT_STATUS_OPTIONS = Object.freeze(["PENDING", "APPROVED", "CANCELED", "REJECTED"]);
-const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["APPROVED"]);
+const SHOPIFY_FULFILLMENT_STATUS_OPTIONS = Object.freeze([
+  "unfulfilled",
+  "unshipped",
+  "partial",
+  "shipped",
+]);
+const DEFAULT_SHOPIFY_FULFILLMENT_STATUSES = Object.freeze(["unfulfilled"]);
+const WIX_APPROVED_ORDER_STATUS = "APPROVED";
+const WIX_FULFILLMENT_STATUS_OPTIONS = Object.freeze([
+  "NOT_FULFILLED",
+  "PARTIALLY_FULFILLED",
+  "FULFILLED",
+]);
+const DEFAULT_WIX_IMPORT_STATUSES = Object.freeze(["NOT_FULFILLED"]);
 const WOOCOMMERCE_APP_NAME = String(process.env.WOOCOMMERCE_APP_NAME || "Shipide").trim() || "Shipide";
 const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
   "pending",
@@ -11119,8 +11131,28 @@ function normalizeShopifyFinancialStatuses(values) {
   return Array.from(seen);
 }
 
+function normalizeShopifyFulfillmentStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return SHOPIFY_FULFILLMENT_STATUS_OPTIONS.includes(normalized) ? normalized : "";
+}
+
+function normalizeShopifyFulfillmentStatuses(values) {
+  const rawValues = Array.isArray(values)
+    ? values
+    : values == null || values === ""
+      ? []
+      : [values];
+  const seen = new Set();
+  rawValues.forEach((value) => {
+    const normalized = normalizeShopifyFulfillmentStatus(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+  });
+  return Array.from(seen);
+}
+
 function normalizeWixImportStatuses(values) {
-  const allowed = new Set(WIX_IMPORT_STATUS_OPTIONS);
+  const allowed = new Set(WIX_FULFILLMENT_STATUS_OPTIONS);
   const seen = new Set();
   if (!Array.isArray(values)) {
     return [];
@@ -11138,10 +11170,12 @@ function normalizeWixImportStatuses(values) {
 function getWixImportSettings(importSettings) {
   if (!importSettings || typeof importSettings !== "object") {
     return {
+      selectedLocationIds: [],
       selectedStatuses: [...DEFAULT_WIX_IMPORT_STATUSES],
       autoRefreshEnabled: false,
     };
   }
+  const selectedLocationIds = getSelectedLocationIdsFromImportSettings(importSettings);
   const selectedStatuses = normalizeWixImportStatuses(
     Array.isArray(importSettings.selected_statuses)
       ? importSettings.selected_statuses
@@ -11150,6 +11184,7 @@ function getWixImportSettings(importSettings) {
         : []
   );
   return {
+    selectedLocationIds,
     selectedStatuses: selectedStatuses.length
       ? selectedStatuses
       : [...DEFAULT_WIX_IMPORT_STATUSES],
@@ -11164,6 +11199,7 @@ function getShopifyImportSettings(importSettings) {
     return {
       selectedLocationIds: [],
       selectedFinancialStatuses: [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
+      selectedFulfillmentStatuses: [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES],
       autoRefreshEnabled: false,
     };
   }
@@ -11175,12 +11211,22 @@ function getShopifyImportSettings(importSettings) {
         ? importSettings.selectedFinancialStatuses
         : importSettings.financial_status ?? importSettings.financialStatus
   );
+  const selectedFulfillmentStatuses = normalizeShopifyFulfillmentStatuses(
+    Array.isArray(importSettings.selected_fulfillment_statuses)
+      ? importSettings.selected_fulfillment_statuses
+      : Array.isArray(importSettings.selectedFulfillmentStatuses)
+        ? importSettings.selectedFulfillmentStatuses
+        : importSettings.fulfillment_status ?? importSettings.fulfillmentStatus
+  );
 
   return {
     selectedLocationIds: getSelectedLocationIdsFromImportSettings(importSettings),
     selectedFinancialStatuses: selectedFinancialStatuses.length
       ? selectedFinancialStatuses
       : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES],
+    selectedFulfillmentStatuses: selectedFulfillmentStatuses.length
+      ? selectedFulfillmentStatuses
+      : [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES],
     autoRefreshEnabled: normalizeWooCommerceAutoRefreshEnabled(
       importSettings.auto_refresh_enabled ?? importSettings.autoRefreshEnabled
     ),
@@ -11243,12 +11289,17 @@ async function saveShopifyImportSettings(
   shop,
   selectedLocationIds,
   selectedFinancialStatuses,
+  selectedFulfillmentStatuses,
   autoRefreshEnabled
 ) {
   const normalizedFinancialStatuses = normalizeShopifyFinancialStatuses(selectedFinancialStatuses);
   const resolvedFinancialStatuses = normalizedFinancialStatuses.length
     ? normalizedFinancialStatuses
     : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES];
+  const normalizedFulfillmentStatuses = normalizeShopifyFulfillmentStatuses(selectedFulfillmentStatuses);
+  const resolvedFulfillmentStatuses = normalizedFulfillmentStatuses.length
+    ? normalizedFulfillmentStatuses
+    : [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES];
   const params = new URLSearchParams();
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
@@ -11267,7 +11318,10 @@ async function saveShopifyImportSettings(
         import_settings: {
           selected_location_ids: sanitizeSelectedLocationIds(selectedLocationIds),
           selected_financial_statuses: resolvedFinancialStatuses,
+          selected_fulfillment_statuses: resolvedFulfillmentStatuses,
           financial_status: resolvedFinancialStatuses[0] || DEFAULT_SHOPIFY_FINANCIAL_STATUS,
+          fulfillment_status:
+            resolvedFulfillmentStatuses[0] || DEFAULT_SHOPIFY_FULFILLMENT_STATUSES[0],
           auto_refresh_enabled: normalizeWooCommerceAutoRefreshEnabled(autoRefreshEnabled),
         },
         updated_at: new Date().toISOString(),
@@ -11294,6 +11348,7 @@ async function saveShopifyImportSettings(
 async function saveWixImportSettings(
   userId,
   instanceId,
+  selectedLocationIds,
   selectedStatuses,
   autoRefreshEnabled
 ) {
@@ -11313,6 +11368,7 @@ async function saveWixImportSettings(
       },
       body: JSON.stringify({
         import_settings: {
+          selected_location_ids: sanitizeSelectedLocationIds(selectedLocationIds),
           selected_statuses: normalizeWixImportStatuses(selectedStatuses),
           auto_refresh_enabled: Boolean(autoRefreshEnabled),
         },
@@ -11945,20 +12001,32 @@ async function fetchShopifyLocations(shop, accessToken) {
     .filter((location) => location.id && location.name);
 }
 
-async function fetchShopifyOrders(shop, accessToken, limit, selectedFinancialStatuses) {
+async function fetchShopifyOrders(
+  shop,
+  accessToken,
+  limit,
+  selectedFinancialStatuses,
+  selectedFulfillmentStatuses
+) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(250, Math.trunc(limit))) : 50;
   const normalizedFinancialStatuses = normalizeShopifyFinancialStatuses(selectedFinancialStatuses);
   const resolvedFinancialStatuses = normalizedFinancialStatuses.length
     ? normalizedFinancialStatuses
     : [...DEFAULT_SHOPIFY_FINANCIAL_STATUSES];
+  const normalizedFulfillmentStatuses = normalizeShopifyFulfillmentStatuses(selectedFulfillmentStatuses);
+  const resolvedFulfillmentStatuses = normalizedFulfillmentStatuses.length
+    ? normalizedFulfillmentStatuses
+    : [...DEFAULT_SHOPIFY_FULFILLMENT_STATUSES];
   const ordersById = new Map();
 
   await Promise.all(
-    resolvedFinancialStatuses.map(async (financialStatus) => {
+    resolvedFinancialStatuses.flatMap((financialStatus) =>
+      resolvedFulfillmentStatuses.map(async (fulfillmentStatus) => {
       const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
       url.searchParams.set("status", "open");
       url.searchParams.set("limit", String(safeLimit));
       url.searchParams.set("financial_status", financialStatus);
+      url.searchParams.set("fulfillment_status", fulfillmentStatus);
       url.searchParams.set(
         "fields",
         "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments,email,customer"
@@ -11985,7 +12053,7 @@ async function fetchShopifyOrders(shop, accessToken, limit, selectedFinancialSta
         }
         ordersById.set(orderId, order);
       });
-    })
+    }))
   );
 
   return Array.from(ordersById.values())
@@ -12082,7 +12150,12 @@ async function fetchWooCommerceStoreSenderOrigin(storeUrl, consumerKey, consumer
 
 function normalizeWixOrderStatus(value) {
   const normalized = String(value || "").trim().toUpperCase();
-  return WIX_IMPORT_STATUS_OPTIONS.includes(normalized) ? normalized : "";
+  return normalized;
+}
+
+function normalizeWixFulfillmentStatus(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return WIX_FULFILLMENT_STATUS_OPTIONS.includes(normalized) ? normalized : "";
 }
 
 function normalizeWixWeightUnit(value) {
@@ -12207,7 +12280,8 @@ async function fetchWixOrders(accessToken, limit, selectedStatuses = []) {
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 50;
   const normalizedStatuses = normalizeWixImportStatuses(selectedStatuses);
   const filter = {
-    status: {
+    status: { $in: [WIX_APPROVED_ORDER_STATUS] },
+    fulfillmentStatus: {
       $in: normalizedStatuses.length ? normalizedStatuses : [...DEFAULT_WIX_IMPORT_STATUSES],
     },
   };
@@ -12686,6 +12760,7 @@ function formatWixStreet(address) {
 function mapWixOrdersToCsvRows(orders, options = {}) {
   const {
     selectedStatuses = [],
+    selectedLocationIds = [],
     weightByLineItemKey = {},
     locationById = {},
     instanceId = "",
@@ -12695,11 +12770,16 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
   const allowedStatuses = new Set(
     normalizedStatuses.length ? normalizedStatuses : DEFAULT_WIX_IMPORT_STATUSES
   );
+  const selectedLocationSet = new Set(sanitizeSelectedLocationIds(selectedLocationIds));
+  const singleOverrideLocationId =
+    selectedLocationSet.size === 1 ? selectedLocationSet.values().next().value : "";
+  const mirrorBusinessLocations = selectedLocationSet.size > 1;
   const importedAt = new Date().toISOString();
   return (Array.isArray(orders) ? orders : [])
     .filter((order) => {
-      const status = normalizeWixOrderStatus(order?.status);
-      return !status || allowedStatuses.has(status);
+      const orderStatus = normalizeWixOrderStatus(order?.status);
+      const fulfillmentStatus = normalizeWixFulfillmentStatus(order?.fulfillmentStatus);
+      return orderStatus === WIX_APPROVED_ORDER_STATUS && allowedStatuses.has(fulfillmentStatus);
     })
     .map((order) => {
       const address = getWixOrderShippingAddress(order);
@@ -12714,18 +12794,28 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
       const businessLocationId = getWixOrderBusinessLocationId(order);
       const embeddedBusinessLocation = getWixOrderBusinessLocation(order);
       const indexedBusinessLocation = businessLocationId ? locationById[businessLocationId] : null;
-      const businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
+      let businessLocation = null;
+      if (singleOverrideLocationId) {
+        businessLocation = locationById[singleOverrideLocationId] || null;
+      } else if (
+        mirrorBusinessLocations &&
+        (!businessLocationId || selectedLocationSet.has(businessLocationId))
+      ) {
+        businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
+      }
       const sender = mapWixLocationToSender(businessLocation);
       const hasBusinessLocationOrigin = Boolean(
         [sender.senderName, sender.senderStreet, sender.senderCity, sender.senderZip].some(Boolean)
       );
-      const businessLocationSource = embeddedBusinessLocation
-        ? "order"
-        : indexedBusinessLocation
-          ? "locations-api"
-          : businessLocationId
-            ? "unmatched-id"
-            : "missing";
+      const businessLocationSource = singleOverrideLocationId
+        ? "settings-override"
+        : embeddedBusinessLocation && businessLocation
+          ? "order"
+          : indexedBusinessLocation && businessLocation
+            ? "locations-api"
+            : businessLocationId
+              ? "unmatched-id"
+              : "missing";
       return {
         senderName: sender.senderName,
         senderStreet: sender.senderStreet,
@@ -15382,6 +15472,49 @@ async function handleWixSettingsGet(req, res, requestUrl) {
   }
 }
 
+function mapWixLocationForClient(location) {
+  const id = normalizeLocationId(
+    location?.id || location?._id || location?.locationId || location?.businessLocationId
+  );
+  const sender = mapWixLocationToSender(location);
+  return {
+    id,
+    name: sender.senderName || id,
+    city: sender.senderCity,
+    region: sender.senderState,
+    country: getWixAddressValue(getWixLocationAddress(location), ["country", "countryCode"]),
+    street: sender.senderStreet,
+    postalCode: sender.senderZip,
+  };
+}
+
+async function handleWixLocations(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  const requestedInstanceId = String(requestUrl.searchParams.get("instanceId") || "").trim();
+  try {
+    const connection = await getWixConnection(user.id, requestedInstanceId, {
+      includeAccessToken: true,
+    });
+    if (!connection) {
+      sendJson(res, 404, { error: "Wix is not connected for this account." });
+      return;
+    }
+    const stored = parseStoredWixConnection(connection.access_token);
+    const instanceId = String(stored?.instanceId || connection.shop_domain || "").trim();
+    const accessToken = await createWixAccessToken(instanceId);
+    const locations = (await fetchWixLocations(accessToken))
+      .map(mapWixLocationForClient)
+      .filter((location) => location.id && location.name);
+    sendJson(res, 200, { instanceId: connection.shop_domain, locations });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Failed to load Wix business locations." });
+  }
+}
+
 async function handleWixSettingsPost(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -15398,10 +15531,11 @@ async function handleWixSettingsPost(req, res) {
   }
 
   const requestedInstanceId = String(body?.instanceId || "").trim();
+  const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
   const selectedStatuses = normalizeWixImportStatuses(body?.selectedStatuses);
   const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
   if (!selectedStatuses.length) {
-    sendJson(res, 400, { error: "Select at least one Wix status to import." });
+    sendJson(res, 400, { error: "Select at least one Wix fulfillment status to import." });
     return;
   }
 
@@ -15416,6 +15550,7 @@ async function handleWixSettingsPost(req, res) {
     await saveWixImportSettings(
       user.id,
       connection.shop_domain,
+      selectedLocationIds,
       selectedStatuses,
       autoRefreshEnabled
     );
@@ -15423,6 +15558,7 @@ async function handleWixSettingsPost(req, res) {
       instanceId: connection.shop_domain,
       settings: {
         selectedStatuses,
+        selectedLocationIds,
         autoRefreshEnabled,
       },
     });
@@ -15485,6 +15621,7 @@ async function handleWixImportOrders(req, res) {
     const limit = Number(body?.limit);
     let connection = null;
     let settings = {
+      selectedLocationIds: [],
       selectedStatuses: [...DEFAULT_WIX_IMPORT_STATUSES],
       autoRefreshEnabled: false,
     };
@@ -15511,6 +15648,10 @@ async function handleWixImportOrders(req, res) {
     connectionInstanceId = String(connection.shop_domain || requestedInstanceId || "").trim();
     const stored = parseStoredWixConnection(connection.access_token);
     const instanceId = String(stored?.instanceId || connectionInstanceId || "").trim();
+    const selectedLocationIds = sanitizeSelectedLocationIds(body?.selectedLocationIds);
+    const resolvedSelectedLocationIds = selectedLocationIds.length
+      ? selectedLocationIds
+      : settings.selectedLocationIds;
     const selectedStatuses = requestedStatuses.length ? requestedStatuses : settings.selectedStatuses;
     const accessToken = await createWixAccessToken(instanceId);
     const [orders, locations] = await Promise.all([
@@ -15521,6 +15662,7 @@ async function handleWixImportOrders(req, res) {
     const lineItemWeights = await fetchWixLineItemWeights(accessToken, orders);
     const rows = mapWixOrdersToCsvRows(orders, {
       selectedStatuses,
+      selectedLocationIds: resolvedSelectedLocationIds,
       weightByLineItemKey: lineItemWeights,
       locationById,
       instanceId,
@@ -15533,6 +15675,7 @@ async function handleWixImportOrders(req, res) {
       rows,
       settings: {
         selectedStatuses,
+        selectedLocationIds: settings.selectedLocationIds,
         autoRefreshEnabled: settings.autoRefreshEnabled,
       },
     });
@@ -16500,13 +16643,18 @@ async function handleShopifySettingsPost(req, res) {
       ? body.selectedFinancialStatuses
       : body?.financialStatus
   );
+  const selectedFulfillmentStatuses = normalizeShopifyFulfillmentStatuses(
+    Array.isArray(body?.selectedFulfillmentStatuses)
+      ? body.selectedFulfillmentStatuses
+      : body?.fulfillmentStatus
+  );
   const autoRefreshEnabled = normalizeWooCommerceAutoRefreshEnabled(body?.autoRefreshEnabled);
-  if (!selectedLocationIds.length) {
-    sendJson(res, 400, { error: "Select at least one fulfillment location." });
-    return;
-  }
   if (!selectedFinancialStatuses.length) {
     sendJson(res, 400, { error: "Select at least one Shopify status to import." });
+    return;
+  }
+  if (!selectedFulfillmentStatuses.length) {
+    sendJson(res, 400, { error: "Select at least one Shopify fulfillment status to import." });
     return;
   }
 
@@ -16523,6 +16671,7 @@ async function handleShopifySettingsPost(req, res) {
       connection.shop_domain,
       selectedLocationIds,
       selectedFinancialStatuses,
+      selectedFulfillmentStatuses,
       autoRefreshEnabled
     );
     sendJson(res, 200, {
@@ -16530,6 +16679,7 @@ async function handleShopifySettingsPost(req, res) {
       settings: {
         selectedLocationIds,
         selectedFinancialStatuses,
+        selectedFulfillmentStatuses,
         autoRefreshEnabled,
       },
     });
@@ -16600,6 +16750,11 @@ async function handleShopifyImportOrders(req, res) {
       ? body.selectedFinancialStatuses
       : body?.financialStatus
   );
+  const requestedFulfillmentStatuses = normalizeShopifyFulfillmentStatuses(
+    Array.isArray(body?.selectedFulfillmentStatuses)
+      ? body.selectedFulfillmentStatuses
+      : body?.fulfillmentStatus
+  );
   const limit = Number(body?.limit);
   let resolvedShop = requestedShop;
 
@@ -16616,21 +16771,22 @@ async function handleShopifyImportOrders(req, res) {
     const locations = await fetchShopifyLocations(connection.shop_domain, accessToken);
     const savedSettings = getShopifyImportSettings(connection.import_settings);
     const savedSelectedLocationIds = savedSettings.selectedLocationIds;
-    let resolvedSelectedLocationIds = selectedLocationIds.length
+    const resolvedSelectedLocationIds = selectedLocationIds.length
       ? selectedLocationIds
       : savedSelectedLocationIds;
-    if (!resolvedSelectedLocationIds.length) {
-      resolvedSelectedLocationIds = locations.map((location) => location.id);
-    }
     const locationById = indexLocationsById(locations);
     const resolvedFinancialStatuses = requestedFinancialStatuses.length
       ? requestedFinancialStatuses
       : savedSettings.selectedFinancialStatuses;
+    const resolvedFulfillmentStatuses = requestedFulfillmentStatuses.length
+      ? requestedFulfillmentStatuses
+      : savedSettings.selectedFulfillmentStatuses;
     const orders = await fetchShopifyOrders(
       connection.shop_domain,
       accessToken,
       limit,
-      resolvedFinancialStatuses
+      resolvedFinancialStatuses,
+      resolvedFulfillmentStatuses
     );
     const rows = mapShopifyOrdersToCsvRows(orders, {
       locationById,
@@ -16643,6 +16799,7 @@ async function handleShopifyImportOrders(req, res) {
       settings: {
         selectedLocationIds: savedSettings.selectedLocationIds,
         selectedFinancialStatuses: savedSettings.selectedFinancialStatuses,
+        selectedFulfillmentStatuses: savedSettings.selectedFulfillmentStatuses,
         autoRefreshEnabled: savedSettings.autoRefreshEnabled,
       },
       rows,
@@ -16944,6 +17101,10 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/wix/import-orders" && req.method === "POST") {
     await handleWixImportOrders(req, res);
+    return true;
+  }
+  if (pathname === "/api/wix/locations" && req.method === "GET") {
+    await handleWixLocations(req, res, requestUrl);
     return true;
   }
   if (

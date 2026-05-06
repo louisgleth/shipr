@@ -2695,10 +2695,23 @@
           </div>
           <div class="shopify-locations-picker woocommerce-statuses-picker">
             <div class="shopify-locations-head">
-              <span>Select statuses to import</span>
+              <span>Select fulfillment statuses to import</span>
               <span class="mono" id="wixStatusesSummary">1 selected</span>
             </div>
             <div class="shopify-locations-list woocommerce-statuses-list" id="wixStatusesList"></div>
+          </div>
+          <div id="wixLocationsSection">
+            <h3>Select Business Locations</h3>
+            <p class="shopify-settings-note">
+              Select one business location to override imported orders. Select all locations to mirror Wix business-location routing. Select none to use the ship-from selector below the table.
+            </p>
+            <div class="shopify-locations-picker">
+              <div class="shopify-locations-head">
+                <span>Business Locations</span>
+                <span class="mono" id="wixLocationsSummary">Loading locations...</span>
+              </div>
+              <div class="shopify-locations-list" id="wixLocationsList"></div>
+            </div>
           </div>
           <label class="woocommerce-settings-toggle" for="wixAutoRefresh">
             <input type="checkbox" id="wixAutoRefresh" />
@@ -2820,7 +2833,15 @@
           </div>
           <div class="shopify-locations-picker woocommerce-statuses-picker">
             <div class="shopify-locations-head">
-              <span>Select statuses to import</span>
+              <span>Select fulfillment statuses to import</span>
+              <span class="mono" id="shopifyFulfillmentStatusesSummary">1 selected</span>
+            </div>
+            <div class="shopify-locations-list woocommerce-statuses-list" id="shopifyFulfillmentStatusesList"></div>
+          </div>
+
+          <div class="shopify-locations-picker woocommerce-statuses-picker">
+            <div class="shopify-locations-head">
+              <span>Select payment statuses to import</span>
               <span class="mono" id="shopifyStatusesSummary">1 selected</span>
             </div>
             <div class="shopify-locations-list woocommerce-statuses-list" id="shopifyStatusesList"></div>
@@ -2829,7 +2850,7 @@
           <div id="shopifyLocationsSection">
             <h3>Select Fulfillment Locations</h3>
             <p class="shopify-settings-note">
-              Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing.
+              Select one location to override imported orders. Select all locations to mirror your Shopify dashboard routing. Select none to use the ship-from selector below the table.
             </p>
 
             <div class="shopify-locations-picker">

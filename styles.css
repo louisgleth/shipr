@@ -6556,6 +6556,7 @@ body.is-auth-view {
 .shopify-settings-modal {
   width: 100%;
   max-width: 640px;
+  max-height: calc(100dvh - 32px);
   background: var(--secondary);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -6564,6 +6565,7 @@ body.is-auth-view {
   gap: 14px;
   transform: translateY(0) scale(1);
   opacity: 1;
+  overflow: hidden;
   transition: transform 0.38s var(--ease-out-expo), opacity 0.32s ease;
 }
 
@@ -6575,6 +6577,9 @@ body.is-auth-view {
 .shopify-settings-body {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .shopify-settings-body h3 {
