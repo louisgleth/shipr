@@ -4956,18 +4956,12 @@ function getShopifyLocationMeta(location) {
 function renderShopifySettingsLocations() {
   if (!shopifyLocationsList || !shopifyLocationsSummary) return;
   const locations = Array.isArray(shopifyLocationsCache) ? shopifyLocationsCache : [];
-  const validIds = new Set(locations.map((location) => location.id));
-  const nextSelection = new Set();
-  shopifyLocationDraftSelection.forEach((id) => {
-    if (validIds.has(id)) {
-      nextSelection.add(id);
-    }
-  });
-  shopifyLocationDraftSelection = nextSelection;
+  const selectedIds = normalizeShopifyLocationIdList(Array.from(shopifyLocationDraftSelection));
+  const selectedSet = new Set(selectedIds);
 
   shopifyLocationsSummary.textContent = getShopifySelectedLocationSummary(
     locations,
-    Array.from(shopifyLocationDraftSelection)
+    selectedIds
   );
   shopifyLocationsList.innerHTML = "";
 
@@ -4981,7 +4975,8 @@ function renderShopifySettingsLocations() {
 
   const allRow = document.createElement("button");
   allRow.type = "button";
-  const allChecked = shopifyLocationDraftSelection.size === locations.length;
+  const allChecked =
+    locations.length > 0 && locations.every((location) => selectedSet.has(location.id));
   allRow.className = `shopify-location-row${allChecked ? " is-selected" : ""}`;
   allRow.dataset.role = "all";
   allRow.disabled = shopifySettingsBusy;
@@ -4998,7 +4993,7 @@ function renderShopifySettingsLocations() {
   locations.forEach((location) => {
     const row = document.createElement("button");
     row.type = "button";
-    const isChecked = shopifyLocationDraftSelection.has(location.id);
+    const isChecked = selectedSet.has(location.id);
     row.className = `shopify-location-row${isChecked ? " is-selected" : ""}`;
     row.dataset.locationId = location.id;
     row.disabled = shopifySettingsBusy;

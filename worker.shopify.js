@@ -20014,14 +20014,13 @@ async function handleSettingsPost(request, env) {
       selectedFulfillmentStatuses,
       autoRefreshEnabled
     );
+    const refreshedConnection = await getShopifyConnection(env, user.id, connection.shop_domain, {
+      includeSettings: true,
+    });
+    const savedSettings = getShopifyImportSettings(refreshedConnection?.import_settings);
     return jsonResponse({
       shop: connection.shop_domain,
-      settings: {
-        selectedLocationIds,
-        selectedFinancialStatuses,
-        selectedFulfillmentStatuses,
-        autoRefreshEnabled,
-      },
+      settings: savedSettings,
     });
   } catch (error) {
     if (error?.code === "missing_import_settings_column") {
