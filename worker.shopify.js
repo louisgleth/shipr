@@ -13756,6 +13756,30 @@ async function fetchWixOrders(accessToken, limit, selectedStatuses = []) {
   return orders.slice(0, safeLimit);
 }
 
+async function hydrateWixOrders(accessToken, orders = []) {
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  if (!safeOrders.length) return [];
+
+  return Promise.all(
+    safeOrders.map(async (order) => {
+      const orderId = String(order?.id || order?._id || "").trim();
+      if (!orderId) return order;
+      const payload = await fetchWixJson(
+        accessToken,
+        `/ecom/v1/orders/${encodeURIComponent(orderId)}`,
+        { method: "GET" }
+      ).catch(() => null);
+      const detailedOrder =
+        payload?.order && typeof payload.order === "object"
+          ? payload.order
+          : payload && typeof payload === "object"
+            ? payload
+            : null;
+      return detailedOrder ? { ...order, ...detailedOrder } : order;
+    })
+  );
+}
+
 async function fetchWixCatalogVersion(accessToken) {
   const payload = await fetchWixJson(accessToken, "/stores/v3/provision/version", {
     method: "GET",
@@ -14225,9 +14249,6 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
   const singleOverrideLocationId =
     selectedLocationSet.size === 1 ? selectedLocationSet.values().next().value : "";
   const mirrorBusinessLocations = selectedLocationSet.size > 1;
-  const knownLocationCount = new Set(Object.values(locationById || {})).size;
-  const allKnownLocationsSelected =
-    mirrorBusinessLocations && knownLocationCount > 0 && selectedLocationSet.size >= knownLocationCount;
   const importedAt = new Date().toISOString();
   return (Array.isArray(orders) ? orders : [])
     .filter((order) => {
@@ -14251,10 +14272,10 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
       let businessLocation = null;
       if (singleOverrideLocationId) {
         businessLocation = locationById[singleOverrideLocationId] || null;
-      } else if (mirrorBusinessLocations && businessLocationId && selectedLocationSet.has(businessLocationId)) {
-        businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
-      } else if (allKnownLocationsSelected && embeddedBusinessLocation) {
+      } else if (embeddedBusinessLocation) {
         businessLocation = embeddedBusinessLocation;
+      } else if (mirrorBusinessLocations && businessLocationId && selectedLocationSet.has(businessLocationId)) {
+        businessLocation = indexedBusinessLocation;
       }
       const sender = mapWixLocationToSender(businessLocation);
       const hasBusinessLocationOrigin = Boolean(
@@ -19033,10 +19054,11 @@ async function handleWixImportOrders(request, env) {
       : settings.selectedLocationIds;
     const selectedStatuses = requestedStatuses.length ? requestedStatuses : settings.selectedStatuses;
     const accessToken = await createWixAccessToken(env, instanceId);
-    const [orders, locations] = await Promise.all([
+    const [rawOrders, locations] = await Promise.all([
       fetchWixOrders(accessToken, limit, selectedStatuses),
       fetchWixLocations(accessToken),
     ]);
+    const orders = await hydrateWixOrders(accessToken, rawOrders);
     const locationById = indexWixLocationsById(locations);
     const lineItemWeights = await fetchWixLineItemWeights(accessToken, orders);
     const rows = mapWixOrdersToCsvRows(orders, {
