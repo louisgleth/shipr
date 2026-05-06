@@ -8854,7 +8854,7 @@ body.is-auth-view {
 }
 
 .csv-ship-from-summary.is-provider {
-  color: var(--success);
+  color: var(--muted);
 }
 
 .csv-ship-from-summary.is-fallback {

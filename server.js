@@ -11670,6 +11670,9 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
     }
 
     const sender = mapLocationToSender(locationById[senderLocationId]);
+    const hasProviderOrigin = Boolean(
+      [sender.senderName, sender.senderStreet, sender.senderCity, sender.senderZip].some(Boolean)
+    );
     const customerId = String(order?.customer?.id || "").trim();
     const customerEmail = normalizeEmail(order?.email || order?.customer?.email || "");
     const recipientCountry = String(shipping?.country_code || shipping?.country || "").trim();
@@ -11699,6 +11702,9 @@ function mapShopifyOrdersToCsvRows(orders, options = {}) {
         customerId,
         customerEmail,
         importedAt,
+        originSource: hasProviderOrigin ? "shopify-location" : "shipide-fallback",
+        providerOrigin: hasProviderOrigin,
+        businessLocationId: senderLocationId,
       },
     };
   });

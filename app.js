@@ -12908,30 +12908,38 @@ function rowHasProviderSenderOrigin(row) {
   return Boolean(row?.shipideSource?.providerOrigin);
 }
 
+function rowHasSenderValues(row) {
+  if (!row || typeof row !== "object") return false;
+  return ["senderName", "senderStreet", "senderCity", "senderState", "senderZip"].some((key) =>
+    String(row[key] || "").trim()
+  );
+}
+
+function formatSenderAddressFromParts({ street = "", city = "", state = "", zip = "" } = {}) {
+  return [street, formatCityRegionPostal(city, state, zip)]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 function getRowSenderSummary(row) {
   if (!row || typeof row !== "object") return "";
-  const source = String(row?.shipideSource?.originSource || "").trim();
-  const sourceLabel =
-    source === "wix-business-location"
-      ? "Wix"
-      : source === "shopify-location"
-        ? "Shopify"
-        : source === "woocommerce-store"
-          ? "WooCommerce"
-          : "";
-  const parts = [
-    row.senderName,
-    row.senderStreet,
-    formatCityRegionPostal(row.senderCity, row.senderState, row.senderZip),
-  ]
-    .map((part) => String(part || "").trim())
-    .filter(Boolean);
-  if (parts.length) {
-    return [sourceLabel, parts.join(" • ")].filter(Boolean).join(": ");
+  const name = String(row.senderName || "").trim();
+  const address = formatSenderAddressFromParts({
+    street: row.senderStreet,
+    city: row.senderCity,
+    state: row.senderState,
+    zip: row.senderZip,
+  });
+  if (name || address) {
+    return [name, address].filter(Boolean).join(" • ");
   }
   const selected = getSelectedWarehouseRecord();
   const fallbackName = String(selected?.name || selected?.senderName || "").trim();
-  return fallbackName ? `${tr("Shipide fallback")}: ${fallbackName}` : tr("Choose fallback below");
+  const fallbackAddress = selected ? formatWarehouseAddressOnly(selected) : "";
+  return fallbackName || fallbackAddress
+    ? [fallbackName, fallbackAddress].filter(Boolean).join(" • ")
+    : tr("Choose fallback below");
 }
 
 function applyWarehouseSenderToRows(rows, origin) {
@@ -12953,9 +12961,7 @@ function csvRowsHaveProviderSenderOrigin(rows) {
   if (!Array.isArray(rows)) return false;
   return rows.some((row) => {
     if (!row || typeof row !== "object") return false;
-    return ["senderStreet", "senderCity", "senderState", "senderZip", "senderName"].some(
-      (key) => String(row[key] || "").trim()
-    );
+    return rowHasProviderSenderOrigin(row);
   });
 }
 
@@ -12983,6 +12989,19 @@ function formatWarehouseAddressLine(origin, options = {}) {
   return [name, street, formatCityRegionPostal(city, region, postalCode), country]
     .filter(Boolean)
     .join(" • ");
+}
+
+function formatWarehouseAddressOnly(origin, options = {}) {
+  const { useReturn = false } = options;
+  const street = String(useReturn ? origin?.returnStreet || "" : origin?.street || "").trim();
+  const city = String(useReturn ? origin?.returnCity || "" : origin?.city || "").trim();
+  const region = String(useReturn ? origin?.returnRegion || "" : origin?.region || "").trim();
+  const postalCode = String(
+    useReturn ? origin?.returnPostalCode || "" : origin?.postalCode || ""
+  ).trim();
+  return [street, formatCityRegionPostal(city, region, postalCode)]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function buildOriginChoiceButton(origin, options = {}) {
@@ -13138,7 +13157,9 @@ function setCsvBatchSource(source = "none", options = {}) {
   const { rows = state.csvRows } = options;
   state.csvSource = String(source || "none");
   state.shipFromLockedByProvider =
-    state.csvSource === "provider-shopify"
+    (state.csvSource === "provider-shopify"
+      && csvRowsHaveProviderSenderOrigin(rows)
+      && rows.every((row) => rowHasProviderSenderOrigin(row)))
     || (state.csvSource === "provider-woocommerce"
       && csvRowsHaveProviderSenderOrigin(rows));
   syncShopifyAutoRefreshState();
