@@ -10776,6 +10776,9 @@ async function importShopifyOrders(shop, options = {}) {
     shopifyFinancialStatusDraftSelection = new Set(
       shopifySavedImportSettings.selectedFinancialStatuses
     );
+    shopifyFulfillmentStatusDraftSelection = new Set(
+      shopifySavedImportSettings.selectedFulfillmentStatuses
+    );
     shopifyAutoRefreshDraft = Boolean(shopifySavedImportSettings.autoRefreshEnabled);
     const rows = mapShopifyImportRows(data?.rows);
     applyImportedRows(rows, "Shopify", { source: "provider-shopify" });

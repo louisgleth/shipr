@@ -4,7 +4,8 @@ import puppeteer from "@cloudflare/puppeteer";
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_SHOPIFY_SCOPES = "read_orders,read_locations";
+const DEFAULT_SHOPIFY_SCOPES =
+  "read_orders,read_locations,read_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders";
 const DEFAULT_SHOPIFY_API_VERSION = "2025-10";
 const DEFAULT_WOOCOMMERCE_APP_NAME = "Shipide";
 const DEFAULT_WIX_APP_INSTALL_URL = "";
@@ -12967,6 +12968,7 @@ function normalizeImportedRegion(region, country) {
 
 function getOrderLocationId(order) {
   const candidates = [];
+  candidates.push(order?.shipideAssignedLocationId);
   candidates.push(order?.location_id);
   candidates.push(order?.origin_location?.id);
 
@@ -13361,6 +13363,64 @@ async function fetchShopifyLocations(env, shop, accessToken) {
     .filter((location) => location.id && location.name);
 }
 
+async function fetchShopifyFulfillmentOrders(env, shop, accessToken, orderId) {
+  const normalizedOrderId = String(orderId || "").trim();
+  if (!normalizedOrderId) return [];
+
+  const apiVersion = String(env.SHOPIFY_API_VERSION || DEFAULT_SHOPIFY_API_VERSION);
+  const fulfillmentOrdersUrl = new URL(
+    `https://${shop}/admin/api/${apiVersion}/orders/${encodeURIComponent(
+      normalizedOrderId
+    )}/fulfillment_orders.json`
+  );
+  const response = await fetch(fulfillmentOrdersUrl.toString(), {
+    method: "GET",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+    },
+  });
+
+  if (response.status === 403 || response.status === 404) {
+    return [];
+  }
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const error = new Error(
+      `Shopify fulfillment order fetch failed (${response.status}) ${details}`.trim()
+    );
+    error.status = response.status;
+    throw error;
+  }
+
+  const payload = await response.json().catch(() => null);
+  return Array.isArray(payload?.fulfillment_orders) ? payload.fulfillment_orders : [];
+}
+
+async function attachShopifyAssignedLocations(env, shop, accessToken, orders) {
+  if (!Array.isArray(orders) || !orders.length) return orders;
+
+  await Promise.all(
+    orders.map(async (order) => {
+      const fulfillmentOrders = await fetchShopifyFulfillmentOrders(
+        env,
+        shop,
+        accessToken,
+        order?.id
+      ).catch(() => []);
+      const locationIds = Array.from(
+        new Set(
+          fulfillmentOrders
+            .map((entry) => normalizeLocationId(entry?.assigned_location_id))
+            .filter(Boolean)
+        )
+      );
+      order.shipideAssignedLocationId = locationIds.length === 1 ? locationIds[0] : "";
+    })
+  );
+
+  return orders;
+}
+
 async function fetchShopifyOrders(
   env,
   shop,
@@ -13385,7 +13445,7 @@ async function fetchShopifyOrders(
     resolvedFinancialStatuses.flatMap((financialStatus) =>
       resolvedFulfillmentStatuses.map(async (fulfillmentStatus) => {
       const ordersUrl = new URL(`https://${shop}/admin/api/${apiVersion}/orders.json`);
-      ordersUrl.searchParams.set("status", "open");
+      ordersUrl.searchParams.set("status", "any");
       ordersUrl.searchParams.set("limit", String(safeLimit));
       ordersUrl.searchParams.set("financial_status", financialStatus);
       ordersUrl.searchParams.set("fulfillment_status", fulfillmentStatus);
@@ -20039,6 +20099,7 @@ async function handleImportOrders(request, env) {
         resolvedFinancialStatuses,
         resolvedFulfillmentStatuses
       );
+      await attachShopifyAssignedLocations(env, connection.shop_domain, accessToken, orders);
     } catch (error) {
       if (error?.status === 401) {
         await setShopifyConnectionStatus(env, user.id, connection.shop_domain, "token_invalid").catch(

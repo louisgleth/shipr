@@ -24,7 +24,8 @@ const SHOPIFY_API_KEY = String(process.env.SHOPIFY_API_KEY || "").trim();
 const SHOPIFY_API_SECRET = String(process.env.SHOPIFY_API_SECRET || "").trim();
 const SHOPIFY_API_VERSION = String(process.env.SHOPIFY_API_VERSION || "2025-10").trim();
 const SHOPIFY_SCOPES = String(
-  process.env.SHOPIFY_SCOPES || "read_orders,read_locations"
+  process.env.SHOPIFY_SCOPES ||
+    "read_orders,read_locations,read_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders"
 )
   .split(",")
   .map((scope) => scope.trim())
@@ -11603,6 +11604,7 @@ function normalizeImportedRegion(region, country) {
 
 function getOrderLocationId(order) {
   const candidates = [];
+  candidates.push(order?.shipideAssignedLocationId);
   candidates.push(order?.location_id);
   candidates.push(order?.origin_location?.id);
 
@@ -12001,6 +12003,63 @@ async function fetchShopifyLocations(shop, accessToken) {
     .filter((location) => location.id && location.name);
 }
 
+async function fetchShopifyFulfillmentOrders(shop, accessToken, orderId) {
+  const normalizedOrderId = String(orderId || "").trim();
+  if (!normalizedOrderId) return [];
+
+  const url = new URL(
+    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders/${encodeURIComponent(
+      normalizedOrderId
+    )}/fulfillment_orders.json`
+  );
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (response.status === 403 || response.status === 404) {
+    return [];
+  }
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    const error = new Error(
+      `Shopify fulfillment order fetch failed (${response.status}) ${details}`.trim()
+    );
+    error.status = response.status;
+    throw error;
+  }
+
+  const payload = await response.json().catch(() => null);
+  return Array.isArray(payload?.fulfillment_orders) ? payload.fulfillment_orders : [];
+}
+
+async function attachShopifyAssignedLocations(shop, accessToken, orders) {
+  if (!Array.isArray(orders) || !orders.length) return orders;
+
+  await Promise.all(
+    orders.map(async (order) => {
+      const fulfillmentOrders = await fetchShopifyFulfillmentOrders(
+        shop,
+        accessToken,
+        order?.id
+      ).catch(() => []);
+      const locationIds = Array.from(
+        new Set(
+          fulfillmentOrders
+            .map((entry) => normalizeLocationId(entry?.assigned_location_id))
+            .filter(Boolean)
+        )
+      );
+      order.shipideAssignedLocationId = locationIds.length === 1 ? locationIds[0] : "";
+    })
+  );
+
+  return orders;
+}
+
 async function fetchShopifyOrders(
   shop,
   accessToken,
@@ -12023,7 +12082,7 @@ async function fetchShopifyOrders(
     resolvedFinancialStatuses.flatMap((financialStatus) =>
       resolvedFulfillmentStatuses.map(async (fulfillmentStatus) => {
       const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
-      url.searchParams.set("status", "open");
+      url.searchParams.set("status", "any");
       url.searchParams.set("limit", String(safeLimit));
       url.searchParams.set("financial_status", financialStatus);
       url.searchParams.set("fulfillment_status", fulfillmentStatus);
@@ -16788,6 +16847,7 @@ async function handleShopifyImportOrders(req, res) {
       resolvedFinancialStatuses,
       resolvedFulfillmentStatuses
     );
+    await attachShopifyAssignedLocations(connection.shop_domain, accessToken, orders);
     const rows = mapShopifyOrdersToCsvRows(orders, {
       locationById,
       selectedLocationIds: resolvedSelectedLocationIds,
