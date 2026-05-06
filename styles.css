@@ -8799,8 +8799,12 @@ body.is-auth-view {
   z-index: 1;
 }
 
+.csv-table th:not([data-key="recipientCountry"]) {
+  padding-left: 20px;
+}
+
 .csv-table th[data-key="recipientCountry"] {
-  padding-left: 46px;
+  padding-left: 22px;
 }
 
 .csv-table tbody tr:last-child td {
@@ -8821,11 +8825,16 @@ body.is-auth-view {
   padding: 0 8px;
   font-size: var(--fs-xs);
   text-align: left;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%);
 }
 
 .csv-table input:focus {
   border-color: var(--accent);
   background: var(--primary);
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .csv-table input:disabled {
@@ -8847,14 +8856,16 @@ body.is-auth-view {
   align-items: center;
   min-height: 32px;
   max-width: 280px;
+  margin-left: 8px;
   overflow: hidden;
-  color: var(--muted);
-  text-overflow: ellipsis;
+  color: var(--text);
   white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 
 .csv-ship-from-summary.is-provider {
-  color: var(--muted);
+  color: var(--text);
 }
 
 .csv-ship-from-summary.is-fallback {
