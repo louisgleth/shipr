@@ -14173,10 +14173,37 @@ function getWixOrderWeightKg(order, weightByLineItemKey = {}) {
   }, 0);
 }
 
+function normalizeWixAddressValue(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value).trim();
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "";
+  }
+  const nestedKeys = [
+    "formattedAddressLine",
+    "formattedAddress",
+    "addressLine",
+    "line1",
+    "original",
+    "name",
+    "code",
+  ];
+  for (const key of nestedKeys) {
+    const nestedValue = value[key];
+    if (typeof nestedValue === "string" || typeof nestedValue === "number") {
+      const normalized = String(nestedValue).trim();
+      if (normalized) return normalized;
+    }
+  }
+  return "";
+}
+
 function getWixAddressValue(address, keys = []) {
   for (const key of keys) {
     const value = key.split(".").reduce((current, part) => current?.[part], address);
-    if (String(value || "").trim()) return String(value).trim();
+    const normalized = normalizeWixAddressValue(value);
+    if (normalized) return normalized;
   }
   return "";
 }
@@ -14289,7 +14316,6 @@ function formatWixStreet(address) {
     "addressLine",
     "line1",
     "street",
-    "streetAddress",
     "streetAddress.formattedAddressLine",
     "streetAddress.formattedAddress",
     "streetAddress.addressLine",
