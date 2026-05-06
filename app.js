@@ -23573,6 +23573,7 @@ function renderCsvTable() {
     const rowEl = document.createElement("tr");
     activeReviewColumns.forEach((column) => {
       const td = document.createElement("td");
+      td.dataset.key = column.key;
       if (column.virtual && column.key === "shipFromSummary") {
         const summary = document.createElement("span");
         summary.className = `csv-ship-from-summary${

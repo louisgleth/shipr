@@ -8769,7 +8769,8 @@ body.is-auth-view {
 .csv-table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 1100px;
+  table-layout: fixed;
+  min-width: 1320px;
   font-size: var(--fs-xs);
   color: var(--text);
   background: var(--panel-bg);
@@ -8805,6 +8806,36 @@ body.is-auth-view {
 
 .csv-table th[data-key="recipientCountry"] {
   padding-left: 22px;
+}
+
+.csv-table th[data-key="shipFromSummary"],
+.csv-table td[data-key="shipFromSummary"],
+.csv-table th[data-key="recipientName"],
+.csv-table td[data-key="recipientName"],
+.csv-table th[data-key="recipientStreet"],
+.csv-table td[data-key="recipientStreet"] {
+  width: 190px;
+}
+
+.csv-table th[data-key="recipientCity"],
+.csv-table td[data-key="recipientCity"],
+.csv-table th[data-key="recipientState"],
+.csv-table td[data-key="recipientState"],
+.csv-table th[data-key="recipientCountry"],
+.csv-table td[data-key="recipientCountry"],
+.csv-table th[data-key="packageDims"],
+.csv-table td[data-key="packageDims"] {
+  width: 150px;
+}
+
+.csv-table th[data-key="recipientZip"],
+.csv-table td[data-key="recipientZip"] {
+  width: 126px;
+}
+
+.csv-table th[data-key="packageWeight"],
+.csv-table td[data-key="packageWeight"] {
+  width: 112px;
 }
 
 .csv-table tbody tr:last-child td {
