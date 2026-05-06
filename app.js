@@ -10318,10 +10318,7 @@ async function openWixSettingsModal() {
     ]);
     wixSavedImportSettings = savedSettings;
     wixLocationsCache = locations;
-    const savedSet = new Set(savedSettings.selectedLocationIds);
-    wixLocationDraftSelection = new Set(
-      locations.map((location) => location.id).filter((id) => savedSet.has(id))
-    );
+    wixLocationDraftSelection = new Set(savedSettings.selectedLocationIds);
     populateWixSettingsForm();
     setWixSettingsStatus("", { toast: false });
   } catch (_error) {

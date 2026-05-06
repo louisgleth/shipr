@@ -14248,10 +14248,7 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
       let businessLocation = null;
       if (singleOverrideLocationId) {
         businessLocation = locationById[singleOverrideLocationId] || null;
-      } else if (
-        mirrorBusinessLocations &&
-        (!businessLocationId || selectedLocationSet.has(businessLocationId))
-      ) {
+      } else if (mirrorBusinessLocations && businessLocationId && selectedLocationSet.has(businessLocationId)) {
         businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
       }
       const sender = mapWixLocationToSender(businessLocation);
@@ -18931,13 +18928,13 @@ async function handleWixSettingsPost(request, env) {
       selectedStatuses,
       autoRefreshEnabled
     );
+    const refreshedConnection = await getWixConnection(env, user.id, connection.shop_domain, {
+      includeSettings: true,
+    });
+    const savedSettings = getWixImportSettings(refreshedConnection?.import_settings);
     return jsonResponse({
       instanceId: connection.shop_domain,
-      settings: {
-        selectedStatuses,
-        selectedLocationIds,
-        autoRefreshEnabled,
-      },
+      settings: savedSettings,
     });
   } catch (error) {
     if (error?.code === "missing_import_settings_column") {
