@@ -12060,6 +12060,28 @@ async function attachShopifyAssignedLocations(shop, accessToken, orders) {
   return orders;
 }
 
+function shopifyOrderMatchesFulfillmentStatuses(order, selectedFulfillmentStatuses) {
+  const statuses = normalizeShopifyFulfillmentStatuses(selectedFulfillmentStatuses);
+  if (!statuses.length) return true;
+
+  const rawStatus = String(order?.fulfillment_status || "").trim().toLowerCase();
+  return statuses.some((status) => {
+    if (status === "unfulfilled") {
+      return !rawStatus || rawStatus === "partial";
+    }
+    if (status === "unshipped") {
+      return !rawStatus;
+    }
+    if (status === "partial") {
+      return rawStatus === "partial";
+    }
+    if (status === "shipped") {
+      return rawStatus === "fulfilled" || rawStatus === "shipped";
+    }
+    return false;
+  });
+}
+
 async function fetchShopifyOrders(
   shop,
   accessToken,
@@ -12079,16 +12101,15 @@ async function fetchShopifyOrders(
   const ordersById = new Map();
 
   await Promise.all(
-    resolvedFinancialStatuses.flatMap((financialStatus) =>
-      resolvedFulfillmentStatuses.map(async (fulfillmentStatus) => {
+    resolvedFinancialStatuses.map(async (financialStatus) => {
       const url = new URL(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json`);
       url.searchParams.set("status", "any");
       url.searchParams.set("limit", String(safeLimit));
       url.searchParams.set("financial_status", financialStatus);
-      url.searchParams.set("fulfillment_status", fulfillmentStatus);
+      url.searchParams.set("fulfillment_status", "any");
       url.searchParams.set(
         "fields",
-        "id,name,created_at,total_weight,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments,email,customer"
+        "id,name,created_at,total_weight,fulfillment_status,shipping_address,currency,current_total_price,total_price,location_id,origin_location,line_items,fulfillments,email,customer"
       );
       const response = await fetch(url.toString(), {
         method: "GET",
@@ -12105,14 +12126,16 @@ async function fetchShopifyOrders(
       }
       const payload = await response.json().catch(() => null);
       const orders = Array.isArray(payload?.orders) ? payload.orders : [];
-      orders.forEach((order) => {
+      orders
+        .filter((order) => shopifyOrderMatchesFulfillmentStatuses(order, resolvedFulfillmentStatuses))
+        .forEach((order) => {
         const orderId = String(order?.id || "").trim();
         if (!orderId || ordersById.has(orderId)) {
           return;
         }
         ordersById.set(orderId, order);
       });
-    }))
+    })
   );
 
   return Array.from(ordersById.values())
