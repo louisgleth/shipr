@@ -6534,6 +6534,7 @@ body.is-auth-view {
 .shopify-settings-overlay {
   position: fixed;
   inset: 0;
+  padding: 16px;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -6556,12 +6557,14 @@ body.is-auth-view {
 .shopify-settings-modal {
   width: 100%;
   max-width: 640px;
+  min-height: 0;
   max-height: calc(100dvh - 32px);
   background: var(--secondary);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   padding: 22px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   transform: translateY(0) scale(1);
   opacity: 1;
@@ -6579,6 +6582,7 @@ body.is-auth-view {
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 2px;
 }
 
@@ -7024,7 +7028,8 @@ body.is-auth-view {
 
 @media (max-width: 720px) {
   .shopify-settings-modal {
-    max-width: calc(100vw - 24px);
+    max-width: 100%;
+    max-height: calc(100dvh - 24px);
     padding: 18px;
   }
 
