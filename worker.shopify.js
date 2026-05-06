@@ -14225,6 +14225,9 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
   const singleOverrideLocationId =
     selectedLocationSet.size === 1 ? selectedLocationSet.values().next().value : "";
   const mirrorBusinessLocations = selectedLocationSet.size > 1;
+  const knownLocationCount = new Set(Object.values(locationById || {})).size;
+  const allKnownLocationsSelected =
+    mirrorBusinessLocations && knownLocationCount > 0 && selectedLocationSet.size >= knownLocationCount;
   const importedAt = new Date().toISOString();
   return (Array.isArray(orders) ? orders : [])
     .filter((order) => {
@@ -14250,6 +14253,8 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
         businessLocation = locationById[singleOverrideLocationId] || null;
       } else if (mirrorBusinessLocations && businessLocationId && selectedLocationSet.has(businessLocationId)) {
         businessLocation = embeddedBusinessLocation || indexedBusinessLocation;
+      } else if (allKnownLocationsSelected && embeddedBusinessLocation) {
+        businessLocation = embeddedBusinessLocation;
       }
       const sender = mapWixLocationToSender(businessLocation);
       const hasBusinessLocationOrigin = Boolean(
