@@ -12481,39 +12481,118 @@ function mapWixLocationToSender(location) {
   };
 }
 
+function wixLocationHasAddress(location) {
+  const sender = mapWixLocationToSender(location);
+  return [sender.senderStreet, sender.senderCity, sender.senderState, sender.senderZip].some(Boolean);
+}
+
+function mergeWixBusinessLocation(orderLocation, indexedLocation) {
+  if (!orderLocation) return indexedLocation || null;
+  if (!indexedLocation) return orderLocation;
+
+  const orderHasAddress = wixLocationHasAddress(orderLocation);
+  const indexedHasAddress = wixLocationHasAddress(indexedLocation);
+  const merged = {
+    ...indexedLocation,
+    ...orderLocation,
+  };
+
+  if (!orderHasAddress && indexedHasAddress) {
+    merged.address = getWixLocationAddress(indexedLocation);
+  }
+  if (indexedLocation.location || orderLocation.location) {
+    merged.location = {
+      ...(indexedLocation.location || {}),
+      ...(orderLocation.location || {}),
+    };
+    if (!wixLocationHasAddress(orderLocation.location || {}) && wixLocationHasAddress(indexedLocation.location || {})) {
+      merged.location.address = getWixLocationAddress(indexedLocation.location);
+    }
+  }
+  if (indexedLocation.businessLocation || orderLocation.businessLocation) {
+    merged.businessLocation = {
+      ...(indexedLocation.businessLocation || {}),
+      ...(orderLocation.businessLocation || {}),
+    };
+    if (
+      !wixLocationHasAddress(orderLocation.businessLocation || {})
+      && wixLocationHasAddress(indexedLocation.businessLocation || {})
+    ) {
+      merged.businessLocation.address = getWixLocationAddress(indexedLocation.businessLocation);
+    }
+  }
+
+  return merged;
+}
+
+function getWixLocationIds(location) {
+  return [
+    location?.id,
+    location?._id,
+    location?.locationId,
+    location?.wixLocationId,
+    location?.businessLocationId,
+    location?.businessLocation?.id,
+    location?.businessLocation?._id,
+    location?.businessLocation?.locationId,
+    location?.businessLocation?.wixLocationId,
+    location?.location?.id,
+    location?.location?._id,
+    location?.location?.locationId,
+    location?.location?.wixLocationId,
+  ]
+    .map((rawId) => String(rawId || "").trim())
+    .filter(Boolean);
+}
+
 function indexWixLocationsById(locations) {
   const byId = {};
   (Array.isArray(locations) ? locations : []).forEach((location) => {
-    [
-      location?.id,
-      location?._id,
-      location?.locationId,
-      location?.businessLocationId,
-      location?.businessLocation?.id,
-      location?.businessLocation?.locationId,
-    ].forEach((rawId) => {
-      const id = String(rawId || "").trim();
-      if (id) byId[id] = location;
+    getWixLocationIds(location).forEach((id) => {
+      byId[id] = location;
     });
   });
   return byId;
 }
 
+function mergeWixLocationLists(...lists) {
+  const byKey = {};
+  let fallbackIndex = 0;
+  lists.flat().forEach((location) => {
+    if (!location || typeof location !== "object") return;
+    const ids = getWixLocationIds(location);
+    const key = ids[0] || `fallback:${fallbackIndex++}`;
+    byKey[key] = byKey[key] ? mergeWixBusinessLocation(location, byKey[key]) : location;
+  });
+  return Object.values(byKey);
+}
+
 async function fetchWixLocations(accessToken) {
-  const payload = await fetchWixJson(accessToken, "/locations/v1/locations/query", {
-    method: "POST",
-    body: JSON.stringify({
-      query: {
-        filter: { archived: { $ne: true } },
-        paging: { limit: 100 },
-      },
-    }),
-  }).catch(() => null);
-  return Array.isArray(payload?.locations)
-    ? payload.locations
-    : Array.isArray(payload?.items)
-      ? payload.items
+  const [queryPayload, listPayload] = await Promise.all([
+    fetchWixJson(accessToken, "/locations/v1/locations/query", {
+      method: "POST",
+      body: JSON.stringify({
+        query: {
+          filter: { archived: { $ne: true } },
+          paging: { limit: 100 },
+        },
+      }),
+    }).catch(() => null),
+    fetchWixJson(accessToken, "/locations/v1/locations", {
+      method: "GET",
+    }).catch(() => null),
+  ]);
+  const queryLocations = Array.isArray(queryPayload?.locations)
+    ? queryPayload.locations
+    : Array.isArray(queryPayload?.items)
+      ? queryPayload.items
       : [];
+  const listLocations = Array.isArray(listPayload?.locations)
+    ? listPayload.locations
+    : Array.isArray(listPayload?.items)
+      ? listPayload.items
+      : [];
+  return mergeWixLocationLists(queryLocations, listLocations);
 }
 
 function getWixLineItemProductId(item) {
@@ -12906,11 +12985,15 @@ function mapWixOrdersToCsvRows(orders, options = {}) {
       const businessLocationId = getWixOrderBusinessLocationId(order);
       const embeddedBusinessLocation = getWixOrderBusinessLocation(order);
       const indexedBusinessLocation = businessLocationId ? locationById[businessLocationId] : null;
+      const orderBusinessLocation = mergeWixBusinessLocation(
+        embeddedBusinessLocation,
+        indexedBusinessLocation
+      );
       let businessLocation = null;
       if (singleOverrideLocationId) {
         businessLocation = locationById[singleOverrideLocationId] || null;
-      } else if (embeddedBusinessLocation) {
-        businessLocation = embeddedBusinessLocation;
+      } else if (orderBusinessLocation) {
+        businessLocation = orderBusinessLocation;
       } else if (mirrorBusinessLocations && businessLocationId && selectedLocationSet.has(businessLocationId)) {
         businessLocation = indexedBusinessLocation;
       }
