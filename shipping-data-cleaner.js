@@ -598,6 +598,8 @@ const state = {
   requestToken: getCurrentCleanerToken(),
   requestEmail: "",
   requestReady: false,
+  lightRaysCleanup: null,
+  lightRaysReady: false,
 };
 
 const STEP_OUT_MS = 220;
@@ -644,6 +646,7 @@ const els = {
   downloadFromMap: document.getElementById("cleanerDownloadFromMap"),
   submit: document.getElementById("cleanerSubmit"),
   pixelCanvas: document.getElementById("cleanerPixelCanvas"),
+  lightRays: document.querySelector(".cleaner-light-rays"),
 };
 
 function setText(selector, value) {
@@ -846,6 +849,26 @@ function getStepTitle(step) {
   return titles[step] || titles.upload;
 }
 
+function ensureThanksLightRays() {
+  if (state.lightRaysReady || !els.lightRays || typeof window.LightRays !== "function") return;
+  state.lightRaysCleanup = window.LightRays(els.lightRays, {
+    raysOrigin: "top-center",
+    raysColor: "#ffffff",
+    raysSpeed: 1,
+    lightSpread: 0.5,
+    rayLength: 3,
+    followMouse: true,
+    mouseInfluence: 0.1,
+    noiseAmount: 0,
+    distortion: 0,
+    className: "custom-rays",
+    pulsating: false,
+    fadeDistance: 1,
+    saturation: 1,
+  });
+  state.lightRaysReady = true;
+}
+
 function measurePanelHeight(panel) {
   if (!panel || !els.card) return 0;
   const wasActive = panel.classList.contains("is-active");
@@ -952,6 +975,9 @@ function applyStepView(step) {
   });
   els.stepLabel.textContent = step === "thanks" ? t("complete") : t("step", { index: stepIndex });
   document.querySelector(".cleaner-progress")?.style.setProperty("--cleaner-progress-steps", String(stepTotal));
+  if (step === "thanks") {
+    window.requestAnimationFrame(ensureThanksLightRays);
+  }
 }
 
 function resetStepTransitionState() {
