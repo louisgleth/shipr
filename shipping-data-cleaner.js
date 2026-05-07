@@ -1,3 +1,20 @@
+// Normalize malformed query strings where a stray `?` was used in place of `&`
+// (e.g. `?token=xxx?rays=1` -> `?token=xxx&rays=1`). Runs before any URL parsing.
+(function normalizeCleanerQueryString() {
+  try {
+    if (typeof window === "undefined" || !window.location || !window.history) return;
+    const search = window.location.search || "";
+    if (search.indexOf("?", 1) === -1) return;
+    const fixed = "?" + search.slice(1).replace(/\?/g, "&");
+    if (fixed === search) return;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      window.location.pathname + fixed + window.location.hash
+    );
+  } catch (_error) {}
+})();
+
 const DATA_FIELDS = [
   {
     key: "shipment_date",
