@@ -6303,7 +6303,7 @@ body.is-auth-view {
 }
 
 .woocommerce-statuses-list {
-  max-height: 252px;
+  max-height: none;
 }
 
 .woocommerce-status-row {
@@ -6669,11 +6669,9 @@ body.is-auth-view {
 }
 
 .shopify-locations-list {
-  max-height: 286px;
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: #434c5f transparent;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
 }
 
 .shopify-locations-list::-webkit-scrollbar {
@@ -6692,6 +6690,7 @@ body.is-auth-view {
 }
 
 .shopify-location-row {
+  box-sizing: border-box;
   width: 100%;
   border: none;
   background: transparent;
@@ -6704,7 +6703,7 @@ body.is-auth-view {
   align-items: start;
   column-gap: 10px;
   border-top: 1px solid var(--stroke);
-  transition: background 0.2s ease, transform 0.26s var(--ease-out-quart);
+  transition: background 0.2s ease;
   cursor: pointer;
 }
 
@@ -6714,7 +6713,6 @@ body.is-auth-view {
 
 .shopify-location-row:hover {
   background: var(--panel-active);
-  transform: translateY(-1px);
 }
 
 .shopify-location-row:disabled {
@@ -6724,7 +6722,6 @@ body.is-auth-view {
 
 .shopify-location-row:disabled:hover {
   background: transparent;
-  transform: none;
 }
 
 .shopify-location-row.is-selected {

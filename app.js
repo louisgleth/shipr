@@ -4893,7 +4893,6 @@ function setShopifySettingsBusy(isBusy, options = {}) {
     shopifyAutoRefreshInput.disabled = shopifySettingsBusy;
   }
   renderShopifyFulfillmentStatusOptions();
-  renderShopifyFinancialStatusOptions();
   renderShopifySettingsLocations();
   renderShopifySettingsState();
   renderShopifyDisconnectAction();
@@ -4965,11 +4964,12 @@ function renderShopifySettingsLocations() {
   if (!shopifyLocationsList || !shopifyLocationsSummary) return;
   const locations = Array.isArray(shopifyLocationsCache) ? shopifyLocationsCache : [];
   const selectedIds = normalizeShopifyLocationIdList(Array.from(shopifyLocationDraftSelection));
-  const selectedSet = new Set(selectedIds);
+  const validLocationIds = new Set(locations.map((location) => location.id).filter(Boolean));
+  const selectedSet = new Set(selectedIds.filter((id) => validLocationIds.has(id)));
 
   shopifyLocationsSummary.textContent = getShopifySelectedLocationSummary(
     locations,
-    selectedIds
+    Array.from(selectedSet)
   );
   shopifyLocationsList.innerHTML = "";
 
@@ -5057,7 +5057,7 @@ async function fetchShopifyLocations(shopDomain) {
 }
 
 function populateShopifySettingsForm() {
-  renderShopifyFinancialStatusOptions();
+  renderShopifyFulfillmentStatusOptions();
   if (shopifyStoreUrlInput) {
     shopifyStoreUrlInput.disabled = shopifySettingsBusy;
   }
@@ -5125,7 +5125,7 @@ async function openShopifySettingsModal() {
     shopifyFinancialStatusDraftSelection = new Set(savedSettings.selectedFinancialStatuses);
     shopifyFulfillmentStatusDraftSelection = new Set(savedSettings.selectedFulfillmentStatuses);
     shopifyAutoRefreshDraft = Boolean(savedSettings.autoRefreshEnabled);
-    const savedSet = new Set(savedSettings.selectedLocationIds);
+    const savedSet = new Set(normalizeShopifyLocationIdList(savedSettings.selectedLocationIds));
     const validSaved = locations
       .map((location) => location.id)
       .filter((id) => savedSet.has(id));
@@ -5185,12 +5185,6 @@ async function saveShopifySettings() {
   const draftSettings = getShopifyDraftImportSettings();
   if (!draftSettings.selectedFulfillmentStatuses.length) {
     setShopifySettingsStatus(tr("Select at least one Shopify fulfillment status to import."), {
-      kind: "error",
-    });
-    return;
-  }
-  if (!draftSettings.selectedFinancialStatuses.length) {
-    setShopifySettingsStatus(tr("Select at least one Shopify status to import."), {
       kind: "error",
     });
     return;
@@ -9363,7 +9357,12 @@ function renderProviderLocationRows({
 }) {
   if (!listEl || !summaryEl) return;
   const safeLocations = Array.isArray(locations) ? locations : [];
-  const selectedSet = new Set(normalizeShopifyLocationIdList(Array.from(selectedIds || [])));
+  const validLocationIds = new Set(safeLocations.map((location) => location.id).filter(Boolean));
+  const selectedSet = new Set(
+    normalizeShopifyLocationIdList(Array.from(selectedIds || [])).filter((id) =>
+      validLocationIds.has(id)
+    )
+  );
   summaryEl.textContent = getShopifySelectedLocationSummary(safeLocations, Array.from(selectedSet));
   listEl.innerHTML = "";
 
@@ -9377,7 +9376,8 @@ function renderProviderLocationRows({
 
   const allRow = document.createElement("button");
   allRow.type = "button";
-  const allChecked = selectedSet.size === safeLocations.length;
+  const allChecked =
+    safeLocations.length > 0 && safeLocations.every((location) => selectedSet.has(location.id));
   allRow.className = `shopify-location-row${allChecked ? " is-selected" : ""}`;
   allRow.dataset.role = "all";
   allRow.disabled = busy;
@@ -10326,7 +10326,11 @@ async function openWixSettingsModal() {
     ]);
     wixSavedImportSettings = savedSettings;
     wixLocationsCache = locations;
-    wixLocationDraftSelection = new Set(savedSettings.selectedLocationIds);
+    const savedSet = new Set(normalizeShopifyLocationIdList(savedSettings.selectedLocationIds));
+    const validSaved = locations
+      .map((location) => location.id)
+      .filter((id) => savedSet.has(id));
+    wixLocationDraftSelection = new Set(validSaved);
     populateWixSettingsForm();
     setWixSettingsStatus("", { toast: false });
   } catch (_error) {
