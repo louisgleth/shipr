@@ -8770,7 +8770,7 @@ body.is-auth-view {
   border-collapse: collapse;
   width: 100%;
   table-layout: fixed;
-  min-width: 1320px;
+  min-width: 1468px;
   font-size: var(--fs-xs);
   color: var(--text);
   background: var(--panel-bg);
@@ -8786,6 +8786,7 @@ body.is-auth-view {
   border-bottom: 1px solid var(--stroke);
   text-align: left;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .csv-table th {
@@ -8835,7 +8836,7 @@ body.is-auth-view {
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 112px;
+  width: 170px;
 }
 
 .csv-table tbody tr:last-child td {
@@ -8882,11 +8883,17 @@ body.is-auth-view {
   opacity: 1;
 }
 
+.csv-table input.is-missing-required {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 .csv-ship-from-summary {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  max-width: 280px;
+  width: calc(100% - 8px);
+  max-width: calc(100% - 8px);
   margin-left: 8px;
   overflow: hidden;
   color: var(--text);
