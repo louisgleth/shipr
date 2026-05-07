@@ -110,6 +110,8 @@ select {
   gap: 12px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(18px);
+  transform: scale(var(--cleaner-card-scale, 1));
+  transform-origin: center top;
   transition: width 0.52s var(--ease-out-expo), height 0.52s var(--ease-out-expo), transform 0.42s var(--ease-out-expo);
 }
 
@@ -126,10 +128,6 @@ select {
 
 .cleaner-card.is-step-thanks {
   width: min(540px, 100%);
-}
-
-.cleaner-card.is-step-thanks.has-rays-controls {
-  width: min(940px, 100%);
 }
 
 .cleaner-card.is-step-origin {
@@ -639,10 +637,6 @@ select {
   justify-content: center;
 }
 
-.cleaner-thanks-layout.has-rays-controls {
-  grid-template-columns: minmax(360px, 540px) minmax(220px, 300px);
-}
-
 .cleaner-thanks {
   width: min(540px, 100%);
   min-height: 300px;
@@ -702,12 +696,21 @@ select {
 
 .cleaner-rays-controls {
   display: none;
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  z-index: 9000;
   align-content: start;
   gap: 8px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
-  background: rgba(20, 17, 29, 0.82);
+  background: rgba(20, 17, 29, 0.92);
   padding: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
 }
 
 .cleaner-rays-controls.is-visible {

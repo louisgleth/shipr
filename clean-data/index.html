@@ -176,7 +176,16 @@
                 </p>
               </div>
             </div>
-            <div class="cleaner-rays-controls" id="cleanerRaysControls" aria-label="Light rays controls">
+          </div>
+        </section>
+      </section>
+
+      <div class="cleaner-rays-controls" id="cleanerRaysControls" aria-label="Light rays controls">
+              <label class="cleaner-rays-field">
+                <span>Card Size</span>
+                <input type="range" id="cardSizeControl" min="0.5" max="1.5" step="0.05" value="1" />
+                <output for="cardSizeControl">1</output>
+              </label>
               <label class="cleaner-rays-field cleaner-rays-field--color">
                 <span>Rays Color</span>
                 <input type="color" id="raysColorControl" value="#ffffff" />
@@ -240,10 +249,7 @@
                 <input type="checkbox" id="pulsatingControl" />
                 <i aria-hidden="true"></i>
               </label>
-            </div>
-          </div>
-        </section>
-      </section>
+      </div>
 
       <div class="cleaner-confirm-overlay is-closed" id="cleanerConfirmModal">
         <div class="cleaner-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="cleanerConfirmTitle">

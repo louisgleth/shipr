@@ -928,15 +928,27 @@ function updateLightRaysFromControls() {
   state.lightRaysInstance?.update?.(readLightRaysControlSettings());
 }
 
+function applyCardSizeFromControl() {
+  const input = document.getElementById("cardSizeControl");
+  if (!input) return;
+  const raw = Number(input.value);
+  const scale = Number.isFinite(raw) && raw > 0 ? raw : 1;
+  document.documentElement.style.setProperty("--cleaner-card-scale", String(scale));
+}
+
 function setupLightRaysControls() {
   if (!els.lightRaysControls || !LIGHT_RAYS_TUNING_ENABLED) return;
-  els.card?.classList.add("has-rays-controls");
   els.lightRaysControls.classList.add("is-visible");
-  els.lightRaysControls.closest(".cleaner-thanks-layout")?.classList.add("has-rays-controls");
   els.lightRaysControls.querySelectorAll("input, select").forEach((control) => {
     control.addEventListener("input", updateLightRaysFromControls);
     control.addEventListener("change", updateLightRaysFromControls);
   });
+  const cardSizeInput = document.getElementById("cardSizeControl");
+  if (cardSizeInput) {
+    cardSizeInput.addEventListener("input", applyCardSizeFromControl);
+    cardSizeInput.addEventListener("change", applyCardSizeFromControl);
+    applyCardSizeFromControl();
+  }
   syncLightRaysControlOutputs();
 }
 
