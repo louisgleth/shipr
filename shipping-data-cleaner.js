@@ -255,9 +255,8 @@ const COPY = {
     addOriginAddress: "Add another ship-from address",
     removeOriginAddress: "Remove",
     originRequired: "Add at least one ship-from address before continuing.",
-    dataReceived: "Data received",
     thankYou: "Thank you.",
-    thanksCopy: "We received the cleaned shipment data. We’ll review your shipment profile and get back to you as soon as possible.",
+    thanksCopy: "We’ll review your shipment profile and get back to you soon.",
     submissionCheck: "Submission Check",
     confirmTitle: "Have you checked that the provided information is truthful?",
     confirmNote: "Please confirm that the sanitized shipment data you are sending is accurate and provided in good faith.",
@@ -341,9 +340,8 @@ const COPY = {
     addOriginAddress: "Ajouter une autre adresse d’expédition",
     removeOriginAddress: "Retirer",
     originRequired: "Ajoutez au moins une adresse d’expédition avant de continuer.",
-    dataReceived: "Données reçues",
     thankYou: "Merci.",
-    thanksCopy: "Nous avons reçu les données d’expédition nettoyées. Nous analyserons votre profil d’expédition et reviendrons vers vous dès que possible.",
+    thanksCopy: "Nous analyserons votre profil d’expédition et reviendrons vers vous rapidement.",
     submissionCheck: "Vérification de l’envoi",
     confirmTitle: "Avez-vous vérifié que les informations fournies sont exactes ?",
     confirmNote: "Veuillez confirmer que les données d’expédition nettoyées que vous envoyez sont exactes et fournies de bonne foi.",
@@ -427,9 +425,8 @@ const COPY = {
     addOriginAddress: "Nog een verzendadres toevoegen",
     removeOriginAddress: "Verwijderen",
     originRequired: "Voeg minstens één verzendadres toe voordat je verdergaat.",
-    dataReceived: "Data ontvangen",
     thankYou: "Bedankt.",
-    thanksCopy: "We hebben de opgeschoonde verzenddata ontvangen. We bekijken je verzendprofiel en komen zo snel mogelijk bij je terug.",
+    thanksCopy: "We bekijken je verzendprofiel en komen snel bij je terug.",
     submissionCheck: "Controle voor verzending",
     confirmTitle: "Heb je gecontroleerd dat de verstrekte informatie waarheidsgetrouw is?",
     confirmNote: "Bevestig dat de opgeschoonde verzenddata die je verzendt correct is en te goeder trouw wordt aangeleverd.",
@@ -690,11 +687,8 @@ function applyLocalization() {
   setText("#cleanerOriginContinue span", t("previewCleanedData"));
   setText("#cleanerOriginCopy", t("originCopy"));
   setText("#cleanerAddOrigin span:last-child", t("addOriginAddress"));
-  setText(".cleaner-thanks-kicker", t("dataReceived"));
-  const thanksKickerDot = document.createElement("span");
-  document.querySelector(".cleaner-thanks-kicker")?.prepend(thanksKickerDot);
   setText(".cleaner-thanks-copy h2", t("thankYou"));
-  setText(".cleaner-thanks-copy p:not(.cleaner-thanks-kicker)", t("thanksCopy"));
+  setText(".cleaner-thanks-copy p", t("thanksCopy"));
   setText(".cleaner-confirm-kicker span:last-child", t("submissionCheck"));
   setText("#cleanerConfirmTitle", t("confirmTitle"));
   setText(".cleaner-confirm-note", t("confirmNote"));
@@ -836,7 +830,7 @@ function getStepPanel(step) {
 function getStepWidth(step) {
   const shellWidth = els.card?.parentElement?.getBoundingClientRect().width || window.innerWidth;
   if (step === "upload") return Math.min(640, shellWidth);
-  if (step === "thanks") return Math.min(760, shellWidth);
+  if (step === "thanks") return Math.min(540, shellWidth);
   if (step === "origin") return Math.min(760, shellWidth);
   return Math.min(1040, shellWidth);
 }

@@ -2132,6 +2132,7 @@ const TRANSLATIONS = {
   "{prefix}: return postal code is required when using a custom return address.": { fr: "{prefix} : le code postal retour est requis avec une adresse retour personnalisée.", nl: "{prefix}: retourpostcode is verplicht bij een aangepast retouradres." },
   "{prefix}: return country is required when using a custom return address.": { fr: "{prefix} : le pays retour est requis avec une adresse retour personnalisée.", nl: "{prefix}: retourland is verplicht bij een aangepast retouradres." },
   "No generations yet.": { fr: "Aucune génération pour l’instant.", nl: "Nog geen generaties." },
+  "No generations match your search.": { fr: "Aucune génération ne correspond à votre recherche.", nl: "Geen generaties gevonden voor je zoekopdracht." },
   "Label generation": { fr: "Génération d’étiquette", nl: "Labelgeneratie" },
   "{count} labels • ex. vat {ex} • incl. vat {incl}": {
     fr: "{count} étiquettes • Total {incl}",
@@ -2427,6 +2428,7 @@ const postLinkedInResultLink = document.getElementById("postLinkedInResultLink")
 const postCaptionInput = document.getElementById("postCaptionInput");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
 const accountPreviewPanel = historyPageSection?.querySelector(".account-preview-panel") || null;
+const accountHistorySearchInput = document.getElementById("accountHistorySearch");
 const accountCompanyName = document.getElementById("accountCompanyName");
 const accountContactName = document.getElementById("accountContactName");
 const accountContactEmail = document.getElementById("accountContactEmail");
@@ -2945,6 +2947,7 @@ let authRegisterStepTransitionToken = 0;
 let authAgreementMagnifierPage = null;
 let historyRecords = [];
 let historyStore = "supabase";
+let historySearchQuery = "";
 let accountActiveRecord = null;
 let accountActiveHistoryIndex = -1;
 let accountActiveLabelIndex = 0;
@@ -14504,6 +14507,32 @@ function findHistoryRecordIndexById(recordId) {
   );
 }
 
+function getHistoryRecordSearchText(record) {
+  const values = [
+    record?.id,
+    record?.service_type,
+    record?.created_at,
+    record?.payload?.selection?.type,
+  ];
+  const labels = Array.isArray(record?.payload?.labels) ? record.payload.labels : [];
+  labels.forEach((label) => {
+    values.push(label?.labelId, label?.trackingId);
+    const data = label?.data || {};
+    Object.values(data).forEach((value) => values.push(value));
+  });
+  return values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+}
+
+function getFilteredHistoryEntries() {
+  const query = historySearchQuery.trim().toLowerCase();
+  return historyRecords
+    .map((record, index) => ({ record, index }))
+    .filter(({ record }) => !query || getHistoryRecordSearchText(record).includes(query));
+}
+
 function revokeAccountPdfUrls() {
   const urls = new Set();
   accountLabels.forEach((label) => {
@@ -14634,13 +14663,22 @@ function renderAccountHistoryList() {
     return;
   }
 
-  historyRecords.forEach((record, index) => {
+  const entries = getFilteredHistoryEntries();
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "account-history-empty";
+    empty.textContent = tr("No generations match your search.");
+    accountHistoryList.appendChild(empty);
+    return;
+  }
+
+  entries.forEach(({ record, index }, visibleIndex) => {
     const totals = calculateRecordTotals(record);
     const item = document.createElement("button");
     item.type = "button";
     item.className = `account-record${index === accountActiveHistoryIndex ? " is-active" : ""}`;
     item.dataset.historyIndex = String(index);
-    item.style.animationDelay = `${Math.min(index, 12) * 0.04}s`;
+    item.style.animationDelay = `${Math.min(visibleIndex, 12) * 0.035}s`;
 
     const head = document.createElement("div");
     head.className = "account-record-head";
@@ -17722,9 +17760,12 @@ function selectAccountRecord(index) {
   const labels = record?.payload?.labels;
   if (!record || !Array.isArray(labels) || !labels.length) return;
 
+  const previousRecordId = accountActiveRecord?.id || "";
+  const previousLabelIndex =
+    previousRecordId && previousRecordId === record.id ? accountActiveLabelIndex : 0;
   accountActiveRecord = record;
   accountActiveHistoryIndex = index;
-  accountActiveLabelIndex = 0;
+  accountActiveLabelIndex = Math.max(0, Math.min(previousLabelIndex, labels.length - 1));
   revokeAccountPdfUrls();
 
   const serviceType = translateServiceName(
@@ -17770,7 +17811,7 @@ function selectAccountRecord(index) {
 
   syncAccountHistorySelection();
   renderAccountBatchList();
-  selectAccountLabel(0);
+  selectAccountLabel(accountActiveLabelIndex);
   renderReceiptDetails(record);
   queueHistoryPanelSync();
   void syncSelectedAccountReceiptDocumentCode(record);
@@ -21022,12 +21063,13 @@ async function initializeAuth() {
     }
     void loadGenerationHistory({
       preferLatest:
-        route.view === "account" ||
-        route.view === "admin" ||
-        route.view === "leads" ||
-        route.view === "post" ||
-        route.view === "history" ||
-        route.view === "reports",
+        !accountActiveRecord &&
+        (route.view === "account" ||
+          route.view === "admin" ||
+          route.view === "leads" ||
+          route.view === "post" ||
+          route.view === "history" ||
+          route.view === "reports"),
     });
   });
 }
@@ -26114,6 +26156,13 @@ if (accountHistoryList) {
   });
 }
 
+if (accountHistorySearchInput) {
+  accountHistorySearchInput.addEventListener("input", () => {
+    historySearchQuery = String(accountHistorySearchInput.value || "");
+    renderAccountHistoryList();
+  });
+}
+
 if (accountBatchList) {
   accountBatchList.addEventListener("click", (event) => {
     const target = event.target.closest("[data-account-label-index]");
@@ -28486,7 +28535,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
 
     if (route.view === "history") {
       setMainView("history", { push: false });
-      loadGenerationHistory({ preferLatest: true });
+      loadGenerationHistory({ preferLatest: false });
       return;
     }
 

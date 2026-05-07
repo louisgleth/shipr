@@ -4616,7 +4616,7 @@ body.is-auth-view {
 }
 
 .account-history-panel {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
 .account-history-panel > .preview-title {
@@ -4634,6 +4634,53 @@ body.is-auth-view {
 
 .account-history-status {
   font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.history-search {
+  height: 40px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    var(--card-bg);
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.history-search:focus-within {
+  border-color: rgba(119, 71, 227, 0.72);
+  background: var(--primary);
+  box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
+}
+
+.history-search svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.history-search:focus-within svg {
+  color: var(--accent);
+  transform: scale(1.05);
+}
+
+.history-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-xs);
+}
+
+.history-search input::placeholder {
   color: var(--muted);
 }
 
@@ -4686,6 +4733,43 @@ body.is-auth-view {
   overflow: hidden;
   transition: background 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-quart), border-color 0.35s ease;
   animation: cardFadeUp 0.55s var(--ease-out-expo) both;
+}
+
+.account-preview-panel .batch-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.account-preview-panel .batch-list-wrap {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--panel-bg);
+}
+
+.account-preview-panel .batch-list {
+  gap: 0;
+  padding: 0;
+}
+
+.account-preview-panel .batch-item {
+  border: 0;
+  border-bottom: 1px solid var(--stroke);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 10px 12px;
+}
+
+.account-preview-panel .batch-item:last-child {
+  border-bottom: 0;
+}
+
+.account-preview-panel .batch-item:hover,
+.account-preview-panel .batch-item.is-active {
+  background: var(--panel-active);
 }
 
 .account-record > * {
@@ -8767,9 +8851,9 @@ body.is-auth-view {
   border-collapse: collapse;
   width: 100%;
   table-layout: fixed;
-  min-width: 1468px;
+  min-width: 1540px;
   font-size: var(--fs-xs);
-  color: var(--text-muted);
+  color: var(--text);
   background: var(--panel-bg);
 }
 
@@ -8807,12 +8891,18 @@ body.is-auth-view {
 }
 
 .csv-table th[data-key="shipFromSummary"],
-.csv-table td[data-key="shipFromSummary"],
+.csv-table td[data-key="shipFromSummary"] {
+  width: 230px;
+}
+
 .csv-table th[data-key="recipientName"],
-.csv-table td[data-key="recipientName"],
+.csv-table td[data-key="recipientName"] {
+  width: 150px;
+}
+
 .csv-table th[data-key="recipientStreet"],
 .csv-table td[data-key="recipientStreet"] {
-  width: 190px;
+  width: 270px;
 }
 
 .csv-table th[data-key="recipientCity"],
@@ -8850,7 +8940,7 @@ body.is-auth-view {
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text);
   padding: 0 8px;
   font-size: var(--fs-xs);
   font-weight: 300;
@@ -8868,7 +8958,7 @@ body.is-auth-view {
 }
 
 .csv-table input:disabled {
-  opacity: 0.6;
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -8894,7 +8984,7 @@ body.is-auth-view {
   max-width: calc(100% - 8px);
   margin-left: 8px;
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--text);
   font-size: var(--fs-xs);
   font-weight: 300;
   white-space: nowrap;
@@ -8903,11 +8993,11 @@ body.is-auth-view {
 }
 
 .csv-ship-from-summary.is-provider {
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .csv-ship-from-summary.is-fallback {
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .country-input-wrap {
