@@ -9447,7 +9447,7 @@ function getWixDraftImportSettings() {
   return normalizeWixImportSettings({
     selectedLocationIds: Array.from(wixLocationDraftSelection),
     selectedStatuses: Array.from(wixStatusDraftSelection),
-    autoRefreshEnabled: wixAutoRefreshDraft,
+    autoRefreshEnabled: Boolean(wixAutoRefreshInput?.checked ?? wixAutoRefreshDraft),
   });
 }
 

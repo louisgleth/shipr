@@ -4638,29 +4638,28 @@ body.is-auth-view {
 }
 
 .history-search {
-  height: 40px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
-    var(--card-bg);
+  height: 32px;
+  border: 1px solid transparent;
+  border-bottom-color: var(--stroke);
+  border-radius: 0;
+  background: transparent;
   display: grid;
-  grid-template-columns: 16px 1fr;
+  grid-template-columns: 14px 1fr;
   align-items: center;
-  gap: 9px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 2px;
   transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
 }
 
 .history-search:focus-within {
-  border-color: rgba(119, 71, 227, 0.72);
-  background: var(--primary);
-  box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
+  border-bottom-color: var(--accent);
+  background: transparent;
+  box-shadow: none;
 }
 
 .history-search svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   color: var(--muted);
   transition: color 0.2s ease, transform 0.2s ease;
 }
@@ -4677,7 +4676,7 @@ body.is-auth-view {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
 }
 
 .history-search input::placeholder {
@@ -4733,43 +4732,6 @@ body.is-auth-view {
   overflow: hidden;
   transition: background 0.35s var(--ease-out-expo), transform 0.35s var(--ease-out-quart), border-color 0.35s ease;
   animation: cardFadeUp 0.55s var(--ease-out-expo) both;
-}
-
-.account-preview-panel .batch-panel {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  box-shadow: none;
-}
-
-.account-preview-panel .batch-list-wrap {
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  background: var(--panel-bg);
-}
-
-.account-preview-panel .batch-list {
-  gap: 0;
-  padding: 0;
-}
-
-.account-preview-panel .batch-item {
-  border: 0;
-  border-bottom: 1px solid var(--stroke);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 10px 12px;
-}
-
-.account-preview-panel .batch-item:last-child {
-  border-bottom: 0;
-}
-
-.account-preview-panel .batch-item:hover,
-.account-preview-panel .batch-item.is-active {
-  background: var(--panel-active);
 }
 
 .account-record > * {
@@ -8785,7 +8747,7 @@ body.is-auth-view {
 .csv-table-wrap {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   background: var(--panel-bg);
 }
@@ -8851,7 +8813,7 @@ body.is-auth-view {
   border-collapse: collapse;
   width: 100%;
   table-layout: fixed;
-  min-width: 1540px;
+  min-width: 0;
   font-size: var(--fs-xs);
   color: var(--text);
   background: var(--panel-bg);
@@ -8892,17 +8854,17 @@ body.is-auth-view {
 
 .csv-table th[data-key="shipFromSummary"],
 .csv-table td[data-key="shipFromSummary"] {
-  width: 230px;
+  width: 18%;
 }
 
 .csv-table th[data-key="recipientName"],
 .csv-table td[data-key="recipientName"] {
-  width: 150px;
+  width: 10%;
 }
 
 .csv-table th[data-key="recipientStreet"],
 .csv-table td[data-key="recipientStreet"] {
-  width: 270px;
+  width: 23%;
 }
 
 .csv-table th[data-key="recipientCity"],
@@ -8913,17 +8875,17 @@ body.is-auth-view {
 .csv-table td[data-key="recipientCountry"],
 .csv-table th[data-key="packageDims"],
 .csv-table td[data-key="packageDims"] {
-  width: 150px;
+  width: 8%;
 }
 
 .csv-table th[data-key="recipientZip"],
 .csv-table td[data-key="recipientZip"] {
-  width: 126px;
+  width: 7%;
 }
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 170px;
+  width: 9%;
 }
 
 .csv-table tbody tr:last-child td {

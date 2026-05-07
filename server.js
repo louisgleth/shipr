@@ -10435,8 +10435,8 @@ async function getShopifyConnection(userId, requestedShop, options = {}) {
   params.set(
     "select",
     includeSettings
-      ? "shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
-      : "shop_domain,status,scopes,connected_at,updated_at,access_token"
+      ? "id,shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
+      : "id,shop_domain,status,scopes,connected_at,updated_at,access_token"
   );
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
@@ -10639,11 +10639,11 @@ async function getWixConnection(userId, requestedInstanceId, options = {}) {
     "select",
     includeAccessToken
       ? includeSettings
-        ? "shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
-        : "shop_domain,status,scopes,connected_at,updated_at,access_token"
+        ? "id,shop_domain,status,scopes,connected_at,updated_at,access_token,import_settings"
+        : "id,shop_domain,status,scopes,connected_at,updated_at,access_token"
       : includeSettings
-        ? "shop_domain,status,scopes,connected_at,updated_at,import_settings"
-        : "shop_domain,status,scopes,connected_at,updated_at"
+        ? "id,shop_domain,status,scopes,connected_at,updated_at,import_settings"
+        : "id,shop_domain,status,scopes,connected_at,updated_at"
   );
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.wix");
@@ -11287,6 +11287,7 @@ function getWooCommerceImportSettings(importSettings) {
 
 async function saveShopifyImportSettings(
   userId,
+  connectionId,
   shop,
   selectedLocationIds,
   selectedFinancialStatuses,
@@ -11304,8 +11305,12 @@ async function saveShopifyImportSettings(
   const params = new URLSearchParams();
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.shopify");
-  params.set("shop_domain", `eq.${shop}`);
   params.set("status", "eq.connected");
+  if (connectionId) {
+    params.set("id", `eq.${connectionId}`);
+  } else {
+    params.set("shop_domain", `eq.${shop}`);
+  }
 
   const response = await supabaseServiceRequest(
     `/rest/v1/provider_connections?${params.toString()}`,
@@ -11313,7 +11318,7 @@ async function saveShopifyImportSettings(
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       body: JSON.stringify({
         import_settings: {
@@ -11344,10 +11349,17 @@ async function saveShopifyImportSettings(
     }
     throw new Error(`Failed saving Shopify settings (${response.status}) ${details}`.trim());
   }
+
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error("Failed saving Shopify settings: no connected provider row was updated.");
+  }
+  return getShopifyImportSettings(rows[0]?.import_settings);
 }
 
 async function saveWixImportSettings(
   userId,
+  connectionId,
   instanceId,
   selectedLocationIds,
   selectedStatuses,
@@ -11356,8 +11368,12 @@ async function saveWixImportSettings(
   const params = new URLSearchParams();
   params.set("user_id", `eq.${userId}`);
   params.set("provider", "eq.wix");
-  params.set("shop_domain", `eq.${instanceId}`);
   params.set("status", "eq.connected");
+  if (connectionId) {
+    params.set("id", `eq.${connectionId}`);
+  } else {
+    params.set("shop_domain", `eq.${instanceId}`);
+  }
 
   const response = await supabaseServiceRequest(
     `/rest/v1/provider_connections?${params.toString()}`,
@@ -11365,7 +11381,7 @@ async function saveWixImportSettings(
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       body: JSON.stringify({
         import_settings: {
@@ -11392,6 +11408,12 @@ async function saveWixImportSettings(
     }
     throw new Error(`Failed saving Wix settings (${response.status}) ${details}`.trim());
   }
+
+  const rows = await response.json().catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error("Failed saving Wix settings: no connected provider row was updated.");
+  }
+  return getWixImportSettings(rows[0]?.import_settings);
 }
 
 async function saveWooCommerceImportSettings(
@@ -15767,17 +15789,14 @@ async function handleWixSettingsPost(req, res) {
       sendJson(res, 404, { error: "Wix is not connected for this account." });
       return;
     }
-    await saveWixImportSettings(
+    const savedSettings = await saveWixImportSettings(
       user.id,
+      connection.id,
       connection.shop_domain,
       selectedLocationIds,
       selectedStatuses,
       autoRefreshEnabled
     );
-    const refreshedConnection = await getWixConnection(user.id, connection.shop_domain, {
-      includeSettings: true,
-    });
-    const savedSettings = getWixImportSettings(refreshedConnection?.import_settings);
     sendJson(res, 200, {
       instanceId: connection.shop_domain,
       settings: savedSettings,
@@ -16887,18 +16906,15 @@ async function handleShopifySettingsPost(req, res) {
       sendJson(res, 404, { error: "Shopify is not connected for this account." });
       return;
     }
-    await saveShopifyImportSettings(
+    const savedSettings = await saveShopifyImportSettings(
       user.id,
+      connection.id,
       connection.shop_domain,
       selectedLocationIds,
       selectedFinancialStatuses,
       selectedFulfillmentStatuses,
       autoRefreshEnabled
     );
-    const refreshedConnection = await getShopifyConnection(user.id, connection.shop_domain, {
-      includeSettings: true,
-    });
-    const savedSettings = getShopifyImportSettings(refreshedConnection?.import_settings);
     sendJson(res, 200, {
       shop: connection.shop_domain,
       settings: savedSettings,
