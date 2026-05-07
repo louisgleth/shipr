@@ -8691,7 +8691,7 @@ body.is-auth-view {
 
 .csv-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
 }
 
@@ -8772,7 +8772,7 @@ body.is-auth-view {
   table-layout: fixed;
   min-width: 1468px;
   font-size: var(--fs-xs);
-  color: var(--text);
+  color: var(--text-muted);
   background: var(--panel-bg);
 }
 
@@ -8853,9 +8853,10 @@ body.is-auth-view {
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text);
+  color: var(--text-muted);
   padding: 0 8px;
   font-size: var(--fs-xs);
+  font-weight: 300;
   text-align: left;
   overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%);
@@ -8896,14 +8897,16 @@ body.is-auth-view {
   max-width: calc(100% - 8px);
   margin-left: 8px;
   overflow: hidden;
-  color: var(--text);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 300;
   white-space: nowrap;
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
   mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 
 .csv-ship-from-summary.is-provider {
-  color: var(--text);
+  color: var(--text-muted);
 }
 
 .csv-ship-from-summary.is-fallback {

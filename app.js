@@ -2075,6 +2075,14 @@ const TRANSLATIONS = {
     nl: "Ship from wordt voor deze import bepaald door de gekoppelde provider.",
   },
   "Using your only saved ship-from origin.": { fr: "Utilisation de votre seule origine enregistrée.", nl: "Je enige opgeslagen verzendorigine wordt gebruikt." },
+  "Choose the fallback origin for Shopify rows without a fulfillment location.": {
+    fr: "Choisissez l’origine de secours pour les lignes Shopify sans emplacement fulfillment.",
+    nl: "Kies de fallback-oorsprong voor Shopify-rijen zonder fulfillment-locatie.",
+  },
+  "Choose the fallback origin for Wix rows without a business location.": {
+    fr: "Choisissez l’origine de secours pour les lignes Wix sans emplacement d’entreprise.",
+    nl: "Kies de fallback-oorsprong voor Wix-rijen zonder bedrijfslocatie.",
+  },
   "Choose which origin to apply to this batch.": { fr: "Choisissez l’origine à appliquer à ce lot.", nl: "Kies welke oorsprong op deze batch wordt toegepast." },
   "Unsaved changes in shipping origins.": { fr: "Modifications non enregistrées dans les origines d’expédition.", nl: "Niet-opgeslagen wijzigingen in verzendorigines." },
   "Origin": { fr: "Origine", nl: "Oorsprong" },
@@ -12943,13 +12951,24 @@ function applyWarehouseSenderToRows(rows, origin) {
   const sender = getWarehouseSenderValues(origin);
   return rows.map((row) => {
     if (rowHasProviderSenderOrigin(row)) return row;
-    return {
+    const nextRow = {
       ...row,
       senderName: sender.senderName,
       senderStreet: sender.senderStreet,
       senderCity: sender.senderCity,
       senderState: sender.senderState,
       senderZip: sender.senderZip,
+    };
+    if (!nextRow.shipideSource || typeof nextRow.shipideSource !== "object") {
+      return nextRow;
+    }
+    return {
+      ...nextRow,
+      shipideSource: {
+        ...nextRow.shipideSource,
+        originSource: "shipide-fallback",
+        providerOrigin: false,
+      },
     };
   });
 }
@@ -13112,7 +13131,9 @@ function renderCsvShipFromSelector() {
 
   csvShipFromNote.textContent = singleOrigin
     ? tr("Using your only saved ship-from origin.")
-    : state.csvSource === "provider-wix"
+    : state.csvSource === "provider-shopify"
+      ? tr("Choose the fallback origin for Shopify rows without a fulfillment location.")
+      : state.csvSource === "provider-wix"
       ? tr("Choose the fallback origin for Wix rows without a business location.")
       : tr("Choose which origin to apply to this batch.");
 }
@@ -13154,10 +13175,7 @@ function setCsvBatchSource(source = "none", options = {}) {
   const { rows = state.csvRows } = options;
   state.csvSource = String(source || "none");
   state.shipFromLockedByProvider =
-    (state.csvSource === "provider-shopify"
-      && csvRowsHaveProviderSenderOrigin(rows)
-      && rows.every((row) => rowHasProviderSenderOrigin(row)))
-    || (state.csvSource === "provider-woocommerce"
+    (state.csvSource === "provider-woocommerce"
       && csvRowsHaveProviderSenderOrigin(rows));
   syncShopifyAutoRefreshState();
   syncWooCommerceAutoRefreshState();
