@@ -598,7 +598,7 @@ const state = {
   requestToken: getCurrentCleanerToken(),
   requestEmail: "",
   requestReady: false,
-  lightRaysCleanup: null,
+  lightRaysInstance: null,
   lightRaysReady: false,
 };
 
@@ -612,6 +612,24 @@ const STEP_CARD_CLASSES = [
   "is-step-review",
   "is-step-thanks",
 ];
+const LIGHT_RAYS_DEFAULTS = {
+  raysOrigin: "top-center",
+  raysColor: "#ffffff",
+  raysSpeed: 1,
+  lightSpread: 0.5,
+  rayLength: 3,
+  followMouse: true,
+  mouseInfluence: 0.1,
+  noiseAmount: 0,
+  distortion: 0,
+  className: "custom-rays",
+  pulsating: false,
+  fadeDistance: 1,
+  saturation: 1,
+};
+const LIGHT_RAYS_TUNING_ENABLED =
+  new URLSearchParams(window.location.search).has("rays") ||
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 const els = {
   panels: {
@@ -647,6 +665,7 @@ const els = {
   submit: document.getElementById("cleanerSubmit"),
   pixelCanvas: document.getElementById("cleanerPixelCanvas"),
   lightRays: document.querySelector(".cleaner-light-rays"),
+  lightRaysControls: document.getElementById("cleanerRaysControls"),
 };
 
 function setText(selector, value) {
@@ -833,7 +852,7 @@ function getStepPanel(step) {
 function getStepWidth(step) {
   const shellWidth = els.card?.parentElement?.getBoundingClientRect().width || window.innerWidth;
   if (step === "upload") return Math.min(640, shellWidth);
-  if (step === "thanks") return Math.min(540, shellWidth);
+  if (step === "thanks") return Math.min(LIGHT_RAYS_TUNING_ENABLED ? 940 : 540, shellWidth);
   if (step === "origin") return Math.min(760, shellWidth);
   return Math.min(1040, shellWidth);
 }
@@ -851,22 +870,57 @@ function getStepTitle(step) {
 
 function ensureThanksLightRays() {
   if (state.lightRaysReady || !els.lightRays || typeof window.LightRays !== "function") return;
-  state.lightRaysCleanup = window.LightRays(els.lightRays, {
-    raysOrigin: "top-center",
-    raysColor: "#ffffff",
-    raysSpeed: 1,
-    lightSpread: 0.5,
-    rayLength: 3,
-    followMouse: true,
-    mouseInfluence: 0.1,
-    noiseAmount: 0,
-    distortion: 0,
-    className: "custom-rays",
-    pulsating: false,
-    fadeDistance: 1,
-    saturation: 1,
-  });
+  state.lightRaysInstance = window.LightRays(els.lightRays, LIGHT_RAYS_DEFAULTS);
   state.lightRaysReady = true;
+}
+
+function formatRayValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return String(Math.round(number * 100) / 100);
+}
+
+function readLightRaysControlSettings() {
+  const valueOf = (id, fallback) => document.getElementById(id)?.value ?? fallback;
+  return {
+    raysColor: valueOf("raysColorControl", LIGHT_RAYS_DEFAULTS.raysColor),
+    raysOrigin: valueOf("raysOriginControl", LIGHT_RAYS_DEFAULTS.raysOrigin),
+    raysSpeed: Number(valueOf("raysSpeedControl", LIGHT_RAYS_DEFAULTS.raysSpeed)),
+    lightSpread: Number(valueOf("lightSpreadControl", LIGHT_RAYS_DEFAULTS.lightSpread)),
+    rayLength: Number(valueOf("rayLengthControl", LIGHT_RAYS_DEFAULTS.rayLength)),
+    fadeDistance: Number(valueOf("fadeDistanceControl", LIGHT_RAYS_DEFAULTS.fadeDistance)),
+    saturation: Number(valueOf("saturationControl", LIGHT_RAYS_DEFAULTS.saturation)),
+    mouseInfluence: Number(valueOf("mouseInfluenceControl", LIGHT_RAYS_DEFAULTS.mouseInfluence)),
+    noiseAmount: Number(valueOf("noiseAmountControl", LIGHT_RAYS_DEFAULTS.noiseAmount)),
+    distortion: Number(valueOf("distortionControl", LIGHT_RAYS_DEFAULTS.distortion)),
+    pulsating: Boolean(document.getElementById("pulsatingControl")?.checked),
+  };
+}
+
+function syncLightRaysControlOutputs() {
+  document.querySelectorAll(".cleaner-rays-field input, .cleaner-rays-field select").forEach((input) => {
+    const output = input.closest(".cleaner-rays-field")?.querySelector("output");
+    if (!output) return;
+    output.textContent = input.type === "color" ? input.value : formatRayValue(input.value);
+  });
+}
+
+function updateLightRaysFromControls() {
+  syncLightRaysControlOutputs();
+  ensureThanksLightRays();
+  state.lightRaysInstance?.update?.(readLightRaysControlSettings());
+}
+
+function setupLightRaysControls() {
+  if (!els.lightRaysControls || !LIGHT_RAYS_TUNING_ENABLED) return;
+  els.card?.classList.add("has-rays-controls");
+  els.lightRaysControls.classList.add("is-visible");
+  els.lightRaysControls.closest(".cleaner-thanks-layout")?.classList.add("has-rays-controls");
+  els.lightRaysControls.querySelectorAll("input, select").forEach((control) => {
+    control.addEventListener("input", updateLightRaysFromControls);
+    control.addEventListener("change", updateLightRaysFromControls);
+  });
+  syncLightRaysControlOutputs();
 }
 
 function measurePanelHeight(panel) {
@@ -1816,6 +1870,7 @@ els.confirmModal?.addEventListener("click", (event) => {
 });
 
 applyLocalization();
+setupLightRaysControls();
 drawBackground();
 setStep("upload");
 void validateShipmentExtractRequest();

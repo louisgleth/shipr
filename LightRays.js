@@ -80,8 +80,8 @@
       fadeDistance: 1,
       saturation: 1,
       className: "",
-      ...props,
     };
+    Object.assign(options, props);
 
     container.classList.add("light-rays-container");
     if (options.className) container.classList.add(options.className);
@@ -299,15 +299,26 @@
     applyPlacement();
     animationId = window.requestAnimationFrame(render);
 
-    return () => {
-      window.cancelAnimationFrame(animationId);
-      resizeObserver.disconnect();
-      visibilityObserver.disconnect();
-      window.removeEventListener("resize", applyPlacement);
-      window.removeEventListener("mousemove", handleMouseMove);
-      gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
-      canvas.remove();
+    const api = {
+      update(nextProps = {}) {
+        Object.assign(options, nextProps);
+        applyPlacement();
+      },
+      destroy() {
+        window.cancelAnimationFrame(animationId);
+        resizeObserver.disconnect();
+        visibilityObserver.disconnect();
+        window.removeEventListener("resize", applyPlacement);
+        window.removeEventListener("mousemove", handleMouseMove);
+        gl.deleteBuffer(buffer);
+        gl.deleteProgram(program);
+        canvas.remove();
+      },
+      getOptions() {
+        return { ...options };
+      },
     };
+
+    return api;
   };
 })();

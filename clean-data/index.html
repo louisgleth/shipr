@@ -166,13 +166,80 @@
         </section>
 
         <section class="cleaner-panel" id="thanksPanel">
-          <div class="cleaner-thanks">
-            <div class="cleaner-light-rays" aria-hidden="true"></div>
-            <div class="cleaner-thanks-copy">
-              <h2>Thank you.</h2>
-              <p>
-                We’ll review your shipment profile and get back to you soon.
-              </p>
+          <div class="cleaner-thanks-layout">
+            <div class="cleaner-thanks">
+              <div class="cleaner-light-rays" aria-hidden="true"></div>
+              <div class="cleaner-thanks-copy">
+                <h2>Thank you.</h2>
+                <p>
+                  We’ll review your shipment profile and get back to you soon.
+                </p>
+              </div>
+            </div>
+            <div class="cleaner-rays-controls" id="cleanerRaysControls" aria-label="Light rays controls">
+              <label class="cleaner-rays-field cleaner-rays-field--color">
+                <span>Rays Color</span>
+                <input type="color" id="raysColorControl" value="#ffffff" />
+                <output for="raysColorControl">#ffffff</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Rays Origin</span>
+                <select id="raysOriginControl">
+                  <option value="top-center">Top</option>
+                  <option value="top-left">Top left</option>
+                  <option value="top-right">Top right</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="bottom-center">Bottom</option>
+                  <option value="bottom-left">Bottom left</option>
+                  <option value="bottom-right">Bottom right</option>
+                </select>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Rays Speed</span>
+                <input type="range" id="raysSpeedControl" min="0" max="3" step="0.1" value="1" />
+                <output for="raysSpeedControl">1</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Light Spread</span>
+                <input type="range" id="lightSpreadControl" min="0.1" max="2" step="0.1" value="0.5" />
+                <output for="lightSpreadControl">0.5</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Ray Length</span>
+                <input type="range" id="rayLengthControl" min="0.5" max="5" step="0.1" value="3" />
+                <output for="rayLengthControl">3</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Fade Distance</span>
+                <input type="range" id="fadeDistanceControl" min="0.2" max="3" step="0.1" value="1" />
+                <output for="fadeDistanceControl">1</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Saturation</span>
+                <input type="range" id="saturationControl" min="0" max="2" step="0.1" value="1" />
+                <output for="saturationControl">1</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Mouse Influence</span>
+                <input type="range" id="mouseInfluenceControl" min="0" max="1" step="0.05" value="0.1" />
+                <output for="mouseInfluenceControl">0.1</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Noise Amount</span>
+                <input type="range" id="noiseAmountControl" min="0" max="1" step="0.05" value="0" />
+                <output for="noiseAmountControl">0</output>
+              </label>
+              <label class="cleaner-rays-field">
+                <span>Distortion</span>
+                <input type="range" id="distortionControl" min="0" max="2" step="0.05" value="0" />
+                <output for="distortionControl">0</output>
+              </label>
+              <label class="cleaner-rays-toggle">
+                <span>Pulsating</span>
+                <input type="checkbox" id="pulsatingControl" />
+                <i aria-hidden="true"></i>
+              </label>
             </div>
           </div>
         </section>
