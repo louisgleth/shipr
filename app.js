@@ -12938,7 +12938,7 @@ function getWarehouseSenderValues(origin) {
 function rowHasProviderSenderOrigin(row) {
   if (!row || typeof row !== "object") return false;
   const originSource = String(row?.shipideSource?.originSource || "").trim();
-  if (/^(provider|wix-business-location|shopify-location|woocommerce-store)/i.test(originSource)) {
+  if (/^(provider|return|wix-business-location|shopify-location|woocommerce-store)/i.test(originSource)) {
     return true;
   }
   return Boolean(row?.shipideSource?.providerOrigin);
@@ -13013,6 +13013,9 @@ function csvRowsHaveProviderSenderOrigin(rows) {
 }
 
 function getCsvLockedProviderNoteText() {
+  if (state.csvSource === "returns") {
+    return tr("Ship from is controlled by the selected return shipments for this batch.");
+  }
   if (state.csvSource === "provider-woocommerce") {
     return tr("Ship from is controlled by your WooCommerce store address for this import.");
   }
@@ -13206,6 +13209,7 @@ function setCsvBatchSource(source = "none", options = {}) {
   const { rows = state.csvRows } = options;
   state.csvSource = String(source || "none");
   state.shipFromLockedByProvider =
+    state.csvSource === "returns" ||
     (state.csvSource === "provider-woocommerce"
       && csvRowsHaveProviderSenderOrigin(rows));
   syncShopifyAutoRefreshState();
@@ -14680,6 +14684,21 @@ function normalizeReturnAddressParts({ name, street, city, stateCode, zip, count
 
   if (parts.length < 2) {
     return fallback;
+  }
+
+  if (
+    parts.length >= 5 &&
+    !/[0-9]/.test(parts[1]) &&
+    /^[A-Z]{2,3}$/i.test(parts[2]) &&
+    /[0-9]/.test(parts[3])
+  ) {
+    return {
+      street: parts[0] || fallback.street,
+      city: parts[1] || "",
+      state: parts[2] || "",
+      zip: parts[3] || "",
+      country: parts.slice(4).join(", ") || "",
+    };
   }
 
   if (parts.length >= 4 && !/[0-9]/.test(parts[1])) {
