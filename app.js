@@ -63,7 +63,6 @@ const HISTORY_LIMIT = 25;
 const HISTORY_FETCH_RETRY_DELAYS_MS = [0, 220, 600];
 const WAREHOUSE_MAX_COUNT = 10;
 const WAREHOUSE_REMOVE_ANIMATION_MS = 440;
-const RETURN_CUSTOM_DESTINATION_ID = "__custom_return_destination__";
 const WAREHOUSE_RETURN_FIELD_MAP = {
   senderName: "returnSenderName",
   street: "returnStreet",
@@ -2441,8 +2440,6 @@ const returnsSearchInput = document.getElementById("returnsSearch");
 const returnsTableBody = document.getElementById("returnsTableBody");
 const returnsEmpty = document.getElementById("returnsEmpty");
 const returnsSelectAll = document.getElementById("returnsSelectAll");
-const returnsDestinationSelect = document.getElementById("returnsDestinationSelect");
-const returnsDestinationPreview = document.getElementById("returnsDestinationPreview");
 const returnsSelectionCount = document.getElementById("returnsSelectionCount");
 const returnsCreateSelectedButton = document.getElementById("returnsCreateSelected");
 const accountCompanyName = document.getElementById("accountCompanyName");
@@ -2966,7 +2963,6 @@ let historyStore = "supabase";
 let historySearchQuery = "";
 let returnsSearchQuery = "";
 let selectedReturnKeys = new Set();
-let returnsDestinationOriginId = "";
 let accountActiveRecord = null;
 let accountActiveHistoryIndex = -1;
 let accountActiveLabelIndex = 0;
@@ -14643,33 +14639,92 @@ function getFilteredReturnEntries() {
   });
 }
 
-function getReturnDestinationOrigin() {
-  if (returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID) return null;
-  const selected = getWarehouseRecordById(returnsDestinationOriginId);
-  return selected || getDefaultWarehouseRecord();
-}
-
-function getReturnDestinationValues(origin) {
+function parseReturnCityRegionPostal(value = "") {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return { city: "", state: "", zip: "" };
+  }
+  const tokens = normalized.split(" ").filter(Boolean);
+  const postalTail = [];
+  while (tokens.length && /[0-9]/.test(tokens[tokens.length - 1]) && postalTail.length < 2) {
+    postalTail.unshift(tokens.pop());
+  }
+  const state =
+    tokens.length > 1 && /^[A-Z]{2,3}$/i.test(tokens[tokens.length - 1])
+      ? tokens.pop()
+      : "";
   return {
-    recipientName: String(origin?.senderName || origin?.name || "").trim(),
-    recipientStreet: String(origin?.street || "").trim(),
-    recipientCity: String(origin?.city || "").trim(),
-    recipientState: String(origin?.region || "").trim(),
-    recipientZip: String(origin?.postalCode || "").trim(),
-    recipientCountry: String(origin?.country || "").trim(),
+    city: tokens.join(" ").replace(/,$/, "").trim(),
+    state,
+    zip: postalTail.join(" ").trim(),
   };
 }
 
-function buildReturnRowFromEntry(entry, destinationOrigin) {
+function normalizeReturnAddressParts({ name, street, city, stateCode, zip, country }) {
+  const fallback = {
+    street: String(street || "").trim(),
+    city: String(city || "").trim(),
+    state: String(stateCode || "").trim(),
+    zip: String(zip || "").trim(),
+    country: String(country || "").trim(),
+  };
+  if (fallback.city || fallback.zip || fallback.country || !fallback.street) {
+    return fallback;
+  }
+
+  const parts = fallback.street
+    .split(/\n|,\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => part.toLowerCase() !== String(name || "").trim().toLowerCase());
+
+  if (parts.length < 2) {
+    return fallback;
+  }
+
+  if (parts.length >= 4 && !/[0-9]/.test(parts[1])) {
+    const parsedRegionPostal = parseReturnCityRegionPostal(parts[2]);
+    return {
+      street: parts[0] || fallback.street,
+      city: parts[1] || "",
+      state: parsedRegionPostal.state || parts[2] || "",
+      zip: parsedRegionPostal.zip || parts[3] || "",
+      country: parts.slice(4).join(", ") || parts[3] || "",
+    };
+  }
+
+  const parsed = parseReturnCityRegionPostal(parts[1]);
+  return {
+    street: parts[0] || fallback.street,
+    city: parsed.city || parts[1] || "",
+    state: parsed.state || "",
+    zip: parsed.zip || "",
+    country: parts.slice(2).join(", ") || "",
+  };
+}
+
+function buildReturnRowFromEntry(entry) {
   const data = entry?.label?.data || {};
-  const destination = getReturnDestinationValues(destinationOrigin);
+  const senderAddress = normalizeReturnAddressParts({
+    name: data.recipientName,
+    street: data.recipientStreet,
+    city: data.recipientCity,
+    stateCode: data.recipientState,
+    zip: data.recipientZip,
+    country: data.recipientCountry,
+  });
   return {
     senderName: String(data.recipientName || "").trim(),
-    senderStreet: String(data.recipientStreet || "").trim(),
-    senderCity: String(data.recipientCity || "").trim(),
-    senderState: String(data.recipientState || "").trim(),
-    senderZip: String(data.recipientZip || "").trim(),
-    ...destination,
+    senderStreet: senderAddress.street,
+    senderCity: senderAddress.city,
+    senderState: senderAddress.state,
+    senderZip: senderAddress.zip,
+    recipientName: "",
+    recipientStreet: "",
+    recipientCity: "",
+    recipientState: "",
+    recipientZip: "",
+    recipientCountry: "",
     packageWeight: String(data.packageWeight || "").trim(),
     packageDims: String(data.packageDims || "").trim(),
     shipideSource: {
@@ -14686,43 +14741,7 @@ function getSelectedReturnEntries() {
   return getReturnableLabelEntries().filter((entry) => selected.has(entry.key));
 }
 
-function renderReturnsDestinationSelector() {
-  if (!returnsDestinationSelect || !returnsDestinationPreview) return;
-  returnsDestinationSelect.innerHTML = "";
-
-  const customOption = document.createElement("option");
-  customOption.value = RETURN_CUSTOM_DESTINATION_ID;
-  customOption.textContent = tr("Custom address in builder");
-  returnsDestinationSelect.appendChild(customOption);
-
-  if (!warehouseRecords.length && returnsDestinationOriginId !== RETURN_CUSTOM_DESTINATION_ID) {
-    returnsDestinationOriginId = RETURN_CUSTOM_DESTINATION_ID;
-  }
-
-  const selectedOrigin = getReturnDestinationOrigin();
-  returnsDestinationOriginId =
-    returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID
-      ? RETURN_CUSTOM_DESTINATION_ID
-      : selectedOrigin?.id || warehouseRecords[0]?.id || RETURN_CUSTOM_DESTINATION_ID;
-  customOption.selected = returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID;
-  warehouseRecords.forEach((origin) => {
-    const option = document.createElement("option");
-    option.value = origin.id;
-    option.textContent = origin.name || origin.senderName || tr("Origin");
-    option.selected = origin.id === returnsDestinationOriginId;
-    returnsDestinationSelect.appendChild(option);
-  });
-  returnsDestinationSelect.disabled = false;
-  returnsDestinationPreview.textContent =
-    returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID
-      ? tr("You can fill the return destination directly in the builder table.")
-      : selectedOrigin
-        ? formatWarehouseAddressLine(selectedOrigin)
-        : tr("No destination selected.");
-}
-
 function renderReturnsPage() {
-  renderReturnsDestinationSelector();
   if (!returnsTableBody || !returnsEmpty) return;
 
   const entries = getFilteredReturnEntries();
@@ -14738,13 +14757,15 @@ function renderReturnsPage() {
     row.dataset.returnKey = entry.key;
     row.innerHTML = `
       <td class="returns-select-cell">
-        <input type="checkbox" data-return-key="${escapeHtml(entry.key)}" ${
-          selectedReturnKeys.has(entry.key) ? "checked" : ""
-        } aria-label="${escapeHtml(tr("Select return shipment"))}" />
+        <label class="label-addon-toggle returns-checkbox" aria-label="${escapeHtml(tr("Select return shipment"))}">
+          <input type="checkbox" data-return-key="${escapeHtml(entry.key)}" ${
+            selectedReturnKeys.has(entry.key) ? "checked" : ""
+          } />
+          <span class="label-addon-box" aria-hidden="true"></span>
+        </label>
       </td>
       <td>
         <div class="returns-cell-main">${escapeHtml(data.recipientName || "--")}</div>
-        <div class="returns-cell-sub mono">${escapeHtml(entry.label?.labelId || "--")}</div>
       </td>
       <td>
         <div class="returns-cell-main">${escapeHtml(
@@ -14758,8 +14779,8 @@ function renderReturnsPage() {
           ) || "--"
         )}</div>
       </td>
-      <td class="mono">${escapeHtml(entry.label?.trackingId || "--")}</td>
-      <td class="mono">${escapeHtml(formatHistoryHeadlineParts(entry.record?.created_at).dateText)}</td>
+      <td><div class="returns-cell-main mono">${escapeHtml(entry.label?.trackingId || "--")}</div></td>
+      <td><div class="returns-cell-main mono">${escapeHtml(formatHistoryHeadlineParts(entry.record?.created_at).dateText)}</div></td>
     `;
     returnsTableBody.appendChild(row);
   });
@@ -14783,13 +14804,12 @@ function renderReturnsPage() {
   queueScrollFadeSync();
 }
 
-function startReturnBuilder(entries, options = {}) {
+function startReturnBuilder(entries) {
   const returnEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
   if (!returnEntries.length) {
     showToast(tr("Select at least one shipment to return."), { tone: "error" });
     return;
   }
-  const destinationOrigin = options.destinationOrigin ?? getReturnDestinationOrigin();
 
   clearBatchState();
   resetCustomsDeclaration();
@@ -14799,7 +14819,7 @@ function startReturnBuilder(entries, options = {}) {
     labelId: entry?.label?.labelId || "",
     generationId: entry?.record?.id || "",
   }));
-  state.csvRows = returnEntries.map((entry) => buildReturnRowFromEntry(entry, destinationOrigin));
+  state.csvRows = returnEntries.map((entry) => buildReturnRowFromEntry(entry));
   state.csvPage = 1;
   state.csvValidationAttempted = false;
   state.quantity = state.csvRows.length;
@@ -26543,13 +26563,6 @@ if (returnsSearchInput) {
   });
 }
 
-if (returnsDestinationSelect) {
-  returnsDestinationSelect.addEventListener("change", () => {
-    returnsDestinationOriginId = String(returnsDestinationSelect.value || "").trim();
-    renderReturnsPage();
-  });
-}
-
 if (returnsSelectAll) {
   returnsSelectAll.addEventListener("change", () => {
     const visibleEntries = getFilteredReturnEntries();
@@ -26579,6 +26592,7 @@ if (returnsTableBody) {
   returnsTableBody.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement) return;
+    if (target instanceof Element && target.closest(".returns-checkbox")) return;
     const row = target instanceof Element ? target.closest("[data-return-key]") : null;
     const key = String(row?.dataset.returnKey || "").trim();
     if (!key) return;

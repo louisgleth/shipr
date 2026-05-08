@@ -4721,7 +4721,6 @@ body.is-auth-view {
 
 .returns-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 18px;
   align-items: start;
 }
@@ -4776,6 +4775,7 @@ body.is-auth-view {
   border-bottom: 1px solid var(--stroke);
   text-align: left;
   vertical-align: middle;
+  overflow: hidden;
 }
 
 .returns-table th {
@@ -4808,10 +4808,32 @@ body.is-auth-view {
   width: 44px;
 }
 
-.returns-table input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
+.returns-table th:nth-child(2),
+.returns-table td:nth-child(2) {
+  width: 22%;
+}
+
+.returns-table th:nth-child(3),
+.returns-table td:nth-child(3) {
+  width: 40%;
+}
+
+.returns-table th:nth-child(4),
+.returns-table td:nth-child(4) {
+  width: 22%;
+}
+
+.returns-table th:nth-child(5),
+.returns-table td:nth-child(5) {
+  width: 16%;
+}
+
+.returns-checkbox {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  vertical-align: middle;
 }
 
 .returns-cell-main,
@@ -4823,6 +4845,9 @@ body.is-auth-view {
 
 .returns-cell-main {
   color: var(--text);
+  max-width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 
 .returns-cell-sub {
@@ -4844,29 +4869,15 @@ body.is-auth-view {
   display: none;
 }
 
-.returns-action-card {
-  position: sticky;
-  top: 16px;
-  align-content: start;
-}
-
-.returns-destination-preview,
-.returns-selection-summary {
+.returns-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
   padding: 12px;
-}
-
-.returns-destination-preview {
-  color: var(--muted);
-  font-size: var(--fs-2xs);
-  line-height: 1.4;
-}
-
-.returns-selection-summary {
-  display: grid;
-  gap: 6px;
 }
 
 .returns-selection-count {
@@ -4882,6 +4893,7 @@ body.is-auth-view {
 
 .returns-create-btn {
   justify-content: center;
+  flex: 0 0 auto;
 }
 
 .label-tracking-wrap {
@@ -10593,13 +10605,17 @@ input.is-invalid {
     grid-template-columns: 1fr;
   }
 
-  .returns-layout,
   .returns-card-head {
     grid-template-columns: 1fr;
   }
 
-  .returns-action-card {
-    position: static;
+  .returns-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .returns-create-btn {
+    width: 100%;
   }
 
   .hero {
