@@ -4647,7 +4647,7 @@ body.is-auth-view {
   display: grid;
   grid-template-columns: 13px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   padding: 0 1px;
   overflow: hidden;
   transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
@@ -4676,6 +4676,14 @@ body.is-auth-view {
   box-shadow: none;
 }
 
+.history-search:focus,
+.history-search:focus-visible,
+.history-search input:focus,
+.history-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .history-search:focus-within::after {
   transform: scaleX(1);
 }
@@ -4701,6 +4709,7 @@ body.is-auth-view {
   font: inherit;
   font-size: var(--fs-xs);
   line-height: 1;
+  appearance: none;
 }
 
 .history-search input::placeholder {

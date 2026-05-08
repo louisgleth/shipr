@@ -14529,30 +14529,42 @@ function findHistoryRecordIndexById(recordId) {
   );
 }
 
-function getHistoryRecordSearchText(record) {
-  const values = [
-    record?.id,
-    record?.service_type,
-    record?.created_at,
-    record?.payload?.selection?.type,
-  ];
-  const labels = Array.isArray(record?.payload?.labels) ? record.payload.labels : [];
-  labels.forEach((label) => {
-    values.push(label?.labelId, label?.trackingId);
-    const data = label?.data || {};
-    Object.values(data).forEach((value) => values.push(value));
-  });
-  return values
-    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+function getLabelSearchText(label) {
+  const data = label?.data || {};
+  return [
+    label?.trackingId,
+    data.recipientName,
+    data.recipientStreet,
+    data.recipientCity,
+    data.recipientState,
+    data.recipientZip,
+    data.recipientCountry,
+  ]
     .map((value) => String(value ?? "").toLowerCase())
     .join(" ");
+}
+
+function doesLabelMatchHistorySearch(label) {
+  const query = historySearchQuery.trim().toLowerCase();
+  if (!query) return true;
+  return getLabelSearchText(label).includes(query);
+}
+
+function getMatchingLabelIndexesForRecord(record) {
+  const labels = Array.isArray(record?.payload?.labels) ? record.payload.labels : [];
+  return labels.reduce((indexes, label, index) => {
+    if (doesLabelMatchHistorySearch(label)) {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
 }
 
 function getFilteredHistoryEntries() {
   const query = historySearchQuery.trim().toLowerCase();
   return historyRecords
     .map((record, index) => ({ record, index }))
-    .filter(({ record }) => !query || getHistoryRecordSearchText(record).includes(query));
+    .filter(({ record }) => !query || getMatchingLabelIndexesForRecord(record).length > 0);
 }
 
 function revokeAccountPdfUrls() {
@@ -14979,13 +14991,25 @@ function renderAccountBatchList() {
     return;
   }
 
+  const query = historySearchQuery.trim();
+  const visibleEntries = accountLabels
+    .map((label, index) => ({ label, index }))
+    .filter(({ label }) => !query || doesLabelMatchHistorySearch(label));
+
   accountBatchPanel.classList.remove("is-hidden");
   if (accountBatchPreview) {
     accountBatchPreview.classList.remove("is-single");
   }
 
+  const title = accountBatchPanel.querySelector(".batch-title");
+  if (title) {
+    title.textContent = query
+      ? tr("{count} matching labels", { count: visibleEntries.length })
+      : tr("Batch Queue");
+  }
+
   accountBatchList.innerHTML = "";
-  accountLabels.forEach((label, index) => {
+  visibleEntries.forEach(({ label, index }) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `batch-item${index === accountActiveLabelIndex ? " is-active" : ""}`;
@@ -15014,8 +15038,8 @@ function selectAccountLabel(index) {
   updateAccountPreviewSummary(activeLabel, serviceType);
 
   if (accountBatchList) {
-    Array.from(accountBatchList.children).forEach((child, idx) => {
-      child.classList.toggle("is-active", idx === index);
+    Array.from(accountBatchList.children).forEach((child) => {
+      child.classList.toggle("is-active", Number(child.dataset.accountLabelIndex) === index);
     });
   }
 }
@@ -17791,9 +17815,14 @@ function selectAccountRecord(index) {
   const previousRecordId = accountActiveRecord?.id || "";
   const previousLabelIndex =
     previousRecordId && previousRecordId === record.id ? accountActiveLabelIndex : 0;
+  const matchingLabelIndexes = historySearchQuery.trim() ? getMatchingLabelIndexesForRecord(record) : [];
+  const preferredLabelIndex =
+    matchingLabelIndexes.length && !matchingLabelIndexes.includes(previousLabelIndex)
+      ? matchingLabelIndexes[0]
+      : previousLabelIndex;
   accountActiveRecord = record;
   accountActiveHistoryIndex = index;
-  accountActiveLabelIndex = Math.max(0, Math.min(previousLabelIndex, labels.length - 1));
+  accountActiveLabelIndex = Math.max(0, Math.min(preferredLabelIndex, labels.length - 1));
   revokeAccountPdfUrls();
 
   const serviceType = translateServiceName(
@@ -26188,6 +26217,13 @@ if (accountHistorySearchInput) {
   accountHistorySearchInput.addEventListener("input", () => {
     historySearchQuery = String(accountHistorySearchInput.value || "");
     renderAccountHistoryList();
+    if (accountActiveRecord) {
+      const matches = historySearchQuery.trim() ? getMatchingLabelIndexesForRecord(accountActiveRecord) : [];
+      renderAccountBatchList();
+      if (matches.length && !matches.includes(accountActiveLabelIndex)) {
+        selectAccountLabel(matches[0]);
+      }
+    }
   });
 }
 
@@ -27066,10 +27102,16 @@ function navigateAccountHistory(direction) {
 
 function navigateAccountBatch(direction) {
   if (accountLabels.length <= 1) return false;
-  const next = Math.max(
+  const visibleIndexes = accountLabels
+    .map((label, index) => (historySearchQuery.trim() && !doesLabelMatchHistorySearch(label) ? -1 : index))
+    .filter((index) => index >= 0);
+  if (visibleIndexes.length <= 1) return false;
+  const currentVisibleIndex = Math.max(0, visibleIndexes.indexOf(accountActiveLabelIndex));
+  const nextVisibleIndex = Math.max(
     0,
-    Math.min(accountLabels.length - 1, accountActiveLabelIndex + direction)
+    Math.min(visibleIndexes.length - 1, currentVisibleIndex + direction)
   );
+  const next = visibleIndexes[nextVisibleIndex];
   if (next === accountActiveLabelIndex) return true;
   selectAccountLabel(next);
   requestAnimationFrame(() => focusAccountBatchItem(next));
@@ -28599,12 +28641,6 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     }
     if (!currentUser) return;
     void refreshAuthAccessToken();
-    if (canAutoRefreshShopifyBatch()) {
-      void runShopifyAutoRefresh();
-    }
-    if (canAutoRefreshWooCommerceBatch()) {
-      void runWooCommerceAutoRefresh();
-    }
   });
   window.addEventListener("resize", queueScrollFadeSync);
 
