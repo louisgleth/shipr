@@ -181,6 +181,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
               <span>Builder</span>
             </button>
+            <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn is-hidden" id="openReturnsPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 7H5v4"/><path d="M5 11c1.5-4.2 6.2-6.4 10.3-4.7 3.8 1.6 5.6 5.9 4 9.7-1.6 3.8-5.9 5.6-9.7 4a7.6 7.6 0 0 1-3.4-2.9"/></svg>
+              <span>Returns</span>
+            </button>
             <button type="button" class="btn btn-secondary btn-sm topbar-nav-btn" id="openAccountPage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M5 20c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
               <span>Account</span>
@@ -2278,7 +2282,6 @@
 
             <div class="preview-grid account-preview-grid">
               <div class="pdf-preview">
-                <div class="preview-title">PDF Preview</div>
                 <div class="batch-preview is-single" id="accountBatchPreview">
                   <div class="account-preview-empty" id="accountPreviewEmpty">
                     No label PDF selected yet. Choose a generation to preview.
@@ -2301,7 +2304,13 @@
                       <div class="label-brand">Shipr Label Co.</div>
                       <div class="label-service" id="accountPreviewService">--</div>
                     </div>
-                    <div class="label-tracking mono" id="accountPreviewTracking">TRACKING</div>
+                    <div class="label-tracking-wrap">
+                      <div class="label-tracking mono" id="accountPreviewTracking">TRACKING</div>
+                      <button type="button" class="btn btn-secondary btn-sm label-return-btn" id="accountCreateReturn" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 7H5v4"/><path d="M5 11c1.5-4.2 6.2-6.4 10.3-4.7 3.8 1.6 5.6 5.9 4 9.7-1.6 3.8-5.9 5.6-9.7 4a7.6 7.6 0 0 1-3.4-2.9"/></svg>
+                        <span>Create Return</span>
+                      </button>
+                    </div>
                   </div>
                   <div class="label-block">
                     <div class="label-caption mono">FROM</div>
@@ -2325,6 +2334,75 @@
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="returns-page is-hidden" id="returnsPageSection">
+        <div class="account-page-head">
+          <div>
+            <h2>Returns</h2>
+            <p class="panel-sub">
+              Search past shipments, select labels, and prepare return labels in one batch.
+            </p>
+          </div>
+          <div class="account-page-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="closeReturnsPage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <span>Back to Builder</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="returns-layout">
+          <article class="returns-card">
+            <div class="returns-card-head">
+              <div>
+                <div class="preview-title">Past Shipments</div>
+                <p class="returns-card-sub">Select shipments to turn into return labels.</p>
+              </div>
+              <label class="history-search returns-search" for="returnsSearch">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+                <input type="search" id="returnsSearch" placeholder="Search name, tracking, or address..." autocomplete="off" spellcheck="false" />
+              </label>
+            </div>
+            <div class="returns-table-wrap scroll-fade-wrap scroll-fade-wrap--card">
+              <table class="returns-table">
+                <thead>
+                  <tr>
+                    <th class="returns-select-cell">
+                      <input type="checkbox" id="returnsSelectAll" aria-label="Select all visible return shipments" />
+                    </th>
+                    <th>Recipient</th>
+                    <th>Address</th>
+                    <th>Tracking</th>
+                    <th>Generated</th>
+                  </tr>
+                </thead>
+                <tbody id="returnsTableBody"></tbody>
+              </table>
+            </div>
+            <div class="returns-empty" id="returnsEmpty">No past shipments found.</div>
+          </article>
+
+          <aside class="returns-card returns-action-card">
+            <div>
+              <div class="preview-title">Return Destination</div>
+              <p class="returns-card-sub">Choose where selected shipments should return to.</p>
+            </div>
+            <label class="field">
+              <span>Saved origin</span>
+              <select id="returnsDestinationSelect"></select>
+            </label>
+            <div class="returns-destination-preview mono" id="returnsDestinationPreview">No destination selected.</div>
+            <div class="returns-selection-summary">
+              <div class="returns-selection-count" id="returnsSelectionCount">0 selected</div>
+              <div class="returns-selection-copy">Returns open in the builder table for final review before generation.</div>
+            </div>
+            <button type="button" class="btn btn-primary returns-create-btn" id="returnsCreateSelected" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 7H5v4"/><path d="M5 11c1.5-4.2 6.2-6.4 10.3-4.7 3.8 1.6 5.6 5.9 4 9.7-1.6 3.8-5.9 5.6-9.7 4a7.6 7.6 0 0 1-3.4-2.9"/></svg>
+              <span>Create selected returns</span>
+            </button>
+          </aside>
         </div>
       </section>
 

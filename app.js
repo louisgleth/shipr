@@ -17,6 +17,8 @@ const state = {
   csvSource: "none",
   shipFromOriginId: "",
   shipFromLockedByProvider: false,
+  returnMode: false,
+  returnSourceLabels: [],
   info: {
     senderName: "",
     senderStreet: "",
@@ -61,6 +63,7 @@ const HISTORY_LIMIT = 25;
 const HISTORY_FETCH_RETRY_DELAYS_MS = [0, 220, 600];
 const WAREHOUSE_MAX_COUNT = 10;
 const WAREHOUSE_REMOVE_ANIMATION_MS = 440;
+const RETURN_CUSTOM_DESTINATION_ID = "__custom_return_destination__";
 const WAREHOUSE_RETURN_FIELD_MAP = {
   senderName: "returnSenderName",
   street: "returnStreet",
@@ -142,6 +145,7 @@ const ROUTE_PATHS = {
   admin: "/admin",
   leads: "/leads",
   history: "/history",
+  returns: "/returns",
   reports: "/reports",
   post: "/post",
 };
@@ -161,6 +165,7 @@ const ROUTE_SUFFIXES = [
   ROUTE_PATHS.admin,
   ROUTE_PATHS.leads,
   ROUTE_PATHS.history,
+  ROUTE_PATHS.returns,
   ROUTE_PATHS.reports,
   ROUTE_PATHS.post,
   ...Object.values(STEP_ROUTE_PATHS),
@@ -2380,6 +2385,7 @@ const openAdminPageButton = document.getElementById("openAdminPage");
 const openLeadsPageButton = document.getElementById("openLeadsPage");
 const openPostPageButton = document.getElementById("openPostPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
+const openReturnsPageButton = document.getElementById("openReturnsPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
 const portalFooterLogoLottie = document.getElementById("portalFooterLogoLottie");
 const portalFooterForm = document.getElementById("portalFooterForm");
@@ -2390,6 +2396,7 @@ const closeAdminPageButton = document.getElementById("closeAdminPage");
 const closeLeadsPageButton = document.getElementById("closeLeadsPage");
 const closePostPageButton = document.getElementById("closePostPage");
 const closeHistoryPageButton = document.getElementById("closeHistoryPage");
+const closeReturnsPageButton = document.getElementById("closeReturnsPage");
 const closeReportsPageButton = document.getElementById("closeReportsPage");
 const openAdminSettingsModalButton = document.getElementById("openAdminSettingsModal");
 const builderPage = document.getElementById("builderPage");
@@ -2398,6 +2405,7 @@ const adminPageSection = document.getElementById("adminPageSection");
 const leadsPageSection = document.getElementById("leadsPageSection");
 const postPageSection = document.getElementById("postPageSection");
 const historyPageSection = document.getElementById("historyPageSection");
+const returnsPageSection = document.getElementById("returnsPageSection");
 const reportsPageSection = document.getElementById("reportsPageSection");
 const postVisualCanvas = document.getElementById("postVisualCanvas");
 const postStageMeta = document.getElementById("postStageMeta");
@@ -2429,6 +2437,14 @@ const postCaptionInput = document.getElementById("postCaptionInput");
 const accountHistoryPanel = historyPageSection?.querySelector(".account-history-panel") || null;
 const accountPreviewPanel = historyPageSection?.querySelector(".account-preview-panel") || null;
 const accountHistorySearchInput = document.getElementById("accountHistorySearch");
+const returnsSearchInput = document.getElementById("returnsSearch");
+const returnsTableBody = document.getElementById("returnsTableBody");
+const returnsEmpty = document.getElementById("returnsEmpty");
+const returnsSelectAll = document.getElementById("returnsSelectAll");
+const returnsDestinationSelect = document.getElementById("returnsDestinationSelect");
+const returnsDestinationPreview = document.getElementById("returnsDestinationPreview");
+const returnsSelectionCount = document.getElementById("returnsSelectionCount");
+const returnsCreateSelectedButton = document.getElementById("returnsCreateSelected");
 const accountCompanyName = document.getElementById("accountCompanyName");
 const accountContactName = document.getElementById("accountContactName");
 const accountContactEmail = document.getElementById("accountContactEmail");
@@ -2607,6 +2623,7 @@ const accountHistoryList = document.getElementById("accountHistoryList");
 const accountPreviewMeta = document.getElementById("accountPreviewMeta");
 const accountDownloadPdf = document.getElementById("accountDownloadPdf");
 const accountDownloadInvoice = document.getElementById("accountDownloadInvoice");
+const accountCreateReturn = document.getElementById("accountCreateReturn");
 const openReceiptModalButton = document.getElementById("openReceiptModal");
 const accountBatchPanel = document.getElementById("accountBatchPanel");
 const accountBatchList = document.getElementById("accountBatchList");
@@ -2903,7 +2920,6 @@ const labelRequiredFields = [
   "recipientStreet",
   "recipientCountry",
   "recipientCity",
-  "recipientState",
   "recipientZip",
   "packageWeight",
 ];
@@ -2948,6 +2964,9 @@ let authAgreementMagnifierPage = null;
 let historyRecords = [];
 let historyStore = "supabase";
 let historySearchQuery = "";
+let returnsSearchQuery = "";
+let selectedReturnKeys = new Set();
+let returnsDestinationOriginId = "";
 let accountActiveRecord = null;
 let accountActiveHistoryIndex = -1;
 let accountActiveLabelIndex = 0;
@@ -3435,6 +3454,9 @@ function parseRouteFromLocation() {
   if (path === ROUTE_PATHS.history) {
     return { view: "history" };
   }
+  if (path === ROUTE_PATHS.returns) {
+    return { view: "returns" };
+  }
   if (path === ROUTE_PATHS.reports) {
     const reportRangeFromQuery = getReportRangeFromLocation(window.location);
     const reportRangeFromState = String(history.state?.reportRange || "").trim().toLowerCase();
@@ -3461,6 +3483,9 @@ function parseRouteFromLocation() {
   }
   if (hash === "#history") {
     return { view: "history" };
+  }
+  if (hash === "#returns") {
+    return { view: "returns" };
   }
   if (hash === "#post") {
     return { view: "post" };
@@ -3620,6 +3645,9 @@ function routeToPath(route) {
   }
   if (route.view === "history") {
     return buildRoutePath(ROUTE_PATHS.history);
+  }
+  if (route.view === "returns") {
+    return buildRoutePath(ROUTE_PATHS.returns);
   }
   if (route.view === "reports") {
     return buildRoutePath(ROUTE_PATHS.reports);
@@ -11251,7 +11279,6 @@ const CSV_REQUIRED_FIELDS = new Set([
   "recipientName",
   "recipientStreet",
   "recipientCity",
-  "recipientState",
   "recipientZip",
   "recipientCountry",
   "packageWeight",
@@ -13297,6 +13324,7 @@ function renderWarehouseList() {
     updateWarehouseControls();
     renderSenderOriginSelector();
     renderCsvShipFromSelector();
+    renderReturnsPage();
     return;
   }
 
@@ -13308,6 +13336,7 @@ function renderWarehouseList() {
     updateWarehouseControls();
     renderSenderOriginSelector();
     renderCsvShipFromSelector();
+    renderReturnsPage();
     return;
   }
 
@@ -13467,6 +13496,7 @@ function renderWarehouseList() {
   updateWarehouseControls();
   renderSenderOriginSelector();
   renderCsvShipFromSelector();
+  renderReturnsPage();
   if (state.csvMode) {
     syncCsvRowsWithSelectedOrigin({ rerender: true });
   }
@@ -13936,6 +13966,7 @@ function setMainView(view, options = {}) {
     view === "leads" ||
     view === "post" ||
     view === "history" ||
+    view === "returns" ||
     view === "reports" ||
     view === "builder"
       ? view
@@ -13965,11 +13996,17 @@ function setMainView(view, options = {}) {
     if (historyPageSection) {
       historyPageSection.classList.toggle("is-hidden", nextView !== "history");
     }
+    if (returnsPageSection) {
+      returnsPageSection.classList.toggle("is-hidden", nextView !== "returns");
+    }
     if (reportsPageSection) {
       reportsPageSection.classList.toggle("is-hidden", nextView !== "reports");
     }
     if (nextView !== "history") {
       setReceiptModalOpen(false);
+    }
+    if (nextView === "returns") {
+      renderReturnsPage();
     }
     if (nextView !== "builder") {
       setRestrictedGoodsModalOpen(false);
@@ -14028,6 +14065,10 @@ function setMainView(view, options = {}) {
       updateRoute({ view: "history" }, { replace });
       return;
     }
+    if (nextView === "returns") {
+      updateRoute({ view: "returns" }, { replace });
+      return;
+    }
     if (nextView === "reports") {
       const reportRangeToken = String(reportRange || "").trim();
       updateRoute(
@@ -14047,12 +14088,14 @@ function syncTopbarNavState(view = currentMainView) {
     view === "leads" ||
     view === "post" ||
     view === "history" ||
+    view === "returns" ||
     view === "reports" ||
     view === "builder"
       ? view
       : "builder";
   const navButtons = [
     [openBuilderPageButton, "builder"],
+    [openReturnsPageButton, "returns"],
     [openAccountPageButton, "account"],
     [openLeadsPageButton, "leads"],
     [openPostPageButton, "post"],
@@ -14089,6 +14132,10 @@ function setReportsPageVisible(visible, options = {}) {
 function setHistoryPageVisible(visible, options = {}) {
   setMainView(visible ? "history" : "builder", options);
   queueHistoryPanelSync();
+}
+
+function setReturnsPageVisible(visible, options = {}) {
+  setMainView(visible ? "returns" : "builder", options);
 }
 
 function setReceiptModalOpen(open) {
@@ -14567,6 +14614,227 @@ function getFilteredHistoryEntries() {
     .filter(({ record }) => !query || getMatchingLabelIndexesForRecord(record).length > 0);
 }
 
+function getReturnSearchText(entry) {
+  return getLabelSearchText(entry?.label);
+}
+
+function getReturnableLabelEntries() {
+  return historyRecords.flatMap((record, recordIndex) => {
+    if (record?.payload?.return?.is_return) return [];
+    const labels = Array.isArray(record?.payload?.labels) ? record.payload.labels : [];
+    return labels.map((label, labelIndex) => ({
+      key: [
+        record?.id || recordIndex,
+        label?.trackingId || label?.labelId || labelIndex,
+      ].join(":"),
+      record,
+      recordIndex,
+      label,
+      labelIndex,
+    }));
+  });
+}
+
+function getFilteredReturnEntries() {
+  const query = returnsSearchQuery.trim().toLowerCase();
+  return getReturnableLabelEntries().filter((entry) => {
+    if (!query) return true;
+    return getReturnSearchText(entry).includes(query);
+  });
+}
+
+function getReturnDestinationOrigin() {
+  if (returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID) return null;
+  const selected = getWarehouseRecordById(returnsDestinationOriginId);
+  return selected || getDefaultWarehouseRecord();
+}
+
+function getReturnDestinationValues(origin) {
+  return {
+    recipientName: String(origin?.senderName || origin?.name || "").trim(),
+    recipientStreet: String(origin?.street || "").trim(),
+    recipientCity: String(origin?.city || "").trim(),
+    recipientState: String(origin?.region || "").trim(),
+    recipientZip: String(origin?.postalCode || "").trim(),
+    recipientCountry: String(origin?.country || "").trim(),
+  };
+}
+
+function buildReturnRowFromEntry(entry, destinationOrigin) {
+  const data = entry?.label?.data || {};
+  const destination = getReturnDestinationValues(destinationOrigin);
+  return {
+    senderName: String(data.recipientName || "").trim(),
+    senderStreet: String(data.recipientStreet || "").trim(),
+    senderCity: String(data.recipientCity || "").trim(),
+    senderState: String(data.recipientState || "").trim(),
+    senderZip: String(data.recipientZip || "").trim(),
+    ...destination,
+    packageWeight: String(data.packageWeight || "").trim(),
+    packageDims: String(data.packageDims || "").trim(),
+    shipideSource: {
+      originSource: "return",
+      sourceTrackingId: String(entry?.label?.trackingId || "").trim(),
+      sourceLabelId: String(entry?.label?.labelId || "").trim(),
+      sourceGenerationId: String(entry?.record?.id || "").trim(),
+    },
+  };
+}
+
+function getSelectedReturnEntries() {
+  const selected = selectedReturnKeys;
+  return getReturnableLabelEntries().filter((entry) => selected.has(entry.key));
+}
+
+function renderReturnsDestinationSelector() {
+  if (!returnsDestinationSelect || !returnsDestinationPreview) return;
+  returnsDestinationSelect.innerHTML = "";
+
+  const customOption = document.createElement("option");
+  customOption.value = RETURN_CUSTOM_DESTINATION_ID;
+  customOption.textContent = tr("Custom address in builder");
+  returnsDestinationSelect.appendChild(customOption);
+
+  if (!warehouseRecords.length && returnsDestinationOriginId !== RETURN_CUSTOM_DESTINATION_ID) {
+    returnsDestinationOriginId = RETURN_CUSTOM_DESTINATION_ID;
+  }
+
+  const selectedOrigin = getReturnDestinationOrigin();
+  returnsDestinationOriginId =
+    returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID
+      ? RETURN_CUSTOM_DESTINATION_ID
+      : selectedOrigin?.id || warehouseRecords[0]?.id || RETURN_CUSTOM_DESTINATION_ID;
+  customOption.selected = returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID;
+  warehouseRecords.forEach((origin) => {
+    const option = document.createElement("option");
+    option.value = origin.id;
+    option.textContent = origin.name || origin.senderName || tr("Origin");
+    option.selected = origin.id === returnsDestinationOriginId;
+    returnsDestinationSelect.appendChild(option);
+  });
+  returnsDestinationSelect.disabled = false;
+  returnsDestinationPreview.textContent =
+    returnsDestinationOriginId === RETURN_CUSTOM_DESTINATION_ID
+      ? tr("You can fill the return destination directly in the builder table.")
+      : selectedOrigin
+        ? formatWarehouseAddressLine(selectedOrigin)
+        : tr("No destination selected.");
+}
+
+function renderReturnsPage() {
+  renderReturnsDestinationSelector();
+  if (!returnsTableBody || !returnsEmpty) return;
+
+  const entries = getFilteredReturnEntries();
+  const allKeys = new Set(getReturnableLabelEntries().map((entry) => entry.key));
+  selectedReturnKeys = new Set([...selectedReturnKeys].filter((key) => allKeys.has(key)));
+  const visibleKeys = entries.map((entry) => entry.key);
+
+  returnsTableBody.innerHTML = "";
+  entries.forEach((entry) => {
+    const data = entry.label?.data || {};
+    const row = document.createElement("tr");
+    row.className = selectedReturnKeys.has(entry.key) ? "is-selected" : "";
+    row.dataset.returnKey = entry.key;
+    row.innerHTML = `
+      <td class="returns-select-cell">
+        <input type="checkbox" data-return-key="${escapeHtml(entry.key)}" ${
+          selectedReturnKeys.has(entry.key) ? "checked" : ""
+        } aria-label="${escapeHtml(tr("Select return shipment"))}" />
+      </td>
+      <td>
+        <div class="returns-cell-main">${escapeHtml(data.recipientName || "--")}</div>
+        <div class="returns-cell-sub mono">${escapeHtml(entry.label?.labelId || "--")}</div>
+      </td>
+      <td>
+        <div class="returns-cell-main">${escapeHtml(
+          formatAddress(
+            "",
+            data.recipientStreet,
+            data.recipientCity,
+            data.recipientState,
+            data.recipientZip,
+            data.recipientCountry
+          ) || "--"
+        )}</div>
+      </td>
+      <td class="mono">${escapeHtml(entry.label?.trackingId || "--")}</td>
+      <td class="mono">${escapeHtml(formatHistoryHeadlineParts(entry.record?.created_at).dateText)}</td>
+    `;
+    returnsTableBody.appendChild(row);
+  });
+
+  returnsEmpty.hidden = entries.length > 0;
+  if (returnsSelectAll) {
+    const selectedVisibleCount = visibleKeys.filter((key) => selectedReturnKeys.has(key)).length;
+    returnsSelectAll.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length;
+    returnsSelectAll.indeterminate =
+      selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length;
+    returnsSelectAll.disabled = visibleKeys.length === 0;
+  }
+
+  const selectedCount = selectedReturnKeys.size;
+  if (returnsSelectionCount) {
+    returnsSelectionCount.textContent = tr("{count} selected", { count: selectedCount });
+  }
+  if (returnsCreateSelectedButton) {
+    returnsCreateSelectedButton.disabled = selectedCount === 0;
+  }
+  queueScrollFadeSync();
+}
+
+function startReturnBuilder(entries, options = {}) {
+  const returnEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  if (!returnEntries.length) {
+    showToast(tr("Select at least one shipment to return."), { tone: "error" });
+    return;
+  }
+  const destinationOrigin = options.destinationOrigin ?? getReturnDestinationOrigin();
+
+  clearBatchState();
+  resetCustomsDeclaration();
+  state.returnMode = true;
+  state.returnSourceLabels = returnEntries.map((entry) => ({
+    trackingId: entry?.label?.trackingId || "",
+    labelId: entry?.label?.labelId || "",
+    generationId: entry?.record?.id || "",
+  }));
+  state.csvRows = returnEntries.map((entry) => buildReturnRowFromEntry(entry, destinationOrigin));
+  state.csvPage = 1;
+  state.csvValidationAttempted = false;
+  state.quantity = state.csvRows.length;
+  if (inputMap.trackingId) inputMap.trackingId.value = generateTracking();
+  if (inputMap.labelId) inputMap.labelId.value = generateLabelId();
+  if (quantityInput) {
+    quantityInput.value = state.quantity;
+  }
+  setCsvBatchSource("returns");
+  setCsvMode(true);
+  setCsvEditMode(true);
+  setInlineFormErrorToast(labelError, "");
+  updatePreview();
+  updateSummary();
+  updatePayment();
+  setMainView("builder");
+  goToStep(1);
+  showToast(tr("Return labels prepared in the builder."), { tone: "success" });
+}
+
+function startReturnForActiveAccountLabel() {
+  if (!accountActiveRecord || !accountLabels[accountActiveLabelIndex]) return;
+  startReturnBuilder([
+    {
+      key: `${accountActiveRecord.id || accountActiveHistoryIndex}:${
+        accountLabels[accountActiveLabelIndex].trackingId || accountActiveLabelIndex
+      }`,
+      record: accountActiveRecord,
+      recordIndex: accountActiveHistoryIndex,
+      label: accountLabels[accountActiveLabelIndex],
+      labelIndex: accountActiveLabelIndex,
+    },
+  ]);
+}
+
 function revokeAccountPdfUrls() {
   const urls = new Set();
   accountLabels.forEach((label) => {
@@ -14629,6 +14897,9 @@ function resetAccountPreview() {
   if (accountDownloadInvoice) {
     accountDownloadInvoice.disabled = true;
   }
+  if (accountCreateReturn) {
+    accountCreateReturn.disabled = true;
+  }
   if (openReceiptModalButton) {
     openReceiptModalButton.disabled = true;
   }
@@ -14674,6 +14945,9 @@ function updateAccountPreviewSummary(label, serviceType = "") {
   }
   if (accountPreviewDims) {
     accountPreviewDims.textContent = activeData.packageDims || "--";
+  }
+  if (accountCreateReturn) {
+    accountCreateReturn.disabled = !activeLabel || Boolean(accountActiveRecord?.payload?.return?.is_return);
   }
 }
 
@@ -14789,10 +15063,12 @@ async function loadGenerationHistory(options = {}) {
     historyRecords = Array.isArray(records) ? records : [];
     setAccountHistoryStatus(historyRecords.length ? "" : emptyStatus);
     renderAccountHistoryList();
+    renderReturnsPage();
 
     if (!historyRecords.length) {
       resetAccountPreview();
       refreshReportsIfVisible();
+      renderReturnsPage();
       return;
     }
 
@@ -14807,6 +15083,7 @@ async function loadGenerationHistory(options = {}) {
       resetAccountPreview();
       setAccountHistoryStatus(tr("No preview-ready generations yet."));
       refreshReportsIfVisible();
+      renderReturnsPage();
       return;
     }
 
@@ -14924,6 +15201,12 @@ function buildHistoryRecord() {
       },
       labels: payloadLabels,
       customs: customsPayload,
+      return: state.returnMode
+        ? {
+            is_return: true,
+            source_labels: state.returnSourceLabels,
+          }
+        : null,
     },
   };
 }
@@ -20642,6 +20925,9 @@ function setAuthView(session, options = {}) {
   if (openHistoryPageButton) {
     openHistoryPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
+  if (openReturnsPageButton) {
+    openReturnsPageButton.classList.toggle("is-hidden", !isAppAuthed);
+  }
   if (openReportsPageButton) {
     openReportsPageButton.classList.toggle("is-hidden", !isAppAuthed);
   }
@@ -21012,6 +21298,8 @@ async function initializeAuth() {
     setMainView("post", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "history") {
     setMainView("history", { push: false, animate: false });
+  } else if (isAppAuthed && initialRoute.view === "returns") {
+    setMainView("returns", { push: false, animate: false });
   } else if (isAppAuthed && initialRoute.view === "reports") {
     setMainView("reports", {
       push: false,
@@ -21035,6 +21323,7 @@ async function initializeAuth() {
         initialRoute.view === "leads" ||
         initialRoute.view === "post" ||
         initialRoute.view === "history" ||
+        initialRoute.view === "returns" ||
         initialRoute.view === "reports"),
   });
   if (isAppAuthed && initialRoute.view === "admin") {
@@ -21104,6 +21393,8 @@ async function initializeAuth() {
       });
     } else if (route.view === "history") {
       setMainView("history", { push: false, animate: false });
+    } else if (route.view === "returns") {
+      setMainView("returns", { push: false, animate: false });
     } else if (route.view === "reports") {
       setMainView("reports", {
         push: false,
@@ -21126,6 +21417,7 @@ async function initializeAuth() {
           route.view === "leads" ||
           route.view === "post" ||
           route.view === "history" ||
+          route.view === "returns" ||
           route.view === "reports"),
     });
   });
@@ -25146,6 +25438,17 @@ if (openHistoryPageButton) {
   });
 }
 
+if (openReturnsPageButton) {
+  openReturnsPageButton.addEventListener("click", async () => {
+    setReturnsPageVisible(true);
+    await Promise.all([
+      loadGenerationHistory({ preferLatest: false }),
+      loadWarehouseSettings({ quiet: true }),
+    ]);
+    renderReturnsPage();
+  });
+}
+
 if (openReportsPageButton) {
   openReportsPageButton.addEventListener("click", async () => {
     setReportsPageVisible(true);
@@ -25181,6 +25484,12 @@ if (closePostPageButton) {
 if (closeReportsPageButton) {
   closeReportsPageButton.addEventListener("click", () => {
     setReportsPageVisible(false);
+  });
+}
+
+if (closeReturnsPageButton) {
+  closeReturnsPageButton.addEventListener("click", () => {
+    setReturnsPageVisible(false);
   });
 }
 
@@ -26227,6 +26536,73 @@ if (accountHistorySearchInput) {
   });
 }
 
+if (returnsSearchInput) {
+  returnsSearchInput.addEventListener("input", () => {
+    returnsSearchQuery = String(returnsSearchInput.value || "");
+    renderReturnsPage();
+  });
+}
+
+if (returnsDestinationSelect) {
+  returnsDestinationSelect.addEventListener("change", () => {
+    returnsDestinationOriginId = String(returnsDestinationSelect.value || "").trim();
+    renderReturnsPage();
+  });
+}
+
+if (returnsSelectAll) {
+  returnsSelectAll.addEventListener("change", () => {
+    const visibleEntries = getFilteredReturnEntries();
+    if (returnsSelectAll.checked) {
+      visibleEntries.forEach((entry) => selectedReturnKeys.add(entry.key));
+    } else {
+      visibleEntries.forEach((entry) => selectedReturnKeys.delete(entry.key));
+    }
+    renderReturnsPage();
+  });
+}
+
+if (returnsTableBody) {
+  returnsTableBody.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+    const key = String(target.dataset.returnKey || "").trim();
+    if (!key) return;
+    if (target.checked) {
+      selectedReturnKeys.add(key);
+    } else {
+      selectedReturnKeys.delete(key);
+    }
+    renderReturnsPage();
+  });
+
+  returnsTableBody.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement) return;
+    const row = target instanceof Element ? target.closest("[data-return-key]") : null;
+    const key = String(row?.dataset.returnKey || "").trim();
+    if (!key) return;
+    if (selectedReturnKeys.has(key)) {
+      selectedReturnKeys.delete(key);
+    } else {
+      selectedReturnKeys.add(key);
+    }
+    renderReturnsPage();
+  });
+}
+
+if (returnsCreateSelectedButton) {
+  returnsCreateSelectedButton.addEventListener("click", () => {
+    startReturnBuilder(getSelectedReturnEntries());
+  });
+}
+
+if (accountCreateReturn) {
+  accountCreateReturn.addEventListener("click", () => {
+    startReturnForActiveAccountLabel();
+  });
+}
+
 if (accountBatchList) {
   accountBatchList.addEventListener("click", (event) => {
     const target = event.target.closest("[data-account-label-index]");
@@ -26570,6 +26946,8 @@ function autoFill() {
   state.csvRows = [];
   state.csvPage = 1;
   state.csvValidationAttempted = false;
+  state.returnMode = false;
+  state.returnSourceLabels = [];
   setInlineFormErrorToast(labelError, "");
   const profile = sampleProfiles[Math.floor(Math.random() * sampleProfiles.length)];
   maybeApplyDefaultWarehouseToSender();
@@ -26968,6 +27346,8 @@ function clearBatchState() {
   state.shipFromLockedByProvider = false;
   state.csvPage = 1;
   state.csvValidationAttempted = false;
+  state.returnMode = false;
+  state.returnSourceLabels = [];
   currentPdfUrl = "";
   if (batchPanel) {
     batchPanel.classList.add("is-hidden");
@@ -28607,6 +28987,12 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
 
     if (route.view === "history") {
       setMainView("history", { push: false });
+      loadGenerationHistory({ preferLatest: false });
+      return;
+    }
+
+    if (route.view === "returns") {
+      setMainView("returns", { push: false });
       loadGenerationHistory({ preferLatest: false });
       return;
     }

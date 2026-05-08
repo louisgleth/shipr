@@ -1941,7 +1941,8 @@ body.is-auth-view {
   gap: 4px;
 }
 
-.account-page {
+.account-page,
+.returns-page {
   display: grid;
   gap: 18px;
 }
@@ -4716,6 +4717,182 @@ body.is-auth-view {
   color: var(--muted);
   font-size: var(--fs-xs);
   opacity: 0.82;
+}
+
+.returns-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+
+.returns-card {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.returns-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 16px;
+  align-items: end;
+}
+
+.returns-card-sub {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.32;
+}
+
+.returns-search {
+  align-self: end;
+}
+
+.returns-table-wrap {
+  min-height: 0;
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+
+.returns-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--fs-xs);
+}
+
+.returns-table th,
+.returns-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--stroke);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.returns-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel-bg);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-tight);
+}
+
+.returns-table tbody tr {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.returns-table tbody tr:hover,
+.returns-table tbody tr.is-selected {
+  background: rgba(119, 71, 227, 0.1);
+}
+
+.returns-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.returns-select-cell {
+  width: 44px;
+}
+
+.returns-table input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.returns-cell-main,
+.returns-cell-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.returns-cell-main {
+  color: var(--text);
+}
+
+.returns-cell-sub {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+}
+
+.returns-empty {
+  border: 1px dashed var(--stroke);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.returns-empty[hidden] {
+  display: none;
+}
+
+.returns-action-card {
+  position: sticky;
+  top: 16px;
+  align-content: start;
+}
+
+.returns-destination-preview,
+.returns-selection-summary {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  padding: 12px;
+}
+
+.returns-destination-preview {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.4;
+}
+
+.returns-selection-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.returns-selection-count {
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.returns-selection-copy {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.32;
+}
+
+.returns-create-btn {
+  justify-content: center;
+}
+
+.label-tracking-wrap {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.label-return-btn {
+  height: 30px;
+  padding-inline: 10px;
 }
 
 .account-history-list {
@@ -9443,6 +9620,26 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
 }
 
+select {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--stroke);
+  background: #0b111a;
+  color: var(--text);
+  font-family: var(--font-primary);
+  font-size: var(--fs-xs);
+  font-weight: 300;
+  letter-spacing: var(--letter-tight);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
+}
+
 input[readonly] {
   background: var(--surface-2);
   color: var(--muted);
@@ -10394,6 +10591,15 @@ input.is-invalid {
 
   .account-page-layout {
     grid-template-columns: 1fr;
+  }
+
+  .returns-layout,
+  .returns-card-head {
+    grid-template-columns: 1fr;
+  }
+
+  .returns-action-card {
+    position: static;
   }
 
   .hero {
