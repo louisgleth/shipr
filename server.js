@@ -2765,6 +2765,22 @@ async function handleShippingDataCleanerSubmission(req, res) {
     : [];
   const csv = buildCsvFromMatrix(headers, rows);
   const submittedAt = new Date().toISOString();
+  const attachments = [
+    {
+      filename: outputFilename,
+      content: Buffer.from(csv, "utf8"),
+      contentType: "text/csv",
+    },
+  ];
+  if (originAddresses.length) {
+    attachments.push({
+      filename: sanitizeSubmissionFilename(
+        `${companyName || "client"}_${contactEmail || "no-email"}-ship-from-addresses.txt`
+      ),
+      content: Buffer.from(originAddresses.map((address, index) => `${index + 1}. ${address}`).join("\n"), "utf8"),
+      contentType: "text/plain",
+    });
+  }
   const html = `
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
@@ -2801,13 +2817,7 @@ async function handleShippingDataCleanerSubmission(req, res) {
       subject: `Cleaned shipping data: ${companyName || contactEmail || sourceFilename}`,
       html,
       text,
-      attachments: [
-        {
-          filename: outputFilename,
-          content: Buffer.from(csv, "utf8"),
-          contentType: "text/csv",
-        },
-      ],
+      attachments,
     });
     await updateShipmentExtractRequestSubmitted(extractRequest.id, {
       submittedAt,

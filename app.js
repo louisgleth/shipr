@@ -3031,6 +3031,7 @@ let adminMockSnapshot = null;
 let authShellTransitionToken = 0;
 let mainViewTransitionToken = 0;
 let historyPanelSyncFrame = 0;
+let scrollFadeSyncFrame = 0;
 let csvMappingDraft = null;
 let csvModalStepState = "upload";
 let csvModalStepTransitionToken = 0;
@@ -14200,6 +14201,27 @@ function queueHistoryPanelSync() {
   });
 }
 
+function syncScrollFadeWrap(wrap) {
+  if (!wrap) return;
+  const scroller = wrap.firstElementChild;
+  const hasOverflow = Boolean(scroller && scroller.scrollHeight > scroller.clientHeight + 2);
+  wrap.classList.toggle("has-scroll-fade", hasOverflow);
+}
+
+function syncScrollFadeWraps() {
+  document.querySelectorAll(".scroll-fade-wrap").forEach(syncScrollFadeWrap);
+}
+
+function queueScrollFadeSync() {
+  if (scrollFadeSyncFrame) {
+    window.cancelAnimationFrame(scrollFadeSyncFrame);
+  }
+  scrollFadeSyncFrame = window.requestAnimationFrame(() => {
+    scrollFadeSyncFrame = 0;
+    syncScrollFadeWraps();
+  });
+}
+
 function setRestrictedGoodsModalOpen(open) {
   if (!restrictedGoodsModal) return;
   restrictedGoodsModal.classList.toggle("is-closed", !open);
@@ -14652,6 +14674,7 @@ function renderAccountHistoryList() {
     empty.className = "account-history-empty";
     empty.textContent = tr("Sign in to view previous generations.");
     accountHistoryList.appendChild(empty);
+    queueScrollFadeSync();
     return;
   }
 
@@ -14660,6 +14683,7 @@ function renderAccountHistoryList() {
     empty.className = "account-history-empty";
     empty.textContent = tr("No generations yet.");
     accountHistoryList.appendChild(empty);
+    queueScrollFadeSync();
     return;
   }
 
@@ -14669,6 +14693,7 @@ function renderAccountHistoryList() {
     empty.className = "account-history-empty";
     empty.textContent = tr("No generations match your search.");
     accountHistoryList.appendChild(empty);
+    queueScrollFadeSync();
     return;
   }
 
@@ -14714,6 +14739,7 @@ function renderAccountHistoryList() {
     accountHistoryList.appendChild(item);
   });
   queueHistoryPanelSync();
+  queueScrollFadeSync();
 }
 
 function syncAccountHistorySelection() {
@@ -14949,6 +14975,7 @@ function renderAccountBatchList() {
       accountBatchPreview.classList.add("is-single");
     }
     queueHistoryPanelSync();
+    queueScrollFadeSync();
     return;
   }
 
@@ -14971,6 +14998,7 @@ function renderAccountBatchList() {
     accountBatchList.appendChild(button);
   });
   queueHistoryPanelSync();
+  queueScrollFadeSync();
 }
 
 function selectAccountLabel(index) {
@@ -26932,6 +26960,7 @@ function renderBatchList() {
     if (batchPreview) {
       batchPreview.classList.add("is-single");
     }
+    queueScrollFadeSync();
     return;
   }
 
@@ -26957,6 +26986,7 @@ function renderBatchList() {
     });
     batchList.appendChild(button);
   });
+  queueScrollFadeSync();
 }
 
 function selectBatchLabel(index) {
@@ -28576,11 +28606,13 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
       void runWooCommerceAutoRefresh();
     }
   });
+  window.addEventListener("resize", queueScrollFadeSync);
 
   if (batchPreview) {
     batchPreview.classList.add("is-single");
   }
   renderCsvTable();
+  queueScrollFadeSync();
 
   renderAdminInvoiceList();
   setAdminBillingBusy(false);

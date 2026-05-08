@@ -2011,7 +2011,7 @@ body.is-auth-view {
 
 .account-info-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--stroke);
   border-left: 1px solid var(--stroke);
 }
@@ -2345,7 +2345,7 @@ body.is-auth-view {
   --scroll-fade-end: 1;
 }
 
-.scroll-fade-wrap::after {
+.scroll-fade-wrap.has-scroll-fade::after {
   content: "";
   position: absolute;
   left: 0;
@@ -4638,23 +4638,46 @@ body.is-auth-view {
 }
 
 .history-search {
-  height: 32px;
+  position: relative;
+  height: 34px;
   border: 1px solid transparent;
-  border-bottom-color: var(--stroke);
+  border-bottom-color: rgba(154, 163, 178, 0.34);
   border-radius: 0;
   background: transparent;
   display: grid;
-  grid-template-columns: 14px 1fr;
+  grid-template-columns: 13px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 0 2px;
+  gap: 7px;
+  padding: 0 1px;
+  overflow: hidden;
   transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.history-search::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.22s ease;
+}
+
+.history-search:hover {
+  border-bottom-color: rgba(154, 163, 178, 0.58);
 }
 
 .history-search:focus-within {
   border-bottom-color: var(--accent);
   background: transparent;
   box-shadow: none;
+}
+
+.history-search:focus-within::after {
+  transform: scaleX(1);
 }
 
 .history-search svg {
@@ -4676,11 +4699,14 @@ body.is-auth-view {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);
+  line-height: 1;
 }
 
 .history-search input::placeholder {
   color: var(--muted);
+  font-size: var(--fs-xs);
+  opacity: 0.82;
 }
 
 .account-history-list {
