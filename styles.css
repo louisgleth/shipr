@@ -5009,6 +5009,13 @@ body.is-auth-view {
   flex-wrap: nowrap;
 }
 
+.account-record-service-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .account-record-service {
   font-size: var(--fs-xs);
   color: var(--muted);
@@ -5017,6 +5024,23 @@ body.is-auth-view {
   line-height: 1.1;
   font-weight: 300;
   font-family: inherit;
+}
+
+.account-record-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 239, 172, 0.22);
+  background: rgba(124, 239, 172, 0.1);
+  color: #7cefac;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: var(--letter-tight);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .account-record-date {

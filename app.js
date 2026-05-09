@@ -14999,8 +14999,7 @@ function renderReturnsPage() {
       </td>
       <td>
         <div class="returns-cell-main">${escapeHtml(
-          formatAddress(
-            "",
+          formatAddressWithoutName(
             data.recipientStreet,
             data.recipientCity,
             data.recipientState,
@@ -25427,6 +25426,13 @@ function formatAddress(name, street, city, stateCode, zip, country) {
   const line3 = formatCityRegionPostal(city, stateCode, zip);
   const line4 = country || "";
   return [line1, line2, line3, line4].filter(Boolean).join("\n");
+}
+
+function formatAddressWithoutName(street, city, stateCode, zip, country) {
+  const line2 = street || "";
+  const line3 = formatCityRegionPostal(city, stateCode, zip);
+  const line4 = country || "";
+  return [line2, line3, line4].filter(Boolean).join("\n");
 }
 
 function openLabelConfirmModal() {
