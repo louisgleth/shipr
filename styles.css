@@ -5032,13 +5032,12 @@ body.is-auth-view {
   justify-content: center;
   padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(124, 239, 172, 0.22);
-  background: rgba(124, 239, 172, 0.1);
-  color: #7cefac;
+  border: 1px solid rgba(241, 244, 251, 0.1);
+  background: rgba(241, 244, 251, 0.04);
+  color: rgba(241, 244, 251, 0.48);
   font-size: 10px;
   line-height: 1;
   letter-spacing: var(--letter-tight);
-  text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
 }

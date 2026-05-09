@@ -15089,6 +15089,7 @@ function startReturnBuilder(entries) {
     updateSummary();
     updatePayment();
     setMainView("builder");
+    renderActiveBuilderPanel();
     goToStep(1);
     showToast(tr("Return label prepared in the builder."), { tone: "success" });
     return;
@@ -15108,12 +15109,13 @@ function startReturnBuilder(entries) {
   }
   setCsvBatchSource("returns");
   setCsvMode(true);
-  setCsvEditMode(true);
+  setCsvEditMode(false);
   setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();
   updatePayment();
   setMainView("builder");
+  renderActiveBuilderPanel();
   goToStep(1);
   showToast(tr("Return labels prepared in the builder."), { tone: "success" });
 }
