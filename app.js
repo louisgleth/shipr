@@ -2740,6 +2740,7 @@ const csvPagePrev = document.getElementById("csvPagePrev");
 const csvPageNext = document.getElementById("csvPageNext");
 const csvPageMeta = document.getElementById("csvPageMeta");
 const csvShipFromCard = document.getElementById("csvShipFromCard");
+const csvShipFromTitle = csvShipFromCard?.querySelector(".section-title") || null;
 const csvShipFromNote = document.getElementById("csvShipFromNote");
 const csvShipFromSelector = document.getElementById("csvShipFromSelector");
 const labelForm = document.getElementById("labelForm");
@@ -11258,10 +11259,27 @@ const csvReviewColumns = csvColumns.filter(
     column.key !== "senderZip"
 );
 const csvShipFromReviewColumn = { key: "shipFromSummary", label: "Ships From", virtual: true };
+const csvReturnRecipientReviewColumn = { key: "returnRecipientSummary", label: "Recipient", virtual: true };
+const csvReturnReviewColumns = [
+  { key: "senderName", label: "Name" },
+  { key: "senderStreet", label: "Address" },
+  { key: "senderZip", label: "Postal Code" },
+  { key: "senderCity", label: "City" },
+  { key: "senderCountry", label: "Country" },
+  csvReturnRecipientReviewColumn,
+  { key: "packageWeight", label: "Weight" },
+  { key: "packageDims", label: "Dims" },
+];
 
 function getActiveCsvReviewColumns() {
   const rows = Array.isArray(state.csvRows) ? state.csvRows : [];
   const hasDimensions = rows.some((row) => String(row?.packageDims || "").trim());
+  if (state.csvSource === "returns") {
+    return csvReturnReviewColumns.filter((column) => {
+      if (column.key === "packageDims") return hasDimensions;
+      return true;
+    });
+  }
   const hasRecipientState = rows.some((row) => String(row?.recipientState || "").trim());
   const columns = csvReviewColumns.filter((column) => {
     if (column.key === "packageDims") return hasDimensions;
@@ -12935,6 +12953,17 @@ function getWarehouseSenderValues(origin) {
   };
 }
 
+function getWarehouseRecipientValues(origin) {
+  return {
+    recipientName: String(origin?.senderName || origin?.name || "").trim(),
+    recipientStreet: String(origin?.street || "").trim(),
+    recipientCity: String(origin?.city || "").trim(),
+    recipientState: String(origin?.region || "").trim(),
+    recipientZip: String(origin?.postalCode || "").trim(),
+    recipientCountry: String(origin?.country || "").trim(),
+  };
+}
+
 function rowHasProviderSenderOrigin(row) {
   if (!row || typeof row !== "object") return false;
   const originSource = String(row?.shipideSource?.originSource || "").trim();
@@ -12978,6 +13007,27 @@ function getRowSenderSummary(row) {
     : tr("Choose fallback below");
 }
 
+function getRowReturnRecipientSummary(row) {
+  if (!row || typeof row !== "object") return "";
+  const name = String(row.recipientName || "").trim();
+  const address = [
+    String(row.recipientStreet || "").trim(),
+    formatCityRegionPostal(row.recipientCity, row.recipientState, row.recipientZip),
+    String(row.recipientCountry || "").trim(),
+  ].filter(Boolean).join(", ");
+  if (name || address) {
+    return [name, address].filter(Boolean).join(" • ");
+  }
+  const selected = getSelectedWarehouseRecord();
+  return selected
+    ? [
+        String(selected.senderName || selected.name || "").trim(),
+        formatWarehouseAddressOnly(selected),
+        String(selected.country || "").trim(),
+      ].filter(Boolean).join(" • ")
+    : tr("Choose destination below");
+}
+
 function applyWarehouseSenderToRows(rows, origin) {
   const sender = getWarehouseSenderValues(origin);
   return rows.map((row) => {
@@ -13002,6 +13052,14 @@ function applyWarehouseSenderToRows(rows, origin) {
       },
     };
   });
+}
+
+function applyWarehouseRecipientToRows(rows, origin) {
+  const recipient = getWarehouseRecipientValues(origin);
+  return rows.map((row) => ({
+    ...row,
+    ...recipient,
+  }));
 }
 
 function csvRowsHaveProviderSenderOrigin(rows) {
@@ -13130,10 +13188,38 @@ function renderCsvShipFromSelector() {
     csvShipFromSelector.innerHTML = "";
     csvShipFromSelector.classList.remove("is-locked");
     csvShipFromNote.innerHTML = "";
+    if (csvShipFromTitle) csvShipFromTitle.textContent = tr("Ship From");
     return;
   }
 
   csvShipFromSelector.innerHTML = "";
+  if (csvShipFromTitle) {
+    csvShipFromTitle.textContent =
+      state.csvSource === "returns" ? tr("Return Destination") : tr("Ship From");
+  }
+
+  if (state.csvSource === "returns") {
+    csvShipFromSelector.classList.remove("is-locked");
+    csvShipFromNote.innerHTML = "";
+    if (!warehouseRecords.length) {
+      csvShipFromNote.textContent = tr("No saved return destination. Add one in Account settings.");
+      return;
+    }
+    ensureSelectedWarehouseOrigin();
+    const singleOrigin = warehouseRecords.length === 1;
+    warehouseRecords.forEach((origin) => {
+      const button = buildOriginChoiceButton(origin, {
+        selected: origin.id === state.shipFromOriginId,
+        disabled: singleOrigin,
+      });
+      csvShipFromSelector.appendChild(button);
+    });
+    csvShipFromNote.textContent = singleOrigin
+      ? tr("Using your only saved return destination.")
+      : tr("Choose where the selected shipments should return.");
+    return;
+  }
+
   const lockedByProvider = Boolean(state.shipFromLockedByProvider);
   csvShipFromSelector.classList.toggle("is-locked", lockedByProvider);
   if (lockedByProvider) {
@@ -13174,11 +13260,15 @@ function renderCsvShipFromSelector() {
 
 function syncCsvRowsWithSelectedOrigin(options = {}) {
   const { rerender = true } = options;
-  if (!state.csvMode || state.shipFromLockedByProvider) return;
+  if (!state.csvMode) return;
+  if (state.shipFromLockedByProvider && state.csvSource !== "returns") return;
   if (!Array.isArray(state.csvRows) || !state.csvRows.length) return;
   const selected = ensureSelectedWarehouseOrigin();
   if (!selected) return;
-  state.csvRows = applyWarehouseSenderToRows(state.csvRows, selected);
+  state.csvRows =
+    state.csvSource === "returns"
+      ? applyWarehouseRecipientToRows(state.csvRows, selected)
+      : applyWarehouseSenderToRows(state.csvRows, selected);
   if (rerender) {
     renderCsvTable();
     updatePreview();
@@ -13191,7 +13281,9 @@ function setSelectedWarehouseOrigin(originId, options = {}) {
   const origin = getWarehouseRecordById(originId);
   if (!origin) return;
   state.shipFromOriginId = origin.id;
-  applyWarehouseToSender(origin, { announce: false });
+  if (state.csvSource !== "returns") {
+    applyWarehouseToSender(origin, { announce: false });
+  }
   if (syncCsv) {
     syncCsvRowsWithSelectedOrigin({ rerender: true });
   }
@@ -13209,7 +13301,6 @@ function setCsvBatchSource(source = "none", options = {}) {
   const { rows = state.csvRows } = options;
   state.csvSource = String(source || "none");
   state.shipFromLockedByProvider =
-    state.csvSource === "returns" ||
     (state.csvSource === "provider-woocommerce"
       && csvRowsHaveProviderSenderOrigin(rows));
   syncShopifyAutoRefreshState();
@@ -14800,6 +14891,7 @@ function buildReturnRowFromEntry(entry) {
     senderCity: senderAddress.city,
     senderState: senderAddress.state,
     senderZip: senderAddress.zip,
+    senderCountry: senderAddress.country || String(data.recipientCountry || "").trim(),
     recipientName: "",
     recipientStreet: "",
     recipientCity: "",
@@ -14901,6 +14993,10 @@ function startReturnBuilder(entries) {
     generationId: entry?.record?.id || "",
   }));
   state.csvRows = returnEntries.map((entry) => buildReturnRowFromEntry(entry));
+  const returnDestination = ensureSelectedWarehouseOrigin();
+  if (returnDestination) {
+    state.csvRows = applyWarehouseRecipientToRows(state.csvRows, returnDestination);
+  }
   state.csvPage = 1;
   state.csvValidationAttempted = false;
   state.quantity = state.csvRows.length;
@@ -24098,6 +24194,14 @@ function renderCsvTable() {
         rowEl.appendChild(td);
         return;
       }
+      if (column.virtual && column.key === "returnRecipientSummary") {
+        const summary = document.createElement("span");
+        summary.className = "csv-ship-from-summary is-fallback";
+        summary.textContent = getRowReturnRecipientSummary(row);
+        td.appendChild(summary);
+        rowEl.appendChild(td);
+        return;
+      }
       const input = document.createElement("input");
       input.type = "text";
       input.value = row[column.key] ?? "";
@@ -27406,6 +27510,7 @@ function buildLabelLines(label, serviceType = state.selection.type) {
     data.senderName,
     data.senderStreet,
     formatCityRegionPostal(data.senderCity, data.senderState, data.senderZip),
+    data.senderCountry ? data.senderCountry : null,
     "",
     "TO:",
     data.recipientName,
