@@ -13208,7 +13208,7 @@ function renderSenderOriginSelector() {
   senderOriginNote.textContent = state.singleReturnMode
     ? locked
       ? tr("Using your only saved return destination.")
-      : tr("Choose which saved origin should receive this return.")
+      : ""
     : "";
 }
 
@@ -15296,6 +15296,16 @@ function renderAccountHistoryList() {
     const service = document.createElement("span");
     service.className = "account-record-service";
     service.textContent = translateServiceName(record.service_type || "Label generation");
+    const isReturnRecord = Boolean(record?.payload?.return?.is_return);
+    const serviceWrap = document.createElement("span");
+    serviceWrap.className = "account-record-service-wrap";
+    serviceWrap.appendChild(service);
+    if (isReturnRecord) {
+      const returnPill = document.createElement("span");
+      returnPill.className = "account-record-pill";
+      returnPill.textContent = tr("Return");
+      serviceWrap.appendChild(returnPill);
+    }
 
     const date = document.createElement("span");
     date.className = "account-record-date";
@@ -15310,7 +15320,7 @@ function renderAccountHistoryList() {
     date.appendChild(dateTime);
 
     head.appendChild(date);
-    head.appendChild(service);
+    head.appendChild(serviceWrap);
 
     const meta = document.createElement("div");
     meta.className = "account-record-meta mono";
@@ -25078,6 +25088,13 @@ function renderActiveBuilderPanel() {
   });
   if (customsGhostPanel) {
     customsGhostPanel.classList.toggle("is-active", customsGhostVisible);
+  }
+  const hideImportActions = Boolean(state.returnMode);
+  if (providerDropdown) {
+    providerDropdown.hidden = hideImportActions;
+  }
+  if (csvUploadTrigger) {
+    csvUploadTrigger.hidden = hideImportActions;
   }
 }
 
