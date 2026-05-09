@@ -26,6 +26,7 @@ const state = {
     senderCity: "",
     senderState: "",
     senderZip: "",
+    senderCountry: "",
     recipientName: "",
     recipientStreet: "",
     recipientCountry: "",
@@ -2902,6 +2903,7 @@ const inputMap = {
   senderCity: document.getElementById("senderCity"),
   senderState: document.getElementById("senderState"),
   senderZip: document.getElementById("senderZip"),
+  senderCountry: document.getElementById("senderCountry"),
   recipientName: document.getElementById("recipientName"),
   recipientStreet: document.getElementById("recipientStreet"),
   recipientCountry: document.getElementById("recipientCountry"),
@@ -13145,11 +13147,13 @@ function renderSenderOriginSelector() {
   if (!senderOriginSelector || !senderOriginNote) return;
   senderOriginSelector.innerHTML = "";
   if (senderSectionTitle) {
-    senderSectionTitle.textContent = state.singleReturnMode ? tr("Return Sender") : tr("Sender");
+    senderSectionTitle.textContent = state.singleReturnMode
+      ? tr("Return Destination")
+      : tr("Sender");
   }
   if (recipientSectionTitle) {
     recipientSectionTitle.textContent = state.singleReturnMode
-      ? tr("Return Destination")
+      ? tr("Return Sender")
       : tr("Recipient");
   }
 
@@ -13186,7 +13190,7 @@ function renderSenderOriginSelector() {
   const selected = ensureSelectedWarehouseOrigin();
   if (selected) {
     if (state.singleReturnMode) {
-      applyWarehouseToRecipient(selected, { announce: false });
+      applyWarehouseToReturnDestination(selected, { announce: false });
     } else {
       applyWarehouseToSender(selected, { announce: false });
     }
@@ -13309,7 +13313,7 @@ function setSelectedWarehouseOrigin(originId, options = {}) {
   if (!origin) return;
   state.shipFromOriginId = origin.id;
   if (state.singleReturnMode) {
-    applyWarehouseToRecipient(origin, { announce: false });
+    applyWarehouseToReturnDestination(origin, { announce: false });
   } else if (state.csvSource !== "returns") {
     applyWarehouseToSender(origin, { announce: false });
   }
@@ -13345,6 +13349,7 @@ function applyWarehouseToSender(origin, options = {}) {
   if (inputMap.senderCity) inputMap.senderCity.value = origin.city || "";
   if (inputMap.senderState) inputMap.senderState.value = origin.region || "";
   if (inputMap.senderZip) inputMap.senderZip.value = origin.postalCode || "";
+  if (inputMap.senderCountry) inputMap.senderCountry.value = origin.country || "";
   syncInfoState();
   updatePreview();
   if (announce) {
@@ -13359,15 +13364,15 @@ function applyWarehouseToSender(origin, options = {}) {
   }
 }
 
-function applyWarehouseToRecipient(origin, options = {}) {
+function applyWarehouseToReturnDestination(origin, options = {}) {
   const { announce = true } = options;
   if (!origin) return;
-  if (inputMap.recipientName) inputMap.recipientName.value = origin.returnSenderName || origin.senderName || origin.name || "";
-  if (inputMap.recipientStreet) inputMap.recipientStreet.value = origin.returnStreet || origin.street || "";
-  if (inputMap.recipientCity) inputMap.recipientCity.value = origin.returnCity || origin.city || "";
-  if (inputMap.recipientState) inputMap.recipientState.value = origin.returnRegion || origin.region || "";
-  if (inputMap.recipientZip) inputMap.recipientZip.value = origin.returnPostalCode || origin.postalCode || "";
-  if (inputMap.recipientCountry) inputMap.recipientCountry.value = origin.returnCountry || origin.country || "";
+  if (inputMap.senderName) inputMap.senderName.value = origin.returnSenderName || origin.senderName || origin.name || "";
+  if (inputMap.senderStreet) inputMap.senderStreet.value = origin.returnStreet || origin.street || "";
+  if (inputMap.senderCity) inputMap.senderCity.value = origin.returnCity || origin.city || "";
+  if (inputMap.senderState) inputMap.senderState.value = origin.returnRegion || origin.region || "";
+  if (inputMap.senderZip) inputMap.senderZip.value = origin.returnPostalCode || origin.postalCode || "";
+  if (inputMap.senderCountry) inputMap.senderCountry.value = origin.returnCountry || origin.country || "";
   syncInfoState();
   updatePreview();
   if (announce) {
@@ -15057,24 +15062,25 @@ function startReturnBuilder(entries) {
     if (quantityInput) {
       quantityInput.value = "1";
     }
-    if (inputMap.senderName) inputMap.senderName.value = row.senderName || "";
-    if (inputMap.senderStreet) inputMap.senderStreet.value = row.senderStreet || "";
-    if (inputMap.senderCity) inputMap.senderCity.value = row.senderCity || "";
-    if (inputMap.senderState) inputMap.senderState.value = row.senderState || "";
-    if (inputMap.senderZip) inputMap.senderZip.value = row.senderZip || "";
-    if (inputMap.recipientName) inputMap.recipientName.value = "";
-    if (inputMap.recipientStreet) inputMap.recipientStreet.value = "";
-    if (inputMap.recipientCity) inputMap.recipientCity.value = "";
-    if (inputMap.recipientState) inputMap.recipientState.value = "";
-    if (inputMap.recipientZip) inputMap.recipientZip.value = "";
-    if (inputMap.recipientCountry) inputMap.recipientCountry.value = "";
+    if (inputMap.senderName) inputMap.senderName.value = "";
+    if (inputMap.senderStreet) inputMap.senderStreet.value = "";
+    if (inputMap.senderCity) inputMap.senderCity.value = "";
+    if (inputMap.senderState) inputMap.senderState.value = "";
+    if (inputMap.senderZip) inputMap.senderZip.value = "";
+    if (inputMap.senderCountry) inputMap.senderCountry.value = "";
+    if (inputMap.recipientName) inputMap.recipientName.value = row.senderName || "";
+    if (inputMap.recipientStreet) inputMap.recipientStreet.value = row.senderStreet || "";
+    if (inputMap.recipientCity) inputMap.recipientCity.value = row.senderCity || "";
+    if (inputMap.recipientState) inputMap.recipientState.value = row.senderState || "";
+    if (inputMap.recipientZip) inputMap.recipientZip.value = row.senderZip || "";
+    if (inputMap.recipientCountry) inputMap.recipientCountry.value = row.senderCountry || "";
     if (inputMap.packageWeight) inputMap.packageWeight.value = row.packageWeight || "";
     if (inputMap.packageDims) inputMap.packageDims.value = row.packageDims || "";
     if (inputMap.trackingId) inputMap.trackingId.value = generateTracking();
     if (inputMap.labelId) inputMap.labelId.value = generateLabelId();
     const returnDestination = ensureSelectedWarehouseOrigin();
     if (returnDestination) {
-      applyWarehouseToRecipient(returnDestination, { announce: false });
+      applyWarehouseToReturnDestination(returnDestination, { announce: false });
     } else {
       syncInfoState();
     }
@@ -25471,17 +25477,33 @@ function generateLabelId() {
 }
 
 function syncInfoState() {
-  state.info.senderName = inputMap.senderName.value.trim();
-  state.info.senderStreet = inputMap.senderStreet.value.trim();
-  state.info.senderCity = inputMap.senderCity.value.trim();
-  state.info.senderState = inputMap.senderState.value.trim();
-  state.info.senderZip = inputMap.senderZip.value.trim();
-  state.info.recipientName = inputMap.recipientName.value.trim();
-  state.info.recipientStreet = inputMap.recipientStreet.value.trim();
-  state.info.recipientCountry = inputMap.recipientCountry.value.trim();
-  state.info.recipientCity = inputMap.recipientCity.value.trim();
-  state.info.recipientState = inputMap.recipientState.value.trim();
-  state.info.recipientZip = inputMap.recipientZip.value.trim();
+  if (state.singleReturnMode) {
+    state.info.senderName = inputMap.recipientName.value.trim();
+    state.info.senderStreet = inputMap.recipientStreet.value.trim();
+    state.info.senderCity = inputMap.recipientCity.value.trim();
+    state.info.senderState = inputMap.recipientState.value.trim();
+    state.info.senderZip = inputMap.recipientZip.value.trim();
+    state.info.senderCountry = inputMap.recipientCountry.value.trim();
+    state.info.recipientName = inputMap.senderName.value.trim();
+    state.info.recipientStreet = inputMap.senderStreet.value.trim();
+    state.info.recipientCountry = inputMap.senderCountry.value.trim();
+    state.info.recipientCity = inputMap.senderCity.value.trim();
+    state.info.recipientState = inputMap.senderState.value.trim();
+    state.info.recipientZip = inputMap.senderZip.value.trim();
+  } else {
+    state.info.senderName = inputMap.senderName.value.trim();
+    state.info.senderStreet = inputMap.senderStreet.value.trim();
+    state.info.senderCity = inputMap.senderCity.value.trim();
+    state.info.senderState = inputMap.senderState.value.trim();
+    state.info.senderZip = inputMap.senderZip.value.trim();
+    state.info.senderCountry = inputMap.senderCountry.value.trim();
+    state.info.recipientName = inputMap.recipientName.value.trim();
+    state.info.recipientStreet = inputMap.recipientStreet.value.trim();
+    state.info.recipientCountry = inputMap.recipientCountry.value.trim();
+    state.info.recipientCity = inputMap.recipientCity.value.trim();
+    state.info.recipientState = inputMap.recipientState.value.trim();
+    state.info.recipientZip = inputMap.recipientZip.value.trim();
+  }
   state.info.packageWeight = inputMap.packageWeight.value.trim();
   state.info.packageDims = inputMap.packageDims.value.trim();
   state.info.trackingId = inputMap.trackingId.value.trim();
@@ -25542,7 +25564,7 @@ function validateLabelInfo() {
     return false;
   }
   if (state.singleReturnMode) {
-    applyWarehouseToRecipient(selectedOrigin, { announce: false });
+    applyWarehouseToReturnDestination(selectedOrigin, { announce: false });
   } else {
     applyWarehouseToSender(selectedOrigin, { announce: false });
   }
