@@ -54,6 +54,10 @@ const state = {
       },
     ],
     completedFor: "",
+    flowMode: "single",
+    activeRowIndex: -1,
+    rowDeclarations: {},
+    promptApplyAll: true,
   },
 };
 
@@ -2759,6 +2763,10 @@ const labelError = document.getElementById("labelError");
 const customsGhostPanel = document.getElementById("customsGhostPanel");
 const customsScopeMeta = document.getElementById("customsScopeMeta");
 const customsError = document.getElementById("customsError");
+const customsRecipientCard = document.getElementById("customsRecipientCard");
+const customsRecipientKicker = document.getElementById("customsRecipientKicker");
+const customsRecipientMain = document.getElementById("customsRecipientMain");
+const customsRecipientSub = document.getElementById("customsRecipientSub");
 const customsSummaryDescriptionInput = document.getElementById("customsSummaryDescription");
 const customsShipmentTypeInput = document.getElementById("customsShipmentType");
 const customsSenderReferenceInput = document.getElementById("customsSenderReference");
@@ -2767,6 +2775,11 @@ const customsItemsList = document.getElementById("customsItemsList");
 const customsAddItemButton = document.getElementById("customsAddItem");
 const customsBackButton = document.getElementById("customsBack");
 const customsContinueButton = document.getElementById("customsContinue");
+const customsFlowModal = document.getElementById("customsFlowModal");
+const customsFlowApplyAll = document.getElementById("customsFlowApplyAll");
+const customsFlowCancel = document.getElementById("customsFlowCancel");
+const customsFlowConfirm = document.getElementById("customsFlowConfirm");
+const customsFlowNote = document.getElementById("customsFlowNote");
 const openRestrictedGoodsModalButton = document.getElementById("openRestrictedGoodsModal");
 const restrictedGoodsModal = document.getElementById("restrictedGoodsModal");
 const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalClose");
@@ -3244,6 +3257,98 @@ function createEmptyCustomsItem() {
   };
 }
 
+function cloneCustomsItems(items = []) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    description: String(item?.description || "").trim(),
+    quantity: String(item?.quantity || "").trim() || "1",
+    weightKg: String(item?.weightKg || "").trim(),
+    valueEur: String(item?.valueEur || "").trim(),
+    originCountry: String(item?.originCountry || "").trim(),
+    hsCode: String(item?.hsCode || "").trim(),
+  }));
+}
+
+function snapshotCurrentCustomsDeclaration() {
+  return {
+    summaryDescription: String(state.customs.summaryDescription || "").trim(),
+    shipmentType: String(state.customs.shipmentType || "").trim(),
+    senderReference: String(state.customs.senderReference || "").trim(),
+    importerReference: String(state.customs.importerReference || "").trim(),
+    items: cloneCustomsItems(buildCustomsItemsPayload()),
+  };
+}
+
+function loadCustomsDeclaration(declaration) {
+  const next = declaration && typeof declaration === "object" ? declaration : {};
+  state.customs.summaryDescription = String(next.summaryDescription || "").trim();
+  state.customs.shipmentType = String(next.shipmentType || "").trim();
+  state.customs.senderReference = String(next.senderReference || "").trim();
+  state.customs.importerReference = String(next.importerReference || "").trim();
+  const items = cloneCustomsItems(next.items);
+  state.customs.items = items.length ? items : [createEmptyCustomsItem()];
+  syncCustomsInputsFromState();
+  renderCustomsItems();
+}
+
+function getCustomsRequiredEntries() {
+  if (!(state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length)) return [];
+  return state.csvRows
+    .map((row, index) => ({
+      index,
+      row,
+      country: String(row?.recipientCountry || "").trim(),
+    }))
+    .filter((entry) => entry.country && !isEuCountry(entry.country));
+}
+
+function getCustomsTargetEntry() {
+  if (!state.csvMode) return null;
+  const targetIndex = Number(state.customs.activeRowIndex);
+  if (!Number.isInteger(targetIndex) || targetIndex < 0) return null;
+  return getCustomsRequiredEntries().find((entry) => entry.index === targetIndex) || null;
+}
+
+function formatCustomsRecipientDisplay(entry) {
+  const row = entry?.row || {};
+  const name = String(row.recipientName || "").trim() || tr("Recipient");
+  const address = [
+    String(row.recipientStreet || "").trim(),
+    formatCityRegionPostal(
+      String(row.recipientCity || "").trim(),
+      String(row.recipientState || "").trim(),
+      String(row.recipientZip || "").trim()
+    ),
+    String(row.recipientCountry || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" • ");
+  return {
+    name,
+    address: address || "--",
+  };
+}
+
+function createSeededCustomsDeclaration(options = {}) {
+  const row = options?.row || {};
+  const defaultOriginCountry = String(getDefaultWarehouseRecord()?.country || "").trim() || "France";
+  return {
+    summaryDescription: "",
+    shipmentType: "",
+    senderReference: "",
+    importerReference: "",
+    items: [
+      {
+        description: "",
+        quantity: "1",
+        weightKg: String(row?.packageWeight || "").trim(),
+        valueEur: "",
+        originCountry: defaultOriginCountry,
+        hsCode: "",
+      },
+    ],
+  };
+}
+
 function getShipmentCountryValues() {
   if (state.csvMode && Array.isArray(state.csvRows) && state.csvRows.length) {
     return state.csvRows.map((row) => String(row?.recipientCountry || "").trim()).filter(Boolean);
@@ -3260,15 +3365,31 @@ function requiresCustomsDeclaration() {
 }
 
 function getCustomsRequirementSignature() {
+  if (state.csvMode) {
+    const entries = getCustomsRequiredEntries().map(({ index, row, country }) => {
+      const code = resolveCountryCode(country) || normalizeNameKey(country);
+      return [
+        index,
+        code,
+        normalizeNameKey(String(row?.recipientName || "").trim()),
+        normalizeNameKey(String(row?.recipientStreet || "").trim()),
+        normalizeNameKey(String(row?.recipientZip || "").trim()),
+      ].join(":");
+    });
+    return `csv::${entries.join("|")}`;
+  }
   const countries = getShipmentCountryValues()
     .map((country) => resolveCountryCode(country) || normalizeNameKey(country))
     .filter(Boolean)
     .sort();
-  return `${state.csvMode ? "csv" : "single"}::${countries.join("|")}`;
+  return `single::${countries.join("|")}`;
 }
 
 function invalidateCustomsCompletion() {
   state.customs.completedFor = "";
+  state.customs.flowMode = "single";
+  state.customs.activeRowIndex = -1;
+  state.customs.rowDeclarations = {};
 }
 
 const RETAIL_BASE_RATE = {
@@ -6705,7 +6826,7 @@ function setAdminClientBillingBusy(userId, isBusy) {
 }
 
 function refreshAdminOnlyTestTools() {
-  const canUseAdminTestTools = Boolean(currentUser && adminAccessAllowed);
+  const canUseAdminTestTools = Boolean(currentUser && adminAccessAllowed && !state.returnMode);
   if (adminOnlyTestTools) {
     adminOnlyTestTools.classList.toggle("is-hidden", !canUseAdminTestTools);
   }
@@ -13247,7 +13368,7 @@ function renderCsvShipFromSelector() {
     });
     csvShipFromNote.textContent = singleOrigin
       ? tr("Using your only saved return destination.")
-      : tr("Choose where the selected shipments should return.");
+      : "";
     return;
   }
 
@@ -15488,15 +15609,28 @@ function buildHistoryRecord() {
     data: label.data,
   }));
   const customsRequired = requiresCustomsDeclaration();
-  const customsPayload = customsRequired
-    ? {
-        summaryDescription: state.customs.summaryDescription,
-        shipmentType: state.customs.shipmentType,
-        senderReference: state.customs.senderReference,
-        importerReference: state.customs.importerReference,
-        items: buildCustomsItemsPayload(),
-      }
-    : null;
+  let customsPayload = null;
+  if (customsRequired) {
+    const requiredEntries = getCustomsRequiredEntries();
+    if (state.csvMode && requiredEntries.length > 1) {
+      customsPayload = {
+        mode: state.customs.flowMode === "all" ? "apply_all" : "per_recipient",
+        recipients: requiredEntries.map((entry) => ({
+          row_index: entry.index,
+          recipient_name: String(entry.row?.recipientName || "").trim(),
+          recipient_street: String(entry.row?.recipientStreet || "").trim(),
+          recipient_city: String(entry.row?.recipientCity || "").trim(),
+          recipient_state: String(entry.row?.recipientState || "").trim(),
+          recipient_zip: String(entry.row?.recipientZip || "").trim(),
+          recipient_country: String(entry.row?.recipientCountry || "").trim(),
+          declaration:
+            state.customs.rowDeclarations[String(entry.index)] || snapshotCurrentCustomsDeclaration(),
+        })),
+      };
+    } else {
+      customsPayload = snapshotCurrentCustomsDeclaration();
+    }
+  }
   return {
     service_type: state.selection.type,
     quantity: payloadLabels.length,
@@ -25093,10 +25227,13 @@ function renderActiveBuilderPanel() {
   const hideImportActions = Boolean(state.returnMode);
   if (providerDropdown) {
     providerDropdown.hidden = hideImportActions;
+    providerDropdown.style.display = hideImportActions ? "none" : "";
   }
   if (csvUploadTrigger) {
     csvUploadTrigger.hidden = hideImportActions;
+    csvUploadTrigger.style.display = hideImportActions ? "none" : "";
   }
+  refreshAdminOnlyTestTools();
 }
 
 function setCustomsError(message = "") {
@@ -25155,6 +25292,12 @@ function syncCustomsInputsFromState() {
 }
 
 function seedCustomsDefaults() {
+  const targetEntry = getCustomsTargetEntry();
+  if (targetEntry) {
+    const stored = state.customs.rowDeclarations[String(targetEntry.index)];
+    loadCustomsDeclaration(stored || createSeededCustomsDeclaration({ row: targetEntry.row }));
+    return;
+  }
   if (!Array.isArray(state.customs.items) || !state.customs.items.length) {
     state.customs.items = [createEmptyCustomsItem()];
   }
@@ -25174,20 +25317,59 @@ function seedCustomsDefaults() {
 
 function updateCustomsScopeMeta() {
   if (!customsScopeMeta) return;
+  const targetEntry = getCustomsTargetEntry();
+  const requiredEntries = getCustomsRequiredEntries();
+  const customsContinueLabel = customsContinueButton?.querySelector("span") || null;
+  if (customsRecipientCard) {
+    customsRecipientCard.classList.toggle("is-hidden", !targetEntry);
+  }
+  if (targetEntry) {
+    const { name, address } = formatCustomsRecipientDisplay(targetEntry);
+    const activePosition = requiredEntries.findIndex((entry) => entry.index === targetEntry.index);
+    if (customsRecipientKicker) {
+      customsRecipientKicker.textContent = tr("Recipient {current} of {total}", {
+        current: activePosition + 1,
+        total: requiredEntries.length,
+      });
+    }
+    if (customsRecipientMain) customsRecipientMain.textContent = name;
+    if (customsRecipientSub) customsRecipientSub.textContent = address;
+    if (state.customs.flowMode === "all") {
+      if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
+      customsScopeMeta.textContent = tr(
+        "This declaration will be applied to every recipient in this batch that requires customs."
+      );
+      return;
+    }
+    if (customsContinueLabel) {
+      customsContinueLabel.textContent =
+        activePosition < requiredEntries.length - 1 ? tr("Next recipient") : tr("Continue");
+    }
+    customsScopeMeta.textContent = tr(
+      "Complete the declaration for this recipient before continuing to the next one."
+    );
+    return;
+  }
   const uniqueCountries = Array.from(new Set(getShipmentCountryValues()));
   const outsideEu = uniqueCountries.filter((country) => !isEuCountry(country));
+  if (customsRecipientKicker) customsRecipientKicker.textContent = tr("Recipient");
+  if (customsRecipientMain) customsRecipientMain.textContent = "--";
+  if (customsRecipientSub) customsRecipientSub.textContent = "--";
   if (!outsideEu.length) {
+    if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
     customsScopeMeta.textContent =
       tr("Complete this declaration for destinations that require customs processing.");
     return;
   }
   if (outsideEu.length === 1) {
+    if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
     customsScopeMeta.textContent = tr(
       "{country} is outside the customs union. Complete declaration details before service selection.",
       { country: outsideEu[0] }
     );
     return;
   }
+  if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
   customsScopeMeta.textContent = tr(
     "{count} destinations are outside the customs union. Complete declaration details before service selection.",
     { count: outsideEu.length }
@@ -25318,6 +25500,7 @@ function setCustomsGhostVisible(visible, options = {}) {
     renderCustomsItems();
     updateCustomsScopeMeta();
   } else {
+    setCustomsFlowModalOpen(false);
     setCustomsError("");
   }
   renderActiveBuilderPanel();
@@ -25329,12 +25512,66 @@ function setCustomsGhostVisible(visible, options = {}) {
   }
 }
 
+function setCustomsFlowModalOpen(open) {
+  if (!customsFlowModal) return;
+  customsFlowModal.classList.toggle("is-closed", !open);
+  if (customsFlowApplyAll) {
+    customsFlowApplyAll.checked = state.customs.promptApplyAll !== false;
+  }
+  if (open && customsFlowNote) {
+    const count = getCustomsRequiredEntries().length;
+    customsFlowNote.textContent = tr(
+      "{count} recipients in this batch require a customs declaration.",
+      { count }
+    );
+  }
+}
+
+function applyCustomsDeclarationToRequiredRecipients(declaration, entries = getCustomsRequiredEntries()) {
+  const nextDeclarations = {};
+  entries.forEach((entry) => {
+    nextDeclarations[String(entry.index)] = {
+      ...declaration,
+      items: cloneCustomsItems(declaration.items),
+    };
+  });
+  state.customs.rowDeclarations = nextDeclarations;
+}
+
+function moveToCustomsRecipient(rowIndex) {
+  state.customs.activeRowIndex = Number(rowIndex);
+  seedCustomsDefaults();
+  syncCustomsInputsFromState();
+  renderCustomsItems();
+  updateCustomsScopeMeta();
+}
+
 function maybeOpenCustomsGhostBeforeSelection() {
   if (state.step !== 1) return false;
   if (!requiresCustomsDeclaration()) return false;
   const signature = getCustomsRequirementSignature();
   if (state.customs.completedFor && state.customs.completedFor === signature) {
     return false;
+  }
+  const requiredEntries = getCustomsRequiredEntries();
+  if (state.csvMode && requiredEntries.length > 1) {
+    if (!["all", "per-recipient"].includes(state.customs.flowMode)) {
+      setCustomsFlowModalOpen(true);
+      return true;
+    }
+    if (state.customs.flowMode === "per-recipient") {
+      const nextPending =
+        requiredEntries.find((entry) => !state.customs.rowDeclarations[String(entry.index)]) ||
+        requiredEntries[0];
+      if (nextPending) {
+        state.customs.activeRowIndex = nextPending.index;
+      }
+    } else {
+      state.customs.activeRowIndex = requiredEntries[0]?.index ?? -1;
+    }
+  } else {
+    state.customs.flowMode = "single";
+    state.customs.activeRowIndex = requiredEntries[0]?.index ?? -1;
   }
   setCustomsGhostVisible(true);
   return true;
@@ -25376,7 +25613,29 @@ function validateCustomsDeclaration() {
     return false;
   }
   setCustomsError("");
-  state.customs.completedFor = getCustomsRequirementSignature();
+  const declaration = snapshotCurrentCustomsDeclaration();
+  const signature = getCustomsRequirementSignature();
+  const requiredEntries = getCustomsRequiredEntries();
+  if (state.csvMode && requiredEntries.length > 1) {
+    if (state.customs.flowMode === "all") {
+      applyCustomsDeclarationToRequiredRecipients(declaration, requiredEntries);
+      state.customs.completedFor = signature;
+      return true;
+    }
+    const activeIndex = Number(state.customs.activeRowIndex);
+    state.customs.rowDeclarations[String(activeIndex)] = declaration;
+    const activePosition = requiredEntries.findIndex((entry) => entry.index === activeIndex);
+    const nextEntry = requiredEntries.slice(activePosition + 1).find(
+      (entry) => !state.customs.rowDeclarations[String(entry.index)]
+    );
+    if (nextEntry) {
+      moveToCustomsRecipient(nextEntry.index);
+      return "next";
+    }
+    state.customs.completedFor = signature;
+    return true;
+  }
+  state.customs.completedFor = signature;
   return true;
 }
 
@@ -25387,6 +25646,9 @@ function resetCustomsDeclaration() {
   state.customs.importerReference = "";
   state.customs.items = [createEmptyCustomsItem()];
   state.customs.completedFor = "";
+  state.customs.flowMode = "single";
+  state.customs.activeRowIndex = -1;
+  state.customs.rowDeclarations = {};
   syncCustomsInputsFromState();
   renderCustomsItems();
   setCustomsError("");
@@ -26809,15 +27071,56 @@ if (customsAddItemButton) {
 
 if (customsBackButton) {
   customsBackButton.addEventListener("click", () => {
+    if (state.csvMode && state.customs.flowMode === "per-recipient") {
+      const requiredEntries = getCustomsRequiredEntries();
+      const activeIndex = Number(state.customs.activeRowIndex);
+      const activePosition = requiredEntries.findIndex((entry) => entry.index === activeIndex);
+      if (activePosition > 0) {
+        moveToCustomsRecipient(requiredEntries[activePosition - 1].index);
+        return;
+      }
+    }
     setCustomsGhostVisible(false, { replace: true });
   });
 }
 
 if (customsContinueButton) {
   customsContinueButton.addEventListener("click", () => {
-    if (!validateCustomsDeclaration()) return;
+    const result = validateCustomsDeclaration();
+    if (!result) return;
+    if (result === "next") return;
     setCustomsGhostVisible(false, { push: false });
     goToStep(2);
+  });
+}
+
+if (customsFlowCancel) {
+  customsFlowCancel.addEventListener("click", () => {
+    state.customs.flowMode = "single";
+    state.customs.activeRowIndex = -1;
+    state.customs.rowDeclarations = {};
+    setCustomsFlowModalOpen(false);
+  });
+}
+
+if (customsFlowConfirm) {
+  customsFlowConfirm.addEventListener("click", () => {
+    const applyAll = customsFlowApplyAll ? customsFlowApplyAll.checked : true;
+    state.customs.promptApplyAll = applyAll;
+    state.customs.flowMode = applyAll ? "all" : "per-recipient";
+    state.customs.rowDeclarations = {};
+    const requiredEntries = getCustomsRequiredEntries();
+    state.customs.activeRowIndex = requiredEntries[0]?.index ?? -1;
+    setCustomsFlowModalOpen(false);
+    setCustomsGhostVisible(true);
+  });
+}
+
+if (customsFlowModal) {
+  customsFlowModal.addEventListener("click", (event) => {
+    if (event.target === customsFlowModal) {
+      setCustomsFlowModalOpen(false);
+    }
   });
 }
 

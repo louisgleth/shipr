@@ -698,6 +698,11 @@
                   <p class="panel-sub" id="customsScopeMeta">
                     Complete this declaration for destinations that require customs processing.
                   </p>
+                  <div class="customs-recipient-card is-hidden" id="customsRecipientCard">
+                    <div class="customs-recipient-kicker" id="customsRecipientKicker">Recipient</div>
+                    <div class="customs-recipient-main" id="customsRecipientMain">--</div>
+                    <div class="customs-recipient-sub" id="customsRecipientSub">--</div>
+                  </div>
                 </div>
               </div>
 
@@ -775,6 +780,39 @@
                 </button>
               </div>
             </section>
+
+            <div class="shopify-settings-overlay is-closed" id="customsFlowModal">
+              <div class="shopify-settings-modal customs-flow-modal" role="dialog" aria-modal="true" aria-labelledby="customsFlowTitle">
+                <div class="shopify-settings-body customs-flow-modal-body">
+                  <div class="customs-flow-copy">
+                    <div class="label-confirm-kicker">
+                      <span class="label-confirm-kicker-dot" aria-hidden="true"></span>
+                      <span>Customs</span>
+                    </div>
+                    <h3 id="customsFlowTitle">Choose your customs declaration flow</h3>
+                    <p class="shopify-settings-note" id="customsFlowNote">
+                      Multiple recipients in this batch require a customs declaration.
+                    </p>
+                  </div>
+                  <label class="label-addon-toggle customs-flow-toggle" aria-label="Apply the same declaration to all recipients that need customs">
+                    <input type="checkbox" id="customsFlowApplyAll" checked />
+                    <span class="label-addon-box" aria-hidden="true"></span>
+                    <span class="customs-flow-toggle-copy">
+                      <span class="customs-flow-toggle-title">Apply the same declaration to all recipients that need customs</span>
+                      <span class="customs-flow-toggle-sub">If unchecked, you will complete the same screen once per recipient.</span>
+                    </span>
+                  </label>
+                  <div class="panel-actions">
+                    <button type="button" class="btn btn-ghost" id="customsFlowCancel">
+                      <span>Cancel</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="customsFlowConfirm">
+                      <span>Continue</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <section class="step-panel" data-panel="3">
               <div class="panel-header">
