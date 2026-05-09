@@ -14648,13 +14648,27 @@ function parseReturnCityRegionPostal(value = "") {
   if (!normalized) {
     return { city: "", state: "", zip: "" };
   }
+
+  const leadingPostalMatch =
+    normalized.match(/^([A-Z]\d[A-Z]\s?\d[A-Z]\d)\s+(.+)$/i) ||
+    normalized.match(/^(\d{4,6}(?:-\d{3})?)\s+(.+)$/);
+  if (leadingPostalMatch) {
+    const place = leadingPostalMatch[2].trim();
+    const [cityPart, ...regionParts] = place.split(",").map((part) => part.trim()).filter(Boolean);
+    return {
+      city: cityPart || place,
+      state: regionParts.join(", "),
+      zip: leadingPostalMatch[1].trim(),
+    };
+  }
+
   const tokens = normalized.split(" ").filter(Boolean);
   const postalTail = [];
   while (tokens.length && /[0-9]/.test(tokens[tokens.length - 1]) && postalTail.length < 2) {
     postalTail.unshift(tokens.pop());
   }
   const state =
-    tokens.length > 1 && /^[A-Z]{2,3}$/i.test(tokens[tokens.length - 1])
+    tokens.length > 0 && /^[A-Z]{2,3}$/i.test(tokens[tokens.length - 1])
       ? tokens.pop()
       : "";
   return {
@@ -14664,26 +14678,74 @@ function parseReturnCityRegionPostal(value = "") {
   };
 }
 
+function parseReturnSingleLineAddress(value = "") {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  const countryMatch = normalized.match(
+    /\s+(Belgium|België|Netherlands|Nederland|France|Germany|Deutschland|Luxembourg|Canada|United States|USA|BE|NL|FR|DE|LU|CA|US)$/i
+  );
+  const country = countryMatch ? countryMatch[1].trim() : "";
+  const withoutCountry = countryMatch
+    ? normalized.slice(0, countryMatch.index).trim()
+    : normalized;
+  const tokens = withoutCountry.split(" ").filter(Boolean);
+  if (tokens.length < 3) return null;
+
+  const postalTail = [];
+  while (tokens.length && /[0-9]/.test(tokens[tokens.length - 1]) && postalTail.length < 2) {
+    postalTail.unshift(tokens.pop());
+  }
+  const state =
+    tokens.length > 0 && /^[A-Z]{2,3}$/i.test(tokens[tokens.length - 1])
+      ? tokens.pop()
+      : "";
+  if (!postalTail.length || tokens.length < 2) return null;
+
+  const city = tokens.pop();
+  const street = tokens.join(" ").trim();
+  if (!street || !city) return null;
+  return {
+    street,
+    city,
+    state,
+    zip: postalTail.join(" "),
+    country,
+  };
+}
+
 function normalizeReturnAddressParts({ name, street, city, stateCode, zip, country }) {
+  const parsedCityLine = !String(zip || "").trim() && /[0-9]/.test(String(city || ""))
+    ? parseReturnCityRegionPostal(city)
+    : null;
   const fallback = {
     street: String(street || "").trim(),
-    city: String(city || "").trim(),
-    state: String(stateCode || "").trim(),
-    zip: String(zip || "").trim(),
+    city: parsedCityLine?.city || String(city || "").trim(),
+    state: String(stateCode || "").trim() || parsedCityLine?.state || "",
+    zip: String(zip || "").trim() || parsedCityLine?.zip || "",
     country: String(country || "").trim(),
   };
-  if (fallback.city || fallback.zip || fallback.country || !fallback.street) {
+  const hasCombinedStreet = /[\n\r,•]/.test(fallback.street);
+  if ((fallback.city || fallback.zip || fallback.country || !fallback.street) && !hasCombinedStreet) {
     return fallback;
   }
 
   const parts = fallback.street
-    .split(/\n|,\s*/)
+    .split(/\n|\r|•|,\s*/)
     .map((part) => part.trim())
     .filter(Boolean)
     .filter((part) => part.toLowerCase() !== String(name || "").trim().toLowerCase());
 
   if (parts.length < 2) {
-    return fallback;
+    const parsedSingleLine = parseReturnSingleLineAddress(fallback.street);
+    return parsedSingleLine
+      ? {
+          street: parsedSingleLine.street,
+          city: fallback.city || parsedSingleLine.city,
+          state: fallback.state || parsedSingleLine.state,
+          zip: fallback.zip || parsedSingleLine.zip,
+          country: fallback.country || parsedSingleLine.country,
+        }
+      : fallback;
   }
 
   if (
@@ -14694,10 +14756,10 @@ function normalizeReturnAddressParts({ name, street, city, stateCode, zip, count
   ) {
     return {
       street: parts[0] || fallback.street,
-      city: parts[1] || "",
-      state: parts[2] || "",
-      zip: parts[3] || "",
-      country: parts.slice(4).join(", ") || "",
+      city: fallback.city || parts[1] || "",
+      state: fallback.state || parts[2] || "",
+      zip: fallback.zip || parts[3] || "",
+      country: fallback.country || parts.slice(4).join(", ") || "",
     };
   }
 
@@ -14705,20 +14767,20 @@ function normalizeReturnAddressParts({ name, street, city, stateCode, zip, count
     const parsedRegionPostal = parseReturnCityRegionPostal(parts[2]);
     return {
       street: parts[0] || fallback.street,
-      city: parts[1] || "",
-      state: parsedRegionPostal.state || parts[2] || "",
-      zip: parsedRegionPostal.zip || parts[3] || "",
-      country: parts.slice(4).join(", ") || parts[3] || "",
+      city: fallback.city || parts[1] || "",
+      state: fallback.state || parsedRegionPostal.state || parts[2] || "",
+      zip: fallback.zip || parsedRegionPostal.zip || parts[3] || "",
+      country: fallback.country || parts.slice(4).join(", ") || parts[3] || "",
     };
   }
 
   const parsed = parseReturnCityRegionPostal(parts[1]);
   return {
     street: parts[0] || fallback.street,
-    city: parsed.city || parts[1] || "",
-    state: parsed.state || "",
-    zip: parsed.zip || "",
-    country: parts.slice(2).join(", ") || "",
+    city: fallback.city || parsed.city || parts[1] || "",
+    state: fallback.state || parsed.state || "",
+    zip: fallback.zip || parsed.zip || "",
+    country: fallback.country || parts.slice(2).join(", ") || "",
   };
 }
 
