@@ -18,6 +18,7 @@ const state = {
   shipFromOriginId: "",
   shipFromLockedByProvider: false,
   returnMode: false,
+  singleReturnMode: false,
   returnSourceLabels: [],
   info: {
     senderName: "",
@@ -2745,6 +2746,8 @@ const csvShipFromNote = document.getElementById("csvShipFromNote");
 const csvShipFromSelector = document.getElementById("csvShipFromSelector");
 const labelForm = document.getElementById("labelForm");
 const senderOriginSelector = document.getElementById("senderOriginSelector");
+const senderSectionTitle = document.getElementById("senderSectionTitle");
+const recipientSectionTitle = document.getElementById("recipientSectionTitle");
 const senderOriginNote = document.getElementById("senderOriginNote");
 const pdfFrame = document.getElementById("pdfFrame");
 const downloadPdf = document.getElementById("downloadPdf");
@@ -13141,32 +13144,52 @@ function buildOriginChoiceButton(origin, options = {}) {
 function renderSenderOriginSelector() {
   if (!senderOriginSelector || !senderOriginNote) return;
   senderOriginSelector.innerHTML = "";
+  if (senderSectionTitle) {
+    senderSectionTitle.textContent = state.singleReturnMode ? tr("Return Sender") : tr("Sender");
+  }
+  if (recipientSectionTitle) {
+    recipientSectionTitle.textContent = state.singleReturnMode
+      ? tr("Return Destination")
+      : tr("Recipient");
+  }
 
   if (!currentUser) {
-    senderOriginNote.textContent = tr("Sign in to use account shipping origins.");
-    if (inputMap.senderName) inputMap.senderName.value = "";
-    if (inputMap.senderStreet) inputMap.senderStreet.value = "";
-    if (inputMap.senderCity) inputMap.senderCity.value = "";
-    if (inputMap.senderState) inputMap.senderState.value = "";
-    if (inputMap.senderZip) inputMap.senderZip.value = "";
+    senderOriginNote.textContent = state.singleReturnMode
+      ? tr("Sign in to use account origins as the return destination.")
+      : tr("Sign in to use account shipping origins.");
+    if (!state.singleReturnMode) {
+      if (inputMap.senderName) inputMap.senderName.value = "";
+      if (inputMap.senderStreet) inputMap.senderStreet.value = "";
+      if (inputMap.senderCity) inputMap.senderCity.value = "";
+      if (inputMap.senderState) inputMap.senderState.value = "";
+      if (inputMap.senderZip) inputMap.senderZip.value = "";
+    }
     syncInfoState();
     return;
   }
 
   if (!warehouseRecords.length) {
-    senderOriginNote.textContent = tr("Add at least one shipping origin in Account settings.");
-    if (inputMap.senderName) inputMap.senderName.value = "";
-    if (inputMap.senderStreet) inputMap.senderStreet.value = "";
-    if (inputMap.senderCity) inputMap.senderCity.value = "";
-    if (inputMap.senderState) inputMap.senderState.value = "";
-    if (inputMap.senderZip) inputMap.senderZip.value = "";
+    senderOriginNote.textContent = state.singleReturnMode
+      ? tr("Add at least one shipping origin in Account settings to use as the return destination.")
+      : tr("Add at least one shipping origin in Account settings.");
+    if (!state.singleReturnMode) {
+      if (inputMap.senderName) inputMap.senderName.value = "";
+      if (inputMap.senderStreet) inputMap.senderStreet.value = "";
+      if (inputMap.senderCity) inputMap.senderCity.value = "";
+      if (inputMap.senderState) inputMap.senderState.value = "";
+      if (inputMap.senderZip) inputMap.senderZip.value = "";
+    }
     syncInfoState();
     return;
   }
 
   const selected = ensureSelectedWarehouseOrigin();
   if (selected) {
-    applyWarehouseToSender(selected, { announce: false });
+    if (state.singleReturnMode) {
+      applyWarehouseToRecipient(selected, { announce: false });
+    } else {
+      applyWarehouseToSender(selected, { announce: false });
+    }
   }
 
   const locked = warehouseRecords.length === 1;
@@ -13178,7 +13201,11 @@ function renderSenderOriginSelector() {
     senderOriginSelector.appendChild(button);
   });
 
-  senderOriginNote.textContent = "";
+  senderOriginNote.textContent = state.singleReturnMode
+    ? locked
+      ? tr("Using your only saved return destination.")
+      : tr("Choose which saved origin should receive this return.")
+    : "";
 }
 
 function renderCsvShipFromSelector() {
@@ -13281,7 +13308,9 @@ function setSelectedWarehouseOrigin(originId, options = {}) {
   const origin = getWarehouseRecordById(originId);
   if (!origin) return;
   state.shipFromOriginId = origin.id;
-  if (state.csvSource !== "returns") {
+  if (state.singleReturnMode) {
+    applyWarehouseToRecipient(origin, { announce: false });
+  } else if (state.csvSource !== "returns") {
     applyWarehouseToSender(origin, { announce: false });
   }
   if (syncCsv) {
@@ -13325,6 +13354,29 @@ function applyWarehouseToSender(origin, options = {}) {
       }),
       {
       tone: "success",
+      }
+    );
+  }
+}
+
+function applyWarehouseToRecipient(origin, options = {}) {
+  const { announce = true } = options;
+  if (!origin) return;
+  if (inputMap.recipientName) inputMap.recipientName.value = origin.returnSenderName || origin.senderName || origin.name || "";
+  if (inputMap.recipientStreet) inputMap.recipientStreet.value = origin.returnStreet || origin.street || "";
+  if (inputMap.recipientCity) inputMap.recipientCity.value = origin.returnCity || origin.city || "";
+  if (inputMap.recipientState) inputMap.recipientState.value = origin.returnRegion || origin.region || "";
+  if (inputMap.recipientZip) inputMap.recipientZip.value = origin.returnPostalCode || origin.postalCode || "";
+  if (inputMap.recipientCountry) inputMap.recipientCountry.value = origin.returnCountry || origin.country || "";
+  syncInfoState();
+  updatePreview();
+  if (announce) {
+    setWarehouseStatus(
+      tr("Applied {name} to return destination.", {
+        name: origin.name || tr("origin"),
+      }),
+      {
+        tone: "success",
       }
     );
   }
@@ -14987,11 +15039,55 @@ function startReturnBuilder(entries) {
   clearBatchState();
   resetCustomsDeclaration();
   state.returnMode = true;
+  state.singleReturnMode = returnEntries.length === 1;
   state.returnSourceLabels = returnEntries.map((entry) => ({
     trackingId: entry?.label?.trackingId || "",
     labelId: entry?.label?.labelId || "",
     generationId: entry?.record?.id || "",
   }));
+  if (state.singleReturnMode) {
+    const row = buildReturnRowFromEntry(returnEntries[0]);
+    setCsvBatchSource("none");
+    setCsvMode(false);
+    setCsvEditMode(false);
+    state.csvRows = [];
+    state.csvPage = 1;
+    state.csvValidationAttempted = false;
+    state.quantity = 1;
+    if (quantityInput) {
+      quantityInput.value = "1";
+    }
+    if (inputMap.senderName) inputMap.senderName.value = row.senderName || "";
+    if (inputMap.senderStreet) inputMap.senderStreet.value = row.senderStreet || "";
+    if (inputMap.senderCity) inputMap.senderCity.value = row.senderCity || "";
+    if (inputMap.senderState) inputMap.senderState.value = row.senderState || "";
+    if (inputMap.senderZip) inputMap.senderZip.value = row.senderZip || "";
+    if (inputMap.recipientName) inputMap.recipientName.value = "";
+    if (inputMap.recipientStreet) inputMap.recipientStreet.value = "";
+    if (inputMap.recipientCity) inputMap.recipientCity.value = "";
+    if (inputMap.recipientState) inputMap.recipientState.value = "";
+    if (inputMap.recipientZip) inputMap.recipientZip.value = "";
+    if (inputMap.recipientCountry) inputMap.recipientCountry.value = "";
+    if (inputMap.packageWeight) inputMap.packageWeight.value = row.packageWeight || "";
+    if (inputMap.packageDims) inputMap.packageDims.value = row.packageDims || "";
+    if (inputMap.trackingId) inputMap.trackingId.value = generateTracking();
+    if (inputMap.labelId) inputMap.labelId.value = generateLabelId();
+    const returnDestination = ensureSelectedWarehouseOrigin();
+    if (returnDestination) {
+      applyWarehouseToRecipient(returnDestination, { announce: false });
+    } else {
+      syncInfoState();
+    }
+    setInlineFormErrorToast(labelError, "");
+    renderSenderOriginSelector();
+    updatePreview();
+    updateSummary();
+    updatePayment();
+    setMainView("builder");
+    goToStep(1);
+    showToast(tr("Return label prepared in the builder."), { tone: "success" });
+    return;
+  }
   state.csvRows = returnEntries.map((entry) => buildReturnRowFromEntry(entry));
   const returnDestination = ensureSelectedWarehouseOrigin();
   if (returnDestination) {
@@ -25445,7 +25541,11 @@ function validateLabelInfo() {
     );
     return false;
   }
-  applyWarehouseToSender(selectedOrigin, { announce: false });
+  if (state.singleReturnMode) {
+    applyWarehouseToRecipient(selectedOrigin, { announce: false });
+  } else {
+    applyWarehouseToSender(selectedOrigin, { announce: false });
+  }
   return validateFields(labelRequiredFields, inputMap, labelError, isLabelFieldValid);
 }
 
@@ -27547,6 +27647,7 @@ function clearBatchState() {
   state.csvPage = 1;
   state.csvValidationAttempted = false;
   state.returnMode = false;
+  state.singleReturnMode = false;
   state.returnSourceLabels = [];
   currentPdfUrl = "";
   if (batchPanel) {
@@ -27563,6 +27664,7 @@ function clearBatchState() {
   }
   syncShopifyAutoRefreshState();
   syncWooCommerceAutoRefreshState();
+  renderSenderOriginSelector();
   renderCsvShipFromSelector();
 }
 
