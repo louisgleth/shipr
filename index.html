@@ -700,8 +700,10 @@
                   </p>
                   <div class="customs-recipient-card is-hidden" id="customsRecipientCard">
                     <div class="customs-recipient-kicker" id="customsRecipientKicker">Recipient</div>
-                    <div class="customs-recipient-main" id="customsRecipientMain">--</div>
-                    <div class="customs-recipient-sub" id="customsRecipientSub">--</div>
+                    <div class="customs-recipient-copy">
+                      <div class="customs-recipient-main" id="customsRecipientMain">--</div>
+                      <div class="customs-recipient-sub" id="customsRecipientSub">--</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -789,19 +791,21 @@
                       <span class="label-confirm-kicker-dot" aria-hidden="true"></span>
                       <span>Customs</span>
                     </div>
-                    <h3 id="customsFlowTitle">Choose your customs declaration flow</h3>
+                    <h3 id="customsFlowTitle">How should customs be completed?</h3>
                     <p class="shopify-settings-note" id="customsFlowNote">
                       Multiple recipients in this batch require a customs declaration.
                     </p>
                   </div>
-                  <label class="label-addon-toggle customs-flow-toggle" aria-label="Apply the same declaration to all recipients that need customs">
-                    <input type="checkbox" id="customsFlowApplyAll" checked />
-                    <span class="label-addon-box" aria-hidden="true"></span>
-                    <span class="customs-flow-toggle-copy">
-                      <span class="customs-flow-toggle-title">Apply the same declaration to all recipients that need customs</span>
-                      <span class="customs-flow-toggle-sub">If unchecked, you will complete the same screen once per recipient.</span>
-                    </span>
-                  </label>
+                  <div class="customs-flow-options" id="customsFlowOptions" role="radiogroup" aria-label="Customs declaration flow">
+                    <button type="button" class="customs-flow-option is-selected" data-customs-flow-choice="all" role="radio" aria-checked="true">
+                      <span class="customs-flow-option-title">Use one declaration</span>
+                      <span class="customs-flow-option-sub">Best when all parcels contain the same goods.</span>
+                    </button>
+                    <button type="button" class="customs-flow-option" data-customs-flow-choice="per-recipient" role="radio" aria-checked="false">
+                      <span class="customs-flow-option-title">Review per recipient</span>
+                      <span class="customs-flow-option-sub">Use this when contents or values differ by destination.</span>
+                    </button>
+                  </div>
                   <div class="panel-actions">
                     <button type="button" class="btn btn-ghost" id="customsFlowCancel">
                       <span>Cancel</span>

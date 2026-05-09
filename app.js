@@ -2776,7 +2776,7 @@ const customsAddItemButton = document.getElementById("customsAddItem");
 const customsBackButton = document.getElementById("customsBack");
 const customsContinueButton = document.getElementById("customsContinue");
 const customsFlowModal = document.getElementById("customsFlowModal");
-const customsFlowApplyAll = document.getElementById("customsFlowApplyAll");
+const customsFlowOptions = document.getElementById("customsFlowOptions");
 const customsFlowCancel = document.getElementById("customsFlowCancel");
 const customsFlowConfirm = document.getElementById("customsFlowConfirm");
 const customsFlowNote = document.getElementById("customsFlowNote");
@@ -25324,6 +25324,24 @@ function updateCustomsScopeMeta() {
     customsRecipientCard.classList.toggle("is-hidden", !targetEntry);
   }
   if (targetEntry) {
+    if (state.customs.flowMode === "all") {
+      if (customsRecipientKicker) customsRecipientKicker.textContent = tr("Batch declaration");
+      if (customsRecipientMain) {
+        customsRecipientMain.textContent = tr("{count} recipients require customs", {
+          count: requiredEntries.length,
+        });
+      }
+      if (customsRecipientSub) {
+        customsRecipientSub.textContent = tr(
+          "One declaration will be applied to every required destination."
+        );
+      }
+      if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
+      customsScopeMeta.textContent = tr(
+        "Use this mode when contents and declared values are identical across the batch."
+      );
+      return;
+    }
     const { name, address } = formatCustomsRecipientDisplay(targetEntry);
     const activePosition = requiredEntries.findIndex((entry) => entry.index === targetEntry.index);
     if (customsRecipientKicker) {
@@ -25334,13 +25352,6 @@ function updateCustomsScopeMeta() {
     }
     if (customsRecipientMain) customsRecipientMain.textContent = name;
     if (customsRecipientSub) customsRecipientSub.textContent = address;
-    if (state.customs.flowMode === "all") {
-      if (customsContinueLabel) customsContinueLabel.textContent = tr("Continue");
-      customsScopeMeta.textContent = tr(
-        "This declaration will be applied to every recipient in this batch that requires customs."
-      );
-      return;
-    }
     if (customsContinueLabel) {
       customsContinueLabel.textContent =
         activePosition < requiredEntries.length - 1 ? tr("Next recipient") : tr("Continue");
@@ -25512,12 +25523,20 @@ function setCustomsGhostVisible(visible, options = {}) {
   }
 }
 
+function renderCustomsFlowOptions() {
+  if (!customsFlowOptions) return;
+  const selectedChoice = state.customs.promptApplyAll === false ? "per-recipient" : "all";
+  customsFlowOptions.querySelectorAll("[data-customs-flow-choice]").forEach((button) => {
+    const isSelected = button.dataset.customsFlowChoice === selectedChoice;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-checked", isSelected ? "true" : "false");
+  });
+}
+
 function setCustomsFlowModalOpen(open) {
   if (!customsFlowModal) return;
   customsFlowModal.classList.toggle("is-closed", !open);
-  if (customsFlowApplyAll) {
-    customsFlowApplyAll.checked = state.customs.promptApplyAll !== false;
-  }
+  renderCustomsFlowOptions();
   if (open && customsFlowNote) {
     const count = getCustomsRequiredEntries().length;
     customsFlowNote.textContent = tr(
@@ -27103,9 +27122,18 @@ if (customsFlowCancel) {
   });
 }
 
+if (customsFlowOptions) {
+  customsFlowOptions.addEventListener("click", (event) => {
+    const choiceButton = event.target.closest("[data-customs-flow-choice]");
+    if (!choiceButton || !customsFlowOptions.contains(choiceButton)) return;
+    state.customs.promptApplyAll = choiceButton.dataset.customsFlowChoice !== "per-recipient";
+    renderCustomsFlowOptions();
+  });
+}
+
 if (customsFlowConfirm) {
   customsFlowConfirm.addEventListener("click", () => {
-    const applyAll = customsFlowApplyAll ? customsFlowApplyAll.checked : true;
+    const applyAll = state.customs.promptApplyAll !== false;
     state.customs.promptApplyAll = applyAll;
     state.customs.flowMode = applyAll ? "all" : "per-recipient";
     state.customs.rowDeclarations = {};
