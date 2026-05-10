@@ -9618,6 +9618,20 @@ body.is-auth-view {
   gap: 8px;
 }
 
+.customs-flow-copy h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  line-height: 1.08;
+  font-weight: 300;
+  letter-spacing: var(--letter-tight);
+}
+
+.customs-flow-copy .shopify-settings-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
 .customs-flow-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9627,11 +9641,11 @@ body.is-auth-view {
 .customs-flow-option {
   appearance: none;
   width: 100%;
-  min-height: 112px;
+  min-height: 96px;
   display: grid;
   align-content: start;
-  gap: 7px;
-  padding: 14px;
+  gap: 5px;
+  padding: 12px 14px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--card-bg);
@@ -9661,15 +9675,15 @@ body.is-auth-view {
 }
 
 .customs-flow-option-title {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
   color: var(--text);
-  line-height: 1.25;
+  line-height: 1.12;
 }
 
 .customs-flow-option-sub {
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-sm);
   color: var(--muted);
-  line-height: 1.35;
+  line-height: 1.32;
 }
 
 .customs-items-head {
