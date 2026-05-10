@@ -2779,7 +2779,6 @@ const customsFlowModal = document.getElementById("customsFlowModal");
 const customsFlowOptions = document.getElementById("customsFlowOptions");
 const customsFlowCancel = document.getElementById("customsFlowCancel");
 const customsFlowConfirm = document.getElementById("customsFlowConfirm");
-const customsFlowNote = document.getElementById("customsFlowNote");
 const openRestrictedGoodsModalButton = document.getElementById("openRestrictedGoodsModal");
 const restrictedGoodsModal = document.getElementById("restrictedGoodsModal");
 const restrictedGoodsModalClose = document.getElementById("restrictedGoodsModalClose");
@@ -25537,13 +25536,6 @@ function setCustomsFlowModalOpen(open) {
   if (!customsFlowModal) return;
   customsFlowModal.classList.toggle("is-closed", !open);
   renderCustomsFlowOptions();
-  if (open && customsFlowNote) {
-    const count = getCustomsRequiredEntries().length;
-    customsFlowNote.textContent = tr(
-      "{count} recipients in this batch require a customs declaration.",
-      { count }
-    );
-  }
 }
 
 function applyCustomsDeclarationToRequiredRecipients(declaration, entries = getCustomsRequiredEntries()) {

@@ -9648,10 +9648,10 @@ body.is-auth-view {
 .customs-flow-option {
   appearance: none;
   width: 100%;
-  min-height: 96px;
+  min-height: 88px;
   display: grid;
   align-content: start;
-  gap: 5px;
+  gap: 3px;
   padding: 12px 14px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -9682,15 +9682,16 @@ body.is-auth-view {
 }
 
 .customs-flow-option-title {
-  font-size: var(--fs-sm);
+  font-family: "Creato Display Regular";
+  font-size: var(--fs-xs);
   color: var(--text);
   line-height: 1.2;
 }
 
 .customs-flow-option-sub {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--muted);
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .customs-items-head {
