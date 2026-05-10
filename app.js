@@ -22257,7 +22257,7 @@ function postTrimLineToWidth(ctx, text, maxWidth) {
 function postFitTextBlock(ctx, text, options = {}) {
   const {
     fontFamily = '"Creato Display Regular", "Creato Display Light", sans-serif',
-    fontWeight = 600,
+    fontWeight = 400,
     maxWidth = 480,
     maxLines = 4,
     fontSize = 64,

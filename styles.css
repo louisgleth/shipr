@@ -24,6 +24,7 @@
 
 :root {
   --font-primary: "Creato Display Light";
+  --font-primary-regular: "Creato Display Regular";
   --font-mono: "PT Mono";
   --primary: #00060f;
   --secondary: rgb(28, 32, 38);
@@ -1834,8 +1835,8 @@ body.is-auth-view {
   border-radius: 3px;
   background: rgb(51, 51, 51);
   color: var(--text);
-  font-family: Inter, "Inter", sans-serif;
-  font-weight: 600;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   font-size: var(--fs-xs);
   line-height: 1;
   letter-spacing: 0;
@@ -3611,7 +3612,8 @@ body.is-auth-view {
 
 .admin-ledger-row-meta strong {
   color: var(--text);
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
 }
 
 .admin-ledger-download-btn {
@@ -3691,7 +3693,8 @@ body.is-auth-view {
 
 .admin-wise-meta strong {
   color: var(--text);
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
 }
 
 .admin-wise-actions {
@@ -5035,7 +5038,7 @@ body.is-auth-view {
   border: 1px solid rgba(241, 244, 251, 0.1);
   background: rgba(241, 244, 251, 0.04);
   color: rgba(241, 244, 251, 0.48);
-  font-size: 10px;
+  font-size: var(--fs-3xs);
   line-height: 1;
   letter-spacing: var(--letter-tight);
   white-space: nowrap;
@@ -6376,7 +6379,8 @@ body.is-auth-view {
   background: transparent;
   color: inherit;
   font-size: var(--fs-2xs);
-  font-weight: 600;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -6652,7 +6656,8 @@ body.is-auth-view {
 
 .woocommerce-settings-toggle-copy strong {
   font-size: var(--fs-xs);
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   color: var(--text);
 }
 
@@ -8293,7 +8298,7 @@ body.is-auth-view {
 
 .invoice-payment-badge-copy {
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   line-height: 1;
   letter-spacing: 0;
   transform: none;
@@ -9080,11 +9085,12 @@ body.is-auth-view {
 }
 
 .csv-table th {
+  font-family: var(--font-mono), monospace;
   font-size: var(--fs-2xs);
   text-transform: uppercase;
   letter-spacing: var(--letter-tight);
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 400;
   position: sticky;
   top: 0;
   background: var(--panel-bg);
@@ -9557,11 +9563,6 @@ body.is-auth-view {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
-}
-
-.customs-notes {
-  display: grid;
-  gap: 10px;
 }
 
 .customs-note-card {
@@ -10368,7 +10369,8 @@ input.is-invalid {
 
 .summary-line.total {
   font-size: var(--fs-sm);
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   color: var(--text);
 }
 
@@ -10534,7 +10536,8 @@ input.is-invalid {
 
 .batch-index {
   font-size: var(--fs-xs);
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   line-height: 1.15;
 }
 
@@ -10595,7 +10598,8 @@ input.is-invalid {
 }
 
 .label-brand {
-  font-weight: 500;
+  font-family: var(--font-primary-regular), var(--font-primary), sans-serif;
+  font-weight: 400;
   font-size: var(--fs-xs);
 }
 
