@@ -2956,6 +2956,8 @@ let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
 let currentUser = null;
 let cachedAuthAccessToken = "";
+let authFocusRefreshPromise = null;
+let lastAuthFocusRefreshAt = 0;
 let activeLanguage = "en";
 let authMode = "login";
 let authRecoveryPrefillEmail = "";
@@ -5498,6 +5500,49 @@ async function refreshAuthAccessToken() {
   } catch (_error) {
     return "";
   }
+}
+
+async function maybeRefreshAuthAccessTokenOnFocus() {
+  if (!supabaseClient || !currentUser) return "";
+  if (document.hidden) return "";
+  if (authFocusRefreshPromise) return authFocusRefreshPromise;
+
+  const now = Date.now();
+  if (now - lastAuthFocusRefreshAt < 30000) {
+    return cachedAuthAccessToken;
+  }
+  lastAuthFocusRefreshAt = now;
+
+  authFocusRefreshPromise = (async () => {
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+
+      const token = String(session?.access_token || "");
+      if (token) {
+        cachedAuthAccessToken = token;
+      }
+
+      const expiresAtMs = Number(session?.expires_at || 0) * 1000;
+      const shouldRefresh =
+        Number.isFinite(expiresAtMs) && expiresAtMs > 0 && expiresAtMs - Date.now() < 3 * 60 * 1000;
+
+      if (!shouldRefresh) {
+        return token;
+      }
+
+      return await refreshAuthAccessToken();
+    } catch (_error) {
+      return cachedAuthAccessToken;
+    } finally {
+      authFocusRefreshPromise = null;
+    }
+  })();
+
+  return authFocusRefreshPromise;
 }
 
 function stopAuthKeepAlive() {
@@ -21785,6 +21830,10 @@ async function initializeAuth() {
   }
   supabaseClient.auth.onAuthStateChange((event, updatedSession) => {
     setAuthMessage("");
+    if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+      setAuthView(updatedSession, { animate: false });
+      return;
+    }
     if (event === "PASSWORD_RECOVERY") {
       updateRoute({ view: "recovery" }, { replace: true });
       setAuthView(updatedSession, { animate: true });
@@ -29698,7 +29747,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
       void bootstrapShopifyEmbeddedSession().catch(() => {});
     }
     if (!currentUser) return;
-    void refreshAuthAccessToken();
+    void maybeRefreshAuthAccessTokenOnFocus();
   });
   window.addEventListener("resize", queueScrollFadeSync);
 
