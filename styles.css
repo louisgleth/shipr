@@ -9492,7 +9492,7 @@ body.is-auth-view {
   padding-top: 10px;
   border-top: 1px solid var(--stroke);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }
@@ -9512,12 +9512,14 @@ body.is-auth-view {
   line-height: 1;
   text-transform: none;
   letter-spacing: var(--letter-tight);
+  order: 2;
 }
 
 .customs-recipient-copy {
   min-width: 0;
   display: grid;
   gap: 2px;
+  order: 1;
 }
 
 .customs-recipient-main {
@@ -9567,24 +9569,29 @@ body.is-auth-view {
   grid-template-columns: auto 1fr;
   align-items: start;
   gap: 10px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-lg);
-  background: #1f2631;
-  color: var(--muted);
+  border: 1px solid rgba(119, 71, 227, 0.24);
+  border-radius: var(--radius);
+  background: rgba(119, 71, 227, 0.08);
+  color: rgba(241, 244, 251, 0.82);
   font-size: var(--fs-xs);
-  padding: 12px;
+  line-height: 1.35;
+  padding: 10px 12px;
 }
 
 .customs-note-card svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
   margin-top: 1px;
 }
 
+.customs-note-card > div {
+  display: grid;
+  gap: 4px;
+}
+
 .customs-note-link {
   display: block;
-  margin-top: 4px;
   padding: 0;
   border: none;
   background: transparent;
@@ -9727,12 +9734,13 @@ body.is-auth-view {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 10px;
-  border: 1px solid var(--stroke);
+  border: 1px solid rgba(119, 71, 227, 0.24);
   border-radius: var(--radius);
-  background: #1f2631;
-  color: var(--muted);
+  background: rgba(119, 71, 227, 0.08);
+  color: rgba(241, 244, 251, 0.82);
   font-size: var(--fs-xs);
-  padding: 10px;
+  line-height: 1.35;
+  padding: 10px 12px;
 }
 
 .customs-note svg {

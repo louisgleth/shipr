@@ -13407,7 +13407,7 @@ function renderCsvShipFromSelector() {
       ? tr("Choose the fallback origin for Shopify rows without a fulfillment location.")
       : state.csvSource === "provider-wix"
       ? tr("Choose the fallback origin for Wix rows without a business location.")
-      : tr("Choose which origin to apply to this batch.");
+      : "";
 }
 
 function syncCsvRowsWithSelectedOrigin(options = {}) {
