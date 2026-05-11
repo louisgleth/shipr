@@ -11414,7 +11414,7 @@ const csvColumns = [
   { key: "recipientState", label: "To Region" },
   { key: "recipientZip", label: "To Postal Code" },
   { key: "recipientCountry", label: "Country" },
-  { key: "packageWeight", label: "Weight" },
+  { key: "packageWeight", label: "Weight (KG)" },
   { key: "packageDims", label: "Dims" },
 ];
 
@@ -11435,7 +11435,7 @@ const csvReturnReviewColumns = [
   { key: "senderCity", label: "City" },
   { key: "senderCountry", label: "Country" },
   csvReturnRecipientReviewColumn,
-  { key: "packageWeight", label: "Weight" },
+  { key: "packageWeight", label: "Weight (KG)" },
   { key: "packageDims", label: "Dims" },
 ];
 
@@ -24464,7 +24464,12 @@ function renderCsvTable() {
     activeReviewColumns.forEach((column) => {
       const th = document.createElement("th");
       th.dataset.key = column.key;
-      th.textContent = column.key === "packageDims" ? tr("Dims (L x W x H, cm)") : tr(column.label);
+      th.textContent =
+        column.key === "packageDims"
+          ? tr("Dims (L x W x H, cm)")
+          : column.key === "packageWeight"
+            ? tr("Weight (KG)")
+            : tr(column.label);
       headerRow.appendChild(th);
     });
     csvTableHead.replaceChildren(headerRow);

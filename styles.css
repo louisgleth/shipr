@@ -1950,7 +1950,7 @@ body.is-auth-view {
 
 .account-overview-bento {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(520px, 720px);
+  grid-template-columns: minmax(620px, 1.22fr) minmax(420px, 0.78fr);
   gap: 18px;
   align-items: stretch;
 }
@@ -9131,7 +9131,7 @@ body.is-auth-view {
 .csv-table td[data-key="shipFromSummary"],
 .csv-table th[data-key="returnRecipientSummary"],
 .csv-table td[data-key="returnRecipientSummary"] {
-  width: 18%;
+  width: 16%;
 }
 
 .csv-table th[data-key="senderName"],
@@ -9141,22 +9141,22 @@ body.is-auth-view {
 
 .csv-table th[data-key="senderStreet"],
 .csv-table td[data-key="senderStreet"] {
-  width: 19%;
+  width: 18%;
 }
 
 .csv-table th[data-key="senderZip"],
 .csv-table td[data-key="senderZip"] {
-  width: 7%;
+  width: 8%;
 }
 
 .csv-table th[data-key="senderCity"],
 .csv-table td[data-key="senderCity"] {
-  width: 10%;
+  width: 9%;
 }
 
 .csv-table th[data-key="senderState"],
 .csv-table td[data-key="senderState"] {
-  width: 11%;
+  width: 12%;
 }
 
 .csv-table th[data-key="senderCountry"],
@@ -9171,17 +9171,17 @@ body.is-auth-view {
 
 .csv-table th[data-key="recipientStreet"],
 .csv-table td[data-key="recipientStreet"] {
-  width: 19%;
+  width: 18%;
 }
 
 .csv-table th[data-key="recipientCity"],
 .csv-table td[data-key="recipientCity"] {
-  width: 10%;
+  width: 9%;
 }
 
 .csv-table th[data-key="recipientState"],
 .csv-table td[data-key="recipientState"] {
-  width: 11%;
+  width: 12%;
 }
 
 .csv-table th[data-key="recipientCountry"],
@@ -9191,17 +9191,17 @@ body.is-auth-view {
 
 .csv-table th[data-key="packageDims"],
 .csv-table td[data-key="packageDims"] {
-  width: 10%;
+  width: 13%;
 }
 
 .csv-table th[data-key="recipientZip"],
 .csv-table td[data-key="recipientZip"] {
-  width: 7%;
+  width: 9%;
 }
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 7%;
+  width: 6%;
 }
 
 .csv-table tbody tr:last-child td {
