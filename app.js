@@ -9696,7 +9696,6 @@ function canAutoRefreshShopifyBatch() {
       && state.step === 1
       && state.csvMode
       && state.csvSource === "provider-shopify"
-      && !state.csvEditable
   );
 }
 
@@ -9744,7 +9743,6 @@ function canAutoRefreshWooCommerceBatch() {
       && state.step === 1
       && state.csvMode
       && state.csvSource === "provider-woocommerce"
-      && !state.csvEditable
   );
 }
 
@@ -10733,7 +10731,7 @@ function applyImportedRows(rows, sourceLabel, options = {}) {
   if (!state.shipFromLockedByProvider) {
     syncCsvRowsWithSelectedOrigin({ rerender: false });
   }
-  setCsvEditMode(false);
+  setCsvEditMode(true);
   setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();
@@ -15274,7 +15272,7 @@ function startReturnBuilder(entries) {
   }
   setCsvBatchSource("returns");
   setCsvMode(true);
-  setCsvEditMode(false);
+  setCsvEditMode(true);
   setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();
@@ -27660,7 +27658,7 @@ document.addEventListener("keydown", (event) => {
 function autoFill() {
   clearBatchState();
   setCsvMode(false);
-  setCsvEditMode(false);
+  setCsvEditMode(true);
   state.csvRows = [];
   state.csvPage = 1;
   state.csvValidationAttempted = false;
@@ -27713,7 +27711,7 @@ if (autoCsvButton) {
     setCsvBatchSource("csv-auto");
     setCsvMode(true);
     syncCsvRowsWithSelectedOrigin({ rerender: false });
-    setCsvEditMode(false);
+    setCsvEditMode(true);
     setInlineFormErrorToast(labelError, "");
     updatePreview();
     updateSummary();
@@ -29432,7 +29430,7 @@ function applyCsvMapping() {
   setCsvBatchSource("csv-upload");
   setCsvMode(true);
   syncCsvRowsWithSelectedOrigin({ rerender: false });
-  setCsvEditMode(false);
+  setCsvEditMode(true);
   setInlineFormErrorToast(labelError, "");
   updatePreview();
   updateSummary();

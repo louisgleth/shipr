@@ -9146,12 +9146,17 @@ body.is-auth-view {
 
 .csv-table th[data-key="senderZip"],
 .csv-table td[data-key="senderZip"] {
-  width: 8%;
+  width: 7%;
 }
 
 .csv-table th[data-key="senderCity"],
 .csv-table td[data-key="senderCity"] {
-  width: 8%;
+  width: 10%;
+}
+
+.csv-table th[data-key="senderState"],
+.csv-table td[data-key="senderState"] {
+  width: 11%;
 }
 
 .csv-table th[data-key="senderCountry"],
@@ -9170,9 +9175,15 @@ body.is-auth-view {
 }
 
 .csv-table th[data-key="recipientCity"],
-.csv-table td[data-key="recipientCity"],
+.csv-table td[data-key="recipientCity"] {
+  width: 10%;
+}
+
 .csv-table th[data-key="recipientState"],
-.csv-table td[data-key="recipientState"],
+.csv-table td[data-key="recipientState"] {
+  width: 11%;
+}
+
 .csv-table th[data-key="recipientCountry"],
 .csv-table td[data-key="recipientCountry"] {
   width: 8%;
@@ -9180,17 +9191,17 @@ body.is-auth-view {
 
 .csv-table th[data-key="packageDims"],
 .csv-table td[data-key="packageDims"] {
-  width: 11%;
+  width: 10%;
 }
 
 .csv-table th[data-key="recipientZip"],
 .csv-table td[data-key="recipientZip"] {
-  width: 8%;
+  width: 7%;
 }
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 10%;
+  width: 7%;
 }
 
 .csv-table tbody tr:last-child td {
@@ -9675,7 +9686,7 @@ body.is-auth-view {
   appearance: none;
   width: 100%;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: start;
   gap: 10px;
   padding: 12px;
@@ -9692,11 +9703,11 @@ body.is-auth-view {
 }
 
 .customs-flow-option-icon {
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(241, 244, 251, 0.1);
-  border-radius: 12px;
-  background: rgba(241, 244, 251, 0.04);
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
@@ -9705,8 +9716,8 @@ body.is-auth-view {
 }
 
 .customs-flow-option-icon svg {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
 }
 
 .customs-flow-option-copy {
@@ -9732,8 +9743,6 @@ body.is-auth-view {
 }
 
 .customs-flow-option.is-selected .customs-flow-option-icon {
-  border-color: rgba(119, 71, 227, 0.5);
-  background: rgba(119, 71, 227, 0.14);
   color: var(--text);
 }
 
