@@ -2692,8 +2692,29 @@ async function handleShippingDataCleanerSubmission(request, env) {
   const removedColumns = Array.isArray(body?.removedColumns)
     ? body.removedColumns.map((column) => String(column || "").trim()).filter(Boolean).slice(0, 80)
     : [];
+  const originAddresses = Array.isArray(body?.originAddresses)
+    ? body.originAddresses.map((address) => String(address || "").trim()).filter(Boolean).slice(0, 12)
+    : [];
   const csv = buildCsvFromMatrix(headers, rows);
   const submittedAt = new Date().toISOString();
+  const attachments = [
+    {
+      filename: outputFilename,
+      content: textEncoder.encode(csv),
+      contentType: "text/csv",
+    },
+  ];
+  if (originAddresses.length) {
+    attachments.push({
+      filename: sanitizeSubmissionFilename(
+        `${companyName || "client"}_${contactEmail || "no-email"}-ship-from-addresses.txt`
+      ),
+      content: textEncoder.encode(
+        originAddresses.map((address, index) => `${index + 1}. ${address}`).join("\n")
+      ),
+      contentType: "text/plain",
+    });
+  }
   const html = `
     <p>A sanitized shipping data extract was submitted from the public cleaner.</p>
     <ul>
@@ -2704,6 +2725,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
       <li><strong>Rows:</strong> ${rows.length}</li>
       <li><strong>Columns kept:</strong> ${headers.map(escapeHtml).join(", ")}</li>
       <li><strong>Columns removed:</strong> ${removedColumns.length ? removedColumns.map(escapeHtml).join(", ") : "None reported"}</li>
+      <li><strong>Manual ship-from addresses:</strong> ${originAddresses.length ? originAddresses.map(escapeHtml).join(" | ") : "None provided"}</li>
       <li><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</li>
     </ul>
   `;
@@ -2716,6 +2738,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
     `Rows: ${rows.length}`,
     `Columns kept: ${headers.join(", ")}`,
     `Columns removed: ${removedColumns.length ? removedColumns.join(", ") : "None reported"}`,
+    `Manual ship-from addresses: ${originAddresses.length ? originAddresses.join(" | ") : "None provided"}`,
     `Submitted at: ${submittedAt}`,
   ].join("\n");
 
@@ -2728,13 +2751,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
       subject: `Cleaned shipping data: ${companyName || contactEmail || sourceFilename}`,
       html,
       text,
-      attachments: [
-        {
-          filename: outputFilename,
-          content: textEncoder.encode(csv),
-          contentType: "text/csv",
-        },
-      ],
+      attachments,
     });
     await updateShipmentExtractRequestSubmitted(env, extractRequest.id, {
       submittedAt,
@@ -2747,6 +2764,7 @@ async function handleShippingDataCleanerSubmission(request, env) {
         resend_email_id: response?.id || null,
         output_filename: outputFilename,
         client_company_name: companyName || null,
+        manual_ship_from_addresses: originAddresses,
       },
     });
     return jsonResponse({
