@@ -4770,6 +4770,12 @@ body.is-auth-view {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
+  scrollbar-width: thin;
+  scrollbar-color: #434c5f transparent;
+}
+
+.returns-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .returns-table {
@@ -4796,9 +4802,14 @@ body.is-auth-view {
   background: var(--panel-bg);
   color: var(--muted);
   font-size: var(--fs-2xs);
-  font-weight: 300;
+  font-family: var(--font-mono), monospace;
+  font-weight: 400;
   text-transform: uppercase;
   letter-spacing: var(--letter-tight);
+}
+
+.returns-table th:not(.returns-select-cell) {
+  padding-left: 18px;
 }
 
 .returns-table tbody tr {
@@ -4821,22 +4832,22 @@ body.is-auth-view {
 
 .returns-table th:nth-child(2),
 .returns-table td:nth-child(2) {
-  width: 24%;
+  width: 18%;
 }
 
 .returns-table th:nth-child(3),
 .returns-table td:nth-child(3) {
-  width: 37%;
+  width: 42%;
 }
 
 .returns-table th:nth-child(4),
 .returns-table td:nth-child(4) {
-  width: 24%;
+  width: 22%;
 }
 
 .returns-table th:nth-child(5),
 .returns-table td:nth-child(5) {
-  width: 15%;
+  width: 18%;
 }
 
 .returns-checkbox {
@@ -4852,6 +4863,7 @@ body.is-auth-view {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-left: 8px;
 }
 
 .returns-cell-main {
@@ -9108,38 +9120,38 @@ body.is-auth-view {
 }
 
 .csv-table th:not([data-key="recipientCountry"]) {
-  padding-left: 12px;
+  padding-left: 18px;
 }
 
 .csv-table th[data-key="recipientCountry"] {
-  padding-left: 14px;
+  padding-left: 18px;
 }
 
 .csv-table th[data-key="shipFromSummary"],
 .csv-table td[data-key="shipFromSummary"],
 .csv-table th[data-key="returnRecipientSummary"],
 .csv-table td[data-key="returnRecipientSummary"] {
-  width: 17%;
+  width: 18%;
 }
 
 .csv-table th[data-key="senderName"],
 .csv-table td[data-key="senderName"] {
-  width: 11%;
+  width: 10%;
 }
 
 .csv-table th[data-key="senderStreet"],
 .csv-table td[data-key="senderStreet"] {
-  width: 18%;
+  width: 19%;
 }
 
 .csv-table th[data-key="senderZip"],
 .csv-table td[data-key="senderZip"] {
-  width: 7%;
+  width: 8%;
 }
 
 .csv-table th[data-key="senderCity"],
 .csv-table td[data-key="senderCity"] {
-  width: 9%;
+  width: 8%;
 }
 
 .csv-table th[data-key="senderCountry"],
@@ -9149,12 +9161,12 @@ body.is-auth-view {
 
 .csv-table th[data-key="recipientName"],
 .csv-table td[data-key="recipientName"] {
-  width: 11%;
+  width: 10%;
 }
 
 .csv-table th[data-key="recipientStreet"],
 .csv-table td[data-key="recipientStreet"] {
-  width: 18%;
+  width: 19%;
 }
 
 .csv-table th[data-key="recipientCity"],
@@ -9162,25 +9174,23 @@ body.is-auth-view {
 .csv-table th[data-key="recipientState"],
 .csv-table td[data-key="recipientState"],
 .csv-table th[data-key="recipientCountry"],
-.csv-table td[data-key="recipientCountry"],
-.csv-table th[data-key="packageDims"],
-.csv-table td[data-key="packageDims"] {
-  width: 7%;
+.csv-table td[data-key="recipientCountry"] {
+  width: 8%;
 }
 
 .csv-table th[data-key="packageDims"],
 .csv-table td[data-key="packageDims"] {
-  width: 10%;
+  width: 11%;
 }
 
 .csv-table th[data-key="recipientZip"],
 .csv-table td[data-key="recipientZip"] {
-  width: 7%;
+  width: 8%;
 }
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 8%;
+  width: 10%;
 }
 
 .csv-table tbody tr:last-child td {
@@ -9592,6 +9602,11 @@ body.is-auth-view {
 .customs-note-card svg {
   width: 16px;
   height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--accent);
   margin-top: 1px;
 }
@@ -9733,6 +9748,16 @@ body.is-auth-view {
   font-size: var(--fs-2xs);
   color: var(--muted);
   line-height: 1.25;
+}
+
+#customsFlowCancel svg,
+#customsFlowConfirm svg,
+.customs-note svg {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .customs-items-head {
