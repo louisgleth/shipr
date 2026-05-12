@@ -28,3 +28,18 @@ create index if not exists shipment_extract_requests_submitted_at_idx
   on public.shipment_extract_requests (submitted_at desc);
 
 alter table public.shipment_extract_requests enable row level security;
+
+revoke all on public.shipment_extract_requests from public;
+revoke all on public.shipment_extract_requests from anon;
+revoke all on public.shipment_extract_requests from authenticated;
+
+grant select, insert, update, delete on public.shipment_extract_requests to service_role;
+
+drop policy if exists "shipment_extract_requests_service_role_all" on public.shipment_extract_requests;
+
+create policy "shipment_extract_requests_service_role_all"
+  on public.shipment_extract_requests
+  for all
+  to service_role
+  using (true)
+  with check (true);

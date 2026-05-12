@@ -28,3 +28,18 @@ create index if not exists registration_invites_invited_email_idx
   on public.registration_invites (lower(invited_email));
 
 alter table public.registration_invites enable row level security;
+
+revoke all on public.registration_invites from public;
+revoke all on public.registration_invites from anon;
+revoke all on public.registration_invites from authenticated;
+
+grant select, insert, update, delete on public.registration_invites to service_role;
+
+drop policy if exists "registration_invites_service_role_all" on public.registration_invites;
+
+create policy "registration_invites_service_role_all"
+  on public.registration_invites
+  for all
+  to service_role
+  using (true)
+  with check (true);

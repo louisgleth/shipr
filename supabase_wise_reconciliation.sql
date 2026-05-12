@@ -83,6 +83,45 @@ alter table public.wise_webhook_events enable row level security;
 alter table public.billing_bank_receipts enable row level security;
 alter table public.billing_invoice_payments enable row level security;
 
+revoke all on public.wise_webhook_events from public;
+revoke all on public.wise_webhook_events from anon;
+revoke all on public.wise_webhook_events from authenticated;
+revoke all on public.billing_bank_receipts from public;
+revoke all on public.billing_bank_receipts from anon;
+revoke all on public.billing_bank_receipts from authenticated;
+revoke all on public.billing_invoice_payments from public;
+revoke all on public.billing_invoice_payments from anon;
+revoke all on public.billing_invoice_payments from authenticated;
+
+grant select, insert, update, delete on public.wise_webhook_events to service_role;
+grant select, insert, update, delete on public.billing_bank_receipts to service_role;
+grant select, insert, update, delete on public.billing_invoice_payments to service_role;
+
+drop policy if exists "wise_webhook_events_service_role_all" on public.wise_webhook_events;
+drop policy if exists "billing_bank_receipts_service_role_all" on public.billing_bank_receipts;
+drop policy if exists "billing_invoice_payments_service_role_all" on public.billing_invoice_payments;
+
+create policy "wise_webhook_events_service_role_all"
+  on public.wise_webhook_events
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+create policy "billing_bank_receipts_service_role_all"
+  on public.billing_bank_receipts
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+create policy "billing_invoice_payments_service_role_all"
+  on public.billing_invoice_payments
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 create or replace function public.apply_billing_bank_receipt_resolution(
   p_receipt_id uuid,
   p_resolution text,
@@ -404,3 +443,36 @@ begin
   return v_receipt;
 end;
 $$;
+
+revoke all on function public.apply_billing_bank_receipt_resolution(
+  uuid,
+  text,
+  text,
+  uuid,
+  uuid,
+  text
+) from public;
+revoke all on function public.apply_billing_bank_receipt_resolution(
+  uuid,
+  text,
+  text,
+  uuid,
+  uuid,
+  text
+) from anon;
+revoke all on function public.apply_billing_bank_receipt_resolution(
+  uuid,
+  text,
+  text,
+  uuid,
+  uuid,
+  text
+) from authenticated;
+grant execute on function public.apply_billing_bank_receipt_resolution(
+  uuid,
+  text,
+  text,
+  uuid,
+  uuid,
+  text
+) to service_role;

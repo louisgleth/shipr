@@ -57,6 +57,15 @@ revoke all on public.billing_document_jobs from authenticated;
 
 grant select, insert, update, delete on public.billing_document_jobs to service_role;
 
+drop policy if exists "billing_document_jobs_service_role_all" on public.billing_document_jobs;
+
+create policy "billing_document_jobs_service_role_all"
+  on public.billing_document_jobs
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 create or replace function public.enqueue_billing_document_job(
   p_job_type text,
   p_job_key text,

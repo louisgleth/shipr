@@ -20,6 +20,21 @@ create index if not exists provider_connections_user_provider_idx
 
 alter table public.provider_connections enable row level security;
 
+revoke all on public.provider_connections from public;
+revoke all on public.provider_connections from anon;
+revoke all on public.provider_connections from authenticated;
+
+grant select, insert, update, delete on public.provider_connections to service_role;
+
+drop policy if exists "provider_connections_service_role_all" on public.provider_connections;
+
+create policy "provider_connections_service_role_all"
+  on public.provider_connections
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 drop policy if exists "provider_connections_insert_own" on public.provider_connections;
 
 drop policy if exists "provider_connections_update_own" on public.provider_connections;

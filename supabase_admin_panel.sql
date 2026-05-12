@@ -12,6 +12,21 @@ on conflict (scope) do nothing;
 
 alter table public.admin_settings enable row level security;
 
+revoke all on public.admin_settings from public;
+revoke all on public.admin_settings from anon;
+revoke all on public.admin_settings from authenticated;
+
+grant select, insert, update, delete on public.admin_settings to service_role;
+
+drop policy if exists "admin_settings_service_role_all" on public.admin_settings;
+
+create policy "admin_settings_service_role_all"
+  on public.admin_settings
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 alter table public.registration_invites
   add column if not exists token_encrypted text,
   add column if not exists revoked_at timestamptz,

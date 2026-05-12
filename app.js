@@ -2627,6 +2627,7 @@ const accountPreviewMeta = document.getElementById("accountPreviewMeta");
 const accountDownloadPdf = document.getElementById("accountDownloadPdf");
 const accountDownloadInvoice = document.getElementById("accountDownloadInvoice");
 const accountCreateReturn = document.getElementById("accountCreateReturn");
+const accountLabelPreview = document.getElementById("accountLabelPreview");
 const openReceiptModalButton = document.getElementById("openReceiptModal");
 const accountBatchPanel = document.getElementById("accountBatchPanel");
 const accountBatchList = document.getElementById("accountBatchList");
@@ -15414,15 +15415,24 @@ function updateAccountPreviewSummary(label, serviceType = "") {
   }
 }
 
+function syncAccountHistorySummaryVisibility() {
+  if (!accountLabelPreview) return;
+  const hasRecords = Array.isArray(historyRecords) && historyRecords.length > 0;
+  const hasFilteredEntries = hasRecords && getFilteredHistoryEntries().length > 0;
+  accountLabelPreview.hidden = !hasFilteredEntries;
+}
+
 function renderAccountHistoryList() {
   if (!accountHistoryList) return;
   accountHistoryList.innerHTML = "";
+  syncAccountHistorySummaryVisibility();
 
   if (!currentUser) {
     const empty = document.createElement("div");
     empty.className = "account-history-empty";
     empty.textContent = tr("Sign in to view previous generations.");
     accountHistoryList.appendChild(empty);
+    syncAccountHistorySummaryVisibility();
     queueScrollFadeSync();
     return;
   }
@@ -15432,6 +15442,7 @@ function renderAccountHistoryList() {
     empty.className = "account-history-empty";
     empty.textContent = tr("No generations yet.");
     accountHistoryList.appendChild(empty);
+    syncAccountHistorySummaryVisibility();
     queueScrollFadeSync();
     return;
   }
@@ -15442,6 +15453,7 @@ function renderAccountHistoryList() {
     empty.className = "account-history-empty";
     empty.textContent = tr("No generations match your search.");
     accountHistoryList.appendChild(empty);
+    syncAccountHistorySummaryVisibility();
     queueScrollFadeSync();
     return;
   }
@@ -15497,6 +15509,7 @@ function renderAccountHistoryList() {
     item.appendChild(meta);
     accountHistoryList.appendChild(item);
   });
+  syncAccountHistorySummaryVisibility();
   queueHistoryPanelSync();
   queueScrollFadeSync();
 }
@@ -24760,12 +24773,9 @@ function formatSummaryInvoiceDate(rawDate) {
 
 function updateSummary() {
   const discountRate = getSummaryDiscountRate();
-  const nextExVat = Number(billingOverview?.next_invoice_amount_ex_vat);
-  const nextDate = String(billingOverview?.next_invoice_date || "").trim();
-  const projectedInvoiceAmount = Number.isFinite(nextExVat)
-    ? nextExVat
-    : Number((42 + state.selection.price * getQuantity() * 3.2).toFixed(2));
-  const paymentMode = String(billingOverview?.payment_mode || "").trim().toLowerCase();
+  const profile = buildMockAccountProfile(currentUser);
+  const companyName = String(profile?.companyName || "").trim() || "--";
+  const walletBalance = Number(billingOverview?.wallet_balance_eur || 0);
 
   if (summaryService) {
     summaryService.textContent = getSummaryCarrierLabel();
@@ -24774,10 +24784,10 @@ function updateSummary() {
     summaryPrice.textContent = `${discountRate}%`;
   }
   if (summaryQty) {
-    summaryQty.textContent = formatMoney(projectedInvoiceAmount);
+    summaryQty.textContent = companyName;
   }
   if (summaryTotal) {
-    summaryTotal.textContent = formatSummaryInvoiceDate(nextDate);
+    summaryTotal.textContent = formatMoney(walletBalance);
   }
   if (summaryTracking) {
     summaryTracking.textContent = tr("Chat with us");

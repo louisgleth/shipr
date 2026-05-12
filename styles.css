@@ -1950,7 +1950,7 @@ body.is-auth-view {
 
 .account-overview-bento {
   display: grid;
-  grid-template-columns: minmax(620px, 1.22fr) minmax(420px, 0.78fr);
+  grid-template-columns: minmax(680px, 1.34fr) minmax(360px, 0.66fr);
   gap: 18px;
   align-items: stretch;
 }
@@ -9136,7 +9136,7 @@ body.is-auth-view {
 
 .csv-table th[data-key="senderName"],
 .csv-table td[data-key="senderName"] {
-  width: 10%;
+  width: 9%;
 }
 
 .csv-table th[data-key="senderStreet"],
@@ -9166,7 +9166,7 @@ body.is-auth-view {
 
 .csv-table th[data-key="recipientName"],
 .csv-table td[data-key="recipientName"] {
-  width: 10%;
+  width: 9%;
 }
 
 .csv-table th[data-key="recipientStreet"],
@@ -9186,7 +9186,7 @@ body.is-auth-view {
 
 .csv-table th[data-key="recipientCountry"],
 .csv-table td[data-key="recipientCountry"] {
-  width: 8%;
+  width: 7%;
 }
 
 .csv-table th[data-key="packageDims"],
@@ -9201,7 +9201,7 @@ body.is-auth-view {
 
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
-  width: 6%;
+  width: 8%;
 }
 
 .csv-table tbody tr:last-child td {
