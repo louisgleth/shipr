@@ -60,14 +60,14 @@
 }
 
 html[data-theme="light"] {
-  --primary: #f3f6fb;
-  --secondary: #ffffff;
-  --surface: #eef2f8;
-  --surface-2: #e7edf5;
+  --primary: #ffffff;
+  --secondary: #eef2f6;
+  --surface: #e4eaf1;
+  --surface-2: #d9e1ea;
   --panel-bg: var(--secondary);
   --card-bg: var(--surface);
-  --panel-active: #e4ebf4;
-  --card-active: #e9eff7;
+  --panel-active: #e0e7ef;
+  --card-active: #d3dce7;
   --text: #111722;
   --muted: #697487;
   --stroke: rgba(17, 23, 34, 0.12);
@@ -2150,7 +2150,7 @@ html[data-theme="light"] .auth-bg-switcher {
   height: 40px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-family: var(--font-primary);
   font-size: var(--fs-xs);
@@ -2989,7 +2989,7 @@ html[data-theme="light"] .auth-bg-switcher {
 
 .lead-callout-context-input:focus {
   border-color: var(--accent);
-  background: #0b111a;
+  background: var(--primary);
   box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
 }
 
@@ -3100,7 +3100,7 @@ html[data-theme="light"] .auth-bg-switcher {
   padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-family: var(--font-primary);
   font-size: var(--fs-xs);
@@ -3294,7 +3294,7 @@ html[data-theme="light"] .auth-bg-switcher {
   height: 36px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
@@ -9365,7 +9365,7 @@ html[data-theme="light"] .auth-bg-switcher {
   padding: 0 10px 0 10px;
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
-  background: #0b111a;
+  background: var(--primary);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
   overflow: hidden;
 }
@@ -9635,7 +9635,7 @@ html[data-theme="light"] .auth-bg-switcher {
   padding: 0 12px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-size: var(--fs-xs);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
@@ -9936,7 +9936,7 @@ input {
   padding: 0 12px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-size: var(--fs-xs);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
@@ -9953,7 +9953,7 @@ select {
   padding: 0 12px;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
-  background: #0b111a;
+  background: var(--primary);
   color: var(--text);
   font-family: var(--font-primary);
   font-size: var(--fs-xs);
