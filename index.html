@@ -7,6 +7,16 @@
     <title>Shipide Portal</title>
     <link rel="icon" type="image/png" href="assets/favicon.png" />
     <link rel="preload" href="assets/flow-logo.json" as="fetch" crossorigin="anonymous" />
+    <script>
+      (() => {
+        try {
+          const storedTheme = window.localStorage.getItem("shipide-theme");
+          if (storedTheme === "light" || storedTheme === "dark") {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (_error) {}
+      })();
+    </script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -210,6 +220,19 @@
               <span>Admin Panel</span>
             </button>
           </nav>
+          <button type="button" class="btn btn-secondary btn-sm topbar-theme-btn" id="themeToggleButton" aria-label="Toggle light mode" title="Toggle light mode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.5"></circle>
+              <path d="M12 2.75v2.1"></path>
+              <path d="M12 19.15v2.1"></path>
+              <path d="M21.25 12h-2.1"></path>
+              <path d="M4.85 12h-2.1"></path>
+              <path d="M18.54 5.46l-1.48 1.48"></path>
+              <path d="M6.94 17.06l-1.48 1.48"></path>
+              <path d="M18.54 18.54l-1.48-1.48"></path>
+              <path d="M6.94 6.94L5.46 5.46"></path>
+            </svg>
+          </button>
           <div class="account-chip is-hidden" id="accountChip"></div>
         </div>
       </header>

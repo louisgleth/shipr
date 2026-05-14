@@ -769,6 +769,7 @@ const AUTH_SIGNUP_PREVIEW_DATA = {
   },
 };
 const LANGUAGE_STORAGE_KEY = "shipr-language";
+const THEME_STORAGE_KEY = "shipide-theme";
 const SUPPORTED_LANGUAGES = new Set(["en", "fr", "nl"]);
 const LANGUAGE_LOCALE = {
   en: "en-GB",
@@ -776,6 +777,29 @@ const LANGUAGE_LOCALE = {
   nl: "nl-BE",
 };
 const TRANSLATION_ATTRS = ["placeholder", "title", "aria-label"];
+
+function normalizeTheme(theme) {
+  return theme === "light" ? "light" : "dark";
+}
+
+function getCurrentTheme() {
+  if (typeof document === "undefined") return "dark";
+  return normalizeTheme(document.documentElement.getAttribute("data-theme"));
+}
+
+function getStoredThemePreference() {
+  try {
+    return normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
+  } catch (_error) {
+    return getCurrentTheme();
+  }
+}
+
+function setStoredThemePreference(theme) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, normalizeTheme(theme));
+  } catch (_error) {}
+}
 const TRANSLATIONS = {
   "Portal": { fr: "Portail", nl: "Portaal" },
   "Shipide logo": { fr: "Logo Shipide", nl: "Shipide-logo" },
@@ -2392,6 +2416,7 @@ const openPostPageButton = document.getElementById("openPostPage");
 const openHistoryPageButton = document.getElementById("openHistoryPage");
 const openReturnsPageButton = document.getElementById("openReturnsPage");
 const openReportsPageButton = document.getElementById("openReportsPage");
+const themeToggleButton = document.getElementById("themeToggleButton");
 const portalFooterLogoLottie = document.getElementById("portalFooterLogoLottie");
 const portalFooterForm = document.getElementById("portalFooterForm");
 const portalFooterEmail = document.getElementById("portalFooterEmail");
@@ -2952,6 +2977,33 @@ const accountPreviewFrom = document.getElementById("accountPreviewFrom");
 const accountPreviewTo = document.getElementById("accountPreviewTo");
 const accountPreviewWeight = document.getElementById("accountPreviewWeight");
 const accountPreviewDims = document.getElementById("accountPreviewDims");
+
+function renderThemeToggleButton() {
+  if (!themeToggleButton) return;
+  const currentTheme = getCurrentTheme();
+  const nextTheme = currentTheme === "light" ? "dark" : "light";
+  const label = nextTheme === "light" ? "Switch to light mode" : "Switch to dark mode";
+  themeToggleButton.setAttribute("aria-label", label);
+  themeToggleButton.setAttribute("title", label);
+  themeToggleButton.innerHTML =
+    currentTheme === "light"
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4A8.5 8.5 0 1 1 9.6 3.5a7 7 0 0 0 10.9 10.9z"></path></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2.75v2.1"></path><path d="M12 19.15v2.1"></path><path d="M21.25 12h-2.1"></path><path d="M4.85 12h-2.1"></path><path d="M18.54 5.46l-1.48 1.48"></path><path d="M6.94 17.06l-1.48 1.48"></path><path d="M18.54 18.54l-1.48-1.48"></path><path d="M6.94 6.94L5.46 5.46"></path></svg>`;
+}
+
+function applyTheme(theme, { persist = true } = {}) {
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-theme", normalizeTheme(theme));
+  }
+  if (persist) {
+    setStoredThemePreference(theme);
+  }
+  renderThemeToggleButton();
+}
+
+function toggleTheme() {
+  applyTheme(getCurrentTheme() === "light" ? "dark" : "light");
+}
 
 let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
@@ -29763,6 +29815,9 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
     void maybeRefreshAuthAccessTokenOnFocus();
   });
   window.addEventListener("resize", queueScrollFadeSync);
+  if (themeToggleButton) {
+    themeToggleButton.addEventListener("click", toggleTheme);
+  }
 
   if (batchPreview) {
     batchPreview.classList.add("is-single");
@@ -29777,6 +29832,7 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   initializeAppLogo();
   initializePortalFooter();
   initializeAuthBackground();
+  applyTheme(getStoredThemePreference(), { persist: false });
   void setLanguage(resolvePreferredLanguage(null), { persist: false });
   initializeAuth();
 }

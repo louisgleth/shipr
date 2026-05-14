@@ -59,6 +59,24 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+html[data-theme="light"] {
+  --primary: #f3f6fb;
+  --secondary: #ffffff;
+  --surface: #eef2f8;
+  --surface-2: #e7edf5;
+  --panel-bg: var(--secondary);
+  --card-bg: var(--surface);
+  --panel-active: #e4ebf4;
+  --card-active: #e9eff7;
+  --text: #111722;
+  --muted: #697487;
+  --stroke: rgba(17, 23, 34, 0.12);
+}
+
+html[data-theme="light"] {
+  scrollbar-color: #bcc7d7 transparent;
+}
+
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
@@ -83,6 +101,16 @@
 
 *::-webkit-scrollbar-thumb:hover {
   background: #3d4658;
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: #bcc7d7;
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: #aab6c9;
   background-clip: padding-box;
 }
 
@@ -1273,7 +1301,7 @@ body.is-auth-view {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 16px;
 }
 
 .topbar-nav {
@@ -1313,6 +1341,19 @@ body.is-auth-view {
   outline: none;
   box-shadow: none;
   border-color: transparent;
+}
+
+.topbar-theme-btn {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.topbar-theme-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .brand {
@@ -1606,6 +1647,16 @@ body.is-auth-view {
 
 .stepper-item.is-active .step-title {
   color: #fff;
+}
+
+html[data-theme="light"] .stepper-item.is-complete:hover .step-title,
+html[data-theme="light"] .stepper-item.is-active .step-title {
+  color: var(--text);
+}
+
+html[data-theme="light"] .auth-bg-switcher {
+  border-color: rgba(17, 23, 34, 0.08);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .stepper-item.is-disabled .step-title {
