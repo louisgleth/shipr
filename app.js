@@ -500,7 +500,8 @@ const POST_TEMPLATE_MONO_HEX = "#8E909B";
 const POST_TEMPLATE_AMOUNT_HEX = "#88EA84";
 const POST_COLLAB_SHIPIDE_LOCKUP_ASSET = "assets/shipide-collab-lockup.svg";
 const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
-const FLOW_LOGO_JSON_URL = "assets/flow-logo.json";
+const FLOW_LOGO_DARK_JSON_URL = "assets/flow-logo.json";
+const FLOW_LOGO_LIGHT_JSON_URL = "assets/flow-logo-light.json";
 const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
 const RESERVED_CLIENT_USER_METADATA_KEYS = new Set(["app_admin"]);
 const SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY = "shipide-shopify-embedded-context-v1";
@@ -2399,13 +2400,23 @@ const authBrand = document.getElementById("authBrand");
 const authBrandOriginal = document.getElementById("authBrandOriginal");
 const authBrandInlineLogo = document.getElementById("authBrandInlineLogo");
 const appLogoLottie = document.getElementById("appLogoLottie");
-const flowLogoAnimationDataPromise =
+function getFlowLogoJsonUrl(theme = getCurrentTheme()) {
+  return normalizeTheme(theme) === "light" ? FLOW_LOGO_LIGHT_JSON_URL : FLOW_LOGO_DARK_JSON_URL;
+}
+
+const flowLogoAnimationDataPromises =
   typeof window !== "undefined" && typeof window.fetch === "function"
-    ? window
-        .fetch(FLOW_LOGO_JSON_URL, { cache: "force-cache" })
-        .then((response) => (response.ok ? response.json() : null))
-        .catch(() => null)
-    : Promise.resolve(null);
+    ? {
+        dark: window
+          .fetch(FLOW_LOGO_DARK_JSON_URL, { cache: "force-cache" })
+          .then((response) => (response.ok ? response.json() : null))
+          .catch(() => null),
+        light: window
+          .fetch(FLOW_LOGO_LIGHT_JSON_URL, { cache: "force-cache" })
+          .then((response) => (response.ok ? response.json() : null))
+          .catch(() => null),
+      }
+    : { dark: Promise.resolve(null), light: Promise.resolve(null) };
 const accountChip = document.getElementById("accountChip");
 const signOutButton = document.getElementById("signOutButton");
 const openAccountPageButton = document.getElementById("openAccountPage");
@@ -2992,13 +3003,18 @@ function renderThemeToggleButton() {
 }
 
 function applyTheme(theme, { persist = true } = {}) {
+  const nextTheme = normalizeTheme(theme);
+  const previousTheme = getCurrentTheme();
   if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", normalizeTheme(theme));
+    document.documentElement.setAttribute("data-theme", nextTheme);
   }
   if (persist) {
-    setStoredThemePreference(theme);
+    setStoredThemePreference(nextTheme);
   }
   renderThemeToggleButton();
+  if (previousTheme !== nextTheme) {
+    remountFlowLogoAnimations();
+  }
 }
 
 function toggleTheme() {
@@ -23872,10 +23888,16 @@ function cloneAnimationData(data) {
 
 async function mountFlowLogoAnimation(target) {
   if (!window.lottie || !target) return null;
+  if (target.__flowLogoAnimation?.destroy) {
+    target.__flowLogoAnimation.destroy();
+  }
   target.style.pointerEvents = "none";
   target.textContent = "";
   target.classList.remove("is-ready");
-  const animationData = cloneAnimationData(await flowLogoAnimationDataPromise);
+  const theme = getCurrentTheme();
+  const animationData = cloneAnimationData(
+    await flowLogoAnimationDataPromises[theme]
+  );
   const config = {
     container: target,
     renderer: "svg",
@@ -23888,15 +23910,31 @@ async function mountFlowLogoAnimation(target) {
   if (animationData) {
     config.animationData = animationData;
   } else {
-    config.path = FLOW_LOGO_JSON_URL;
+    config.path = getFlowLogoJsonUrl(theme);
   }
   const anim = window.lottie.loadAnimation(config);
+  target.__flowLogoAnimation = anim;
   anim.addEventListener("DOMLoaded", () => {
     const svg = target.querySelector("svg");
     if (svg) svg.style.pointerEvents = "none";
     target.classList.add("is-ready");
   });
   return anim;
+}
+
+function remountFlowLogoAnimations() {
+  if (!window.lottie) return;
+  if (appLogoLottie) {
+    void mountFlowLogoAnimation(appLogoLottie);
+  }
+  if (portalFooterLogoLottie?.dataset.mounted === "true") {
+    void mountFlowLogoAnimation(portalFooterLogoLottie);
+  }
+  const authLayout = AUTH_LOGO_LAYOUT === "stack" ? "stack" : "inline";
+  const authTarget = authLayout === "inline" ? authBrandInlineLogo : authLogoLottie;
+  if (authTarget && !authTarget.classList.contains("is-hidden")) {
+    void mountFlowLogoAnimation(authTarget);
+  }
 }
 
 class PixelCanvasPixel {
