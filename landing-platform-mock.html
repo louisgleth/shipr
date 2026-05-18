@@ -9687,9 +9687,10 @@ input.is-invalid {
                 }
                 .label {
                   min-height: 0;
+                  margin: 10px 14px 0;
                   border: 1px solid #7a7a7a;
                   display: grid;
-                  grid-template-rows: 10.5% 27.5% 6.5% 55.5%;
+                  grid-template-rows: 12% 26% 6.5% 55.5%;
                   overflow: hidden;
                 }
                 .top {
@@ -9701,34 +9702,27 @@ input.is-invalid {
                 .logo {
                   display: flex;
                   align-items: center;
-                  gap: 7px;
-                  padding: 5px 8px;
+                  padding: 6px 10px;
                   border-right: 1px solid #7a7a7a;
-                  font-size: clamp(12px, 2.7vw, 15px);
-                  font-weight: 700;
-                  color: #444;
                   min-width: 0;
                 }
-                .logo-mark {
-                  width: 32px;
-                  max-width: 38%;
-                  height: 16px;
-                  border-top: 7px solid #e63742;
-                  border-radius: 50%;
-                  transform: rotate(-18deg);
-                  flex: 0 0 auto;
+                .logo img {
+                  width: 94px;
+                  max-width: 100%;
+                  height: auto;
+                  display: block;
                 }
                 .adhesive {
-                  padding: 5px 8px;
-                  font-size: clamp(8px, 2vw, 11px);
-                  line-height: 1.12;
+                  padding: 6px 10px;
+                  font-size: clamp(8px, 1.75vw, 10px);
+                  line-height: 1.08;
                   border-right: 1px solid #7a7a7a;
                   overflow: hidden;
                 }
                 .valid {
-                  padding: 6px 8px;
-                  font-size: clamp(8px, 2.05vw, 12px);
-                  line-height: 1.2;
+                  padding: 7px 10px;
+                  font-size: clamp(8px, 1.85vw, 11px);
+                  line-height: 1.16;
                   overflow: hidden;
                 }
                 .mid {
@@ -9749,9 +9743,9 @@ input.is-invalid {
                   border-right: 1px solid #7a7a7a;
                 }
                 .sender {
-                  padding: 7px 9px;
-                  font-size: clamp(8px, 2vw, 12px);
-                  line-height: 1.32;
+                  padding: 8px 10px;
+                  font-size: clamp(8px, 1.85vw, 11px);
+                  line-height: 1.18;
                   overflow: hidden;
                 }
                 .sender-title {
@@ -9759,14 +9753,11 @@ input.is-invalid {
                   margin-bottom: 8px;
                   white-space: nowrap;
                 }
-                .blur-line {
-                  display: block;
-                  width: 72%;
-                  height: 9px;
-                  margin: 6px 0;
-                  border-radius: 999px;
-                  background: #d9d9d9;
-                  filter: blur(2px);
+                .sender-address {
+                  display: grid;
+                  gap: 1px;
+                  margin-bottom: 8px;
+                  font-size: clamp(8px, 1.75vw, 10px);
                 }
                 .service {
                   display: grid;
@@ -9913,7 +9904,7 @@ input.is-invalid {
               <div class="page">
                 <section class="label" aria-label="bpost style label preview">
                   <div class="top">
-                    <div class="logo"><span class="logo-mark"></span><span>bpost</span></div>
+                    <div class="logo"><img src="assets/bpost-logo.svg" alt="bpost" /></div>
                     <div class="adhesive">To kleven op uw pakket<br />A coller sur votre paquet<br />Auf das Paket zu kleben</div>
                     <div class="valid">Geldig tot | Valable jusqu'au | Gültig bis<br /><strong>31/12/2026</strong></div>
                   </div>
@@ -9922,9 +9913,12 @@ input.is-invalid {
                     <div class="blank"></div>
                     <div class="sender">
                       <div class="sender-title">Afzender | Expéditeur | Absender</div>
-                      <span class="blur-line"></span>
-                      <span class="blur-line" style="width: 120px;"></span>
-                      <strong>${sender.country.toUpperCase()} | BELGIQUE | BELGIEN</strong>
+                      <div class="sender-address">
+                        <strong>Atelier Meridian</strong>
+                        <span>37 Vaartkom</span>
+                        <span>3000 Leuven, Belgium</span>
+                      </div>
+                      <strong>BELGIUM | BELGIQUE | BELGIEN</strong>
                     </div>
                   </div>
                   <div class="service">${service} Pakket | Paquet ${service.toLowerCase()} | ${service} Paket</div>
