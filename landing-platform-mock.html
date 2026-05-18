@@ -9690,44 +9690,48 @@ input.is-invalid {
                   margin: 10px 14px 0;
                   border: 1px solid #7a7a7a;
                   display: grid;
-                  grid-template-rows: 12% 26% 6.5% 55.5%;
+                  grid-template-rows: 14% 27% 6.5% 52.5%;
                   overflow: hidden;
                 }
                 .top {
                   display: grid;
-                  grid-template-columns: 22% minmax(0, 1fr) 32%;
+                  grid-template-columns: 21% minmax(0, 1fr) 34%;
                   border-bottom: 1px solid #7a7a7a;
                   min-height: 0;
                 }
                 .logo {
                   display: flex;
                   align-items: center;
-                  padding: 6px 10px;
+                  justify-content: center;
+                  padding: 5px 8px;
                   border-right: 1px solid #7a7a7a;
                   min-width: 0;
+                  overflow: hidden;
                 }
                 .logo img {
-                  width: 94px;
+                  width: 82px;
                   max-width: 100%;
+                  max-height: 28px;
                   height: auto;
                   display: block;
+                  object-fit: contain;
                 }
                 .adhesive {
-                  padding: 6px 10px;
-                  font-size: clamp(8px, 1.75vw, 10px);
-                  line-height: 1.08;
+                  padding: 6px 10px 5px;
+                  font-size: clamp(7.5px, 1.62vw, 9.3px);
+                  line-height: 1.05;
                   border-right: 1px solid #7a7a7a;
                   overflow: hidden;
                 }
                 .valid {
-                  padding: 7px 10px;
-                  font-size: clamp(8px, 1.85vw, 11px);
-                  line-height: 1.16;
+                  padding: 7px 10px 5px;
+                  font-size: clamp(7.5px, 1.58vw, 9.4px);
+                  line-height: 1.08;
                   overflow: hidden;
                 }
                 .mid {
                   display: grid;
-                  grid-template-columns: 12% minmax(0, 1fr) 32%;
+                  grid-template-columns: 12% minmax(0, 1fr) 34%;
                   border-bottom: 1px solid #7a7a7a;
                   min-height: 0;
                 }
@@ -9744,20 +9748,22 @@ input.is-invalid {
                 }
                 .sender {
                   padding: 8px 10px;
-                  font-size: clamp(8px, 1.85vw, 11px);
-                  line-height: 1.18;
+                  font-size: clamp(7.5px, 1.64vw, 9.4px);
+                  line-height: 1.16;
                   overflow: hidden;
                 }
                 .sender-title {
                   font-size: inherit;
-                  margin-bottom: 8px;
+                  margin-bottom: 7px;
                   white-space: nowrap;
+                  overflow: hidden;
+                  text-overflow: clip;
                 }
                 .sender-address {
                   display: grid;
                   gap: 1px;
-                  margin-bottom: 8px;
-                  font-size: clamp(8px, 1.75vw, 10px);
+                  margin-bottom: 7px;
+                  font-size: clamp(7.5px, 1.56vw, 9px);
                 }
                 .service {
                   display: grid;
@@ -9776,15 +9782,16 @@ input.is-invalid {
                 }
                 .main {
                   display: grid;
-                  grid-template-rows: 34% 66%;
+                  grid-template-rows: 37% 63%;
                   min-width: 0;
                   min-height: 0;
                 }
                 .barcode-area {
                   display: grid;
                   grid-template-columns: 24% minmax(0, 1fr);
+                  grid-template-rows: minmax(0, 1fr) 12px;
                   align-items: center;
-                  padding: 7px 10px 3px;
+                  padding: 7px 10px 2px;
                   min-width: 0;
                   min-height: 0;
                 }
@@ -9797,11 +9804,14 @@ input.is-invalid {
                 .barcode-wrap {
                   display: grid;
                   justify-items: center;
-                  gap: 3px;
+                  align-self: stretch;
+                  grid-template-rows: minmax(0, 1fr) 12px;
+                  gap: 0;
                 }
                 .barcode {
                   width: min(100%, 228px);
-                  height: clamp(36px, 9.6vw, 58px);
+                  height: min(100%, 52px);
+                  align-self: end;
                   background:
                     repeating-linear-gradient(
                       90deg,
@@ -9814,13 +9824,13 @@ input.is-invalid {
                     );
                 }
                 .barcode-number {
-                  font-size: clamp(8px, 1.9vw, 11px);
-                  line-height: 1;
+                  font-size: clamp(7px, 1.5vw, 9px);
+                  line-height: 12px;
                 }
                 .destination-wrap {
                   display: grid;
                   grid-template-columns: 10% minmax(0, 1fr);
-                  padding: 0 10px 9px;
+                  padding: 2px 10px 9px;
                   min-height: 0;
                 }
                 .vertical {
