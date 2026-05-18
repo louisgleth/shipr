@@ -9651,6 +9651,8 @@ input.is-invalid {
 
       function buildPdfHtml(service, active) {
         const sender = mockState.senderOrigin;
+        const weight = "2 kg";
+        const barcodeNumber = "323257002385721493";
         return `
           <!doctype html>
           <html lang="en">
@@ -9659,31 +9661,263 @@ input.is-invalid {
               <style>
                 html, body { margin: 0; height: 100%; background: #2d2d31; font-family: Arial, sans-serif; }
                 body { display: grid; place-items: center; }
-                .sheet { width: 560px; min-height: 760px; background: white; padding: 42px 40px; box-sizing: border-box; color: #111; }
-                .title { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
-                .line { font-size: 21px; line-height: 1.35; margin-bottom: 3px; }
-                .spacer { height: 28px; }
+                .page {
+                  width: 560px;
+                  height: 760px;
+                  background: #fff;
+                  color: #0a0a0a;
+                  box-sizing: border-box;
+                  display: grid;
+                  align-content: start;
+                  font-family: Arial, Helvetica, sans-serif;
+                }
+                .label {
+                  height: 380px;
+                  border: 1px solid #7a7a7a;
+                  display: grid;
+                  grid-template-rows: 40px 108px 24px 1fr;
+                  overflow: hidden;
+                }
+                .top {
+                  display: grid;
+                  grid-template-columns: 120px 1fr 220px;
+                  border-bottom: 1px solid #7a7a7a;
+                  min-height: 0;
+                }
+                .logo {
+                  display: flex;
+                  align-items: center;
+                  gap: 7px;
+                  padding: 6px 9px;
+                  border-right: 1px solid #7a7a7a;
+                  font-size: 15px;
+                  font-weight: 700;
+                  color: #444;
+                }
+                .logo-mark {
+                  width: 34px;
+                  height: 18px;
+                  border-top: 7px solid #e63742;
+                  border-radius: 50%;
+                  transform: rotate(-18deg);
+                }
+                .adhesive {
+                  padding: 5px 8px;
+                  font-size: 11px;
+                  line-height: 1.12;
+                  border-right: 1px solid #7a7a7a;
+                }
+                .valid {
+                  padding: 7px 8px;
+                  font-size: 12px;
+                  line-height: 1.2;
+                }
+                .mid {
+                  display: grid;
+                  grid-template-columns: 66px 1fr 220px;
+                  border-bottom: 1px solid #7a7a7a;
+                }
+                .route {
+                  display: grid;
+                  place-items: center;
+                  border-right: 1px solid #7a7a7a;
+                  font-size: 24px;
+                  font-weight: 800;
+                }
+                .blank {
+                  border-right: 1px solid #7a7a7a;
+                }
+                .sender {
+                  padding: 8px 10px;
+                  font-size: 12px;
+                  line-height: 1.32;
+                }
+                .sender-title {
+                  font-size: 12px;
+                  margin-bottom: 9px;
+                }
+                .blur-line {
+                  display: block;
+                  width: 138px;
+                  height: 9px;
+                  margin: 6px 0;
+                  border-radius: 999px;
+                  background: #d9d9d9;
+                  filter: blur(2px);
+                }
+                .service {
+                  display: grid;
+                  place-items: center;
+                  border-bottom: 1px solid #a0a0a0;
+                  font-size: 14px;
+                }
+                .content {
+                  display: grid;
+                  grid-template-columns: 1fr 96px;
+                  min-height: 0;
+                }
+                .main {
+                  display: grid;
+                  grid-template-rows: 82px 1fr;
+                  min-width: 0;
+                }
+                .barcode-area {
+                  display: grid;
+                  grid-template-columns: 112px 1fr;
+                  align-items: center;
+                  padding: 8px 12px 4px;
+                }
+                .parcel-type {
+                  font-size: 58px;
+                  line-height: 1;
+                  font-weight: 800;
+                  text-align: center;
+                }
+                .barcode-wrap {
+                  display: grid;
+                  justify-items: center;
+                  gap: 3px;
+                }
+                .barcode {
+                  width: 228px;
+                  height: 58px;
+                  background:
+                    repeating-linear-gradient(
+                      90deg,
+                      #000 0 2px,
+                      transparent 2px 4px,
+                      #000 4px 5px,
+                      transparent 5px 9px,
+                      #000 9px 12px,
+                      transparent 12px 15px
+                    );
+                }
+                .barcode-number {
+                  font-size: 11px;
+                }
+                .destination-wrap {
+                  display: grid;
+                  grid-template-columns: 48px 1fr;
+                  padding: 0 12px 10px;
+                }
+                .vertical {
+                  writing-mode: vertical-rl;
+                  transform: rotate(180deg);
+                  font-size: 10px;
+                  line-height: 1.15;
+                  justify-self: start;
+                  align-self: end;
+                  padding-bottom: 18px;
+                }
+                .dest {
+                  border: 1px solid #8b8b8b;
+                  padding: 10px;
+                  font-size: 14px;
+                  line-height: 1.28;
+                  display: grid;
+                  align-content: space-between;
+                  min-height: 126px;
+                }
+                .dest-name {
+                  font-weight: 700;
+                }
+                .dest-company {
+                  margin-top: 12px;
+                  font-weight: 700;
+                }
+                .dest-country {
+                  margin-top: 18px;
+                  font-weight: 800;
+                }
+                .side {
+                  border-left: 1px solid #7a7a7a;
+                  display: grid;
+                  justify-items: center;
+                  align-content: start;
+                  gap: 13px;
+                  padding-top: 26px;
+                }
+                .valid-side {
+                  font-size: 10px;
+                  line-height: 1.1;
+                  text-align: center;
+                }
+                .weight {
+                  width: 45px;
+                  height: 45px;
+                  border-radius: 999px;
+                  display: grid;
+                  place-items: center;
+                  background: #868686;
+                  color: #fff;
+                  font-size: 13px;
+                  font-weight: 800;
+                }
+                .extra {
+                  width: 74px;
+                  height: 86px;
+                  display: grid;
+                  place-items: center;
+                  background: #efefef;
+                  font-size: 10px;
+                  line-height: 1.35;
+                  text-align: center;
+                  color: #555;
+                }
+                .bottom-half {
+                  height: 380px;
+                  background: #fff;
+                }
               </style>
             </head>
             <body>
-              <div class="sheet">
-                <div class="title">SHIPIDE LABEL</div>
-                <div class="line">Service: ${service}</div>
-                <div class="line">Tracking: ${active.tracking}</div>
-                <div class="line">Label ID: ${active.labelId}</div>
-                <div class="spacer"></div>
-                <div class="line">FROM:</div>
-                <div class="line">${mockAccountProfile.companyName}</div>
-                <div class="line">${sender.street}</div>
-                <div class="line">${sender.postal} ${sender.city}, ${sender.country}</div>
-                <div class="spacer"></div>
-                <div class="line">TO:</div>
-                <div class="line">${active.recipientName}</div>
-                <div class="line">${active.street}</div>
-                <div class="line">${active.postal} ${active.city}, ${active.countryCode}</div>
-                <div class="spacer"></div>
-                <div class="line">Weight: 1.41 kg</div>
-                <div class="line">Dims: 27 x 24 x 16 cm</div>
+              <div class="page">
+                <section class="label" aria-label="bpost style label preview">
+                  <div class="top">
+                    <div class="logo"><span class="logo-mark"></span><span>bpost</span></div>
+                    <div class="adhesive">To kleven op uw pakket<br />A coller sur votre paquet<br />Auf das Paket zu kleben</div>
+                    <div class="valid">Geldig tot | Valable jusqu'au | Gültig bis<br /><strong>31/12/2026</strong></div>
+                  </div>
+                  <div class="mid">
+                    <div class="route">B247</div>
+                    <div class="blank"></div>
+                    <div class="sender">
+                      <div class="sender-title">Afzender | Expéditeur | Absender</div>
+                      <span class="blur-line"></span>
+                      <span class="blur-line" style="width: 120px;"></span>
+                      <strong>${sender.country.toUpperCase()} | BELGIQUE | BELGIEN</strong>
+                    </div>
+                  </div>
+                  <div class="service">${service} Pakket | Paquet ${service.toLowerCase()} | ${service} Paket</div>
+                  <div class="content">
+                    <div class="main">
+                      <div class="barcode-area">
+                        <div class="parcel-type">P</div>
+                        <div class="barcode-wrap">
+                          <div class="barcode" aria-hidden="true"></div>
+                          <div class="barcode-number">${barcodeNumber}</div>
+                        </div>
+                      </div>
+                      <div class="destination-wrap">
+                        <div class="vertical">Geadresseerde<br />Destinataire<br />Empfänger</div>
+                        <div class="dest">
+                          <div>
+                            <div class="dest-name">${active.recipientName}</div>
+                            <div class="dest-company">BPACK Eiamarkt bpost</div>
+                            <div><strong>${active.postal} ${active.city}</strong></div>
+                          </div>
+                          <div class="dest-country">${active.countryCode} | ${active.country.toUpperCase()} | ${active.country.toUpperCase()}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <aside class="side">
+                      <div class="valid-side">Geldig tot<br />Valable jusque<br />Gültig bis</div>
+                      <div class="weight">${weight}</div>
+                      <div class="extra">Extra Gewicht<br />Poids Extra<br />Zusatzgewicht</div>
+                    </aside>
+                  </div>
+                </section>
+                <div class="bottom-half" aria-hidden="true"></div>
               </div>
             </body>
           </html>
