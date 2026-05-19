@@ -2346,7 +2346,7 @@ const supabaseClient =
 
 const authGate = document.getElementById("authGate");
 const appPage = document.getElementById("appPage");
-const authPixelCanvas = document.getElementById("authPixelCanvas");
+const authMatrixCanvas = document.getElementById("authMatrixCanvas");
 const authStack = authGate?.querySelector(".auth-stack") || null;
 const authCard = authGate?.querySelector(".auth-card") || null;
 const authCardFrame = document.getElementById("authCardFrame");
@@ -20839,7 +20839,7 @@ function setAuthMode(mode, options = {}) {
         ? tr("Enter a new password for your Shipide account.")
         : hasConnectedShopifyContext
           ? connectedShopifyStoreUrl
-        : tr("Use your email and password.");
+        : "";
   }
   if (authRegisterProgress) {
     authRegisterProgress.classList.toggle("is-hidden", !isRegister);
@@ -24412,13 +24412,261 @@ class PixelCanvasElement extends HTMLElement {
   }
 }
 
+class ToxQrMatrixCanvasElement extends HTMLElement {
+  static register(tag = "tox-qr-matrix-canvas") {
+    if (!("customElements" in window) || customElements.get(tag)) return;
+    customElements.define(tag, this);
+  }
+
+  get colors() {
+    const raw = String(this.dataset.colors || "").trim();
+    const colors = raw
+      ? raw
+          .split(raw.includes("|") ? "|" : ",")
+          .map((entry) => parseHexColorToRgb(entry.trim()))
+          .filter(Boolean)
+      : [];
+    return colors.length
+      ? colors
+      : [
+          { r: 119, g: 71, b: 227 },
+          { r: 169, g: 139, b: 255 },
+          { r: 255, g: 255, b: 255 },
+        ];
+  }
+
+  get totalSize() {
+    const value = Number(this.dataset.totalSize || 7);
+    return Math.max(4, Math.min(28, Number.isFinite(value) ? value : 7));
+  }
+
+  get dotSize() {
+    const value = Number(this.dataset.dotSize || 2.25);
+    return Math.max(1, Math.min(12, Number.isFinite(value) ? value : 2.25));
+  }
+
+  get animationSpeed() {
+    const value = Number(this.dataset.animationSpeed || 0.46);
+    return this.reducedMotion ? 0 : Math.max(0.05, Math.min(2, Number.isFinite(value) ? value : 0.46));
+  }
+
+  get brightness() {
+    const value = Number(this.dataset.brightness || 1);
+    return Math.max(0.2, Math.min(2.2, Number.isFinite(value) ? value : 1));
+  }
+
+  get autoStart() {
+    return this.hasAttribute("data-auto-start");
+  }
+
+  get startDelay() {
+    const value = Number(this.dataset.startDelay || 0);
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+
+  connectedCallback() {
+    if (this.shadowRoot) return;
+
+    const root = this.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = `
+      :host {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+      }
+    `;
+    this.canvas = document.createElement("canvas");
+    this.canvas.setAttribute("part", "canvas");
+    root.append(style, this.canvas);
+    this.ctx = this.canvas.getContext("2d", { alpha: true });
+    if (!this.ctx) return;
+
+    this.reducedMotion = prefersReducedMotion();
+    this.isPaused = false;
+    this.hasStarted = false;
+    this.timePrevious = performance.now();
+    this.frameInterval = 1000 / 45;
+    this.opacities = [0.18, 0.24, 0.3, 0.38, 0.46, 0.55, 0.66, 0.76, 0.88, 1];
+    this.resizeObserver = new ResizeObserver(() => this.init());
+    this.resizeObserver.observe(this);
+    this.init();
+
+    if (this.reducedMotion) {
+      this.renderFrame(8);
+    } else if (this.autoStart) {
+      this.scheduleAutoStart();
+    }
+  }
+
+  disconnectedCallback() {
+    cancelAnimationFrame(this.animation);
+    if (this.startTimer) {
+      window.clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
+    this.resizeObserver?.disconnect();
+  }
+
+  setPaused(paused) {
+    const nextPaused = Boolean(paused);
+    if (this.isPaused === nextPaused) return;
+    this.isPaused = nextPaused;
+    if (nextPaused) {
+      cancelAnimationFrame(this.animation);
+      if (this.startTimer) {
+        window.clearTimeout(this.startTimer);
+        this.startTimer = null;
+      }
+      return;
+    }
+    if (this.reducedMotion) {
+      this.renderFrame(8);
+      return;
+    }
+    this.scheduleAutoStart();
+  }
+
+  scheduleAutoStart() {
+    if (this.startTimer) {
+      window.clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
+    const start = () => {
+      this.hasStarted = true;
+      this.startedAt = performance.now();
+      this.timePrevious = this.startedAt;
+      cancelAnimationFrame(this.animation);
+      this.animation = requestAnimationFrame((time) => this.animate(time));
+    };
+    if (this.startDelay) {
+      this.startTimer = window.setTimeout(() => {
+        this.startTimer = null;
+        start();
+      }, this.startDelay);
+    } else {
+      start();
+    }
+  }
+
+  init() {
+    if (!this.ctx) return;
+    const rect = this.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+    this.dpr = dpr;
+    this.cssWidth = width;
+    this.cssHeight = height;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.step = this.getEffectiveStep(width, height);
+    this.dot = Math.min(this.step, this.dotSize);
+    this.cols = Math.ceil(width / this.step) + 2;
+    this.rows = Math.ceil(height / this.step) + 2;
+    this.center = {
+      x: this.cols / 2,
+      y: this.rows / 2,
+    };
+    if (this.hasStarted || this.reducedMotion) {
+      this.renderFrame(this.reducedMotion ? 8 : (performance.now() - (this.startedAt || performance.now())) / 1000);
+    }
+  }
+
+  getEffectiveStep(width, height) {
+    const area = Math.max(1, width * height);
+    const maxDots = 36000;
+    const dynamicStep = Math.ceil(Math.sqrt(area / maxDots));
+    return Math.max(this.totalSize, Number.isFinite(dynamicStep) ? dynamicStep : this.totalSize);
+  }
+
+  random2(x, y, salt = 0) {
+    const value = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453123;
+    return value - Math.floor(value);
+  }
+
+  colorForOffset(offset) {
+    const colors = this.colors;
+    const color = colors[Math.min(colors.length - 1, Math.floor(offset * colors.length))] || colors[0];
+    const brightness = this.brightness;
+    return {
+      r: Math.min(255, Math.round(color.r * brightness)),
+      g: Math.min(255, Math.round(color.g * brightness)),
+      b: Math.min(255, Math.round(color.b * brightness)),
+    };
+  }
+
+  renderFrame(timeSeconds) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const width = this.cssWidth || 1;
+    const height = this.cssHeight || 1;
+    const step = this.step || this.totalSize;
+    const dot = this.dot || this.dotSize;
+    ctx.clearRect(0, 0, width, height);
+
+    for (let row = -1; row < this.rows; row += 1) {
+      for (let col = -1; col < this.cols; col += 1) {
+        const showOffset = this.random2(col, row, 0.5);
+        const frameSeed = Math.floor(timeSeconds / 5 + showOffset + 5) + 1;
+        const rand = this.random2(col * frameSeed + 1, row * frameSeed + 1, frameSeed);
+        const opacityBase = this.opacities[Math.min(9, Math.floor(rand * 10))] || 0;
+        const dist = Math.hypot(col - this.center.x, row - this.center.y);
+        const introOffset = dist * 0.01 + showOffset * 0.15;
+        const introTime = timeSeconds * this.animationSpeed;
+        if (introTime < introOffset) continue;
+        const introBoost = introTime < introOffset + 0.1 ? 1.25 : 1;
+        const alpha = opacityBase * introBoost;
+        if (alpha <= 0.02) continue;
+
+        const color = this.colorForOffset(showOffset);
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.min(1, alpha)})`;
+        ctx.fillRect(col * step, row * step, dot, dot);
+      }
+    }
+
+    const gradient = ctx.createRadialGradient(
+      width * 0.5,
+      height * 0.46,
+      Math.min(width, height) * 0.06,
+      width * 0.5,
+      height * 0.52,
+      Math.max(width, height) * 0.72
+    );
+    gradient.addColorStop(0, "rgba(0, 6, 15, 0.02)");
+    gradient.addColorStop(0.58, "rgba(0, 6, 15, 0.16)");
+    gradient.addColorStop(1, "rgba(0, 6, 15, 0.44)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  animate(timeNow) {
+    if (this.isPaused) return;
+    this.animation = requestAnimationFrame((time) => this.animate(time));
+    const timePassed = timeNow - this.timePrevious;
+    if (timePassed < this.frameInterval) return;
+    this.timePrevious = timeNow - (timePassed % this.frameInterval);
+    const elapsed = Math.max(0, (timeNow - (this.startedAt || timeNow)) / 1000);
+    this.renderFrame(elapsed);
+  }
+}
+
 function initializeAuthBackground() {
-  if (authBackgroundStarted || !authGate || !authPixelCanvas) return;
+  if (authBackgroundStarted || !authGate || !authMatrixCanvas) return;
   authBackgroundStarted = true;
-  PixelCanvasElement.register();
+  ToxQrMatrixCanvasElement.register();
   delete authGate.dataset.authBgVariant;
-  if (authPixelCanvas?.setPaused) {
-    authPixelCanvas.setPaused(false);
+  if (authMatrixCanvas?.setPaused) {
+    authMatrixCanvas.setPaused(false);
   }
   requestAnimationFrame(() => {
     authGate.classList.add("is-ready");
