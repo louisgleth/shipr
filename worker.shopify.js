@@ -63,6 +63,7 @@ const WOOCOMMERCE_IMPORT_STATUS_OPTIONS = Object.freeze([
 const DEFAULT_WOOCOMMERCE_IMPORT_STATUSES = Object.freeze(["pending", "processing", "on-hold"]);
 const REGISTRATION_INVITES_TABLE = "registration_invites";
 const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
+const LEAD_PROSPECTS_TABLE = "lead_prospects";
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -242,6 +243,15 @@ export default {
       }
       if (pathname === "/api/admin/settings" && request.method === "POST") {
         return handleAdminSettingsSave(request, env);
+      }
+      if (pathname === "/api/admin/leads" && request.method === "GET") {
+        return handleAdminLeadsList(request, env, url);
+      }
+      if (pathname === "/api/admin/leads/import" && request.method === "POST") {
+        return handleAdminLeadsImport(request, env);
+      }
+      if (pathname === "/api/admin/leads/update" && request.method === "POST") {
+        return handleAdminLeadUpdate(request, env);
       }
       if (pathname === "/api/admin/invites/revoke" && request.method === "POST") {
         return handleAdminInviteRevoke(request, env);
@@ -9855,6 +9865,323 @@ async function saveAdminSettings(env, userId, payload) {
   return normalizeAdminSettings(Array.isArray(rows) && rows.length ? rows[0] : normalized);
 }
 
+function normalizeLeadDomain(value, fallbackUrl = "") {
+  const direct = String(value || "").trim();
+  const candidate = direct || String(fallbackUrl || "").trim();
+  if (!candidate) return "";
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)
+      ? candidate
+      : `https://${candidate}`;
+    const parsed = new URL(withProtocol);
+    return parsed.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch (_error) {
+    return candidate
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .replace(/^www\./i, "")
+      .split(/[/?#]/)[0]
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function getLeadProspectDedupeKey(lead) {
+  const domain = normalizeLeadDomain(lead?.domain, lead?.url);
+  if (domain) return domain;
+  const email = normalizeEmail(lead?.email || lead?.follow_up_email || "");
+  if (email) return `email:${email}`;
+  const id = String(lead?.id || "").trim().toLowerCase();
+  return id || "";
+}
+
+function splitLeadContactList(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => splitLeadContactList(entry))
+      .filter((entry, index, list) => {
+        const normalized = entry.toLowerCase();
+        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+      });
+  }
+  return String(value || "")
+    .split(/[,;\n\r|]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry, index, list) => {
+      const normalized = entry.toLowerCase();
+      return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+    });
+}
+
+function normalizeLeadPayload(input = {}, existing = {}, options = {}) {
+  const incoming = input && typeof input === "object" ? input : {};
+  const previous = existing && typeof existing === "object" ? existing : {};
+  const preserveExistingState = options?.preserveExistingState === true;
+  const phones = [
+    ...splitLeadContactList(incoming.phones || incoming.phone || ""),
+    ...splitLeadContactList(previous.phones || previous.phone || ""),
+  ].filter((entry, index, list) => {
+    const normalized = entry.toLowerCase();
+    return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+  });
+  const emails = [
+    ...splitLeadContactList(incoming.emails || incoming.email || ""),
+    ...splitLeadContactList(previous.emails || previous.email || ""),
+  ].filter((entry, index, list) => {
+    const normalized = entry.toLowerCase();
+    return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+  });
+  const keep = (nextValue, previousValue) => {
+    const next = String(nextValue ?? "").trim();
+    return next || String(previousValue ?? "").trim();
+  };
+  const keepState = (nextValue, previousValue) =>
+    preserveExistingState ? keep(previousValue, nextValue) : keep(nextValue, previousValue);
+  return {
+    ...previous,
+    ...incoming,
+    source: keep(incoming.source, previous.source) || "csv",
+    domain: normalizeLeadDomain(incoming.domain || previous.domain, incoming.url || previous.url),
+    url: keep(incoming.url, previous.url),
+    city: keep(incoming.city, previous.city),
+    country: keep(incoming.country, previous.country),
+    countryIso: keep(incoming.countryIso || incoming.country_iso, previous.countryIso),
+    category: keep(incoming.category, previous.category),
+    subcategory: keep(incoming.subcategory, previous.subcategory),
+    companyName: keep(incoming.companyName || incoming.company_name, previous.companyName),
+    primaryPlatform: keep(
+      incoming.primaryPlatform || incoming.primary_platform,
+      previous.primaryPlatform
+    ),
+    techStack: keep(
+      incoming.techStack || incoming.primaryPlatform || incoming.primary_platform,
+      previous.techStack
+    ),
+    phones,
+    emails,
+    phone: phones[0] || keep(incoming.phone, previous.phone),
+    email: emails[0] || keep(incoming.email, previous.email),
+    follow_up_email: keepState(incoming.follow_up_email, previous.follow_up_email || emails[0]),
+    follow_up_subject: keepState(incoming.follow_up_subject, previous.follow_up_subject),
+    follow_up_body: keepState(incoming.follow_up_body, previous.follow_up_body),
+    follow_up_deck_language:
+      keepState(incoming.follow_up_deck_language, previous.follow_up_deck_language) || "en",
+    follow_up_deck_filename: keepState(
+      incoming.follow_up_deck_filename,
+      previous.follow_up_deck_filename
+    ),
+    follow_up_deck_url: keepState(incoming.follow_up_deck_url, previous.follow_up_deck_url),
+    follow_up_sent_at: keepState(incoming.follow_up_sent_at, previous.follow_up_sent_at),
+    disposition: keepState(incoming.disposition, previous.disposition) || "new",
+    last_called_at: keepState(incoming.last_called_at, previous.last_called_at),
+    retry_after: keepState(incoming.retry_after, previous.retry_after),
+    no_pickup_count: Math.max(
+      0,
+      Number(
+        preserveExistingState
+          ? previous.no_pickup_count ?? incoming.no_pickup_count ?? 0
+          : incoming.no_pickup_count ?? previous.no_pickup_count ?? 0
+      ) || 0
+    ),
+    discarded_at: keepState(incoming.discarded_at, previous.discarded_at),
+  };
+}
+
+function mapLeadProspectRow(row) {
+  const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+  return {
+    ...payload,
+    id: String(row?.id || payload.id || ""),
+    orderIndex: Number(row?.order_index ?? payload.orderIndex ?? 0),
+    created_at: row?.created_at || payload.created_at || "",
+    updated_at: row?.updated_at || payload.updated_at || "",
+  };
+}
+
+function quotePostgrestInValue(value) {
+  return `"${String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+async function listLeadProspects(env, limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
+  const params = new URLSearchParams();
+  params.set("select", "id,dedupe_key,payload,order_index,created_at,updated_at");
+  params.set("order", "order_index.asc.nullslast,created_at.asc");
+  params.set("limit", String(safeLimit));
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*lead_prospects/i.test(details)) return [];
+    throw new Error(`Could not load leads (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows.map(mapLeadProspectRow) : [];
+}
+
+async function getNextLeadOrderIndex(env) {
+  const params = new URLSearchParams();
+  params.set("select", "order_index");
+  params.set("order", "order_index.desc.nullslast");
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*lead_prospects/i.test(details)) return 0;
+    throw new Error(`Could not load lead order index (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const current = Array.isArray(rows) && rows.length ? Number(rows[0]?.order_index) : -1;
+  return Number.isFinite(current) ? current + 1 : 0;
+}
+
+async function fetchExistingLeadRowsByKeys(env, keys = []) {
+  const uniqueKeys = [...new Set(keys.map((key) => String(key || "").trim()).filter(Boolean))];
+  if (!uniqueKeys.length) return [];
+  const params = new URLSearchParams();
+  params.set("select", "id,dedupe_key,payload,order_index,created_at,updated_at");
+  params.set("dedupe_key", `in.(${uniqueKeys.map(quotePostgrestInValue).join(",")})`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not check existing leads (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function importLeadProspects(env, leads = []) {
+  const incoming = Array.isArray(leads) ? leads : [];
+  const normalizedIncoming = incoming
+    .map((lead) => {
+      const dedupeKey = getLeadProspectDedupeKey(lead);
+      return dedupeKey ? { dedupeKey, lead } : null;
+    })
+    .filter(Boolean);
+  if (!normalizedIncoming.length) {
+    return { added: 0, updated: 0, total: 0, leads: await listLeadProspects(env) };
+  }
+
+  const keys = [...new Set(normalizedIncoming.map((entry) => entry.dedupeKey))];
+  const existingRows = await fetchExistingLeadRowsByKeys(env, keys);
+  const existingByKey = new Map(
+    existingRows.map((row) => [String(row.dedupe_key || ""), row])
+  );
+  let nextOrderIndex = await getNextLeadOrderIndex(env);
+  let added = 0;
+  let updated = 0;
+  const upsertRows = normalizedIncoming.map(({ dedupeKey, lead }) => {
+    const existing = existingByKey.get(dedupeKey);
+    if (existing) {
+      updated += 1;
+    } else {
+      added += 1;
+    }
+    const orderIndex = Number(existing?.order_index);
+    const payload = normalizeLeadPayload(lead, existing?.payload || {}, {
+      preserveExistingState: Boolean(existing),
+    });
+    return {
+      ...(existing?.id ? { id: existing.id } : {}),
+      dedupe_key: dedupeKey,
+      payload,
+      source: String(payload.source || "csv"),
+      order_index: Number.isFinite(orderIndex) ? orderIndex : nextOrderIndex++,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?on_conflict=dedupe_key`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(upsertRows),
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*lead_prospects/i.test(details)) {
+      throw new Error("Lead CRM storage is not enabled yet. Run supabase_lead_prospects.sql.");
+    }
+    throw new Error(`Could not import leads (${response.status}) ${details}`.trim());
+  }
+
+  return {
+    added,
+    updated,
+    total: normalizedIncoming.length,
+    leads: await listLeadProspects(env),
+  };
+}
+
+async function updateLeadProspect(env, id, patch = {}) {
+  const safeId = String(id || "").trim();
+  if (!safeId) {
+    throw new Error("Lead id is required.");
+  }
+  const selectParams = new URLSearchParams();
+  selectParams.set("select", "id,dedupe_key,payload,order_index,created_at,updated_at");
+  selectParams.set("id", `eq.${safeId}`);
+  selectParams.set("limit", "1");
+  const fetchResponse = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${selectParams.toString()}`,
+    { method: "GET" }
+  );
+  if (!fetchResponse.ok) {
+    const details = await fetchResponse.text().catch(() => "");
+    throw new Error(`Could not load lead (${fetchResponse.status}) ${details}`.trim());
+  }
+  const rows = await fetchResponse.json().catch(() => []);
+  const current = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!current) {
+    throw new Error("Lead not found.");
+  }
+
+  const payload = normalizeLeadPayload(patch, current.payload || {});
+  const updateParams = new URLSearchParams();
+  updateParams.set("id", `eq.${safeId}`);
+  const updateResponse = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${updateParams.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        payload,
+        source: String(payload.source || "csv"),
+        updated_at: new Date().toISOString(),
+      }),
+    }
+  );
+  if (!updateResponse.ok) {
+    const details = await updateResponse.text().catch(() => "");
+    throw new Error(`Could not update lead (${updateResponse.status}) ${details}`.trim());
+  }
+  const updatedRows = await updateResponse.json().catch(() => []);
+  const updated = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : null;
+  return mapLeadProspectRow(updated || { ...current, payload });
+}
+
 async function buildInviteUrl(request, env, invite) {
   const encrypted = String(invite?.token_encrypted || "").trim();
   if (!encrypted) return "";
@@ -15651,6 +15978,72 @@ async function handleAdminSettingsSave(request, env) {
     return jsonResponse({ ok: true, settings });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not save admin settings." }, 500);
+  }
+}
+
+async function handleAdminLeadsList(request, env, url) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to access the leads dashboard." }, 403);
+  }
+  try {
+    const limit = Number(url.searchParams.get("limit") || 5000);
+    const leads = await listLeadProspects(env, limit);
+    return jsonResponse({ leads });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not load leads." }, 500);
+  }
+}
+
+async function handleAdminLeadsImport(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to import leads." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  try {
+    const result = await importLeadProspects(env, body?.leads || []);
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not import leads." }, 500);
+  }
+}
+
+async function handleAdminLeadUpdate(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to update leads." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  try {
+    const lead = await updateLeadProspect(env, body?.id, body?.patch || {});
+    return jsonResponse({ ok: true, lead });
+  } catch (error) {
+    const status = /not found/i.test(error?.message || "") ? 404 : 500;
+    return jsonResponse({ error: error?.message || "Could not update lead." }, status);
   }
 }
 
