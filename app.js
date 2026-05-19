@@ -11496,11 +11496,6 @@ const sampleProfiles = [
 ];
 
 const csvColumns = [
-  { key: "senderName", label: "From Name" },
-  { key: "senderStreet", label: "From Street" },
-  { key: "senderCity", label: "From City" },
-  { key: "senderState", label: "From Region" },
-  { key: "senderZip", label: "From Postal Code" },
   { key: "recipientName", label: "To Name" },
   { key: "recipientStreet", label: "To Street" },
   { key: "recipientCity", label: "To City" },
@@ -11557,6 +11552,14 @@ const CSV_REQUIRED_FIELDS = new Set([
   "recipientZip",
   "recipientCountry",
   "packageWeight",
+]);
+
+const CSV_MAPPING_REQUIRED_FIELDS = new Set([
+  "recipientName",
+  "recipientStreet",
+  "recipientCity",
+  "recipientZip",
+  "recipientCountry",
 ]);
 
 function isCsvRequiredFieldValid(key, value) {
@@ -11644,12 +11647,15 @@ const CSV_HEADER_ALIASES = {
   recipientName: [
     "to_name",
     "recipient_name",
+    "recipient",
     "shipping_name",
     "ship_name",
     "ship_to_name",
     "delivery_name",
     "shipping_full_name",
     "customer_name",
+    "klantnaam",
+    "naam",
     "buyer_name",
     "consignee_name",
     "company",
@@ -11682,6 +11688,15 @@ const CSV_HEADER_ALIASES = {
     "delivery_address",
     "delivery_address_1",
     "delivery_address_line_1",
+    "address",
+    "adres",
+    "straat",
+    "straatnaam",
+    "straat_en_nummer",
+    "bestemmingsadres",
+    "adres_bestemming",
+    "destination_address",
+    "destination_street",
     "address_line_1",
     "line_1",
     "address1",
@@ -11694,6 +11709,11 @@ const CSV_HEADER_ALIASES = {
     "ship_city",
     "ship_to_city",
     "delivery_city",
+    "destination_city",
+    "bestemming_stad",
+    "stad",
+    "plaats",
+    "gemeente",
     "city",
   ],
   recipientState: [
@@ -11714,6 +11734,12 @@ const CSV_HEADER_ALIASES = {
     "delivery_state",
     "delivery_region",
     "delivery_province",
+    "destination_state",
+    "destination_region",
+    "destination_province",
+    "bestemming_regio",
+    "provincie",
+    "staat",
     "state",
     "province",
     "region",
@@ -11737,6 +11763,11 @@ const CSV_HEADER_ALIASES = {
     "delivery_zip",
     "delivery_postcode",
     "delivery_postal_code",
+    "destination_zip",
+    "destination_postcode",
+    "destination_postal_code",
+    "postcode_bestemming",
+    "bestemming_postcode",
     "zip",
     "postcode",
     "postal_code",
@@ -11754,11 +11785,17 @@ const CSV_HEADER_ALIASES = {
     "ship_to_country_code",
     "delivery_country",
     "delivery_country_code",
+    "destination_country",
+    "destination_country_code",
+    "land_bestemming",
+    "bestemming_land",
     "country",
     "country_code",
   ],
   packageWeight: [
     "weight",
+    "gewicht",
+    "pakketgewicht",
     "package_weight",
     "parcel_weight",
     "shipment_weight",
@@ -11784,6 +11821,8 @@ const CSV_HEADER_ALIASES = {
     "dims",
     "dim",
     "dimensions",
+    "afmetingen",
+    "l_x_w_x_h",
     "package_dimensions",
     "parcel_dimensions",
     "shipment_dimensions",
@@ -15523,12 +15562,24 @@ function parseReturnSingleLineAddress(value = "") {
   const normalized = String(value || "").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   const countryMatch = normalized.match(
-    /\s+(Belgium|België|Netherlands|Nederland|France|Germany|Deutschland|Luxembourg|Canada|United States|USA|BE|NL|FR|DE|LU|CA|US)$/i
+    /\s+(Belgium|België|Belgique|Netherlands|Nederland|France|Germany|Deutschland|Luxembourg|Portugal|Spain|España|Espagne|Italy|Italia|Italie|Austria|Österreich|Autriche|Canada|United States|USA|BE|NL|FR|DE|LU|PT|ES|IT|AT|CA|US)$/i
   );
   const country = countryMatch ? countryMatch[1].trim() : "";
   const withoutCountry = countryMatch
     ? normalized.slice(0, countryMatch.index).trim()
     : normalized;
+  const postalMiddleMatch = withoutCountry.match(
+    /^(.+?)\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d|\d{4,6}(?:-\d{3})?)\s+([^,]+?)(?:\s+([A-Z]{2,3}))?$/i
+  );
+  if (postalMiddleMatch) {
+    return {
+      street: postalMiddleMatch[1].trim(),
+      city: postalMiddleMatch[3].trim(),
+      state: postalMiddleMatch[4]?.trim() || "",
+      zip: postalMiddleMatch[2].trim(),
+      country,
+    };
+  }
   const tokens = withoutCountry.split(" ").filter(Boolean);
   if (tokens.length < 3) return null;
 
@@ -16310,13 +16361,6 @@ function renderAccountBatchList() {
   accountBatchPanel.classList.remove("is-hidden");
   if (accountBatchPreview) {
     accountBatchPreview.classList.remove("is-single");
-  }
-
-  const title = accountBatchPanel.querySelector(".batch-title");
-  if (title) {
-    title.textContent = query
-      ? tr("{count} matching labels", { count: visibleEntries.length })
-      : tr("Batch Queue");
   }
 
   accountBatchList.innerHTML = "";
@@ -29813,6 +29857,8 @@ function normalizeCsvHeaderToken(value) {
     .replace(/^\uFEFF/, "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/["']/g, "")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
@@ -30066,8 +30112,8 @@ function getCsvColumnLabel(key) {
 }
 
 function getCsvColumnsRequiredFirst() {
-  const required = csvColumns.filter((column) => CSV_REQUIRED_FIELDS.has(column.key));
-  const optional = csvColumns.filter((column) => !CSV_REQUIRED_FIELDS.has(column.key));
+  const required = csvColumns.filter((column) => CSV_MAPPING_REQUIRED_FIELDS.has(column.key));
+  const optional = csvColumns.filter((column) => !CSV_MAPPING_REQUIRED_FIELDS.has(column.key));
   return [...required, ...optional];
 }
 
@@ -30208,7 +30254,7 @@ function renderCsvMappingTable() {
     const fieldLabel = document.createElement("strong");
     fieldLabel.textContent = column.label;
     fieldWrap.appendChild(fieldLabel);
-    if (CSV_REQUIRED_FIELDS.has(column.key)) {
+    if (CSV_MAPPING_REQUIRED_FIELDS.has(column.key)) {
       const badge = document.createElement("span");
       badge.className = "csv-map-required";
       badge.textContent = tr("Required");
@@ -30274,9 +30320,32 @@ function updateCsvMappingSample(key) {
   sampleEl.classList.remove("is-empty");
 }
 
+function getCsvMappedRecipientAddressParts(analysis, mapping) {
+  if (!analysis || !mapping) return null;
+  const streetIndex = Number(mapping.recipientStreet);
+  if (!Number.isInteger(streetIndex) || streetIndex < 0) return null;
+  for (const row of analysis.rows || []) {
+    const rawStreet = getCsvValueAt(row, streetIndex);
+    if (!rawStreet) continue;
+    const parsed = normalizeReturnAddressParts({
+      name: "",
+      street: rawStreet,
+      city: "",
+      stateCode: "",
+      zip: "",
+      country: "",
+    });
+    if (parsed?.street && (parsed.city || parsed.zip || parsed.country)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 function getMissingRequiredCsvMappings(mapping, analysis) {
   const missing = [];
-  CSV_REQUIRED_FIELDS.forEach((key) => {
+  const parsedRecipientAddress = getCsvMappedRecipientAddressParts(analysis, mapping);
+  CSV_MAPPING_REQUIRED_FIELDS.forEach((key) => {
     const mappedIndex = Number(mapping[key]);
     if (mappedIndex >= 0) return;
 
@@ -30286,12 +30355,16 @@ function getMissingRequiredCsvMappings(mapping, analysis) {
       if (hasNameParts) return;
     }
 
-    if (key === "packageDims") {
-      const hasDimsParts =
-        analysis.extraIndices.dimLength >= 0 &&
-        analysis.extraIndices.dimWidth >= 0 &&
-        analysis.extraIndices.dimHeight >= 0;
-      if (hasDimsParts) return;
+    if (key === "recipientCity" && parsedRecipientAddress?.city) {
+      return;
+    }
+
+    if (key === "recipientZip" && parsedRecipientAddress?.zip) {
+      return;
+    }
+
+    if (key === "recipientCountry" && parsedRecipientAddress?.country) {
+      return;
     }
 
     missing.push(getCsvColumnLabel(key));
@@ -30303,7 +30376,7 @@ function getRequiredCsvMappingConflicts(mapping, analysis) {
   const indexToKey = new Map();
   const conflicts = [];
 
-  CSV_REQUIRED_FIELDS.forEach((key) => {
+  CSV_MAPPING_REQUIRED_FIELDS.forEach((key) => {
     const mappedIndex = Number(mapping[key]);
     if (mappedIndex < 0) {
       if (
@@ -30425,10 +30498,18 @@ function buildCsvRowsFromAnalysis(analysis, selectedColumnIndices = {}) {
       getCsvValueAt(row, columnIndices.senderStreet),
       getCsvValueAt(row, analysis.extraIndices.senderStreet2)
     );
-    const recipientStreet = joinCsvAddress(
+    const rawRecipientStreet = joinCsvAddress(
       getCsvValueAt(row, columnIndices.recipientStreet),
       getCsvValueAt(row, analysis.extraIndices.recipientStreet2)
     );
+    const recipientAddress = normalizeReturnAddressParts({
+      name: recipientName,
+      street: rawRecipientStreet,
+      city: getCsvValueAt(row, columnIndices.recipientCity),
+      stateCode: getCsvValueAt(row, columnIndices.recipientState),
+      zip: getCsvValueAt(row, columnIndices.recipientZip),
+      country: getCsvValueAt(row, columnIndices.recipientCountry),
+    });
 
     const existingDims = getCsvValueAt(row, columnIndices.packageDims);
     const packageDims = composeCsvDimensions(
@@ -30438,7 +30519,6 @@ function buildCsvRowsFromAnalysis(analysis, selectedColumnIndices = {}) {
       getCsvValueAt(row, analysis.extraIndices.dimHeight)
     );
 
-    const recipientCountry = getCsvValueAt(row, columnIndices.recipientCountry) || "France";
     const packageWeightHeaderToken =
       columnIndices.packageWeight >= 0
         ? normalizeCsvHeaderToken(analysis.headers[columnIndices.packageWeight])
@@ -30454,11 +30534,11 @@ function buildCsvRowsFromAnalysis(analysis, selectedColumnIndices = {}) {
       senderState: getCsvValueAt(row, columnIndices.senderState) || senderDefaults.senderState,
       senderZip: getCsvValueAt(row, columnIndices.senderZip) || senderDefaults.senderZip,
       recipientName,
-      recipientStreet,
-      recipientCity: getCsvValueAt(row, columnIndices.recipientCity),
-      recipientState: getCsvValueAt(row, columnIndices.recipientState),
-      recipientZip: getCsvValueAt(row, columnIndices.recipientZip),
-      recipientCountry,
+      recipientStreet: recipientAddress.street || rawRecipientStreet,
+      recipientCity: recipientAddress.city,
+      recipientState: recipientAddress.state,
+      recipientZip: recipientAddress.zip,
+      recipientCountry: recipientAddress.country,
       packageWeight,
       packageDims: packageDims || parcelDefaults.packageDims,
     };

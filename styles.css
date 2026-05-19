@@ -71,6 +71,17 @@ html[data-theme="light"] {
   --text: #111722;
   --muted: #697487;
   --stroke: rgba(17, 23, 34, 0.12);
+  --input-bg: #e9eef4;
+  --input-bg-focus: #f0f4f8;
+  --pill-neutral-bg: rgba(17, 23, 34, 0.055);
+  --pill-success-text: #216b47;
+  --pill-success-bg: rgba(33, 107, 71, 0.09);
+  --pill-warning-text: #80531d;
+  --pill-warning-bg: rgba(128, 83, 29, 0.1);
+  --pill-danger-text: #9b3434;
+  --pill-danger-bg: rgba(155, 52, 52, 0.09);
+  --pill-info-text: #334f9f;
+  --pill-info-bg: rgba(51, 79, 159, 0.09);
 }
 
 html[data-theme="light"] {
@@ -1676,6 +1687,17 @@ html[data-theme="light"] .auth-bg-switcher {
   gap: 10px;
 }
 
+html[data-theme="light"] .summary,
+html[data-theme="light"] .label-confirm-hero-summary,
+html[data-theme="light"] .payment-summary,
+html[data-theme="light"] .invoice-summary,
+html[data-theme="light"] .direct-payment-summary,
+html[data-theme="light"] .csv-ship-from-summary,
+html[data-theme="light"] .customs-summary-card {
+  background: #dfe6ee;
+  border-color: rgba(17, 23, 34, 0.14);
+}
+
 .summary-title {
   font-size: var(--fs-xs);
   text-transform: uppercase;
@@ -2930,6 +2952,81 @@ html[data-theme="light"] .scroll-fade-wrap--card {
   color: rgba(241, 244, 251, 0.52);
   border-color: rgba(126, 133, 148, 0.28);
   background: rgba(126, 133, 148, 0.12);
+}
+
+html[data-theme="light"] .lead-stack-pill,
+html[data-theme="light"] .lead-outcome-pill,
+html[data-theme="light"] .account-reference-pill,
+html[data-theme="light"] .admin-billing-status-pill,
+html[data-theme="light"] .admin-client-pill,
+html[data-theme="light"] .account-record-pill,
+html[data-theme="light"] .post-page-format-pill,
+html[data-theme="light"] .post-linkedin-pill,
+html[data-theme="light"] .provider-connected-pill,
+html[data-theme="light"] .provider-coming-soon-pill,
+html[data-theme="light"] .iban-topup-eta-pill,
+html[data-theme="light"] .invoice-payment-badge,
+html[data-theme="light"] .payment-method-pill,
+html[data-theme="light"] .payment-card-brand-pill {
+  color: #3f4a5c;
+  border-color: rgba(17, 23, 34, 0.14);
+  background: var(--pill-neutral-bg);
+}
+
+html[data-theme="light"] .lead-stack-pill.is-shopify,
+html[data-theme="light"] .lead-outcome-pill.is-interested,
+html[data-theme="light"] .account-reference-pill.is-success,
+html[data-theme="light"] .admin-billing-status-pill.is-paid,
+html[data-theme="light"] .admin-billing-status-pill.is-credited,
+html[data-theme="light"] .admin-billing-status-pill.is-matched,
+html[data-theme="light"] .post-linkedin-pill.is-success,
+html[data-theme="light"] .provider-connected-pill,
+html[data-theme="light"] .invoice-payment-badge.is-success,
+html[data-theme="light"] .payment-method-pill.is-instant {
+  color: var(--pill-success-text);
+  border-color: rgba(33, 107, 71, 0.24);
+  background: var(--pill-success-bg);
+}
+
+html[data-theme="light"] .lead-stack-pill.is-woocommerce,
+html[data-theme="light"] .lead-outcome-pill.is-no-pickup,
+html[data-theme="light"] .account-reference-pill.is-info,
+html[data-theme="light"] .admin-billing-status-pill.is-sent,
+html[data-theme="light"] .admin-billing-status-pill.is-exported,
+html[data-theme="light"] .admin-billing-status-pill.is-pending-export,
+html[data-theme="light"] .payment-method-pill.is-wallet {
+  color: #5b32ba;
+  border-color: rgba(91, 50, 186, 0.24);
+  background: rgba(91, 50, 186, 0.085);
+}
+
+html[data-theme="light"] .lead-outcome-pill.is-mild,
+html[data-theme="light"] .account-reference-pill.is-warning,
+html[data-theme="light"] .admin-billing-status-pill.is-overdue,
+html[data-theme="light"] .admin-billing-status-pill.is-pending,
+html[data-theme="light"] .invoice-payment-badge.is-warning,
+html[data-theme="light"] .payment-method-pill.is-delayed {
+  color: var(--pill-warning-text);
+  border-color: rgba(128, 83, 29, 0.24);
+  background: var(--pill-warning-bg);
+}
+
+html[data-theme="light"] .lead-outcome-pill.is-not-interested,
+html[data-theme="light"] .account-reference-pill.is-danger,
+html[data-theme="light"] .admin-billing-status-pill.is-cancelled,
+html[data-theme="light"] .admin-billing-status-pill.is-ignored,
+html[data-theme="light"] .invoice-payment-badge.is-danger {
+  color: var(--pill-danger-text);
+  border-color: rgba(155, 52, 52, 0.24);
+  background: var(--pill-danger-bg);
+}
+
+html[data-theme="light"] .lead-outcome-pill.is-discarded,
+html[data-theme="light"] .lead-outcome-pill.is-new,
+html[data-theme="light"] .account-reference-pill.is-muted {
+  color: var(--muted);
+  border-color: rgba(17, 23, 34, 0.12);
+  background: rgba(17, 23, 34, 0.04);
 }
 
 .leads-table-actions-col,
@@ -7574,9 +7671,11 @@ html[data-theme="light"] .iban-topup-reference-block {
   border-radius: var(--radius-lg);
   padding: 22px;
   width: 100%;
-  max-width: 520px;
+  max-width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   display: grid;
   gap: 16px;
+  overflow: hidden;
   transform: scale(1) translateY(0);
   transition: transform 0.4s var(--ease-out-expo), opacity 0.35s ease;
   will-change: transform, opacity;
@@ -7754,7 +7853,8 @@ html[data-theme="light"] .iban-topup-reference-block {
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   background: var(--card-bg);
-  max-height: 360px;
+  width: 100%;
+  max-height: min(520px, calc(100dvh - 230px));
   overflow-y: scroll;
   overflow-x: hidden;
   scrollbar-gutter: stable both-edges;
@@ -7785,6 +7885,22 @@ html[data-theme="light"] .iban-topup-reference-block {
 .csv-map-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.csv-map-table th:nth-child(1),
+.csv-map-table td:nth-child(1) {
+  width: 24%;
+}
+
+.csv-map-table th:nth-child(2),
+.csv-map-table td:nth-child(2) {
+  width: 42%;
+}
+
+.csv-map-table th:nth-child(3),
+.csv-map-table td:nth-child(3) {
+  width: 34%;
 }
 
 .csv-map-table thead {
@@ -7862,7 +7978,8 @@ html[data-theme="light"] .iban-topup-reference-block {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  display: block;
+  width: 100%;
 }
 
 .csv-map-sample.is-empty {
@@ -10120,6 +10237,52 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
 }
 
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .invite-select,
+html[data-theme="light"] .language-select,
+html[data-theme="light"] .shopify-settings-select,
+html[data-theme="light"] .customs-select,
+html[data-theme="light"] .csv-map-select,
+html[data-theme="light"] .portal-footer-input,
+html[data-theme="light"] .dropzone-input,
+html[data-theme="light"] .lead-callout-context-input,
+html[data-theme="light"] .lead-callout-email-body textarea {
+  background: var(--input-bg);
+  border-color: rgba(17, 23, 34, 0.16);
+  color: var(--text);
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] input:focus-visible,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] select:focus-visible,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] textarea:focus-visible,
+html[data-theme="light"] .invite-select:focus,
+html[data-theme="light"] .language-select:focus,
+html[data-theme="light"] .shopify-settings-select:focus,
+html[data-theme="light"] .customs-select:focus,
+html[data-theme="light"] .csv-map-select:focus,
+html[data-theme="light"] .portal-footer-input:focus,
+html[data-theme="light"] .portal-footer-input:focus-visible,
+html[data-theme="light"] .dropzone-input:focus,
+html[data-theme="light"] .dropzone-input:focus-visible,
+html[data-theme="light"] .lead-callout-context-input:focus,
+html[data-theme="light"] .lead-callout-email-body textarea:focus {
+  background: var(--input-bg-focus);
+  border-color: rgba(119, 71, 227, 0.72);
+}
+
+html[data-theme="light"] input[readonly],
+html[data-theme="light"] input:disabled,
+html[data-theme="light"] select:disabled {
+  background: #dde5ee;
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+}
+
 select {
   height: 40px;
   padding: 0 12px;
@@ -10685,7 +10848,7 @@ html[data-theme="light"] .btn-primary {
 
 .preview-grid {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
   gap: 20px;
   align-items: start;
 }
@@ -10734,6 +10897,14 @@ html[data-theme="light"] .btn-primary {
 
 .batch-panel.is-hidden {
   display: none;
+}
+
+#accountBatchPanel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  grid-template-rows: 1fr;
 }
 
 .batch-title {
@@ -10853,9 +11024,9 @@ html[data-theme="light"] .btn-primary {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
   background: var(--card-bg);
-  padding: 16px;
+  padding: 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   min-width: 0;
   animation: sectionReveal 0.5s var(--ease-out-expo) both;
@@ -10885,16 +11056,16 @@ html[data-theme="light"] .btn-primary {
 .label-sheet {
   border: 1px dashed var(--stroke);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 14px;
   display: grid;
-  gap: 16px;
+  gap: 12px;
   background: var(--primary);
 }
 
 .label-top {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: flex-end;
+  align-items: flex-start;
   gap: 12px;
 }
 
