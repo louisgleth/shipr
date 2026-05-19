@@ -1320,21 +1320,17 @@ const TRANSLATIONS = {
     fr: "À compléter",
     nl: "Moet worden ingevuld",
   },
-  "Apply to missing": {
-    fr: "Appliquer aux manquants",
-    nl: "Toepassen op ontbrekende",
+  "Apply to all": {
+    fr: "Appliquer à tout",
+    nl: "Toepassen op alles",
   },
-  "Applied {weight} kg to {count} missing weights.": {
-    fr: "{weight} kg appliqué à {count} poids manquants.",
-    nl: "{weight} kg toegepast op {count} ontbrekende gewichten.",
+  "Applied {value} to {count} rows.": {
+    fr: "{value} appliqué à {count} lignes.",
+    nl: "{value} toegepast op {count} rijen.",
   },
-  "Enter a valid weight first.": {
-    fr: "Saisissez d’abord un poids valide.",
-    nl: "Voer eerst een geldig gewicht in.",
-  },
-  "No missing weights to fill.": {
-    fr: "Aucun poids manquant à compléter.",
-    nl: "Geen ontbrekende gewichten om in te vullen.",
+  "Enter a valid value first.": {
+    fr: "Saisissez d’abord une valeur valide.",
+    nl: "Voer eerst een geldige waarde in.",
   },
   "Sender": { fr: "Expéditeur", nl: "Afzender" },
   "Recipient": { fr: "Destinataire", nl: "Ontvanger" },
@@ -24794,45 +24790,54 @@ function setCsvPage(page, { render = true } = {}) {
   }
 }
 
-function isCsvWeightMissing(value) {
-  return parsePackageWeightKg(value) <= 0;
+function canApplyCsvFieldToAll(key, value) {
+  const normalizedKey = String(key || "");
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return false;
+  if (normalizedKey === "packageWeight") {
+    return parsePackageWeightKg(trimmed) > 0;
+  }
+  if (normalizedKey === "packageDims") {
+    return Boolean(trimmed);
+  }
+  return false;
 }
 
-function getCsvMissingWeightCount() {
-  if (!Array.isArray(state.csvRows)) return 0;
-  return state.csvRows.filter((row) => isCsvWeightMissing(row?.packageWeight)).length;
+function updateCsvApplyFieldState(input) {
+  const wrapper = input?.closest?.(".csv-apply-field-wrap");
+  if (!wrapper) return;
+  const canApply = canApplyCsvFieldToAll(input.dataset.key, input.value);
+  wrapper.classList.toggle("has-value", canApply);
+  const button = wrapper.querySelector("[data-action='apply-field-to-all']");
+  if (button) {
+    button.disabled = !canApply;
+  }
 }
 
-function applyCsvWeightToMissing(weightValue) {
-  const weightKg = parsePackageWeightKg(weightValue);
-  if (weightKg <= 0) {
-    showToast(tr("Enter a valid weight first."), { tone: "error" });
+function applyCsvFieldToAll(key, value) {
+  const normalizedKey = String(key || "");
+  if (!canApplyCsvFieldToAll(normalizedKey, value)) {
+    showToast(tr("Enter a valid value first."), { tone: "error" });
     return;
   }
   if (!Array.isArray(state.csvRows) || !state.csvRows.length) return;
-  const normalizedWeight = String(weightValue || "").trim() || String(weightKg);
-  let appliedCount = 0;
+  const normalizedValue = String(value || "").trim();
   state.csvRows = state.csvRows.map((row) => {
-    if (!row || !isCsvWeightMissing(row.packageWeight)) return row;
-    appliedCount += 1;
+    if (!row) return row;
     return {
       ...row,
-      packageWeight: normalizedWeight,
+      [normalizedKey]: normalizedValue,
     };
   });
-  if (!appliedCount) {
-    showToast(tr("No missing weights to fill."), { tone: "info" });
-    return;
-  }
   invalidateCustomsCompletion();
   setInlineFormErrorToast(labelError, "");
   renderCsvTable();
   updateSummary();
   updatePreview();
   showToast(
-    tr("Applied {weight} kg to {count} missing weights.", {
-      weight: normalizedWeight,
-      count: appliedCount,
+    tr("Applied {value} to {count} rows.", {
+      value: normalizedValue,
+      count: state.csvRows.length,
     }),
     { tone: "success" }
   );
@@ -24950,22 +24955,29 @@ function renderCsvTable() {
         wrapper.appendChild(icon);
         wrapper.appendChild(input);
         td.appendChild(wrapper);
-      } else if (column.key === "packageWeight" && state.csvEditable) {
+      } else if (
+        (column.key === "packageWeight" || column.key === "packageDims") &&
+        state.csvEditable
+      ) {
         const wrapper = document.createElement("div");
-        wrapper.className = "csv-weight-input-wrap";
+        wrapper.className = `csv-apply-field-wrap${
+          canApplyCsvFieldToAll(column.key, input.value) ? " has-value" : ""
+        }`;
         wrapper.appendChild(input);
-        const canFillMissing = getCsvMissingWeightCount() > 0;
         const action = document.createElement("button");
         action.type = "button";
-        action.className = "csv-weight-apply-missing";
-        action.dataset.action = "apply-missing-weight";
+        action.className = "csv-apply-field-button";
+        action.dataset.action = "apply-field-to-all";
+        action.dataset.key = column.key;
         action.dataset.row = String(rowIndex);
-        action.title = tr("Apply to missing");
-        action.setAttribute("aria-label", tr("Apply to missing"));
-        action.disabled = !canFillMissing;
+        action.title = tr("Apply to all");
+        action.setAttribute("aria-label", tr("Apply to all"));
+        action.disabled = !canApplyCsvFieldToAll(column.key, input.value);
         action.innerHTML =
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v10"/><path d="m8.5 11.5 3.5 3.5 3.5-3.5"/><path d="M5 19h14"/></svg>';
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>${escapeHtml(tr("Apply to all"))}</span>`;
         wrapper.appendChild(action);
+        input.addEventListener("focus", () => updateCsvApplyFieldState(input));
+        input.addEventListener("input", () => updateCsvApplyFieldState(input));
         td.appendChild(wrapper);
       } else {
         td.appendChild(input);
@@ -24997,19 +25009,20 @@ function handleCsvInput(event) {
   if (state.csvValidationAttempted && CSV_REQUIRED_FIELDS.has(key)) {
     input.classList.toggle("is-invalid", !isCsvRequiredFieldValid(key, input.value));
   }
+  updateCsvApplyFieldState(input);
   updateSummary();
   updatePreview();
 }
 
 function handleCsvTableAction(event) {
-  const button = event.target?.closest?.('[data-action="apply-missing-weight"]');
+  const button = event.target?.closest?.('[data-action="apply-field-to-all"]');
   if (!button || !csvTableBody?.contains(button)) return;
   event.preventDefault();
-  const rowIndex = Number(button.dataset.row);
-  const row = Number.isFinite(rowIndex) ? state.csvRows?.[rowIndex] : null;
-  const input = button.closest(".csv-weight-input-wrap")?.querySelector("input[data-key='packageWeight']");
-  const weightValue = String(input?.value || row?.packageWeight || "").trim();
-  applyCsvWeightToMissing(weightValue);
+  const wrapper = button.closest(".csv-apply-field-wrap");
+  const input = wrapper?.querySelector("input[data-key]");
+  const key = button.dataset.key || input?.dataset.key;
+  const value = String(input?.value || "").trim();
+  applyCsvFieldToAll(key, value);
 }
 
 function validateCsvRows() {

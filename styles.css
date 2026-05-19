@@ -9276,6 +9276,7 @@ html[data-theme="light"] .iban-topup-reference-block {
 .csv-table th[data-key="packageDims"],
 .csv-table td[data-key="packageDims"] {
   width: 13%;
+  overflow: visible;
 }
 
 .csv-table th[data-key="recipientZip"],
@@ -9286,6 +9287,7 @@ html[data-theme="light"] .iban-topup-reference-block {
 .csv-table th[data-key="packageWeight"],
 .csv-table td[data-key="packageWeight"] {
   width: 8%;
+  overflow: visible;
 }
 
 .csv-table tbody tr:last-child td {
@@ -9338,52 +9340,64 @@ html[data-theme="light"] .iban-topup-reference-block {
   mask-image: none;
 }
 
-.csv-weight-input-wrap {
+.csv-apply-field-wrap {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
 }
 
-.csv-weight-input-wrap input {
-  padding-right: 34px;
-}
-
-.csv-weight-apply-missing {
+.csv-apply-field-button {
   position: absolute;
-  right: 3px;
-  top: 50%;
-  width: 26px;
-  height: 26px;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-height: 26px;
+  padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: var(--radius);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(-50%);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  gap: 6px;
+  color: var(--text);
+  background: var(--panel-bg);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  font-size: var(--fs-2xs);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
   cursor: pointer;
   transition:
     background 160ms ease,
     border-color 160ms ease,
-    color 160ms ease,
-    opacity 160ms ease;
+    opacity 160ms ease,
+    transform 160ms ease;
+  z-index: 8;
 }
 
-.csv-weight-apply-missing:hover {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+.csv-apply-field-wrap:focus-within.has-value .csv-apply-field-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
-.csv-weight-apply-missing:disabled {
+.csv-apply-field-button:hover {
+  background: var(--card-active);
+  border-color: var(--stroke);
+}
+
+.csv-apply-field-button:disabled {
   opacity: 0;
   pointer-events: none;
 }
 
-.csv-weight-apply-missing svg {
-  width: 14px;
-  height: 14px;
+.csv-apply-field-button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
 }
 
 .csv-ship-from-summary {
