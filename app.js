@@ -1320,17 +1320,21 @@ const TRANSLATIONS = {
     fr: "À compléter",
     nl: "Moet worden ingevuld",
   },
-  "Apply to all": {
-    fr: "Appliquer à tout",
-    nl: "Toepassen op alles",
+  "Apply to missing": {
+    fr: "Appliquer aux manquants",
+    nl: "Toepassen op ontbrekende",
   },
-  "Applied {value} to {count} rows.": {
-    fr: "{value} appliqué à {count} lignes.",
-    nl: "{value} toegepast op {count} rijen.",
+  "Applied {value} to {count} missing fields.": {
+    fr: "{value} appliqué à {count} champs manquants.",
+    nl: "{value} toegepast op {count} ontbrekende velden.",
   },
   "Enter a valid value first.": {
     fr: "Saisissez d’abord une valeur valide.",
     nl: "Voer eerst een geldige waarde in.",
+  },
+  "No missing fields to fill.": {
+    fr: "Aucun champ manquant à compléter.",
+    nl: "Geen ontbrekende velden om in te vullen.",
   },
   "Sender": { fr: "Expéditeur", nl: "Afzender" },
   "Recipient": { fr: "Destinataire", nl: "Ontvanger" },
@@ -24790,7 +24794,18 @@ function setCsvPage(page, { render = true } = {}) {
   }
 }
 
-function canApplyCsvFieldToAll(key, value) {
+function isCsvFieldMissing(key, value) {
+  const normalizedKey = String(key || "");
+  if (normalizedKey === "packageWeight") {
+    return parsePackageWeightKg(value) <= 0;
+  }
+  if (normalizedKey === "packageDims") {
+    return !String(value || "").trim();
+  }
+  return false;
+}
+
+function canApplyCsvFieldToMissing(key, value) {
   const normalizedKey = String(key || "");
   const trimmed = String(value || "").trim();
   if (!trimmed) return false;
@@ -24806,38 +24821,44 @@ function canApplyCsvFieldToAll(key, value) {
 function updateCsvApplyFieldState(input) {
   const wrapper = input?.closest?.(".csv-apply-field-wrap");
   if (!wrapper) return;
-  const canApply = canApplyCsvFieldToAll(input.dataset.key, input.value);
+  const canApply = canApplyCsvFieldToMissing(input.dataset.key, input.value);
   wrapper.classList.toggle("has-value", canApply);
-  const button = wrapper.querySelector("[data-action='apply-field-to-all']");
+  const button = wrapper.querySelector("[data-action='apply-field-to-missing']");
   if (button) {
     button.disabled = !canApply;
   }
 }
 
-function applyCsvFieldToAll(key, value) {
+function applyCsvFieldToMissing(key, value) {
   const normalizedKey = String(key || "");
-  if (!canApplyCsvFieldToAll(normalizedKey, value)) {
+  if (!canApplyCsvFieldToMissing(normalizedKey, value)) {
     showToast(tr("Enter a valid value first."), { tone: "error" });
     return;
   }
   if (!Array.isArray(state.csvRows) || !state.csvRows.length) return;
   const normalizedValue = String(value || "").trim();
+  let appliedCount = 0;
   state.csvRows = state.csvRows.map((row) => {
-    if (!row) return row;
+    if (!row || !isCsvFieldMissing(normalizedKey, row[normalizedKey])) return row;
+    appliedCount += 1;
     return {
       ...row,
       [normalizedKey]: normalizedValue,
     };
   });
+  if (!appliedCount) {
+    showToast(tr("No missing fields to fill."), { tone: "info" });
+    return;
+  }
   invalidateCustomsCompletion();
   setInlineFormErrorToast(labelError, "");
   renderCsvTable();
   updateSummary();
   updatePreview();
   showToast(
-    tr("Applied {value} to {count} rows.", {
+    tr("Applied {value} to {count} missing fields.", {
       value: normalizedValue,
-      count: state.csvRows.length,
+      count: appliedCount,
     }),
     { tone: "success" }
   );
@@ -24961,20 +24982,20 @@ function renderCsvTable() {
       ) {
         const wrapper = document.createElement("div");
         wrapper.className = `csv-apply-field-wrap${
-          canApplyCsvFieldToAll(column.key, input.value) ? " has-value" : ""
+          canApplyCsvFieldToMissing(column.key, input.value) ? " has-value" : ""
         }`;
         wrapper.appendChild(input);
         const action = document.createElement("button");
         action.type = "button";
         action.className = "csv-apply-field-button";
-        action.dataset.action = "apply-field-to-all";
+        action.dataset.action = "apply-field-to-missing";
         action.dataset.key = column.key;
         action.dataset.row = String(rowIndex);
-        action.title = tr("Apply to all");
-        action.setAttribute("aria-label", tr("Apply to all"));
-        action.disabled = !canApplyCsvFieldToAll(column.key, input.value);
+        action.title = tr("Apply to missing");
+        action.setAttribute("aria-label", tr("Apply to missing"));
+        action.disabled = !canApplyCsvFieldToMissing(column.key, input.value);
         action.innerHTML =
-          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>${escapeHtml(tr("Apply to all"))}</span>`;
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>${escapeHtml(tr("Apply to missing"))}</span>`;
         wrapper.appendChild(action);
         input.addEventListener("focus", () => updateCsvApplyFieldState(input));
         input.addEventListener("input", () => updateCsvApplyFieldState(input));
@@ -25015,14 +25036,14 @@ function handleCsvInput(event) {
 }
 
 function handleCsvTableAction(event) {
-  const button = event.target?.closest?.('[data-action="apply-field-to-all"]');
+  const button = event.target?.closest?.('[data-action="apply-field-to-missing"]');
   if (!button || !csvTableBody?.contains(button)) return;
   event.preventDefault();
   const wrapper = button.closest(".csv-apply-field-wrap");
   const input = wrapper?.querySelector("input[data-key]");
   const key = button.dataset.key || input?.dataset.key;
   const value = String(input?.value || "").trim();
-  applyCsvFieldToAll(key, value);
+  applyCsvFieldToMissing(key, value);
 }
 
 function validateCsvRows() {
