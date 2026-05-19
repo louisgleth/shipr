@@ -9338,6 +9338,54 @@ html[data-theme="light"] .iban-topup-reference-block {
   mask-image: none;
 }
 
+.csv-weight-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.csv-weight-input-wrap input {
+  padding-right: 34px;
+}
+
+.csv-weight-apply-missing {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.csv-weight-apply-missing:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.csv-weight-apply-missing:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.csv-weight-apply-missing svg {
+  width: 14px;
+  height: 14px;
+}
+
 .csv-ship-from-summary {
   display: inline-flex;
   align-items: center;
