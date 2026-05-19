@@ -108,6 +108,7 @@ const OAUTH_STATE_SECRET = String(process.env.OAUTH_STATE_SECRET || "").trim();
 const CLICKWRAP_PROOF_SECRET = String(process.env.CLICKWRAP_PROOF_SECRET || "").trim();
 const REGISTRATION_INVITES_TABLE = "registration_invites";
 const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
+const LEAD_PROSPECTS_TABLE = "lead_prospects";
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -8554,6 +8555,252 @@ async function saveAdminSettings(userId, payload) {
   return normalizeAdminSettings(Array.isArray(rows) && rows.length ? rows[0] : normalized);
 }
 
+function normalizeLeadDomain(value, fallbackUrl = "") {
+  const direct = String(value || "").trim();
+  const candidate = direct || String(fallbackUrl || "").trim();
+  if (!candidate) return "";
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)
+      ? candidate
+      : `https://${candidate}`;
+    const parsed = new URL(withProtocol);
+    return parsed.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch (_error) {
+    return candidate
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .replace(/^www\./i, "")
+      .split(/[/?#]/)[0]
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function getLeadProspectDedupeKey(lead) {
+  const domain = normalizeLeadDomain(lead?.domain, lead?.url);
+  if (domain) return domain;
+  const email = normalizeEmail(lead?.email || lead?.follow_up_email || "");
+  if (email) return `email:${email}`;
+  const id = String(lead?.id || "").trim().toLowerCase();
+  return id || "";
+}
+
+function splitLeadContactList(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => splitLeadContactList(entry))
+      .filter((entry, index, list) => {
+        const normalized = entry.toLowerCase();
+        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+      });
+  }
+  return String(value || "")
+    .split(/[,;\n\r|]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry, index, list) => {
+      const normalized = entry.toLowerCase();
+      return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+    });
+}
+
+function normalizeLeadPayload(input = {}, existing = {}, options = {}) {
+  const incoming = input && typeof input === "object" ? input : {};
+  const previous = existing && typeof existing === "object" ? existing : {};
+  const preserveExistingState = options?.preserveExistingState === true;
+  const phones = [
+    ...splitLeadContactList(incoming.phones || incoming.phone || ""),
+    ...splitLeadContactList(previous.phones || previous.phone || ""),
+  ].filter((entry, index, list) => {
+    const normalized = entry.toLowerCase();
+    return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+  });
+  const emails = [
+    ...splitLeadContactList(incoming.emails || incoming.email || ""),
+    ...splitLeadContactList(previous.emails || previous.email || ""),
+  ].filter((entry, index, list) => {
+    const normalized = entry.toLowerCase();
+    return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+  });
+  const keep = (nextValue, previousValue) => {
+    const next = String(nextValue ?? "").trim();
+    return next || String(previousValue ?? "").trim();
+  };
+  const keepState = (nextValue, previousValue) =>
+    preserveExistingState ? keep(previousValue, nextValue) : keep(nextValue, previousValue);
+  return {
+    ...previous,
+    ...incoming,
+    source: keep(incoming.source, previous.source) || "csv",
+    domain: normalizeLeadDomain(incoming.domain || previous.domain, incoming.url || previous.url),
+    url: keep(incoming.url, previous.url),
+    city: keep(incoming.city, previous.city),
+    country: keep(incoming.country, previous.country),
+    countryIso: keep(incoming.countryIso || incoming.country_iso, previous.countryIso),
+    category: keep(incoming.category, previous.category),
+    subcategory: keep(incoming.subcategory, previous.subcategory),
+    companyName: keep(incoming.companyName || incoming.company_name, previous.companyName),
+    primaryPlatform: keep(incoming.primaryPlatform || incoming.primary_platform, previous.primaryPlatform),
+    techStack: keep(incoming.techStack || incoming.primaryPlatform || incoming.primary_platform, previous.techStack),
+    phones,
+    emails,
+    phone: phones[0] || keep(incoming.phone, previous.phone),
+    email: emails[0] || keep(incoming.email, previous.email),
+    follow_up_email: keepState(incoming.follow_up_email, previous.follow_up_email || emails[0]),
+    follow_up_subject: keepState(incoming.follow_up_subject, previous.follow_up_subject),
+    follow_up_body: keepState(incoming.follow_up_body, previous.follow_up_body),
+    follow_up_deck_language: keepState(incoming.follow_up_deck_language, previous.follow_up_deck_language) || "en",
+    follow_up_deck_filename: keepState(incoming.follow_up_deck_filename, previous.follow_up_deck_filename),
+    follow_up_deck_url: keepState(incoming.follow_up_deck_url, previous.follow_up_deck_url),
+    follow_up_sent_at: keepState(incoming.follow_up_sent_at, previous.follow_up_sent_at),
+    disposition: keepState(incoming.disposition, previous.disposition) || "new",
+    last_called_at: keepState(incoming.last_called_at, previous.last_called_at),
+    retry_after: keepState(incoming.retry_after, previous.retry_after),
+    no_pickup_count: Math.max(
+      0,
+      Number(
+        preserveExistingState
+          ? previous.no_pickup_count ?? incoming.no_pickup_count ?? 0
+          : incoming.no_pickup_count ?? previous.no_pickup_count ?? 0
+      ) || 0
+    ),
+    discarded_at: keepState(incoming.discarded_at, previous.discarded_at),
+  };
+}
+
+function mapLeadProspectRow(row) {
+  const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+  return {
+    ...payload,
+    id: String(row?.id || payload.id || ""),
+    orderIndex: Number(row?.order_index ?? payload.orderIndex ?? 0),
+    created_at: row?.created_at || payload.created_at || "",
+    updated_at: row?.updated_at || payload.updated_at || "",
+  };
+}
+
+async function listLeadProspects(limit = 5000) {
+  const safeLimit = Math.max(1, Math.min(10000, Number(limit) || 5000));
+  const supabase = getSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .select("id,dedupe_key,payload,order_index,created_at,updated_at")
+    .order("order_index", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(safeLimit);
+  if (error) {
+    if (/relation .*lead_prospects/i.test(error.message || "")) return [];
+    throw error;
+  }
+  return Array.isArray(data) ? data.map(mapLeadProspectRow) : [];
+}
+
+async function getNextLeadOrderIndex(supabase) {
+  const { data, error } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .select("order_index")
+    .order("order_index", { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error) {
+    if (/relation .*lead_prospects/i.test(error.message || "")) return 0;
+    throw error;
+  }
+  const current = Array.isArray(data) && data.length ? Number(data[0]?.order_index) : -1;
+  return Number.isFinite(current) ? current + 1 : 0;
+}
+
+async function importLeadProspects(leads = []) {
+  const incoming = Array.isArray(leads) ? leads : [];
+  const normalizedIncoming = incoming
+    .map((lead) => {
+      const dedupeKey = getLeadProspectDedupeKey(lead);
+      return dedupeKey ? { dedupeKey, lead } : null;
+    })
+    .filter(Boolean);
+  if (!normalizedIncoming.length) {
+    return { added: 0, updated: 0, total: 0, leads: await listLeadProspects() };
+  }
+
+  const supabase = getSupabaseAdminClient();
+  const keys = [...new Set(normalizedIncoming.map((entry) => entry.dedupeKey))];
+  const { data: existingRows, error: existingError } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .select("id,dedupe_key,payload,order_index,created_at,updated_at")
+    .in("dedupe_key", keys);
+  if (existingError) {
+    throw existingError;
+  }
+  const existingByKey = new Map(
+    (Array.isArray(existingRows) ? existingRows : []).map((row) => [String(row.dedupe_key || ""), row])
+  );
+  let nextOrderIndex = await getNextLeadOrderIndex(supabase);
+  let added = 0;
+  let updated = 0;
+  const upsertRows = normalizedIncoming.map(({ dedupeKey, lead }) => {
+    const existing = existingByKey.get(dedupeKey);
+    if (existing) {
+      updated += 1;
+    } else {
+      added += 1;
+    }
+    const orderIndex = Number(existing?.order_index);
+    const payload = normalizeLeadPayload(lead, existing?.payload || {}, {
+      preserveExistingState: Boolean(existing),
+    });
+    return {
+      ...(existing?.id ? { id: existing.id } : {}),
+      dedupe_key: dedupeKey,
+      payload,
+      source: String(payload.source || "csv"),
+      order_index: Number.isFinite(orderIndex) ? orderIndex : nextOrderIndex++,
+      updated_at: new Date().toISOString(),
+    };
+  });
+  const { error: upsertError } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .upsert(upsertRows, { onConflict: "dedupe_key" });
+  if (upsertError) {
+    throw upsertError;
+  }
+  return {
+    added,
+    updated,
+    total: normalizedIncoming.length,
+    leads: await listLeadProspects(),
+  };
+}
+
+async function updateLeadProspect(id, patch = {}) {
+  const safeId = String(id || "").trim();
+  if (!safeId) {
+    throw new Error("Lead id is required.");
+  }
+  const supabase = getSupabaseAdminClient();
+  const { data: rows, error: fetchError } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .select("id,dedupe_key,payload,order_index,created_at,updated_at")
+    .eq("id", safeId)
+    .limit(1);
+  if (fetchError) throw fetchError;
+  const current = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!current) {
+    throw new Error("Lead not found.");
+  }
+  const payload = normalizeLeadPayload(patch, current.payload || {});
+  const { data, error } = await supabase
+    .from(LEAD_PROSPECTS_TABLE)
+    .update({
+      payload,
+      source: String(payload.source || "csv"),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", safeId)
+    .select("id,dedupe_key,payload,order_index,created_at,updated_at")
+    .limit(1);
+  if (error) throw error;
+  const updated = Array.isArray(data) && data.length ? data[0] : null;
+  return mapLeadProspectRow(updated || { ...current, payload });
+}
+
 function buildInviteUrl(baseUrl, invite) {
   const encrypted = String(invite?.token_encrypted || "").trim();
   if (!encrypted) return "";
@@ -13619,6 +13866,80 @@ async function handleAdminSettingsSave(req, res) {
   }
 }
 
+async function handleAdminLeadsList(req, res, requestUrl) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to access the leads dashboard." });
+    return;
+  }
+  try {
+    const limit = Number(requestUrl.searchParams.get("limit") || 5000);
+    const leads = await listLeadProspects(limit);
+    sendJson(res, 200, { leads });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not load leads." });
+  }
+}
+
+async function handleAdminLeadsImport(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to import leads." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  try {
+    const result = await importLeadProspects(body?.leads || []);
+    sendJson(res, 200, { ok: true, ...result });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not import leads." });
+  }
+}
+
+async function handleAdminLeadUpdate(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    sendJson(res, 401, { error: "Authentication required." });
+    return;
+  }
+  if (!canManageRegistrationInvites(user)) {
+    sendJson(res, 403, { error: "You are not allowed to update leads." });
+    return;
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message || "Invalid request body." });
+    return;
+  }
+
+  try {
+    const lead = await updateLeadProspect(body?.id, body?.patch || {});
+    sendJson(res, 200, { ok: true, lead });
+  } catch (error) {
+    const status = /not found/i.test(error.message || "") ? 404 : 500;
+    sendJson(res, status, { error: error.message || "Could not update lead." });
+  }
+}
+
 async function handleAdminClientBillingSave(req, res) {
   const user = await getAuthenticatedUser(req);
   if (!user?.id) {
@@ -17165,6 +17486,18 @@ async function handleApi(req, res, requestUrl) {
   }
   if (pathname === "/api/admin/settings" && req.method === "POST") {
     await handleAdminSettingsSave(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/leads" && req.method === "GET") {
+    await handleAdminLeadsList(req, res, requestUrl);
+    return true;
+  }
+  if (pathname === "/api/admin/leads/import" && req.method === "POST") {
+    await handleAdminLeadsImport(req, res);
+    return true;
+  }
+  if (pathname === "/api/admin/leads/update" && req.method === "POST") {
+    await handleAdminLeadUpdate(req, res);
     return true;
   }
   if (pathname === "/api/admin/invites/revoke" && req.method === "POST") {

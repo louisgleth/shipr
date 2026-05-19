@@ -590,165 +590,6 @@ const LEAD_FOLLOW_UP_DECKS = Object.freeze({
   },
 });
 const DEFAULT_LEAD_FOLLOW_UP_LANGUAGE = "en";
-const LEADS_LOCAL_STORAGE_KEY = "shipide-lead-prospects-v1";
-const MOCK_LEAD_PROSPECTS = (() => {
-  const firstNames = [
-    "Claire",
-    "Pieter",
-    "Amandine",
-    "Mateo",
-    "Sanne",
-    "Marta",
-    "Elias",
-    "Juliette",
-    "Tom",
-    "Elena",
-    "Noah",
-    "Camille",
-    "Arthur",
-    "Sofia",
-    "Luca",
-    "Ines",
-    "Jonas",
-    "Leonie",
-    "Nils",
-    "Eva",
-    "Thiago",
-    "Marina",
-    "Anton",
-    "Lucie",
-    "Ruben",
-  ];
-  const lastNames = [
-    "Dupont",
-    "de Vries",
-    "Leroy",
-    "Esposito",
-    "Jansen",
-    "Henriques",
-    "Nordin",
-    "Bernard",
-    "Verbruggen",
-    "Rossi",
-    "Moreau",
-    "van den Berg",
-    "Costa",
-    "Lefevre",
-    "Svensson",
-    "Dubois",
-    "Silva",
-    "Ribeiro",
-    "Schmidt",
-    "Martens",
-    "Fontaine",
-    "Peeters",
-    "Lindholm",
-    "Navarro",
-    "Ferreira",
-  ];
-  const companyPrefixes = [
-    "Atelier",
-    "North Harbor",
-    "Lune",
-    "Verde",
-    "Noordline",
-    "Rivage",
-    "Serein",
-    "Fjord",
-    "Meridian",
-    "Maison",
-    "Studio",
-    "Nova",
-    "Forme",
-    "Collective",
-    "Harbor",
-    "Foundry",
-    "Works",
-    "Supply",
-    "Market",
-    "Commerce",
-  ];
-  const companySuffixes = [
-    "Goods",
-    "Home",
-    "Cycle",
-    "Atelier",
-    "Collective",
-    "Works",
-    "Supply",
-    "Studio",
-    "Living",
-    "Essentials",
-    "Store",
-    "Line",
-    "Market",
-    "Lab",
-    "Partners",
-    "Merch",
-  ];
-  const stacks = ["shopify", "woocommerce", "wix"];
-  const countryDialing = [
-    { code: "+32", base: "470000000" },
-    { code: "+31", base: "610000000" },
-    { code: "+33", base: "640000000" },
-    { code: "+39", base: "330000000" },
-    { code: "+351", base: "910000000" },
-    { code: "+46", base: "700000000" },
-  ];
-  const dispositions = [
-    "new",
-    "new",
-    "new",
-    "new",
-    "new",
-    "interested_follow_up",
-    "mild_follow_up",
-    "new",
-    "not_interested_follow_up",
-    "no_pickup",
-    "new",
-  ];
-
-  const formatPhone = (dialing, index) => {
-    const digits = String(Number(dialing.base) + index * 173).padStart(9, "0");
-    return `${dialing.code} ${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5, 7)} ${digits.slice(7, 9)}`;
-  };
-
-  return Array.from({ length: 100 }, (_, index) => {
-    const first = firstNames[index % firstNames.length];
-    const last = lastNames[(index * 3) % lastNames.length];
-    const companyPrefix = companyPrefixes[index % companyPrefixes.length];
-    const companySuffix = companySuffixes[(index * 5) % companySuffixes.length];
-    const techStack = stacks[index % stacks.length];
-    const dialing = countryDialing[index % countryDialing.length];
-    const month = ((index * 5) % 12) + 1;
-    const day = ((index * 7) % 27) + 1;
-    const year = 2016 + (index % 9);
-    const age = 27 + ((index * 7) % 23);
-    const estimatedMonthlyRevenue = 18000 + ((index * 9300) % 162000);
-    const estimatedParcelsPerMonth = 140 + ((index * 81) % 1480);
-    const companyName = `${companyPrefix} ${companySuffix}`;
-
-    return {
-      id: `lead-${index + 1}`,
-      name: `${first} ${last}`,
-      age,
-      phone: formatPhone(dialing, index + 1),
-      email: `${first}.${last}`
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, ".")
-        .replace(/^\.+|\.+$/g, "") + `@${companyName.toLowerCase().replace(/[^a-z0-9]+/g, "")}.com`,
-      companyName,
-      techStack,
-      storeOnlineSince: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      estimatedMonthlyRevenue,
-      estimatedParcelsPerMonth,
-      disposition: dispositions[index % dispositions.length],
-    };
-  });
-})();
 const leadProspectRepository = createLeadProspectRepository();
 const AUTH_SIGNUP_PREVIEW_DATA = {
   inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
@@ -12186,27 +12027,6 @@ function formatLeadPlatformLabel(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase()) || "Other";
 }
 
-function loadStoredLeadProspects() {
-  try {
-    const raw = window.localStorage?.getItem(LEADS_LOCAL_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredLeadProspects(rows) {
-  try {
-    const importedRows = Array.isArray(rows)
-      ? rows.filter((row) => String(row?.source || "") === "csv")
-      : [];
-    window.localStorage?.setItem(LEADS_LOCAL_STORAGE_KEY, JSON.stringify(importedRows));
-  } catch {
-    // Local persistence is an enhancement; failed storage should not block calling.
-  }
-}
-
 function getLeadHeaderValue(row, key) {
   if (!row || typeof row !== "object") return "";
   const direct = row[key];
@@ -12329,122 +12149,20 @@ function mergeLeadProspect(existing, incoming) {
   };
 }
 
-function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
-  const records = Array.isArray(seedRows)
-    ? seedRows.map((row, index) => ({
-        ...row,
-        orderIndex: index,
-        domain: normalizeLeadDomain(row?.domain, row?.url) || String(row?.domain || ""),
-        phones: splitLeadListValue(row?.phones || row?.phone || ""),
-        emails: splitLeadListValue(row?.emails || row?.email || ""),
-        disposition: LEAD_OUTCOME_META[row?.disposition] ? row.disposition : "new",
-        phone: String(row?.phone || ""),
-        email: String(row?.email || ""),
-        follow_up_email: String(row?.follow_up_email || row?.email || ""),
-        follow_up_subject: String(row?.follow_up_subject || ""),
-        follow_up_body: String(row?.follow_up_body || ""),
-        follow_up_deck_language: String(row?.follow_up_deck_language || DEFAULT_LEAD_FOLLOW_UP_LANGUAGE),
-        follow_up_deck_filename: String(row?.follow_up_deck_filename || ""),
-        follow_up_deck_url: String(row?.follow_up_deck_url || ""),
-        follow_up_sent_at: String(row?.follow_up_sent_at || ""),
-        last_called_at: String(row?.last_called_at || ""),
-        retry_after:
-          String(row?.retry_after || "") ||
-          (row?.disposition === "no_pickup"
-            ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-            : ""),
-        no_pickup_count: Math.max(
-          0,
-          Number(
-            row?.no_pickup_count ??
-              (row?.disposition === "no_pickup" ? 1 : 0)
-          ) || 0
-        ),
-        discarded_at: String(row?.discarded_at || ""),
-      }))
-    : [];
-
-  const storedImports = loadStoredLeadProspects().map((row, index) => ({
-    ...row,
-    source: "csv",
-    orderIndex: Number(row?.orderIndex ?? records.length + index),
-  }));
-  const store = new Map();
-  [...records, ...storedImports].forEach((row, index) => {
-    const withOrder = { ...row, orderIndex: Number(row?.orderIndex ?? index) };
-    const key = getLeadDedupeKey(withOrder);
-    const existing = key
-      ? Array.from(store.values()).find((candidate) => getLeadDedupeKey(candidate) === key)
-      : null;
-    if (existing) {
-      store.set(String(existing.id || ""), mergeLeadProspect(existing, withOrder));
-      return;
-    }
-    store.set(String(withOrder.id || buildLeadIdFromDomain(withOrder.domain, index)), withOrder);
-  });
-
-  const persistImported = () => {
-    saveStoredLeadProspects(Array.from(store.values()));
-  };
-
+function createLeadProspectRepository() {
   return {
     async list() {
-      await new Promise((resolve) => window.setTimeout(resolve, 110));
-      return Array.from(store.values())
-        .sort((left, right) => Number(left.orderIndex || 0) - Number(right.orderIndex || 0))
-        .map((row) => ({ ...row }));
+      const payload = await fetchApiWithAuth("/api/admin/leads?limit=5000", { timeoutMs: 20000 });
+      return Array.isArray(payload?.leads) ? payload.leads : [];
     },
     async updateLead(id, patch = {}) {
       const safeId = String(id || "").trim();
-      const current = store.get(safeId);
-      if (!current) {
-        throw new Error(tr("Lead not found."));
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 90));
-      const nextDisposition = LEAD_OUTCOME_META[patch?.disposition]
-        ? patch.disposition
-        : current.disposition;
-      const patchPhone = String(patch?.phone ?? "").trim();
-      const patchEmail = String(patch?.email ?? patch?.follow_up_email ?? "").trim();
-      const currentPhones = splitLeadListValue(current?.phones || current?.phone || "");
-      const currentEmails = splitLeadListValue(current?.emails || current?.email || "");
-      const nextPhones = [
-        ...(patchPhone ? [patchPhone] : []),
-        ...currentPhones,
-      ].filter((value, index, list) => {
-        const normalized = value.toLowerCase();
-        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+      const payload = await fetchApiWithAuth("/api/admin/leads/update", {
+        method: "POST",
+        body: JSON.stringify({ id: safeId, patch }),
+        timeoutMs: 20000,
       });
-      const nextEmails = [
-        ...(patchEmail ? [patchEmail] : []),
-        ...currentEmails,
-      ].filter((value, index, list) => {
-        const normalized = value.toLowerCase();
-        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
-      });
-      const next = {
-        ...current,
-        ...patch,
-        disposition: nextDisposition,
-        phones: nextPhones,
-        emails: nextEmails,
-        phone: nextPhones[0] || String(patch?.phone ?? current.phone ?? ""),
-        email: nextEmails[0] || String(patch?.email ?? current.email ?? ""),
-        follow_up_email: String(patch?.follow_up_email ?? nextEmails[0] ?? current.follow_up_email ?? current.email ?? ""),
-        follow_up_subject: String(patch?.follow_up_subject ?? current.follow_up_subject ?? ""),
-        follow_up_body: String(patch?.follow_up_body ?? current.follow_up_body ?? ""),
-        follow_up_sent_at: String(patch?.follow_up_sent_at ?? current.follow_up_sent_at ?? ""),
-        last_called_at: String(patch?.last_called_at ?? current.last_called_at ?? ""),
-        retry_after: String(patch?.retry_after ?? current.retry_after ?? ""),
-        no_pickup_count: Math.max(
-          0,
-          Number(patch?.no_pickup_count ?? current.no_pickup_count ?? 0) || 0
-        ),
-        discarded_at: String(patch?.discarded_at ?? current.discarded_at ?? ""),
-      };
-      store.set(safeId, next);
-      persistImported();
-      return { ...next };
+      return payload?.lead || null;
     },
     async updateDisposition(id, disposition) {
       return this.updateLead(id, {
@@ -12453,32 +12171,17 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
       });
     },
     async addLeads(rows = []) {
-      const incomingRows = Array.isArray(rows) ? rows : [];
-      let added = 0;
-      let updated = 0;
-      incomingRows.forEach((incoming, index) => {
-        const normalized = {
-          ...incoming,
-          source: "csv",
-          orderIndex: store.size + index,
-          disposition: LEAD_OUTCOME_META[incoming?.disposition] ? incoming.disposition : "new",
-          techStack: normalizeLeadStackKey(incoming?.primaryPlatform || incoming?.techStack),
-        };
-        const dedupeKey = getLeadDedupeKey(normalized);
-        if (!dedupeKey) return;
-        const existing = Array.from(store.values()).find((candidate) => getLeadDedupeKey(candidate) === dedupeKey);
-        if (existing) {
-          store.set(String(existing.id || ""), mergeLeadProspect(existing, normalized));
-          updated += 1;
-          return;
-        }
-        const id = normalized.id || buildLeadIdFromDomain(normalized.domain, store.size + 1);
-        store.set(String(id), { ...normalized, id });
-        added += 1;
+      const payload = await fetchApiWithAuth("/api/admin/leads/import", {
+        method: "POST",
+        body: JSON.stringify({ leads: Array.isArray(rows) ? rows : [] }),
+        timeoutMs: 30000,
       });
-      persistImported();
-      await new Promise((resolve) => window.setTimeout(resolve, 60));
-      return { added, updated, total: incomingRows.length };
+      return {
+        added: Number(payload?.added || 0),
+        updated: Number(payload?.updated || 0),
+        total: Number(payload?.total || 0),
+        leads: Array.isArray(payload?.leads) ? payload.leads : [],
+      };
     },
   };
 }
@@ -13337,7 +13040,7 @@ async function importLeadCsvFile(file) {
       return;
     }
     const result = await leadProspectRepository.addLeads(rows);
-    leadProspects = await leadProspectRepository.list();
+    leadProspects = Array.isArray(result.leads) ? result.leads : await leadProspectRepository.list();
     leadProspectsLoaded = true;
     renderLeadProspects();
     showToast(
