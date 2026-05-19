@@ -528,6 +528,11 @@ const LEAD_STACK_META = {
     icon: "Wix-icon.svg",
     className: "is-wix",
   },
+  other: {
+    label: "Other",
+    icon: "assets/favicon.png",
+    className: "is-other",
+  },
 };
 const LEAD_OUTCOME_META = {
   new: {
@@ -585,6 +590,7 @@ const LEAD_FOLLOW_UP_DECKS = Object.freeze({
   },
 });
 const DEFAULT_LEAD_FOLLOW_UP_LANGUAGE = "en";
+const LEADS_LOCAL_STORAGE_KEY = "shipide-lead-prospects-v1";
 const MOCK_LEAD_PROSPECTS = (() => {
   const firstNames = [
     "Claire",
@@ -2609,6 +2615,8 @@ const leadCallOutcomeDeckLink = document.getElementById("leadCallOutcomeDeckLink
 const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBody");
 const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
 const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
+const importLeadsButton = document.getElementById("importLeadsButton");
+const leadsCsvInput = document.getElementById("leadsCsvInput");
 const labelConfirmModal = document.getElementById("labelConfirmModal");
 const labelConfirmCancel = document.getElementById("labelConfirmCancel");
 const labelConfirmApprove = document.getElementById("labelConfirmApprove");
@@ -12086,11 +12094,210 @@ function formatMoney(value) {
   return `€${Number(value || 0).toFixed(2)}`;
 }
 
+function splitLeadListValue(value) {
+  return String(value || "")
+    .split(/[,;\n\r|]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry, index, list) => {
+      const normalized = entry.toLowerCase();
+      return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+    });
+}
+
+function normalizeLeadDomain(value, fallbackUrl = "") {
+  const direct = String(value || "").trim();
+  const candidate = direct || String(fallbackUrl || "").trim();
+  if (!candidate) return "";
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)
+      ? candidate
+      : `https://${candidate}`;
+    const parsed = new URL(withProtocol);
+    return parsed.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return candidate
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .replace(/^www\./i, "")
+      .split(/[/?#]/)[0]
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function getLeadDedupeKey(lead) {
+  return normalizeLeadDomain(lead?.domain, lead?.url) || String(lead?.id || "").trim().toLowerCase();
+}
+
+function normalizeLeadStackKey(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("shopify")) return "shopify";
+  if (normalized.includes("woo")) return "woocommerce";
+  if (normalized.includes("wix")) return "wix";
+  return normalized || "other";
+}
+
+function formatLeadPlatformLabel(value) {
+  const normalized = normalizeLeadStackKey(value);
+  if (LEAD_STACK_META[normalized]) return LEAD_STACK_META[normalized].label;
+  return String(value || normalized || "Other")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || "Other";
+}
+
+function loadStoredLeadProspects() {
+  try {
+    const raw = window.localStorage?.getItem(LEADS_LOCAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLeadProspects(rows) {
+  try {
+    const importedRows = Array.isArray(rows)
+      ? rows.filter((row) => String(row?.source || "") === "csv")
+      : [];
+    window.localStorage?.setItem(LEADS_LOCAL_STORAGE_KEY, JSON.stringify(importedRows));
+  } catch {
+    // Local persistence is an enhancement; failed storage should not block calling.
+  }
+}
+
+function getLeadHeaderValue(row, key) {
+  if (!row || typeof row !== "object") return "";
+  const direct = row[key];
+  if (direct != null) return String(direct).trim();
+  const normalizedKey = normalizeCsvHeaderToken(key);
+  for (const [rawKey, value] of Object.entries(row)) {
+    if (normalizeCsvHeaderToken(rawKey) === normalizedKey) {
+      return String(value || "").trim();
+    }
+  }
+  return "";
+}
+
+function buildLeadIdFromDomain(domain, index = 0) {
+  const slug = String(domain || `lead-${index + 1}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `lead-${slug || index + 1}`;
+}
+
+function normalizeImportedLeadRow(row, index = 0) {
+  const domain = normalizeLeadDomain(getLeadHeaderValue(row, "domain"), getLeadHeaderValue(row, "url"));
+  const url = getLeadHeaderValue(row, "url") || (domain ? `https://${domain}` : "");
+  const emails = splitLeadListValue(getLeadHeaderValue(row, "emails"));
+  const phones = splitLeadListValue(getLeadHeaderValue(row, "phones"));
+  const primaryPlatform = getLeadHeaderValue(row, "primary_platform") || splitLeadListValue(getLeadHeaderValue(row, "platforms"))[0] || "";
+  const techStack = normalizeLeadStackKey(primaryPlatform);
+  const companyName = getLeadHeaderValue(row, "meta_title") || domain || getLeadHeaderValue(row, "url") || `Lead ${index + 1}`;
+  return {
+    id: buildLeadIdFromDomain(domain || companyName, index),
+    source: "csv",
+    name: domain || companyName,
+    domain,
+    url,
+    country: getLeadHeaderValue(row, "country"),
+    countryIso: getLeadHeaderValue(row, "country_iso"),
+    city: getLeadHeaderValue(row, "city"),
+    language: getLeadHeaderValue(row, "text_lang"),
+    ecommerceProbability: getLeadHeaderValue(row, "ecommerce_probability"),
+    primaryPlatform,
+    platforms: splitLeadListValue(getLeadHeaderValue(row, "platforms")),
+    category: getLeadHeaderValue(row, "category"),
+    categories: splitLeadListValue(getLeadHeaderValue(row, "categories")),
+    subcategory: getLeadHeaderValue(row, "subcategory"),
+    metaTitle: getLeadHeaderValue(row, "meta_title"),
+    metaDescription: getLeadHeaderValue(row, "meta_description"),
+    tech: splitLeadListValue(getLeadHeaderValue(row, "tech")),
+    paymentProviders: splitLeadListValue(getLeadHeaderValue(row, "payment_providers")),
+    shippingCarriers: splitLeadListValue(getLeadHeaderValue(row, "shipping_carriers")),
+    emails,
+    phones,
+    email: emails[0] || "",
+    phone: phones[0] || "",
+    follow_up_email: emails[0] || "",
+    companyName,
+    techStack,
+    storeOnlineSince: "",
+    estimatedMonthlyRevenue: 0,
+    estimatedParcelsPerMonth: 0,
+    disposition: "new",
+  };
+}
+
+function parseLeadCsvText(text) {
+  const analysis = analyzeCsvText(text);
+  if (!analysis) return [];
+  return analysis.rows
+    .map((matrixRow) => {
+      const row = {};
+      analysis.headers.forEach((header, index) => {
+        row[header] = getCsvValueAt(matrixRow, index);
+      });
+      return row;
+    })
+    .map((row, index) => normalizeImportedLeadRow(row, index))
+    .filter((lead) => getLeadDedupeKey(lead));
+}
+
+function mergeLeadProspect(existing, incoming) {
+  const phones = [
+    ...splitLeadListValue(existing?.phones || existing?.phone || ""),
+    ...splitLeadListValue(incoming?.phones || incoming?.phone || ""),
+  ].filter((value, index, list) => list.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
+  const emails = [
+    ...splitLeadListValue(existing?.emails || existing?.email || ""),
+    ...splitLeadListValue(incoming?.emails || incoming?.email || ""),
+  ].filter((value, index, list) => list.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
+  const keep = (newValue, oldValue) => String(newValue || "").trim() || String(oldValue || "").trim();
+  return {
+    ...existing,
+    ...incoming,
+    id: existing?.id || incoming?.id,
+    source: incoming?.source || existing?.source,
+    orderIndex: Number(existing?.orderIndex ?? incoming?.orderIndex ?? 0),
+    disposition: existing?.disposition || incoming?.disposition || "new",
+    last_called_at: existing?.last_called_at || "",
+    retry_after: existing?.retry_after || "",
+    no_pickup_count: Math.max(0, Number(existing?.no_pickup_count || 0) || 0),
+    discarded_at: existing?.discarded_at || "",
+    follow_up_subject: existing?.follow_up_subject || "",
+    follow_up_body: existing?.follow_up_body || "",
+    follow_up_deck_language: existing?.follow_up_deck_language || DEFAULT_LEAD_FOLLOW_UP_LANGUAGE,
+    follow_up_deck_filename: existing?.follow_up_deck_filename || "",
+    follow_up_deck_url: existing?.follow_up_deck_url || "",
+    follow_up_sent_at: existing?.follow_up_sent_at || "",
+    domain: keep(incoming?.domain, existing?.domain),
+    url: keep(incoming?.url, existing?.url),
+    city: keep(incoming?.city, existing?.city),
+    category: keep(incoming?.category, existing?.category),
+    companyName: keep(incoming?.companyName, existing?.companyName),
+    primaryPlatform: keep(incoming?.primaryPlatform, existing?.primaryPlatform),
+    techStack: normalizeLeadStackKey(incoming?.primaryPlatform || incoming?.techStack || existing?.techStack),
+    phones,
+    emails,
+    phone: phones[0] || "",
+    email: emails[0] || "",
+    follow_up_email: existing?.follow_up_email || emails[0] || "",
+  };
+}
+
 function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
   const records = Array.isArray(seedRows)
     ? seedRows.map((row, index) => ({
         ...row,
         orderIndex: index,
+        domain: normalizeLeadDomain(row?.domain, row?.url) || String(row?.domain || ""),
+        phones: splitLeadListValue(row?.phones || row?.phone || ""),
+        emails: splitLeadListValue(row?.emails || row?.email || ""),
         disposition: LEAD_OUTCOME_META[row?.disposition] ? row.disposition : "new",
         phone: String(row?.phone || ""),
         email: String(row?.email || ""),
@@ -12118,7 +12325,28 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
       }))
     : [];
 
-  const store = new Map(records.map((row) => [String(row.id || ""), row]));
+  const storedImports = loadStoredLeadProspects().map((row, index) => ({
+    ...row,
+    source: "csv",
+    orderIndex: Number(row?.orderIndex ?? records.length + index),
+  }));
+  const store = new Map();
+  [...records, ...storedImports].forEach((row, index) => {
+    const withOrder = { ...row, orderIndex: Number(row?.orderIndex ?? index) };
+    const key = getLeadDedupeKey(withOrder);
+    const existing = key
+      ? Array.from(store.values()).find((candidate) => getLeadDedupeKey(candidate) === key)
+      : null;
+    if (existing) {
+      store.set(String(existing.id || ""), mergeLeadProspect(existing, withOrder));
+      return;
+    }
+    store.set(String(withOrder.id || buildLeadIdFromDomain(withOrder.domain, index)), withOrder);
+  });
+
+  const persistImported = () => {
+    saveStoredLeadProspects(Array.from(store.values()));
+  };
 
   return {
     async list() {
@@ -12137,12 +12365,33 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
       const nextDisposition = LEAD_OUTCOME_META[patch?.disposition]
         ? patch.disposition
         : current.disposition;
+      const patchPhone = String(patch?.phone ?? "").trim();
+      const patchEmail = String(patch?.email ?? patch?.follow_up_email ?? "").trim();
+      const currentPhones = splitLeadListValue(current?.phones || current?.phone || "");
+      const currentEmails = splitLeadListValue(current?.emails || current?.email || "");
+      const nextPhones = [
+        ...(patchPhone ? [patchPhone] : []),
+        ...currentPhones,
+      ].filter((value, index, list) => {
+        const normalized = value.toLowerCase();
+        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+      });
+      const nextEmails = [
+        ...(patchEmail ? [patchEmail] : []),
+        ...currentEmails,
+      ].filter((value, index, list) => {
+        const normalized = value.toLowerCase();
+        return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+      });
       const next = {
         ...current,
         ...patch,
         disposition: nextDisposition,
-        email: String(patch?.email ?? current.email ?? ""),
-        follow_up_email: String(patch?.follow_up_email ?? current.follow_up_email ?? current.email ?? ""),
+        phones: nextPhones,
+        emails: nextEmails,
+        phone: nextPhones[0] || String(patch?.phone ?? current.phone ?? ""),
+        email: nextEmails[0] || String(patch?.email ?? current.email ?? ""),
+        follow_up_email: String(patch?.follow_up_email ?? nextEmails[0] ?? current.follow_up_email ?? current.email ?? ""),
         follow_up_subject: String(patch?.follow_up_subject ?? current.follow_up_subject ?? ""),
         follow_up_body: String(patch?.follow_up_body ?? current.follow_up_body ?? ""),
         follow_up_sent_at: String(patch?.follow_up_sent_at ?? current.follow_up_sent_at ?? ""),
@@ -12155,6 +12404,7 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         discarded_at: String(patch?.discarded_at ?? current.discarded_at ?? ""),
       };
       store.set(safeId, next);
+      persistImported();
       return { ...next };
     },
     async updateDisposition(id, disposition) {
@@ -12163,11 +12413,44 @@ function createLeadProspectRepository(seedRows = MOCK_LEAD_PROSPECTS) {
         last_called_at: new Date().toISOString(),
       });
     },
+    async addLeads(rows = []) {
+      const incomingRows = Array.isArray(rows) ? rows : [];
+      let added = 0;
+      let updated = 0;
+      incomingRows.forEach((incoming, index) => {
+        const normalized = {
+          ...incoming,
+          source: "csv",
+          orderIndex: store.size + index,
+          disposition: LEAD_OUTCOME_META[incoming?.disposition] ? incoming.disposition : "new",
+          techStack: normalizeLeadStackKey(incoming?.primaryPlatform || incoming?.techStack),
+        };
+        const dedupeKey = getLeadDedupeKey(normalized);
+        if (!dedupeKey) return;
+        const existing = Array.from(store.values()).find((candidate) => getLeadDedupeKey(candidate) === dedupeKey);
+        if (existing) {
+          store.set(String(existing.id || ""), mergeLeadProspect(existing, normalized));
+          updated += 1;
+          return;
+        }
+        const id = normalized.id || buildLeadIdFromDomain(normalized.domain, store.size + 1);
+        store.set(String(id), { ...normalized, id });
+        added += 1;
+      });
+      persistImported();
+      await new Promise((resolve) => window.setTimeout(resolve, 60));
+      return { added, updated, total: incomingRows.length };
+    },
   };
 }
 
 function getLeadStackMeta(stack) {
-  return LEAD_STACK_META[String(stack || "").trim().toLowerCase()] || LEAD_STACK_META.shopify;
+  const key = normalizeLeadStackKey(stack);
+  if (LEAD_STACK_META[key]) return LEAD_STACK_META[key];
+  return {
+    ...LEAD_STACK_META.other,
+    label: formatLeadPlatformLabel(stack),
+  };
 }
 
 function getLeadOutcomeMeta(outcome) {
@@ -12187,6 +12470,56 @@ function formatLeadStoreSince(value) {
 function formatLeadParcels(value) {
   const count = Math.max(0, Number(value || 0));
   return count.toLocaleString(getUiLocale());
+}
+
+function getLeadPhones(lead) {
+  return splitLeadListValue(lead?.phones || lead?.phone || "");
+}
+
+function getLeadEmails(lead) {
+  return splitLeadListValue(lead?.emails || lead?.email || "");
+}
+
+function formatLeadContactCounts(lead) {
+  const phoneCount = getLeadPhones(lead).length;
+  const emailCount = getLeadEmails(lead).length;
+  return `${phoneCount} phone${phoneCount === 1 ? "" : "s"} • ${emailCount} email${emailCount === 1 ? "" : "s"}`;
+}
+
+function getLeadDisplayDomain(lead) {
+  return (
+    normalizeLeadDomain(lead?.domain, lead?.url) ||
+    String(lead?.domain || lead?.url || lead?.name || "--").trim()
+  );
+}
+
+function getLeadDisplayUrl(lead) {
+  const rawUrl = String(lead?.url || "").trim();
+  if (rawUrl) return /^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const domain = normalizeLeadDomain(lead?.domain, "");
+  return domain ? `https://${domain}` : "";
+}
+
+function getLeadDisplayCompany(lead) {
+  const value = String(lead?.metaTitle || lead?.companyName || lead?.name || "").trim();
+  const domain = getLeadDisplayDomain(lead);
+  return value && value !== domain ? value : "--";
+}
+
+function getLeadDisplayCity(lead) {
+  return [lead?.city, lead?.countryIso || lead?.country]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" · ") || "--";
+}
+
+function getLeadDisplayCategory(lead) {
+  const category = String(lead?.category || "").trim();
+  const subcategory = String(lead?.subcategory || "").trim();
+  if (category && subcategory && category.toLowerCase() !== subcategory.toLowerCase()) {
+    return `${category} · ${subcategory}`;
+  }
+  return category || subcategory || "--";
 }
 
 function parseLeadTimestamp(value) {
@@ -12247,6 +12580,30 @@ function getLeadCallHref(phone) {
     .trim()
     .replace(/[^\d+]/g, "");
   return safePhone ? `tel:${safePhone}` : "";
+}
+
+function closeLeadPhoneChoiceMenus(exceptLeadId = "") {
+  if (!leadsTableBody) return;
+  leadsTableBody.querySelectorAll("[data-lead-phone-menu]").forEach((menu) => {
+    const isExcept =
+      exceptLeadId && String(menu.getAttribute("data-lead-phone-menu") || "") === String(exceptLeadId);
+    menu.classList.toggle("is-open", Boolean(isExcept && !menu.classList.contains("is-open")));
+  });
+}
+
+function openLeadPhoneChoiceMenu(leadId) {
+  if (!leadsTableBody) return;
+  const safeLeadId = String(leadId || "").trim();
+  let didOpen = false;
+  leadsTableBody.querySelectorAll("[data-lead-phone-menu]").forEach((menu) => {
+    const isTarget = String(menu.getAttribute("data-lead-phone-menu") || "") === safeLeadId;
+    const shouldOpen = isTarget && !menu.classList.contains("is-open");
+    menu.classList.toggle("is-open", shouldOpen);
+    if (shouldOpen) didOpen = true;
+  });
+  if (!didOpen) {
+    closeLeadPhoneChoiceMenus();
+  }
 }
 
 function findLeadProspectById(leadId) {
@@ -12313,16 +12670,29 @@ function getFilteredLeadProspects() {
   return leadProspects.filter((lead) => {
     const matchesBucket = getLeadOutcomeMeta(lead?.disposition).listBucket === leadListBucket;
     if (!matchesBucket) return false;
-    const matchesStack = stack === "all" || String(lead?.techStack || "").trim().toLowerCase() === stack;
+    const leadStack = normalizeLeadStackKey(lead?.primaryPlatform || lead?.techStack);
+    const matchesStack = stack === "all" || leadStack === stack;
     if (!matchesStack) return false;
     if (!query) return true;
+    const phones = getLeadPhones(lead);
+    const emails = getLeadEmails(lead);
     const haystack = [
       lead?.name,
       lead?.phone,
       lead?.email,
+      phones.join(" "),
+      emails.join(" "),
+      lead?.domain,
+      lead?.url,
+      lead?.city,
+      lead?.country,
+      lead?.countryIso,
+      lead?.category,
+      lead?.subcategory,
+      lead?.primaryPlatform,
       lead?.companyName,
-      getLeadStackMeta(lead?.techStack).label,
-      formatLeadStoreSince(lead?.storeOnlineSince),
+      lead?.metaTitle,
+      getLeadStackMeta(lead?.primaryPlatform || lead?.techStack).label,
     ]
       .join(" ")
       .toLowerCase();
@@ -12376,32 +12746,51 @@ function renderLeadProspects() {
   leadsTableWrap.classList.remove("is-hidden");
 
   filtered.forEach((lead) => {
-    const stack = getLeadStackMeta(lead?.techStack);
+    const stack = getLeadStackMeta(lead?.primaryPlatform || lead?.techStack);
     const outcome = getLeadOutcomeMeta(lead?.disposition);
     const showDiscardAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
     const showCallAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
+    const phones = getLeadPhones(lead);
+    const domain = getLeadDisplayDomain(lead);
+    const url = getLeadDisplayUrl(lead);
+    const phoneChoices = phones
+      .map(
+        (phone) => `<button type="button" class="lead-phone-choice-button mono" data-lead-call="${escapeHtml(
+          String(lead?.id || "")
+        )}" data-lead-phone="${escapeHtml(phone)}">${escapeHtml(phone)}</button>`
+      )
+      .join("");
     const row = document.createElement("tr");
     row.className = "leads-row";
     row.innerHTML = `
       <td>
         <div class="lead-prospect">
-          <div class="lead-prospect-name">${escapeHtml(String(lead?.name || "--"))}</div>
-          <div class="lead-prospect-phone mono">${escapeHtml(String(lead?.phone || "--"))}</div>
+          <div class="lead-prospect-name">${escapeHtml(domain || "--")}</div>
+          <div class="lead-prospect-phone mono">${escapeHtml(formatLeadContactCounts(lead))}</div>
         </div>
       </td>
-      <td class="mono leads-table-center">${escapeHtml(String(lead?.age || "--"))}</td>
       <td>
-        <div class="lead-company">${escapeHtml(String(lead?.companyName || "--"))}</div>
+        <div class="lead-company">${escapeHtml(getLeadDisplayCompany(lead))}</div>
       </td>
+      <td>${escapeHtml(getLeadDisplayCity(lead))}</td>
       <td>
         <span class="lead-stack-pill ${stack.className}">
           <img src="${escapeHtml(stack.icon)}" alt="" class="lead-stack-pill-logo" />
           <span>${escapeHtml(stack.label)}</span>
         </span>
       </td>
-      <td class="mono">${escapeHtml(formatLeadStoreSince(lead?.storeOnlineSince))}</td>
-      <td class="mono leads-table-metric">${escapeHtml(formatMoney(lead?.estimatedMonthlyRevenue || 0))}</td>
-      <td class="mono leads-table-metric">${escapeHtml(formatLeadParcels(lead?.estimatedParcelsPerMonth || 0))}</td>
+      <td>
+        <div class="lead-category">${escapeHtml(getLeadDisplayCategory(lead))}</div>
+      </td>
+      <td>
+        ${
+          url
+            ? `<a class="lead-url-link mono" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                url.replace(/^https?:\/\//i, "")
+              )}</a>`
+            : `<span class="lead-url-link mono">--</span>`
+        }
+      </td>
       <td>
         <span class="lead-outcome-pill ${outcome.className}">${escapeHtml(getLeadOutcomeDisplayLabel(lead))}</span>
       </td>
@@ -12409,12 +12798,21 @@ function renderLeadProspects() {
         <div class="leads-table-actions-group">
           ${
             showCallAction
-              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
-                  String(lead?.id || "")
-                )}">
+              ? `<div class="lead-call-choice-wrap">
+          <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
+            String(lead?.id || "")
+          )}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.4 19.4 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4 1.9h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7 10.3a16 16 0 0 0 6.7 6.7l1.9-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.6 1.9z"/></svg>
             <span>Call</span>
-          </button>`
+          </button>
+          ${
+            phones.length > 1
+              ? `<div class="lead-phone-choice-menu" data-lead-phone-menu="${escapeHtml(
+                  String(lead?.id || "")
+                )}">${phoneChoices}</div>`
+              : ""
+          }
+        </div>`
               : ""
           }
           ${
@@ -12847,8 +13245,8 @@ async function sendLeadFollowUpForCurrentLead() {
   }
 }
 
-function launchLeadCall(lead) {
-  const href = getLeadCallHref(lead?.phone);
+function launchLeadCall(lead, selectedPhone = "") {
+  const href = getLeadCallHref(selectedPhone || lead?.phone);
   if (!href) {
     showToast(tr("Phone number unavailable for this lead."), { tone: "error" });
     return;
@@ -12863,13 +13261,60 @@ function launchLeadCall(lead) {
   link.remove();
 }
 
-function handleLeadCallAction(leadId) {
+function handleLeadCallAction(leadId, selectedPhone = "") {
   const lead = findLeadProspectById(leadId);
   if (!lead) return;
-  launchLeadCall(lead);
+  const phones = getLeadPhones(lead);
+  const phone = String(selectedPhone || phones[0] || lead?.phone || "").trim();
+  if (!selectedPhone && phones.length > 1) {
+    openLeadPhoneChoiceMenu(leadId);
+    return;
+  }
+  closeLeadPhoneChoiceMenus();
+  launchLeadCall(lead, phone);
   window.setTimeout(() => {
-    openLeadCallOutcomeForLead(lead);
+    openLeadCallOutcomeForLead({
+      ...lead,
+      phone,
+    });
   }, 120);
+}
+
+async function importLeadCsvFile(file) {
+  if (!file) return;
+  const fileName = String(file.name || "");
+  if (fileName && !/\.(csv|tsv|txt)$/i.test(fileName)) {
+    showToast(tr("Upload a CSV, TSV, or TXT file."), { tone: "error" });
+    return;
+  }
+  if (importLeadsButton instanceof HTMLButtonElement) {
+    importLeadsButton.disabled = true;
+  }
+  try {
+    const text = await file.text();
+    const rows = parseLeadCsvText(text);
+    if (!rows.length) {
+      showToast(tr("No usable leads found in this CSV."), { tone: "error" });
+      return;
+    }
+    const result = await leadProspectRepository.addLeads(rows);
+    leadProspects = await leadProspectRepository.list();
+    leadProspectsLoaded = true;
+    renderLeadProspects();
+    showToast(
+      tr("Imported {added} new leads and updated {updated} existing leads.", {
+        added: result.added,
+        updated: result.updated,
+      }),
+      { tone: "success" }
+    );
+  } catch (error) {
+    showToast(error?.message || tr("Could not import this leads CSV."), { tone: "error" });
+  } finally {
+    if (importLeadsButton instanceof HTMLButtonElement) {
+      importLeadsButton.disabled = false;
+    }
+  }
 }
 
 async function loadLeadProspects(options = {}) {
@@ -26798,6 +27243,22 @@ if (reloadLeadsButton) {
   });
 }
 
+if (importLeadsButton) {
+  importLeadsButton.addEventListener("click", () => {
+    leadsCsvInput?.click();
+  });
+}
+
+if (leadsCsvInput) {
+  leadsCsvInput.addEventListener("change", () => {
+    const file = leadsCsvInput.files?.[0];
+    if (file) {
+      void importLeadCsvFile(file);
+    }
+    leadsCsvInput.value = "";
+  });
+}
+
 if (leadsTableBody) {
   leadsTableBody.addEventListener("click", (event) => {
     const discardTarget =
@@ -26808,7 +27269,7 @@ if (leadsTableBody) {
     }
     const target = event.target instanceof Element ? event.target.closest("[data-lead-call]") : null;
     if (!(target instanceof HTMLButtonElement)) return;
-    handleLeadCallAction(target.dataset.leadCall);
+    handleLeadCallAction(target.dataset.leadCall, target.dataset.leadPhone || "");
   });
 }
 

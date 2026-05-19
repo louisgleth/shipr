@@ -2121,7 +2121,7 @@
             <div class="leads-board-toolbar">
               <label class="field admin-toolbar-field">
                 <span>Search</span>
-                <input type="text" id="leadsSearchInput" placeholder="Name, company, phone" />
+                <input type="text" id="leadsSearchInput" placeholder="Domain, URL, city, phone" />
               </label>
               <label class="field admin-toolbar-field admin-toolbar-field-compact">
                 <span>Stack</span>
@@ -2132,6 +2132,11 @@
                   <option value="wix">Wix eCommerce</option>
                 </select>
               </label>
+              <input type="file" id="leadsCsvInput" accept=".csv,.tsv,.txt" hidden />
+              <button type="button" class="btn btn-secondary btn-sm" id="importLeadsButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                <span>Import CSV</span>
+              </button>
               <button type="button" class="btn btn-secondary btn-sm" id="reloadLeadsButton">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0 2.3 5.7"/><polyline points="20 4 20 11 13 11"/></svg>
                 <span>Refresh Queue</span>
@@ -2147,12 +2152,11 @@
               <thead>
                 <tr>
                   <th scope="col">Prospect</th>
-                  <th scope="col">Age</th>
                   <th scope="col">Company</th>
+                  <th scope="col">City</th>
                   <th scope="col">Tech Stack</th>
-                  <th scope="col">Online Since</th>
-                  <th scope="col">Est. Revenue</th>
-                  <th scope="col">Parcels / Mo</th>
+                  <th scope="col">Category</th>
+                  <th scope="col">URL</th>
                   <th scope="col">Outcome</th>
                   <th scope="col" class="leads-table-actions-col">Action</th>
                 </tr>
