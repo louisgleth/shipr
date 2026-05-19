@@ -25909,31 +25909,43 @@ function renderCheckoutStepMode() {
 function updatePreview() {
   const activeLabel = getActiveLabel();
   const activeData = activeLabel.data || state.info;
-  previewService.textContent = translateServiceName(state.selection.type);
-  previewTracking.textContent = activeLabel.trackingId || "TRACKING";
+  if (previewService) {
+    previewService.textContent = translateServiceName(state.selection.type);
+  }
+  if (previewTracking) {
+    previewTracking.textContent = activeLabel.trackingId || "TRACKING";
+  }
 
-  previewFrom.textContent = formatAddress(
-    activeData.senderName,
-    activeData.senderStreet,
-    activeData.senderCity,
-    activeData.senderState,
-    activeData.senderZip,
-    ""
-  );
+  if (previewFrom) {
+    previewFrom.textContent = formatAddress(
+      activeData.senderName,
+      activeData.senderStreet,
+      activeData.senderCity,
+      activeData.senderState,
+      activeData.senderZip,
+      ""
+    );
+  }
 
-  previewTo.textContent = formatAddress(
-    activeData.recipientName,
-    activeData.recipientStreet,
-    activeData.recipientCity,
-    activeData.recipientState,
-    activeData.recipientZip,
-    activeData.recipientCountry
-  );
+  if (previewTo) {
+    previewTo.textContent = formatAddress(
+      activeData.recipientName,
+      activeData.recipientStreet,
+      activeData.recipientCity,
+      activeData.recipientState,
+      activeData.recipientZip,
+      activeData.recipientCountry
+    );
+  }
 
-  previewWeight.textContent = activeData.packageWeight
-    ? `${activeData.packageWeight} kg`
-    : "--";
-  previewDims.textContent = activeData.packageDims || "--";
+  if (previewWeight) {
+    previewWeight.textContent = activeData.packageWeight
+      ? `${activeData.packageWeight} kg`
+      : "--";
+  }
+  if (previewDims) {
+    previewDims.textContent = activeData.packageDims || "--";
+  }
 }
 
 function renderActiveBuilderPanel() {
