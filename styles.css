@@ -9353,7 +9353,7 @@ html[data-theme="light"] .iban-topup-reference-block {
   bottom: calc(100% + 6px);
   min-height: 26px;
   padding: 0 9px;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--stroke) 58%, transparent);
   border-radius: var(--radius);
   display: inline-flex;
   align-items: center;

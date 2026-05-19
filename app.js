@@ -1348,7 +1348,7 @@ const TRANSLATIONS = {
   "Weight (kg)": { fr: "Poids (kg)", nl: "Gewicht (kg)" },
   "Weight": { fr: "Poids", nl: "Gewicht" },
   "Dimensions (cm)": { fr: "Dimensions (cm)", nl: "Afmetingen (cm)" },
-  "Dims (L x W x H, cm)": { fr: "Dims (L x l x H, cm)", nl: "Afm. (L x B x H, cm)" },
+  "Dims (LxWxH, cm)": { fr: "Dims (LxlxH, cm)", nl: "Afm. (LxBxH, cm)" },
   "CSV Batch Upload": { fr: "Import CSV en lot", nl: "CSV-batch upload" },
   "Imported rows ready for review.": { fr: "Lignes importées prêtes à être vérifiées.", nl: "Geïmporteerde rijen klaar voor controle." },
   "Edit": { fr: "Modifier", nl: "Bewerken" },
@@ -24805,10 +24805,17 @@ function isCsvFieldMissing(key, value) {
   return false;
 }
 
+function hasCsvMissingField(key) {
+  if (!Array.isArray(state.csvRows)) return false;
+  const normalizedKey = String(key || "");
+  return state.csvRows.some((row) => row && isCsvFieldMissing(normalizedKey, row[normalizedKey]));
+}
+
 function canApplyCsvFieldToMissing(key, value) {
   const normalizedKey = String(key || "");
   const trimmed = String(value || "").trim();
   if (!trimmed) return false;
+  if (!hasCsvMissingField(normalizedKey)) return false;
   if (normalizedKey === "packageWeight") {
     return parsePackageWeightKg(trimmed) > 0;
   }
@@ -24903,7 +24910,7 @@ function renderCsvTable() {
       th.dataset.key = column.key;
       th.textContent =
         column.key === "packageDims"
-          ? tr("Dims (L x W x H, cm)")
+          ? tr("Dims (LxWxH, cm)")
           : column.key === "packageWeight"
             ? tr("Weight (KG)")
             : tr(column.label);
