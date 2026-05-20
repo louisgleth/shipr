@@ -553,6 +553,12 @@ const LEAD_OUTCOME_META = {
     className: "is-mild",
     listBucket: "email_waiting",
   },
+  post_call_deck: {
+    label: "Post-call email",
+    summaryBucket: "followUp",
+    className: "is-interested",
+    listBucket: "email_waiting",
+  },
   mild_follow_up: {
     label: "Mildly interested",
     summaryBucket: "followUp",
@@ -12692,6 +12698,51 @@ function formatLeadContactCounts(lead) {
   return `${phoneCount} phone${phoneCount === 1 ? "" : "s"} • ${emailCount} email${emailCount === 1 ? "" : "s"}`;
 }
 
+function countLeadContactsByClassification(lead) {
+  const counts = {
+    picPhone: 0,
+    genericPhone: 0,
+    picEmail: 0,
+    genericEmail: 0,
+  };
+  getLeadContactSet(lead).forEach((contact) => {
+    const kind = String(contact?.kind || "");
+    const type = String(contact?.type || "");
+    if (kind === "phone" && type === "pic") counts.picPhone += 1;
+    if (kind === "phone" && type !== "pic") counts.genericPhone += 1;
+    if (kind === "email" && type === "pic") counts.picEmail += 1;
+    if (kind === "email" && type !== "pic") counts.genericEmail += 1;
+  });
+  return counts;
+}
+
+function renderLeadContactClassificationBadges(lead) {
+  const counts = countLeadContactsByClassification(lead);
+  const badges = [
+    counts.picPhone
+      ? { label: tr("P.I.C. phone"), count: counts.picPhone, className: "is-pic" }
+      : null,
+    counts.genericPhone
+      ? { label: tr("Non-P.I.C. phone"), count: counts.genericPhone, className: "is-generic" }
+      : null,
+    counts.picEmail
+      ? { label: tr("P.I.C. email"), count: counts.picEmail, className: "is-pic" }
+      : null,
+    counts.genericEmail
+      ? { label: tr("Non-P.I.C. email"), count: counts.genericEmail, className: "is-generic" }
+      : null,
+  ].filter(Boolean);
+  if (!badges.length) {
+    return `<div class="lead-contact-badges"><span class="lead-contact-badge is-empty">${escapeHtml(tr("No contact"))}</span></div>`;
+  }
+  return `<div class="lead-contact-badges">${badges
+    .map((badge) => {
+      const suffix = badge.count > 1 ? ` ×${badge.count}` : "";
+      return `<span class="lead-contact-badge ${badge.className}">${escapeHtml(badge.label)}${escapeHtml(suffix)}</span>`;
+    })
+    .join("")}</div>`;
+}
+
 function getLeadDisplayDomain(lead) {
   return (
     normalizeLeadDomain(lead?.domain, lead?.url) ||
@@ -12990,11 +13041,6 @@ function renderLeadProspects() {
     const emails = getLeadEmails(lead);
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
-    const contactSummary = [
-      phones.length ? `${phones.length} phone${phones.length === 1 ? "" : "s"}` : "",
-      emails.length ? `${emails.length} email${emails.length === 1 ? "" : "s"}` : "",
-      route.pic.phone || route.pic.email ? "P.I.C. known" : "",
-    ].filter(Boolean).join(" • ");
     const currentContactLabel = route.contact?.value ? ` · ${route.contact.value}` : "";
     const row = document.createElement("tr");
     row.className = "leads-row";
@@ -13002,7 +13048,8 @@ function renderLeadProspects() {
       <td>
         <div class="lead-prospect">
           <div class="lead-prospect-name">${escapeHtml(domain || "--")}</div>
-          <div class="lead-prospect-phone mono">${escapeHtml(contactSummary || formatLeadContactCounts(lead))}</div>
+          <div class="lead-prospect-phone mono">${escapeHtml(formatLeadContactCounts(lead))}</div>
+          ${renderLeadContactClassificationBadges(lead)}
         </div>
       </td>
       <td>
@@ -13215,11 +13262,16 @@ function getLeadFollowUpDeckUrl(language = leadCallOutcomeLanguageValue) {
 function updateLeadCallOutcomeDeckUi() {
   const language = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
   const deck = getLeadFollowUpDeck(language);
+  const showDeck = leadCallOutcomePendingOutcome !== "initial_outreach";
   if (leadCallOutcomeDeckName) {
     leadCallOutcomeDeckName.textContent = deck.filename;
   }
   if (leadCallOutcomeDeckLink instanceof HTMLAnchorElement) {
     leadCallOutcomeDeckLink.href = deck.url;
+  }
+  const deckCard = leadCallOutcomeDeckName?.closest?.(".lead-callout-deck-card");
+  if (deckCard instanceof HTMLElement) {
+    deckCard.classList.toggle("is-hidden", !showDeck);
   }
 }
 
@@ -13288,18 +13340,18 @@ function getLeadFollowUpTemplateParts(lead, outcome, language) {
     if (languageKey === "fr") {
       return {
         subject: `Shipide pour ${companyName}`,
-        body: `Bonjour,\n\nJe me permets de vous contacter au sujet de vos expéditions chez ${companyName}.\n\nShipide aide les e-commerçants à accéder à de meilleurs tarifs d'expédition grâce à un modèle de volume groupé, tout en gardant la génération d'étiquettes et la facturation dans un flux simple.\n\nJe vous joins notre courte présentation ici :\n${deckUrl}\n\nSi cela vous semble pertinent, je peux vous montrer rapidement comment cela fonctionnerait pour votre volume d'expédition.\n\nBien à vous,\nShipide`,
+        body: `Bonjour,\n\nJe me permets de vous contacter au sujet de vos expéditions chez ${companyName}.\n\nShipide aide les e-commerçants à accéder à de meilleurs tarifs d'expédition grâce à un modèle de volume groupé, tout en gardant la génération d'étiquettes et la facturation dans un flux simple.\n\nSi cela vous semble pertinent, je peux vous montrer rapidement comment cela fonctionnerait pour votre volume d'expédition.\n\nBien à vous,\nShipide`,
       };
     }
     if (languageKey === "nl") {
       return {
         subject: `Shipide voor ${companyName}`,
-        body: `Hallo,\n\nIk neem contact op over de verzendingen van ${companyName}.\n\nShipide helpt e-commercebedrijven betere verzendtarieven te krijgen via gebundeld verzendvolume, met labelcreatie en facturatie in één eenvoudige workflow.\n\nU vindt onze korte presentatie hier:\n${deckUrl}\n\nAls dit relevant is, toon ik graag kort hoe dit voor uw verzendvolume zou werken.\n\nMet vriendelijke groet,\nShipide`,
+        body: `Hallo,\n\nIk neem contact op over de verzendingen van ${companyName}.\n\nShipide helpt e-commercebedrijven betere verzendtarieven te krijgen via gebundeld verzendvolume, met labelcreatie en facturatie in één eenvoudige workflow.\n\nAls dit relevant is, toon ik graag kort hoe dit voor uw verzendvolume zou werken.\n\nMet vriendelijke groet,\nShipide`,
       };
     }
     return {
       subject: `Shipide for ${companyName}`,
-      body: `Hi,\n\nI am reaching out about shipping operations at ${companyName}.\n\nShipide helps ecommerce businesses access better carrier rates through pooled shipping volume, while keeping label generation and billing in one simple workflow.\n\nI am including our short pitch deck here:\n${deckUrl}\n\nIf relevant, I would be glad to show you quickly how this could work for your shipping volume.\n\nBest,\nShipide`,
+      body: `Hi,\n\nI am reaching out about shipping operations at ${companyName}.\n\nShipide helps ecommerce businesses access better carrier rates through pooled shipping volume, while keeping label generation and billing in one simple workflow.\n\nIf relevant, I would be glad to show you quickly how this could work for your shipping volume.\n\nBest,\nShipide`,
     };
   }
   if (outcome === "pic_request") {
@@ -13385,6 +13437,7 @@ function openLeadFollowUpComposer(outcome) {
   if (leadCallOutcomeLanguage instanceof HTMLSelectElement) {
     leadCallOutcomeLanguage.value = initialLanguage;
   }
+  leadCallOutcomePendingOutcome = outcome;
   updateLeadCallOutcomeDeckUi();
   const draft = buildLeadFollowUpDraft(
     {
@@ -13395,7 +13448,6 @@ function openLeadFollowUpComposer(outcome) {
     outcome,
     initialLanguage
   );
-  leadCallOutcomePendingOutcome = outcome;
   if (leadCallOutcomeStepPill) {
     leadCallOutcomeStepPill.textContent =
       outcome === "initial_outreach"
@@ -13581,7 +13633,7 @@ async function saveLeadCallOutcome(outcome) {
     }
     if (safeOutcome === "take_action") {
       setLeadCallOutcomeBusy(false);
-      openLeadFollowUpComposer("initial_outreach");
+      openLeadFollowUpComposer("post_call_deck");
       return;
     }
     if (safeOutcome === "do_not_take_action") {
@@ -13679,7 +13731,10 @@ async function sendLeadFollowUpForCurrentLead() {
   if (!lead || !leadCallOutcomePendingOutcome) return;
   const contact = getLeadCallOutcomeEditedContact();
   const selectedLanguage = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
-  const selectedDeck = getLeadFollowUpDeck(selectedLanguage);
+  const shouldIncludeDeck = leadCallOutcomePendingOutcome !== "initial_outreach";
+  const selectedDeck = shouldIncludeDeck
+    ? getLeadFollowUpDeck(selectedLanguage)
+    : { filename: "", url: "" };
   const email = contact.email || String(lead?.follow_up_email || lead?.email || "").trim();
   const subject =
     leadCallOutcomeEmailSubject instanceof HTMLInputElement

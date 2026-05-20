@@ -2846,6 +2846,39 @@ html[data-theme="light"] .scroll-fade-wrap--card {
   color: var(--muted);
 }
 
+.lead-contact-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.lead-contact-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid rgba(126, 133, 148, 0.24);
+  border-radius: 999px;
+  background: rgba(126, 133, 148, 0.08);
+  color: var(--muted);
+  font-size: var(--fs-3xs);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lead-contact-badge.is-pic {
+  border-color: rgba(137, 255, 194, 0.24);
+  background: rgba(137, 255, 194, 0.08);
+  color: var(--success);
+}
+
+.lead-contact-badge.is-generic {
+  border-color: rgba(165, 173, 190, 0.22);
+  background: rgba(165, 173, 190, 0.08);
+  color: var(--muted);
+}
+
 .lead-category {
   max-width: 180px;
   overflow: hidden;
