@@ -574,6 +574,9 @@ const LEAD_OUTCOME_META = {
 };
 const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "admin",
+  "accounting",
+  "accounts",
+  "accountspayable",
   "administratie",
   "administration",
   "advies",
@@ -591,21 +594,36 @@ const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "bureau",
   "business",
   "care",
+  "career",
+  "careers",
   "client",
   "clients",
+  "collab",
+  "collaboration",
   "compta",
   "comptabilite",
   "comptabilité",
   "contact",
+  "communicatie",
+  "communication",
+  "communications",
+  "comms",
   "customer",
   "customers",
   "customerservice",
   "customer.service",
   "dienst",
   "ecommerce",
+  "emploi",
   "facturation",
+  "event",
+  "events",
+  "evenement",
+  "evenementen",
   "finance",
   "finances",
+  "factuur",
+  "facturen",
   "general",
   "hallo",
   "hello",
@@ -613,24 +631,46 @@ const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "helpdesk",
   "hi",
   "hoi",
+  "hr",
+  "humanresources",
   "info",
   "informaties",
   "information",
+  "invoices",
+  "invoice",
   "klanten",
   "klantendienst",
   "klantenservice",
+  "jobs",
   "legal",
   "logistiek",
   "logistics",
   "magasin",
   "mail",
   "marketing",
+  "media",
+  "news",
+  "newsletter",
   "no-reply",
   "noreply",
   "office",
+  "people",
   "orders",
   "order",
+  "partnership",
+  "partnerships",
+  "partner",
+  "partners",
+  "pers",
+  "presse",
+  "press",
+  "pr",
   "privacy",
+  "publicrelations",
+  "public.relations",
+  "recruiting",
+  "recruitment",
+  "recrutement",
   "retail",
   "retour",
   "returns",
@@ -640,11 +680,17 @@ const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "shipping",
   "shop",
   "store",
+  "social",
+  "socialmedia",
   "support",
   "team",
+  "talent",
   "verkoop",
   "warehouse",
   "webshop",
+  "werkenbij",
+  "vacature",
+  "vacatures",
   "winkel",
 ]);
 const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
@@ -2510,6 +2556,7 @@ const leadsSearchInput = document.getElementById("leadsSearchInput");
 const leadsStackFilter = document.getElementById("leadsStackFilter");
 const reloadLeadsButton = document.getElementById("reloadLeadsButton");
 const syncLeadRepliesButton = document.getElementById("syncLeadRepliesButton");
+const mockLeadsButton = document.getElementById("mockLeadsButton");
 const leadsStatus = document.getElementById("leadsStatus");
 const leadsEmpty = document.getElementById("leadsEmpty");
 const leadsTableWrap = document.getElementById("leadsTableWrap");
@@ -3043,6 +3090,8 @@ let leadProspectsLoading = false;
 let leadProspectsLoaded = false;
 let leadProspectsLoadPromise = null;
 let leadProspectsLoadRequestToken = 0;
+let leadMockModeEnabled = false;
+let leadMockSnapshot = null;
 let leadListBucket = "active";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
@@ -12845,6 +12894,15 @@ function renderLeadProspects() {
   if (syncLeadRepliesButton) {
     syncLeadRepliesButton.disabled = leadProspectsLoading;
   }
+  if (mockLeadsButton) {
+    const label = mockLeadsButton.querySelector("span");
+    const text = leadMockModeEnabled ? tr("Restore Live") : tr("Mock Flow");
+    if (label) {
+      label.textContent = text;
+    } else {
+      mockLeadsButton.textContent = text;
+    }
+  }
 
   const bucketRows = leadProspects.filter((lead) => {
     const routeBucket = getLeadRouteState(lead).bucket;
@@ -13650,8 +13708,249 @@ function handleLeadWorkflowAction(leadId) {
   openLeadWorkflowModal(lead);
 }
 
+function buildMockLeadWorkflowProspects() {
+  const makeLead = (row, index, overrides = {}) => {
+    const lead = normalizeImportedLeadRow(row, index);
+    const base = {
+      ...lead,
+      id: `mock-lead-${index + 1}`,
+      orderIndex: index,
+      source: "mock",
+      ...overrides,
+    };
+    return {
+      ...base,
+      contacts: overrides.contacts || getLeadContactSet(base),
+      timeline: overrides.timeline || [
+        createLeadEvent("lead_imported", "Mock lead created", {
+          channel: "system",
+          metadata: { source: "mock" },
+        }),
+      ],
+    };
+  };
+  const now = new Date().toISOString();
+  const rowTemplates = [
+    {
+      domain: "ateliermeridian.be",
+      url: "https://ateliermeridian.be",
+      city: "Leuven",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Fashion",
+      emails: "hello@ateliermeridian.be, elise@ateliermeridian.be",
+      phones: "+32470111222",
+    },
+    {
+      domain: "nordmarket.be",
+      url: "https://nordmarket.be",
+      city: "Antwerp",
+      country: "Belgium",
+      primary_platform: "WooCommerce",
+      category: "Home goods",
+      emails: "press@nordmarket.be, events@nordmarket.be",
+      phones: "+3232011122",
+    },
+    {
+      domain: "maison-koru.fr",
+      url: "https://maison-koru.fr",
+      city: "Lille",
+      country: "France",
+      primary_platform: "Shopify",
+      category: "Beauty",
+      emails: "claire@maison-koru.fr",
+      phones: "",
+    },
+    {
+      domain: "veloatelier.nl",
+      url: "https://veloatelier.nl",
+      city: "Rotterdam",
+      country: "Netherlands",
+      primary_platform: "Wix",
+      category: "Sports",
+      emails: "events@veloatelier.nl",
+      phones: "",
+    },
+    {
+      domain: "brusselsceramics.be",
+      url: "https://brusselsceramics.be",
+      city: "Brussels",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Ceramics",
+      emails: "contact@brusselsceramics.be",
+      phones: "+3225550190",
+    },
+    {
+      domain: "petitepapeterie.be",
+      url: "https://petitepapeterie.be",
+      city: "Namur",
+      country: "Belgium",
+      primary_platform: "WooCommerce",
+      category: "Stationery",
+      emails: "support@petitepapeterie.be, sophie@petitepapeterie.be",
+      phones: "",
+    },
+    {
+      domain: "atelier-gent.be",
+      url: "https://atelier-gent.be",
+      city: "Ghent",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Interior",
+      emails: "julien@atelier-gent.be",
+      phones: "",
+    },
+    {
+      domain: "oldstockoutlet.be",
+      url: "https://oldstockoutlet.be",
+      city: "Liège",
+      country: "Belgium",
+      primary_platform: "Other",
+      category: "Outlet",
+      emails: "info@oldstockoutlet.be",
+      phones: "+32499111222",
+    },
+  ];
+  return rowTemplates.map((row, index) => {
+    const lead = makeLead(row, index);
+    if (index === 4) {
+      const phone = getLeadBestContact(lead, "phone", "generic");
+      const contacts = updateLeadContact(lead, phone?.id, {
+        attemptCount: 1,
+        reachableStatus: "no_answer",
+        lastOutcome: "no_answer",
+        lastAttemptAt: now,
+        nextAttemptAt: addDaysFromNow(2),
+      });
+      return {
+        ...lead,
+        contacts,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "waiting_phone_retry",
+          currentContactId: phone?.id || "",
+          lastActionAt: now,
+          lastActionType: "phone_no_answer",
+          nextActionAt: addDaysFromNow(2),
+        },
+        timeline: [
+          createLeadEvent("call_no_answer", "No answer. Retry scheduled for attempt 2/3", {
+            channel: "phone",
+            contact: phone?.value || "",
+          }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    if (index === 5) {
+      const email = getLeadBestContact(lead, "email", "generic");
+      const contacts = updateLeadContact(lead, email?.id, {
+        attemptCount: 1,
+        reachableStatus: "email_sent",
+        lastOutcome: "pic_request",
+        lastAttemptAt: now,
+        nextAttemptAt: addDaysFromNow(3),
+        gmailThreadId: "mock-thread-001",
+        gmailMessageId: "mock-message-001",
+      });
+      return {
+        ...lead,
+        contacts,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "waiting_email_reply",
+          currentContactId: email?.id || "",
+          lastActionAt: now,
+          lastActionType: "email_sent",
+          nextActionAt: addDaysFromNow(3),
+        },
+        timeline: [
+          createLeadEvent("email_sent", "P.I.C. request sent from connected Gmail / Workspace", {
+            channel: "email",
+            contact: email?.value || "",
+            metadata: { gmailThreadId: "mock-thread-001", gmailMessageId: "mock-message-001" },
+          }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    if (index === 6) {
+      const email = getLeadBestContact(lead, "email", "pic");
+      return {
+        ...lead,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "email_reply_received",
+          currentContactId: email?.id || "",
+          lastActionAt: now,
+          lastActionType: "email_reply_received",
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("email_reply_received", "Email reply received in Gmail", {
+            channel: "email",
+            contact: email?.value || "",
+            metadata: { from: "Julien <julien@atelier-gent.be>", subject: "Re: Shipide" },
+          }),
+          createLeadEvent("email_sent", "Initial email sent from connected Gmail / Workspace", {
+            channel: "email",
+            contact: email?.value || "",
+          }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    if (index === 7) {
+      return {
+        ...lead,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "manual_research",
+          currentContactId: "",
+          lastActionAt: now,
+          lastActionType: "route_failed",
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("route_changed", "Phone and email routes failed. Manual research required.", {
+            channel: "system",
+          }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    return lead;
+  });
+}
+
+function toggleLeadMockFlow() {
+  if (leadMockModeEnabled) {
+    leadProspects = Array.isArray(leadMockSnapshot?.leads) ? leadMockSnapshot.leads : [];
+    leadProspectsLoaded = Boolean(leadMockSnapshot?.loaded);
+    leadProspectsLoading = false;
+    leadMockModeEnabled = false;
+    leadMockSnapshot = null;
+    renderLeadProspects();
+    showToast(tr("Live lead queue restored."), { tone: "info" });
+    return;
+  }
+  leadMockSnapshot = {
+    leads: Array.isArray(leadProspects) ? leadProspects : [],
+    loaded: leadProspectsLoaded,
+  };
+  leadProspects = buildMockLeadWorkflowProspects();
+  leadProspectsLoaded = true;
+  leadProspectsLoading = false;
+  leadMockModeEnabled = true;
+  renderLeadProspects();
+  showToast(tr("Mock lead workflow loaded (frontend only)."), { tone: "info" });
+}
+
 async function importLeadCsvFile(file) {
   if (!file) return;
+  leadMockModeEnabled = false;
+  leadMockSnapshot = null;
   const fileName = String(file.name || "");
   if (fileName && !/\.(csv|tsv|txt)$/i.test(fileName)) {
     showToast(tr("Upload a CSV, TSV, or TXT file."), { tone: "error" });
@@ -27626,12 +27925,24 @@ if (leadsStackFilter) {
 
 if (reloadLeadsButton) {
   reloadLeadsButton.addEventListener("click", async () => {
+    leadMockModeEnabled = false;
+    leadMockSnapshot = null;
     await loadLeadProspects({ quiet: true, force: true });
+  });
+}
+
+if (mockLeadsButton) {
+  mockLeadsButton.addEventListener("click", () => {
+    toggleLeadMockFlow();
   });
 }
 
 if (syncLeadRepliesButton) {
   syncLeadRepliesButton.addEventListener("click", async () => {
+    if (leadMockModeEnabled) {
+      showToast(tr("Reply sync is disabled while mock flow is active."), { tone: "info" });
+      return;
+    }
     syncLeadRepliesButton.disabled = true;
     try {
       const result = await leadProspectRepository.syncReplies();

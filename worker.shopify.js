@@ -65,18 +65,21 @@ const REGISTRATION_INVITES_TABLE = "registration_invites";
 const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
 const LEAD_PROSPECTS_TABLE = "lead_prospects";
 const LEAD_GENERIC_EMAIL_ALIASES = new Set([
-  "admin", "administratie", "administration", "advies", "aftercare", "algemeen",
+  "admin", "accounting", "accounts", "accountspayable", "administratie", "administration", "advies", "aftercare", "algemeen",
   "assistance", "atelier", "backoffice", "bestelling", "bestellingen", "billing",
-  "boekhouding", "bonjour", "boutique", "bureau", "business", "care", "client",
-  "clients", "compta", "comptabilite", "comptabilité", "contact", "customer",
-  "customers", "customerservice", "customer.service", "dienst", "ecommerce",
-  "facturation", "finance", "finances", "general", "hallo", "hello", "help",
-  "helpdesk", "hi", "hoi", "info", "informaties", "information", "klanten",
-  "klantendienst", "klantenservice", "legal", "logistiek", "logistics", "magasin",
-  "mail", "marketing", "no-reply", "noreply", "office", "orders", "order",
-  "privacy", "retail", "retour", "returns", "sales", "secretariaat", "service",
-  "shipping", "shop", "store", "support", "team", "verkoop", "warehouse",
-  "webshop", "winkel",
+  "boekhouding", "bonjour", "boutique", "bureau", "business", "care", "career",
+  "careers", "client", "clients", "collab", "collaboration", "compta", "comptabilite", "comptabilité", "contact", "customer",
+  "communicatie", "communication", "communications", "comms", "customers",
+  "customerservice", "customer.service", "dienst", "ecommerce", "emploi", "event", "events",
+  "evenement", "evenementen", "facturation", "finance", "finances", "factuur", "facturen", "general",
+  "hallo", "hello", "help", "helpdesk", "hi", "hoi", "hr", "humanresources", "info", "informaties",
+  "information", "invoice", "invoices", "jobs", "klanten", "klantendienst", "klantenservice", "legal",
+  "logistiek", "logistics", "magasin", "mail", "marketing", "media", "news",
+  "newsletter", "no-reply", "noreply", "office", "people", "orders", "order", "partner",
+  "partners", "partnership", "partnerships", "pers", "presse", "press", "pr",
+  "privacy", "publicrelations", "public.relations", "recruiting", "recruitment", "recrutement", "retail", "retour", "returns",
+  "sales", "secretariaat", "service", "shipping", "shop", "social", "socialmedia",
+  "store", "support", "team", "talent", "vacature", "vacatures", "verkoop", "warehouse", "webshop", "werkenbij", "winkel",
 ]);
 const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
 const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7, 15]);
