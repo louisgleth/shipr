@@ -64,6 +64,22 @@ const DEFAULT_WOOCOMMERCE_IMPORT_STATUSES = Object.freeze(["pending", "processin
 const REGISTRATION_INVITES_TABLE = "registration_invites";
 const SHIPMENT_EXTRACT_REQUESTS_TABLE = "shipment_extract_requests";
 const LEAD_PROSPECTS_TABLE = "lead_prospects";
+const LEAD_GENERIC_EMAIL_ALIASES = new Set([
+  "admin", "administratie", "administration", "advies", "aftercare", "algemeen",
+  "assistance", "atelier", "backoffice", "bestelling", "bestellingen", "billing",
+  "boekhouding", "bonjour", "boutique", "bureau", "business", "care", "client",
+  "clients", "compta", "comptabilite", "comptabilité", "contact", "customer",
+  "customers", "customerservice", "customer.service", "dienst", "ecommerce",
+  "facturation", "finance", "finances", "general", "hallo", "hello", "help",
+  "helpdesk", "hi", "hoi", "info", "informaties", "information", "klanten",
+  "klantendienst", "klantenservice", "legal", "logistiek", "logistics", "magasin",
+  "mail", "marketing", "no-reply", "noreply", "office", "orders", "order",
+  "privacy", "retail", "retour", "returns", "sales", "secretariaat", "service",
+  "shipping", "shop", "store", "support", "team", "verkoop", "warehouse",
+  "webshop", "winkel",
+]);
+const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
+const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7, 15]);
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -252,6 +268,12 @@ export default {
       }
       if (pathname === "/api/admin/leads/update" && request.method === "POST") {
         return handleAdminLeadUpdate(request, env);
+      }
+      if (pathname === "/api/admin/leads/email/send" && request.method === "POST") {
+        return handleAdminLeadEmailSend(request, env);
+      }
+      if (pathname === "/api/admin/leads/email/sync-replies" && request.method === "POST") {
+        return handleAdminLeadEmailSyncReplies(request, env);
       }
       if (pathname === "/api/admin/invites/revoke" && request.method === "POST") {
         return handleAdminInviteRevoke(request, env);
@@ -582,6 +604,16 @@ export default {
       await runPrivacyMaintenance(env);
     } catch (error) {
       console.error("[scheduled privacy maintenance]", error);
+    }
+    try {
+      const leadReplySync = await syncLeadGmailReplies(env);
+      if ((leadReplySync?.synced || 0) > 0) {
+        console.log("[scheduled lead Gmail reply sync]", JSON.stringify({ synced: leadReplySync.synced }));
+      }
+    } catch (error) {
+      if (!/not configured/i.test(error?.message || "")) {
+        console.error("[scheduled lead Gmail reply sync]", error);
+      }
     }
     try {
       await processBillingDocumentJobQueue(env, {
@@ -9886,12 +9918,61 @@ function normalizeLeadDomain(value, fallbackUrl = "") {
 }
 
 function getLeadProspectDedupeKey(lead) {
-  const domain = normalizeLeadDomain(lead?.domain, lead?.url);
-  if (domain) return domain;
-  const email = normalizeEmail(lead?.email || lead?.follow_up_email || "");
-  if (email) return `email:${email}`;
-  const id = String(lead?.id || "").trim().toLowerCase();
-  return id || "";
+  return normalizeLeadDomain(lead?.domain, lead?.url);
+}
+
+function normalizeLeadPhone(value) {
+  return String(value || "")
+    .replace(/[^\d+]/g, "")
+    .replace(/^00/, "+")
+    .trim();
+}
+
+function isLikelyBelgianMobilePhone(value) {
+  const normalized = normalizeLeadPhone(value);
+  const compact = normalized.replace(/[^\d+]/g, "");
+  return /^04\d{8}$/.test(compact) || /^\+324\d{8}$/.test(compact) || /^00324\d{8}$/.test(compact);
+}
+
+function normalizeLeadEmailLocalPart(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase()
+    .split("@")[0]
+    .replace(/\+.*$/, "");
+}
+
+function classifyLeadEmail(email) {
+  const localPart = normalizeLeadEmailLocalPart(email);
+  if (!localPart || !String(email || "").includes("@")) {
+    return { type: "unknown", reason: "Email unavailable" };
+  }
+  const normalizedAlias = localPart.replace(/[._-]+/g, ".");
+  const compactAlias = localPart.replace(/[._-]+/g, "");
+  const isGeneric =
+    LEAD_GENERIC_EMAIL_ALIASES.has(localPart) ||
+    LEAD_GENERIC_EMAIL_ALIASES.has(normalizedAlias) ||
+    LEAD_GENERIC_EMAIL_ALIASES.has(compactAlias);
+  return isGeneric
+    ? { type: "generic", reason: "Generic inbox alias" }
+    : { type: "pic", reason: "Person-specific email pattern" };
+}
+
+function classifyLeadPhone(phone) {
+  if (!String(phone || "").trim()) {
+    return { type: "unknown", reason: "Phone unavailable" };
+  }
+  return isLikelyBelgianMobilePhone(phone)
+    ? { type: "pic", reason: "Belgian mobile number" }
+    : { type: "generic", reason: "Company or generic phone" };
+}
+
+function buildLeadContactId(kind, value) {
+  const normalized =
+    kind === "phone"
+      ? normalizeLeadPhone(value)
+      : String(value || "").trim().toLowerCase();
+  return `${kind}:${normalized}`;
 }
 
 function splitLeadContactList(value) {
@@ -9911,6 +9992,78 @@ function splitLeadContactList(value) {
       const normalized = entry.toLowerCase();
       return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
     });
+}
+
+function buildLeadContactsFromValues(kind, values = [], existingContacts = []) {
+  const previousById = new Map(
+    (Array.isArray(existingContacts) ? existingContacts : [])
+      .filter((contact) => contact?.kind === kind || contact?.channel === kind)
+      .map((contact) => [String(contact.id || buildLeadContactId(kind, contact.value)), contact])
+  );
+  const uniqueValues = splitLeadContactList(values);
+  return uniqueValues.map((value) => {
+    const id = buildLeadContactId(kind, value);
+    const previous = previousById.get(id) || {};
+    const classification = kind === "phone" ? classifyLeadPhone(value) : classifyLeadEmail(value);
+    return {
+      id,
+      kind,
+      value,
+      type: previous.type || classification.type,
+      reason: previous.reason || classification.reason,
+      reachableStatus: previous.reachableStatus || "unknown",
+      attemptCount: Math.max(0, Number(previous.attemptCount || 0) || 0),
+      lastAttemptAt: previous.lastAttemptAt || "",
+      nextAttemptAt: previous.nextAttemptAt || "",
+      lastOutcome: previous.lastOutcome || "",
+      gmailThreadId: previous.gmailThreadId || "",
+      gmailMessageId: previous.gmailMessageId || "",
+      notes: previous.notes || "",
+    };
+  });
+}
+
+function buildLeadContactSet(payload = {}, existingContacts = []) {
+  const phones = buildLeadContactsFromValues(
+    "phone",
+    [payload.phones, payload.phone, payload.pic?.phone],
+    existingContacts
+  );
+  const emails = buildLeadContactsFromValues(
+    "email",
+    [payload.emails, payload.email, payload.follow_up_email, payload.pic?.email],
+    existingContacts
+  );
+  return [...phones, ...emails];
+}
+
+function getLeadBestContact(payload, kind, type = "") {
+  return (Array.isArray(payload?.contacts) ? payload.contacts : []).find((contact) => {
+    if (contact.kind !== kind) return false;
+    if (["wrong_number", "do_not_use"].includes(contact.reachableStatus)) return false;
+    return !type || contact.type === type;
+  }) || null;
+}
+
+function getLeadDefaultStage(payload = {}) {
+  if (getLeadBestContact(payload, "phone", "pic")) return "call_pic";
+  if (getLeadBestContact(payload, "phone", "generic")) return "call_ask_pic";
+  if (getLeadBestContact(payload, "email", "pic")) return "email_pic";
+  if (getLeadBestContact(payload, "email", "generic")) return "email_ask_pic";
+  return "manual_research";
+}
+
+function createLeadTimelineEvent(type, summary, options = {}) {
+  return {
+    id: options.id || `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    at: options.at || new Date().toISOString(),
+    summary,
+    channel: options.channel || "system",
+    contact: options.contact || "",
+    outcome: options.outcome || "",
+    metadata: options.metadata || {},
+  };
 }
 
 function normalizeLeadPayload(input = {}, existing = {}, options = {}) {
@@ -9937,7 +10090,7 @@ function normalizeLeadPayload(input = {}, existing = {}, options = {}) {
   };
   const keepState = (nextValue, previousValue) =>
     preserveExistingState ? keep(previousValue, nextValue) : keep(nextValue, previousValue);
-  return {
+  const basePayload = {
     ...previous,
     ...incoming,
     source: keep(incoming.source, previous.source) || "csv",
@@ -9984,6 +10137,52 @@ function normalizeLeadPayload(input = {}, existing = {}, options = {}) {
       ) || 0
     ),
     discarded_at: keepState(incoming.discarded_at, previous.discarded_at),
+  };
+  const contacts = buildLeadContactSet(basePayload, incoming.contacts || previous.contacts || []);
+  const pic = {
+    ...(previous.pic && typeof previous.pic === "object" ? previous.pic : {}),
+    ...(incoming.pic && typeof incoming.pic === "object" ? incoming.pic : {}),
+  };
+  if (!pic.phone) {
+    pic.phone = contacts.find((contact) => contact.kind === "phone" && contact.type === "pic")?.value || "";
+  }
+  if (!pic.email) {
+    pic.email = contacts.find((contact) => contact.kind === "email" && contact.type === "pic")?.value || "";
+  }
+  if ((pic.phone || pic.email) && !pic.source) {
+    pic.source = "imported";
+  }
+  const previousWorkflow =
+    previous.workflow && typeof previous.workflow === "object" ? previous.workflow : {};
+  const incomingWorkflow =
+    incoming.workflow && typeof incoming.workflow === "object" ? incoming.workflow : {};
+  const timeline = [
+    ...(Array.isArray(previous.timeline) ? previous.timeline : []),
+    ...(Array.isArray(incoming.timeline) ? incoming.timeline : []),
+  ].filter(Boolean);
+  const stage =
+    incomingWorkflow.stage ||
+    previousWorkflow.stage ||
+    getLeadDefaultStage({ ...basePayload, contacts, pic });
+  return {
+    ...basePayload,
+    contacts,
+    pic,
+    workflow: {
+      ...previousWorkflow,
+      ...incomingWorkflow,
+      stage,
+      currentContactId:
+        incomingWorkflow.currentContactId ||
+        previousWorkflow.currentContactId ||
+        getLeadBestContact({ contacts }, stage.includes("phone") || stage.includes("call") ? "phone" : "email")?.id ||
+        "",
+      phoneMaxAttempts: LEAD_PHONE_RETRY_DELAYS_DAYS.length,
+      emailMaxAttempts: LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length,
+    },
+    timeline: timeline.length
+      ? timeline
+      : [createLeadTimelineEvent("lead_imported", "Lead imported")],
   };
 }
 
@@ -10063,12 +10262,20 @@ async function fetchExistingLeadRowsByKeys(env, keys = []) {
 
 async function importLeadProspects(env, leads = []) {
   const incoming = Array.isArray(leads) ? leads : [];
-  const normalizedIncoming = incoming
-    .map((lead) => {
-      const dedupeKey = getLeadProspectDedupeKey(lead);
-      return dedupeKey ? { dedupeKey, lead } : null;
-    })
-    .filter(Boolean);
+  const incomingByKey = new Map();
+  incoming.forEach((lead) => {
+    const dedupeKey = getLeadProspectDedupeKey(lead);
+    if (!dedupeKey) return;
+    const existingIncoming = incomingByKey.get(dedupeKey);
+    incomingByKey.set(
+      dedupeKey,
+      existingIncoming ? normalizeLeadPayload(lead, existingIncoming) : lead
+    );
+  });
+  const normalizedIncoming = [...incomingByKey.entries()].map(([dedupeKey, lead]) => ({
+    dedupeKey,
+    lead,
+  }));
   if (!normalizedIncoming.length) {
     return { added: 0, updated: 0, total: 0, leads: await listLeadProspects(env) };
   }
@@ -10180,6 +10387,315 @@ async function updateLeadProspect(env, id, patch = {}) {
   const updatedRows = await updateResponse.json().catch(() => []);
   const updated = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : null;
   return mapLeadProspectRow(updated || { ...current, payload });
+}
+
+async function getLeadProspectById(env, id) {
+  const safeId = String(id || "").trim();
+  if (!safeId) {
+    throw new Error("Lead id is required.");
+  }
+  const params = new URLSearchParams();
+  params.set("select", "id,dedupe_key,payload,order_index,created_at,updated_at");
+  params.set("id", `eq.${safeId}`);
+  params.set("limit", "1");
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${LEAD_PROSPECTS_TABLE}?${params.toString()}`,
+    { method: "GET" }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Could not load lead (${response.status}) ${details}`.trim());
+  }
+  const rows = await response.json().catch(() => []);
+  const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+  if (!row) {
+    throw new Error("Lead not found.");
+  }
+  return mapLeadProspectRow(row);
+}
+
+function addLeadDaysFromNow(days) {
+  return new Date(Date.now() + Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function base64EncodeText(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function base64UrlEncodeText(value) {
+  return base64EncodeText(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64MimeHeader(value) {
+  return `=?UTF-8?B?${base64EncodeText(value)}?=`;
+}
+
+function getLeadGmailConfig(env) {
+  return {
+    clientId: env.GOOGLE_WORKSPACE_CLIENT_ID || env.GMAIL_CLIENT_ID || "",
+    clientSecret: env.GOOGLE_WORKSPACE_CLIENT_SECRET || env.GMAIL_CLIENT_SECRET || "",
+    refreshToken: env.GOOGLE_WORKSPACE_REFRESH_TOKEN || env.GMAIL_REFRESH_TOKEN || "",
+    from:
+      env.LEADS_GMAIL_FROM ||
+      env.GOOGLE_WORKSPACE_FROM ||
+      env.GMAIL_FROM ||
+      "hello@shipide.com",
+  };
+}
+
+function assertLeadGmailConfigured(config) {
+  if (!config.clientId || !config.clientSecret || !config.refreshToken) {
+    throw new Error(
+      "Gmail/Workspace sending is not configured. Set GOOGLE_WORKSPACE_CLIENT_ID, GOOGLE_WORKSPACE_CLIENT_SECRET, GOOGLE_WORKSPACE_REFRESH_TOKEN, and LEADS_GMAIL_FROM."
+    );
+  }
+}
+
+async function getLeadGmailAccessToken(env) {
+  const config = getLeadGmailConfig(env);
+  assertLeadGmailConfigured(config);
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: config.refreshToken,
+      grant_type: "refresh_token",
+    }).toString(),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.access_token) {
+    throw new Error(payload?.error_description || payload?.error || "Could not get Gmail access token.");
+  }
+  return payload.access_token;
+}
+
+function buildLeadGmailRawMessage({ from, to, subject, body }) {
+  const raw = [
+    `From: ${String(from || "").trim()}`,
+    `To: ${String(to || "").trim()}`,
+    `Subject: ${base64MimeHeader(String(subject || "").trim())}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    String(body || "").replace(/\r?\n/g, "\r\n"),
+  ].join("\r\n");
+  return base64UrlEncodeText(raw);
+}
+
+async function sendLeadGmailMessage(env, { to, subject, body }) {
+  const config = getLeadGmailConfig(env);
+  assertLeadGmailConfigured(config);
+  const accessToken = await getLeadGmailAccessToken(env);
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      raw: buildLeadGmailRawMessage({
+        from: config.from,
+        to,
+        subject,
+        body,
+      }),
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.id) {
+    throw new Error(payload?.error?.message || "Could not send Gmail message.");
+  }
+  return payload;
+}
+
+function getLeadTimelineMessageIds(lead) {
+  return new Set(
+    (Array.isArray(lead?.timeline) ? lead.timeline : [])
+      .map((event) => String(event?.metadata?.gmailMessageId || ""))
+      .filter(Boolean)
+  );
+}
+
+function updateLeadEmailContact(lead, email, updates = {}) {
+  const target = String(email || "").trim().toLowerCase();
+  const base = {
+    ...lead,
+    email: target || lead?.email || "",
+    follow_up_email: target || lead?.follow_up_email || "",
+  };
+  const contacts = buildLeadContactSet(base, lead?.contacts || []);
+  return contacts.map((contact) =>
+    contact.kind === "email" && String(contact.value || "").trim().toLowerCase() === target
+      ? { ...contact, ...updates }
+      : contact
+  );
+}
+
+async function sendLeadEmailFromGmail(env, id, message = {}) {
+  const lead = await getLeadProspectById(env, id);
+  const to = String(message?.to || lead.follow_up_email || lead.email || "").trim();
+  const subject = String(message?.subject || "").trim();
+  const body = String(message?.body || "").trim();
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    throw new Error("A valid destination email is required.");
+  }
+  if (!subject) {
+    throw new Error("Email subject is required.");
+  }
+  if (!body) {
+    throw new Error("Email body is required.");
+  }
+  const sent = await sendLeadGmailMessage(env, { to, subject, body });
+  const currentContact =
+    updateLeadEmailContact(lead, to).find(
+      (contact) => contact.kind === "email" && String(contact.value || "").trim().toLowerCase() === to.toLowerCase()
+    ) || {};
+  const nextAttemptCount = Math.max(0, Number(currentContact.attemptCount || 0) || 0) + 1;
+  const exhausted = nextAttemptCount >= LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length;
+  const nextDelay =
+    LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS[
+      Math.min(nextAttemptCount, LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length - 1)
+    ] || 0;
+  const contacts = updateLeadEmailContact(lead, to, {
+    attemptCount: nextAttemptCount,
+    reachableStatus: "email_sent",
+    lastOutcome: String(message?.outcome || "email_sent"),
+    lastAttemptAt: new Date().toISOString(),
+    nextAttemptAt: exhausted ? "" : addLeadDaysFromNow(nextDelay),
+    gmailThreadId: sent.threadId || currentContact.gmailThreadId || "",
+    gmailMessageId: sent.id || "",
+  });
+  const patch = {
+    email: to,
+    follow_up_email: to,
+    follow_up_subject: subject,
+    follow_up_body: body,
+    follow_up_deck_language: String(message?.language || lead.follow_up_deck_language || "en"),
+    follow_up_deck_filename: String(message?.deckFilename || lead.follow_up_deck_filename || ""),
+    follow_up_deck_url: String(message?.deckUrl || lead.follow_up_deck_url || ""),
+    follow_up_sent_at: new Date().toISOString(),
+    contacts,
+    workflow: {
+      ...(lead.workflow || {}),
+      stage: "waiting_email_reply",
+      currentContactId: buildLeadContactId("email", to),
+      lastActionAt: new Date().toISOString(),
+      lastActionType: "email_sent",
+      nextActionAt: exhausted ? "" : addLeadDaysFromNow(nextDelay),
+    },
+    timeline: [
+      createLeadTimelineEvent("email_sent", "Email sent from connected Gmail / Workspace", {
+        channel: "email",
+        contact: to,
+        outcome: String(message?.outcome || "email_sent"),
+        metadata: {
+          gmailMessageId: sent.id || "",
+          gmailThreadId: sent.threadId || "",
+          subject,
+        },
+      }),
+    ],
+  };
+  return { lead: await updateLeadProspect(env, id, patch), gmail: sent };
+}
+
+async function fetchLeadGmailThread(env, accessToken, threadId) {
+  const params = new URLSearchParams();
+  params.set("format", "metadata");
+  params.append("metadataHeaders", "From");
+  params.append("metadataHeaders", "Subject");
+  params.append("metadataHeaders", "Date");
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || "Could not read Gmail thread.");
+  }
+  return payload;
+}
+
+function getGmailHeader(message, headerName) {
+  const headers = message?.payload?.headers || [];
+  const found = headers.find(
+    (header) => String(header?.name || "").toLowerCase() === String(headerName || "").toLowerCase()
+  );
+  return String(found?.value || "");
+}
+
+async function syncLeadGmailReplies(env) {
+  const config = getLeadGmailConfig(env);
+  assertLeadGmailConfigured(config);
+  const leads = await listLeadProspects(env, 5000);
+  const candidates = leads.filter((lead) =>
+    (Array.isArray(lead.contacts) ? lead.contacts : []).some(
+      (contact) => contact.kind === "email" && contact.gmailThreadId
+    )
+  );
+  if (!candidates.length) {
+    return { synced: 0, leads };
+  }
+  const accessToken = await getLeadGmailAccessToken(env);
+  let synced = 0;
+  for (const lead of candidates) {
+    const knownMessageIds = getLeadTimelineMessageIds(lead);
+    const emailContacts = (Array.isArray(lead.contacts) ? lead.contacts : []).filter(
+      (contact) => contact.kind === "email" && contact.gmailThreadId
+    );
+    const events = [];
+    for (const contact of emailContacts) {
+      const thread = await fetchLeadGmailThread(env, accessToken, contact.gmailThreadId);
+      const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+      messages.forEach((message) => {
+        const messageId = String(message?.id || "");
+        if (!messageId || knownMessageIds.has(messageId) || messageId === contact.gmailMessageId) return;
+        const from = getGmailHeader(message, "From");
+        if (from.toLowerCase().includes(String(config.from || "").toLowerCase())) return;
+        const subject = getGmailHeader(message, "Subject");
+        events.push(
+          createLeadTimelineEvent("email_reply_received", "Email reply received in Gmail", {
+            channel: "email",
+            contact: contact.value,
+            outcome: "reply_received",
+            at: message?.internalDate
+              ? new Date(Number(message.internalDate)).toISOString()
+              : new Date().toISOString(),
+            metadata: {
+              gmailMessageId: messageId,
+              gmailThreadId: contact.gmailThreadId,
+              from,
+              subject,
+            },
+          })
+        );
+        knownMessageIds.add(messageId);
+      });
+    }
+    if (events.length) {
+      synced += events.length;
+      await updateLeadProspect(env, lead.id, {
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "email_reply_received",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: "email_reply_received",
+          nextActionAt: "",
+        },
+        timeline: events,
+      });
+    }
+  }
+  return { synced, leads: await listLeadProspects(env, 5000) };
 }
 
 async function buildInviteUrl(request, env, invite) {
@@ -16044,6 +16560,49 @@ async function handleAdminLeadUpdate(request, env) {
   } catch (error) {
     const status = /not found/i.test(error?.message || "") ? 404 : 500;
     return jsonResponse({ error: error?.message || "Could not update lead." }, status);
+  }
+}
+
+async function handleAdminLeadEmailSend(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to send lead emails." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message || "Invalid request body." }, 400);
+  }
+
+  try {
+    const result = await sendLeadEmailFromGmail(env, body?.id, body?.message || {});
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    const status = /not configured|required|subject|body|email/i.test(error?.message || "") ? 400 : 500;
+    return jsonResponse({ error: error?.message || "Could not send lead email." }, status);
+  }
+}
+
+async function handleAdminLeadEmailSyncReplies(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to sync lead emails." }, 403);
+  }
+
+  try {
+    const result = await syncLeadGmailReplies(env);
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    const status = /not configured/i.test(error?.message || "") ? 400 : 500;
+    return jsonResponse({ error: error?.message || "Could not sync Gmail replies." }, status);
   }
 }
 

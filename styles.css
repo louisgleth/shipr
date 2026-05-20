@@ -3230,6 +3230,59 @@ html[data-theme="light"] .account-reference-pill.is-muted {
   cursor: wait;
 }
 
+.lead-stage-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lead-stage-reason {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-timeline {
+  border-top: 1px solid var(--stroke);
+  margin-top: 4px;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.lead-timeline-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.lead-timeline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(119, 71, 227, 0.12);
+  margin-top: 5px;
+}
+
+.lead-timeline-summary {
+  color: var(--text);
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
+}
+
+.lead-timeline-meta,
+.lead-timeline-empty {
+  color: var(--muted);
+  font-size: var(--fs-3xs);
+  line-height: 1.35;
+}
+
 .lead-callout-email-step {
   display: grid;
   gap: 14px;

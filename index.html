@@ -2038,9 +2038,9 @@
       <section class="account-page is-hidden" id="leadsPageSection">
         <div class="account-page-head">
           <div>
-            <h2>Cold Call Dashboard</h2>
+            <h2>Lead Workflow</h2>
             <p class="panel-sub">
-              Work through the outbound queue, place the call, and classify each prospect right after the conversation.
+              Classify contacts, work through phone/email routes, and keep every outreach event attached to the lead.
             </p>
           </div>
           <div class="account-page-actions">
@@ -2053,24 +2053,24 @@
 
         <div class="admin-summary-grid leads-summary-grid">
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Ready To Call</div>
+            <div class="reports-kpi-title">Action Due</div>
             <div class="reports-kpi-value" id="leadsReadyCount">0</div>
-            <div class="reports-kpi-meta mono">Fresh prospects + retry calls</div>
-            <div class="reports-kpi-foot">Prospects still waiting on a live conversation</div>
+            <div class="reports-kpi-meta mono">Calls, emails, and research</div>
+            <div class="reports-kpi-foot">Leads with an action available now</div>
           </article>
 
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Follow-Ups Queued</div>
+            <div class="reports-kpi-title">Waiting</div>
             <div class="reports-kpi-value" id="leadsFollowUpCount">0</div>
-            <div class="reports-kpi-meta mono">Interested + mildly interested</div>
-            <div class="reports-kpi-foot">Warm leads ready for a next touch</div>
+            <div class="reports-kpi-meta mono">Replies + scheduled retries</div>
+            <div class="reports-kpi-foot">Leads paused until the next event</div>
           </article>
 
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Not Interested</div>
+            <div class="reports-kpi-title">Manual / Closed</div>
             <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
-            <div class="reports-kpi-meta mono">Logged after completed calls</div>
-            <div class="reports-kpi-foot">Removed from the active follow-up flow</div>
+            <div class="reports-kpi-meta mono">Research, discarded, qualified</div>
+            <div class="reports-kpi-foot">Leads outside the normal route</div>
           </article>
         </div>
 
@@ -2079,45 +2079,45 @@
             <div>
               <div class="preview-title">Lead Queue</div>
               <p class="panel-sub leads-board-sub">
-                Static leads for now, with a structure ready to swap to a live outbound API.
+                The primary action follows the route: phone first, email second, manual research last.
               </p>
               <div class="leads-list-tabs" id="leadsListTabs" role="tablist" aria-label="Lead call progress">
                 <button
                   type="button"
                   class="leads-list-tab is-active"
                   id="leadsNotTalkedTab"
-                  data-leads-list="to_call"
+                  data-leads-list="active"
                   role="tab"
                   aria-selected="true"
                 >
-                  Not Talked
+                  Action Due
                 </button>
                 <button
                   type="button"
                   class="leads-list-tab"
                   id="leadsTalkedTab"
-                  data-leads-list="called"
+                  data-leads-list="waiting"
                   role="tab"
                   aria-selected="false"
                 >
-                  Talked
+                  Waiting
                 </button>
                 <button
                   type="button"
                   class="leads-list-tab"
                   id="leadsDiscardedTab"
-                  data-leads-list="discarded"
+                  data-leads-list="manual"
                   role="tab"
                   aria-selected="false"
                 >
-                  Discarded
+                  Manual / Closed
                 </button>
               </div>
             </div>
             <div class="leads-board-toolbar">
               <label class="field admin-toolbar-field">
                 <span>Search</span>
-                <input type="text" id="leadsSearchInput" placeholder="Domain, URL, city, phone" />
+                <input type="text" id="leadsSearchInput" placeholder="Domain, URL, city, phone, email" />
               </label>
               <label class="field admin-toolbar-field admin-toolbar-field-compact">
                 <span>Stack</span>
@@ -2137,6 +2137,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0 2.3 5.7"/><polyline points="20 4 20 11 13 11"/></svg>
                 <span>Refresh Queue</span>
               </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="syncLeadRepliesButton">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+                <span>Sync Replies</span>
+              </button>
             </div>
           </div>
 
@@ -2144,7 +2148,7 @@
           <div class="leads-empty is-hidden" id="leadsEmpty">No leads match the current filters.</div>
 
           <div class="leads-table-wrap" id="leadsTableWrap">
-            <table class="leads-table" aria-label="Cold call lead queue">
+            <table class="leads-table" aria-label="Lead workflow queue">
               <thead>
                 <tr>
                   <th scope="col">Prospect</th>
@@ -2153,7 +2157,7 @@
                   <th scope="col">Tech Stack</th>
                   <th scope="col">Category</th>
                   <th scope="col">URL</th>
-                  <th scope="col">Outcome</th>
+                  <th scope="col">Stage</th>
                   <th scope="col" class="leads-table-actions-col">Action</th>
                 </tr>
               </thead>
@@ -2194,21 +2198,25 @@
               </div>
             </div>
             <div class="lead-callout-actions" id="leadCallOutcomeActions">
-              <button type="button" class="lead-callout-option" data-lead-outcome="interested_follow_up">
-                <span class="lead-callout-option-title">Interested, send follow up</span>
-                <span class="lead-callout-option-copy">High intent. Queue the next touchpoint.</span>
+              <button type="button" class="lead-callout-option" data-lead-outcome="phone_no_answer">
+                <span class="lead-callout-option-title">No answer</span>
+                <span class="lead-callout-option-copy">Keep this phone in the route and schedule the next call attempt.</span>
               </button>
-              <button type="button" class="lead-callout-option" data-lead-outcome="mild_follow_up">
-                <span class="lead-callout-option-title">Mildly interested / redirected us to email, send follow up</span>
-                <span class="lead-callout-option-copy">Warm lead. Prepare the email and keep them in the follow-up stream.</span>
+              <button type="button" class="lead-callout-option" data-lead-outcome="pic_acquired">
+                <span class="lead-callout-option-title">P.I.C. acquired</span>
+                <span class="lead-callout-option-copy">Save the phone/email currently shown and move to the direct P.I.C. route.</span>
               </button>
-              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="not_interested_follow_up">
-                <span class="lead-callout-option-title">Not interested, send follow up</span>
-                <span class="lead-callout-option-copy">Close the lead out politely, but still send the recap email.</span>
+              <button type="button" class="lead-callout-option" data-lead-outcome="no_pic_acquired">
+                <span class="lead-callout-option-title">Answered, no P.I.C.</span>
+                <span class="lead-callout-option-copy">Fallback to the email route if available, otherwise move to manual research.</span>
               </button>
-              <button type="button" class="lead-callout-option" data-lead-outcome="no_pickup">
-                <span class="lead-callout-option-title">Phone did not pickup</span>
-                <span class="lead-callout-option-copy">Return the prospect to the active call list for another attempt.</span>
+              <button type="button" class="lead-callout-option" data-lead-outcome="email_reply_pic">
+                <span class="lead-callout-option-title">Email reply gave P.I.C.</span>
+                <span class="lead-callout-option-copy">Save the current email/phone as the P.I.C. contact.</span>
+              </button>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="route_failed">
+                <span class="lead-callout-option-title">Route failed</span>
+                <span class="lead-callout-option-copy">Move to the next fallback route, or discard after manual research.</span>
               </button>
             </div>
             <div class="lead-callout-email-step is-hidden" id="leadCallOutcomeEmailStep">
@@ -2250,10 +2258,11 @@
                   <span>Back</span>
                 </button>
                 <button type="button" class="btn btn-primary" id="leadCallOutcomeSend">
-                  <span>Send Follow Up</span>
+                  <span>Send from Gmail</span>
                 </button>
               </div>
             </div>
+            <div class="lead-timeline" id="leadTimelineList" aria-label="Lead timeline"></div>
             <div class="panel-actions">
               <button type="button" class="btn btn-ghost" id="leadCallOutcomeCancel">
                 <span>Close</span>

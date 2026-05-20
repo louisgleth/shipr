@@ -572,6 +572,83 @@ const LEAD_OUTCOME_META = {
     listBucket: "discarded",
   },
 };
+const LEAD_GENERIC_EMAIL_ALIASES = new Set([
+  "admin",
+  "administratie",
+  "administration",
+  "advies",
+  "aftercare",
+  "algemeen",
+  "assistance",
+  "atelier",
+  "backoffice",
+  "bestelling",
+  "bestellingen",
+  "billing",
+  "boekhouding",
+  "bonjour",
+  "boutique",
+  "bureau",
+  "business",
+  "care",
+  "client",
+  "clients",
+  "compta",
+  "comptabilite",
+  "comptabilité",
+  "contact",
+  "customer",
+  "customers",
+  "customerservice",
+  "customer.service",
+  "dienst",
+  "ecommerce",
+  "facturation",
+  "finance",
+  "finances",
+  "general",
+  "hallo",
+  "hello",
+  "help",
+  "helpdesk",
+  "hi",
+  "hoi",
+  "info",
+  "informaties",
+  "information",
+  "klanten",
+  "klantendienst",
+  "klantenservice",
+  "legal",
+  "logistiek",
+  "logistics",
+  "magasin",
+  "mail",
+  "marketing",
+  "no-reply",
+  "noreply",
+  "office",
+  "orders",
+  "order",
+  "privacy",
+  "retail",
+  "retour",
+  "returns",
+  "sales",
+  "secretariaat",
+  "service",
+  "shipping",
+  "shop",
+  "store",
+  "support",
+  "team",
+  "verkoop",
+  "warehouse",
+  "webshop",
+  "winkel",
+]);
+const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
+const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7, 15]);
 const LEAD_FOLLOW_UP_DECKS = Object.freeze({
   en: {
     label: "English",
@@ -2432,6 +2509,7 @@ const leadsListTabs = document.getElementById("leadsListTabs");
 const leadsSearchInput = document.getElementById("leadsSearchInput");
 const leadsStackFilter = document.getElementById("leadsStackFilter");
 const reloadLeadsButton = document.getElementById("reloadLeadsButton");
+const syncLeadRepliesButton = document.getElementById("syncLeadRepliesButton");
 const leadsStatus = document.getElementById("leadsStatus");
 const leadsEmpty = document.getElementById("leadsEmpty");
 const leadsTableWrap = document.getElementById("leadsTableWrap");
@@ -2456,6 +2534,7 @@ const leadCallOutcomeDeckLink = document.getElementById("leadCallOutcomeDeckLink
 const leadCallOutcomeEmailBody = document.getElementById("leadCallOutcomeEmailBody");
 const leadCallOutcomeBack = document.getElementById("leadCallOutcomeBack");
 const leadCallOutcomeSend = document.getElementById("leadCallOutcomeSend");
+const leadTimelineList = document.getElementById("leadTimelineList");
 const importLeadsButton = document.getElementById("importLeadsButton");
 const leadsCsvInput = document.getElementById("leadsCsvInput");
 const labelConfirmModal = document.getElementById("labelConfirmModal");
@@ -2964,7 +3043,7 @@ let leadProspectsLoading = false;
 let leadProspectsLoaded = false;
 let leadProspectsLoadPromise = null;
 let leadProspectsLoadRequestToken = 0;
-let leadListBucket = "to_call";
+let leadListBucket = "active";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
@@ -12006,7 +12085,273 @@ function normalizeLeadDomain(value, fallbackUrl = "") {
 }
 
 function getLeadDedupeKey(lead) {
-  return normalizeLeadDomain(lead?.domain, lead?.url) || String(lead?.id || "").trim().toLowerCase();
+  return normalizeLeadDomain(lead?.domain, lead?.url);
+}
+
+function normalizeLeadPhone(value) {
+  return String(value || "")
+    .replace(/[^\d+]/g, "")
+    .replace(/^00/, "+")
+    .trim();
+}
+
+function isLikelyBelgianMobilePhone(value) {
+  const normalized = normalizeLeadPhone(value);
+  const compact = normalized.replace(/[^\d+]/g, "");
+  return /^04\d{8}$/.test(compact) || /^\+324\d{8}$/.test(compact) || /^00324\d{8}$/.test(compact);
+}
+
+function normalizeLeadEmailLocalPart(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase()
+    .split("@")[0]
+    .replace(/\+.*$/, "");
+}
+
+function classifyLeadEmail(email) {
+  const localPart = normalizeLeadEmailLocalPart(email);
+  if (!localPart || !String(email || "").includes("@")) {
+    return { type: "unknown", reason: tr("Email unavailable") };
+  }
+  const normalizedAlias = localPart.replace(/[._-]+/g, ".");
+  const compactAlias = localPart.replace(/[._-]+/g, "");
+  const isGeneric =
+    LEAD_GENERIC_EMAIL_ALIASES.has(localPart) ||
+    LEAD_GENERIC_EMAIL_ALIASES.has(normalizedAlias) ||
+    LEAD_GENERIC_EMAIL_ALIASES.has(compactAlias);
+  return isGeneric
+    ? { type: "generic", reason: tr("Generic inbox alias") }
+    : { type: "pic", reason: tr("Person-specific email pattern") };
+}
+
+function classifyLeadPhone(phone) {
+  if (!String(phone || "").trim()) {
+    return { type: "unknown", reason: tr("Phone unavailable") };
+  }
+  return isLikelyBelgianMobilePhone(phone)
+    ? { type: "pic", reason: tr("Belgian mobile number") }
+    : { type: "generic", reason: tr("Company or generic phone") };
+}
+
+function buildLeadContactId(kind, value) {
+  const normalized =
+    kind === "phone"
+      ? normalizeLeadPhone(value)
+      : String(value || "").trim().toLowerCase();
+  return `${kind}:${normalized}`;
+}
+
+function uniqueLeadValues(values = []) {
+  return values
+    .flatMap((value) => splitLeadListValue(value))
+    .filter((value, index, list) => {
+      const normalized = value.toLowerCase();
+      return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+    });
+}
+
+function buildLeadContactsFromValues(kind, values = [], existingContacts = []) {
+  const previousById = new Map(
+    (Array.isArray(existingContacts) ? existingContacts : [])
+      .filter((contact) => contact?.kind === kind || contact?.channel === kind)
+      .map((contact) => [String(contact.id || buildLeadContactId(kind, contact.value)), contact])
+  );
+  return uniqueLeadValues(values).map((value) => {
+    const id = buildLeadContactId(kind, value);
+    const previous = previousById.get(id) || {};
+    const classification = kind === "phone" ? classifyLeadPhone(value) : classifyLeadEmail(value);
+    return {
+      id,
+      kind,
+      value,
+      type: previous.type || classification.type,
+      reason: previous.reason || classification.reason,
+      reachableStatus: previous.reachableStatus || "unknown",
+      attemptCount: Math.max(0, Number(previous.attemptCount || 0) || 0),
+      lastAttemptAt: previous.lastAttemptAt || "",
+      nextAttemptAt: previous.nextAttemptAt || "",
+      lastOutcome: previous.lastOutcome || "",
+      gmailThreadId: previous.gmailThreadId || "",
+      gmailMessageId: previous.gmailMessageId || "",
+      notes: previous.notes || "",
+    };
+  });
+}
+
+function getLeadContactSet(lead) {
+  const existingContacts = Array.isArray(lead?.contacts) ? lead.contacts : [];
+  const phones = buildLeadContactsFromValues(
+    "phone",
+    [lead?.phones, lead?.phone, lead?.pic?.phone],
+    existingContacts
+  );
+  const emails = buildLeadContactsFromValues(
+    "email",
+    [lead?.emails, lead?.email, lead?.follow_up_email, lead?.pic?.email],
+    existingContacts
+  );
+  return [...phones, ...emails];
+}
+
+function getLeadContactsByKind(lead, kind) {
+  return getLeadContactSet(lead).filter((contact) => contact.kind === kind);
+}
+
+function getLeadTimeline(lead) {
+  return Array.isArray(lead?.timeline) ? lead.timeline : [];
+}
+
+function getLeadPicProfile(lead) {
+  const pic = lead?.pic && typeof lead.pic === "object" ? lead.pic : {};
+  const contacts = getLeadContactSet(lead);
+  const picPhone = contacts.find((contact) => contact.kind === "phone" && contact.type === "pic");
+  const picEmail = contacts.find((contact) => contact.kind === "email" && contact.type === "pic");
+  return {
+    name: String(pic.name || "").trim(),
+    phone: String(pic.phone || picPhone?.value || "").trim(),
+    email: String(pic.email || picEmail?.value || "").trim(),
+    source: String(pic.source || (pic.phone || pic.email ? "imported" : "")).trim(),
+    notes: String(pic.notes || "").trim(),
+  };
+}
+
+function isLeadContactDue(contact, now = Date.now()) {
+  const next = String(contact?.nextAttemptAt || "").trim();
+  if (!next) return true;
+  const timestamp = Date.parse(next);
+  return Number.isNaN(timestamp) || timestamp <= now;
+}
+
+function getLeadBestContact(lead, kind, type = "") {
+  return getLeadContactsByKind(lead, kind).find((contact) => {
+    if (contact.reachableStatus === "wrong_number" || contact.reachableStatus === "do_not_use") {
+      return false;
+    }
+    return !type || contact.type === type;
+  }) || null;
+}
+
+function getLeadRouteState(lead) {
+  const workflow = lead?.workflow && typeof lead.workflow === "object" ? lead.workflow : {};
+  const contacts = getLeadContactSet(lead);
+  const pic = getLeadPicProfile(lead);
+  const picPhone = getLeadBestContact({ ...lead, contacts }, "phone", "pic");
+  const genericPhone = getLeadBestContact({ ...lead, contacts }, "phone", "generic");
+  const picEmail = getLeadBestContact({ ...lead, contacts }, "email", "pic");
+  const genericEmail = getLeadBestContact({ ...lead, contacts }, "email", "generic");
+  const stage = String(workflow.stage || lead?.routeStage || "").trim();
+  const fallbackStage = (() => {
+    if (picPhone) return "call_pic";
+    if (genericPhone) return "call_ask_pic";
+    if (picEmail) return "email_pic";
+    if (genericEmail) return "email_ask_pic";
+    return "manual_research";
+  })();
+  const currentStage =
+    stage && !["new", "discarded"].includes(stage) ? stage : fallbackStage;
+  const currentContact =
+    contacts.find((contact) => contact.id === workflow.currentContactId) ||
+    (currentStage === "call_pic"
+      ? picPhone
+      : currentStage === "call_ask_pic"
+        ? genericPhone
+        : currentStage === "email_pic"
+          ? picEmail
+          : currentStage === "email_ask_pic"
+            ? genericEmail
+            : null);
+  const isWaiting = /^waiting_/.test(currentStage);
+  const bucket =
+    lead?.disposition === "discarded" || currentStage === "discarded"
+      ? "closed"
+      : currentStage === "manual_research"
+        ? "manual"
+        : isWaiting || !isLeadContactDue(currentContact || {}, Date.now())
+          ? "waiting"
+          : "active";
+  return {
+    stage: currentStage,
+    contact: currentContact,
+    contacts,
+    pic,
+    bucket,
+    nextActionAt: workflow.nextActionAt || currentContact?.nextAttemptAt || "",
+    lastActionAt: workflow.lastActionAt || lead?.last_called_at || lead?.follow_up_sent_at || "",
+  };
+}
+
+function getLeadStageMeta(lead) {
+  const route = getLeadRouteState(lead);
+  const contactValue = route.contact?.value || "";
+  const meta = {
+    call_pic: {
+      label: tr("Call P.I.C."),
+      action: tr("Call P.I.C."),
+      description: tr("Likely personal number detected."),
+      className: "is-interested",
+    },
+    call_ask_pic: {
+      label: tr("Ask for P.I.C."),
+      action: tr("Ask for P.I.C."),
+      description: tr("Company phone detected."),
+      className: "is-no-pickup",
+    },
+    email_pic: {
+      label: tr("Email P.I.C."),
+      action: tr("Email P.I.C."),
+      description: tr("Likely person-specific email detected."),
+      className: "is-interested",
+    },
+    email_ask_pic: {
+      label: tr("Request P.I.C."),
+      action: tr("Request P.I.C."),
+      description: tr("Generic inbox detected."),
+      className: "is-mild",
+    },
+    waiting_phone_retry: {
+      label: tr("Waiting call retry"),
+      action: tr("Log call"),
+      description: tr("Next call is scheduled."),
+      className: "is-no-pickup",
+    },
+    waiting_email_reply: {
+      label: tr("Waiting reply"),
+      action: tr("Log reply"),
+      description: tr("Waiting for an email response."),
+      className: "is-mild",
+    },
+    email_reply_received: {
+      label: tr("Reply received"),
+      action: tr("Review reply"),
+      description: tr("A Gmail reply was logged."),
+      className: "is-interested",
+    },
+    manual_research: {
+      label: tr("Manual research"),
+      action: tr("Research contact"),
+      description: tr("Structured routes did not produce a P.I.C."),
+      className: "is-not-interested",
+    },
+    qualified: {
+      label: tr("Qualified"),
+      action: tr("Open timeline"),
+      description: tr("P.I.C. acquired."),
+      className: "is-interested",
+    },
+    discarded: {
+      label: tr("Discarded"),
+      action: tr("Open timeline"),
+      description: tr("Lead removed from active routing."),
+      className: "is-discarded",
+    },
+  };
+  return {
+    ...(meta[route.stage] || meta.call_ask_pic),
+    contactValue,
+    bucket: route.bucket,
+    stage: route.stage,
+  };
 }
 
 function normalizeLeadStackKey(value) {
@@ -12057,7 +12402,7 @@ function normalizeImportedLeadRow(row, index = 0) {
   const primaryPlatform = getLeadHeaderValue(row, "primary_platform") || splitLeadListValue(getLeadHeaderValue(row, "platforms"))[0] || "";
   const techStack = normalizeLeadStackKey(primaryPlatform);
   const companyName = getLeadHeaderValue(row, "meta_title") || domain || getLeadHeaderValue(row, "url") || `Lead ${index + 1}`;
-  return {
+  const baseLead = {
     id: buildLeadIdFromDomain(domain || companyName, index),
     source: "csv",
     name: domain || companyName,
@@ -12089,6 +12434,32 @@ function normalizeImportedLeadRow(row, index = 0) {
     estimatedMonthlyRevenue: 0,
     estimatedParcelsPerMonth: 0,
     disposition: "new",
+  };
+  const contacts = getLeadContactSet(baseLead);
+  const route = getLeadRouteState({ ...baseLead, contacts });
+  return {
+    ...baseLead,
+    contacts,
+    pic: getLeadPicProfile({ ...baseLead, contacts }),
+    workflow: {
+      stage: route.stage,
+      currentContactId: route.contact?.id || "",
+      nextActionAt: "",
+      lastActionAt: "",
+      lastActionType: "",
+      phoneMaxAttempts: LEAD_PHONE_RETRY_DELAYS_DAYS.length,
+      emailMaxAttempts: LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length,
+    },
+    timeline: [
+      {
+        id: `import-${Date.now()}-${index}`,
+        type: "lead_imported",
+        at: new Date().toISOString(),
+        summary: "Imported from CSV",
+        channel: "system",
+        metadata: { source: "csv" },
+      },
+    ],
   };
 }
 
@@ -12183,6 +12554,25 @@ function createLeadProspectRepository() {
         leads: Array.isArray(payload?.leads) ? payload.leads : [],
       };
     },
+    async sendEmail(id, message = {}) {
+      const payload = await fetchApiWithAuth("/api/admin/leads/email/send", {
+        method: "POST",
+        body: JSON.stringify({ id: String(id || "").trim(), message }),
+        timeoutMs: 30000,
+      });
+      return payload?.lead || null;
+    },
+    async syncReplies() {
+      const payload = await fetchApiWithAuth("/api/admin/leads/email/sync-replies", {
+        method: "POST",
+        body: JSON.stringify({}),
+        timeoutMs: 30000,
+      });
+      return {
+        synced: Number(payload?.synced || 0),
+        leads: Array.isArray(payload?.leads) ? payload.leads : [],
+      };
+    },
   };
 }
 
@@ -12215,11 +12605,13 @@ function formatLeadParcels(value) {
 }
 
 function getLeadPhones(lead) {
-  return splitLeadListValue(lead?.phones || lead?.phone || "");
+  const contacts = getLeadContactsByKind(lead, "phone").map((contact) => contact.value);
+  return contacts.length ? contacts : splitLeadListValue(lead?.phones || lead?.phone || "");
 }
 
 function getLeadEmails(lead) {
-  return splitLeadListValue(lead?.emails || lead?.email || "");
+  const contacts = getLeadContactsByKind(lead, "email").map((contact) => contact.value);
+  return contacts.length ? contacts : splitLeadListValue(lead?.emails || lead?.email || "");
 }
 
 function formatLeadContactCounts(lead) {
@@ -12354,9 +12746,9 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
-  if (bucket === "called") return tr("talked");
-  if (bucket === "discarded") return tr("discarded");
-  return tr("not talked");
+  if (bucket === "waiting") return tr("waiting");
+  if (bucket === "manual") return tr("manual / closed");
+  return tr("active");
 }
 
 function syncLeadListTabs() {
@@ -12371,7 +12763,7 @@ function syncLeadListTabs() {
 
 function setLeadListBucket(nextBucket, options = {}) {
   const safeBucket =
-    nextBucket === "called" || nextBucket === "discarded" ? nextBucket : "to_call";
+    nextBucket === "waiting" || nextBucket === "manual" ? nextBucket : "active";
   const { rerender = true } = options;
   leadListBucket = safeBucket;
   syncLeadListTabs();
@@ -12387,16 +12779,13 @@ function renderLeadSummaryCards() {
     notInterested: 0,
   };
   leadProspects.forEach((lead) => {
-    const bucket = getLeadOutcomeMeta(lead?.disposition).summaryBucket;
-    if (bucket === "followUp") {
+    const bucket = getLeadRouteState(lead).bucket;
+    if (bucket === "waiting") {
       counts.followUp += 1;
       return;
     }
-    if (bucket === "notInterested") {
+    if (bucket === "manual" || bucket === "closed") {
       counts.notInterested += 1;
-      return;
-    }
-    if (bucket === "discarded") {
       return;
     }
     counts.ready += 1;
@@ -12410,7 +12799,11 @@ function getFilteredLeadProspects() {
   const query = String(leadSearchQuery || "").trim().toLowerCase();
   const stack = String(leadStackFilterValue || "all").trim().toLowerCase();
   return leadProspects.filter((lead) => {
-    const matchesBucket = getLeadOutcomeMeta(lead?.disposition).listBucket === leadListBucket;
+    const routeBucket = getLeadRouteState(lead).bucket;
+    const matchesBucket =
+      leadListBucket === "manual"
+        ? routeBucket === "manual" || routeBucket === "closed"
+        : routeBucket === leadListBucket;
     if (!matchesBucket) return false;
     const leadStack = normalizeLeadStackKey(lead?.primaryPlatform || lead?.techStack);
     const matchesStack = stack === "all" || leadStack === stack;
@@ -12449,10 +12842,16 @@ function renderLeadProspects() {
   if (reloadLeadsButton) {
     reloadLeadsButton.disabled = leadProspectsLoading;
   }
+  if (syncLeadRepliesButton) {
+    syncLeadRepliesButton.disabled = leadProspectsLoading;
+  }
 
-  const bucketRows = leadProspects.filter(
-    (lead) => getLeadOutcomeMeta(lead?.disposition).listBucket === leadListBucket
-  );
+  const bucketRows = leadProspects.filter((lead) => {
+    const routeBucket = getLeadRouteState(lead).bucket;
+    return leadListBucket === "manual"
+      ? routeBucket === "manual" || routeBucket === "closed"
+      : routeBucket === leadListBucket;
+  });
   const filtered = getFilteredLeadProspects();
   leadsTableBody.innerHTML = "";
 
@@ -12489,26 +12888,27 @@ function renderLeadProspects() {
 
   filtered.forEach((lead) => {
     const stack = getLeadStackMeta(lead?.primaryPlatform || lead?.techStack);
-    const outcome = getLeadOutcomeMeta(lead?.disposition);
-    const showDiscardAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
-    const showCallAction = getLeadOutcomeMeta(lead?.disposition).listBucket !== "discarded";
+    const route = getLeadRouteState(lead);
+    const stage = getLeadStageMeta(lead);
+    const showDiscardAction = route.bucket !== "closed";
+    const showPrimaryAction = route.bucket !== "closed";
     const phones = getLeadPhones(lead);
+    const emails = getLeadEmails(lead);
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
-    const phoneChoices = phones
-      .map(
-        (phone) => `<button type="button" class="lead-phone-choice-button mono" data-lead-call="${escapeHtml(
-          String(lead?.id || "")
-        )}" data-lead-phone="${escapeHtml(phone)}">${escapeHtml(phone)}</button>`
-      )
-      .join("");
+    const contactSummary = [
+      phones.length ? `${phones.length} phone${phones.length === 1 ? "" : "s"}` : "",
+      emails.length ? `${emails.length} email${emails.length === 1 ? "" : "s"}` : "",
+      route.pic.phone || route.pic.email ? "P.I.C. known" : "",
+    ].filter(Boolean).join(" • ");
+    const currentContactLabel = route.contact?.value ? ` · ${route.contact.value}` : "";
     const row = document.createElement("tr");
     row.className = "leads-row";
     row.innerHTML = `
       <td>
         <div class="lead-prospect">
           <div class="lead-prospect-name">${escapeHtml(domain || "--")}</div>
-          <div class="lead-prospect-phone mono">${escapeHtml(formatLeadContactCounts(lead))}</div>
+          <div class="lead-prospect-phone mono">${escapeHtml(contactSummary || formatLeadContactCounts(lead))}</div>
         </div>
       </td>
       <td>
@@ -12534,27 +12934,21 @@ function renderLeadProspects() {
         }
       </td>
       <td>
-        <span class="lead-outcome-pill ${outcome.className}">${escapeHtml(getLeadOutcomeDisplayLabel(lead))}</span>
+        <div class="lead-stage-cell">
+          <span class="lead-outcome-pill ${stage.className}">${escapeHtml(stage.label)}</span>
+          <span class="lead-stage-reason">${escapeHtml(stage.description)}${escapeHtml(currentContactLabel)}</span>
+        </div>
       </td>
       <td class="leads-table-actions">
         <div class="leads-table-actions-group">
           ${
-            showCallAction
-              ? `<div class="lead-call-choice-wrap">
-          <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-call="${escapeHtml(
-            String(lead?.id || "")
-          )}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.4 19.4 0 0 1 5.2 12.8 19.8 19.8 0 0 1 2.1 4.1 2 2 0 0 1 4 1.9h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7 10.3a16 16 0 0 0 6.7 6.7l1.9-1.9a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.6 1.9z"/></svg>
-            <span>Call</span>
-          </button>
-          ${
-            phones.length > 1
-              ? `<div class="lead-phone-choice-menu" data-lead-phone-menu="${escapeHtml(
+            showPrimaryAction
+              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-action="${escapeHtml(
                   String(lead?.id || "")
-                )}">${phoneChoices}</div>`
-              : ""
-          }
-        </div>`
+                )}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12h13"/><path d="m13 6 6 6-6 6"/></svg>
+            <span>${escapeHtml(stage.action)}</span>
+          </button>`
               : ""
           }
           ${
@@ -12604,18 +12998,62 @@ function setLeadCallOutcomeBusy(isBusy) {
 }
 
 function populateLeadCallOutcomeModal(lead) {
+  const route = getLeadRouteState(lead);
   if (leadCallOutcomeLeadName) {
-    leadCallOutcomeLeadName.textContent = String(lead?.name || "--");
+    leadCallOutcomeLeadName.textContent = getLeadDisplayDomain(lead);
   }
   if (leadCallOutcomeLeadCompany) {
-    leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || "--");
+    leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || getLeadDisplayCompany(lead) || "--");
   }
   if (leadCallOutcomeLeadPhone instanceof HTMLInputElement) {
-    leadCallOutcomeLeadPhone.value = String(lead?.phone || "").trim();
+    leadCallOutcomeLeadPhone.value = String(route.contact?.kind === "phone" ? route.contact.value : route.pic.phone || lead?.phone || "").trim();
   }
   if (leadCallOutcomeLeadEmail instanceof HTMLInputElement) {
-    leadCallOutcomeLeadEmail.value = String(lead?.email || "").trim();
+    leadCallOutcomeLeadEmail.value = String(route.contact?.kind === "email" ? route.contact.value : route.pic.email || lead?.email || "").trim();
   }
+  if (leadCallOutcomeActions) {
+    leadCallOutcomeActions.querySelectorAll("[data-lead-outcome]").forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      const outcome = String(button.dataset.leadOutcome || "");
+      const isPhoneRoute = route.contact?.kind === "phone" || route.stage.startsWith("call") || route.stage === "waiting_phone_retry";
+      const isEmailRoute =
+        route.contact?.kind === "email" ||
+        route.stage.startsWith("email") ||
+        route.stage === "waiting_email_reply";
+      const visible =
+        outcome === "phone_no_answer"
+          ? isPhoneRoute
+          : outcome === "email_reply_pic"
+            ? isEmailRoute
+            : true;
+      button.classList.toggle("is-hidden", !visible);
+    });
+  }
+  renderLeadTimeline(lead);
+}
+
+function renderLeadTimeline(lead) {
+  if (!leadTimelineList) return;
+  const timeline = getLeadTimeline(lead).slice(-8).reverse();
+  if (!timeline.length) {
+    leadTimelineList.innerHTML = `<div class="lead-timeline-empty">${escapeHtml(tr("No events logged yet."))}</div>`;
+    return;
+  }
+  leadTimelineList.innerHTML = timeline
+    .map((event) => {
+      const date = event?.at ? new Date(event.at) : null;
+      const dateLabel = date && !Number.isNaN(date.getTime())
+        ? date.toLocaleString(getUiLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        : "--";
+      return `<div class="lead-timeline-item">
+        <div class="lead-timeline-dot"></div>
+        <div>
+          <div class="lead-timeline-summary">${escapeHtml(event?.summary || event?.type || "--")}</div>
+          <div class="lead-timeline-meta mono">${escapeHtml(dateLabel)}${event?.contact ? ` · ${escapeHtml(event.contact)}` : ""}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
 }
 
 function getActiveLeadCallOutcomeLead() {
@@ -12655,17 +13093,18 @@ function setLeadCallOutcomeStep(step) {
     leadCallOutcomeEmailStep.classList.toggle("is-hidden", !isCompose);
   }
   if (leadCallOutcomeTitle) {
-    leadCallOutcomeTitle.textContent = isCompose ? tr("Review Follow Up") : tr("Log Call Outcome");
+    leadCallOutcomeTitle.textContent = isCompose ? tr("Send Email") : tr("Log Lead Event");
   }
   if (leadCallOutcomeNote) {
     leadCallOutcomeNote.textContent = isCompose
-      ? tr("Review the follow-up template, language, and deck before sending it out.")
-      : tr("The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.");
+      ? tr("Send this from the connected Gmail / Workspace account so the thread can be tracked.")
+      : tr("Log the result of the current route. The next action and fallback are updated automatically.");
   }
 }
 
 function getLeadFirstName(lead) {
-  return String(lead?.name || "")
+  const pic = getLeadPicProfile(lead);
+  return String(pic.name || lead?.name || "")
     .trim()
     .split(/\s+/)
     .filter(Boolean)[0] || tr("there");
@@ -12709,11 +13148,74 @@ function getLeadCallOutcomeEditedContact() {
   };
 }
 
+function createLeadEvent(type, summary, options = {}) {
+  return {
+    id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    at: new Date().toISOString(),
+    summary,
+    channel: options.channel || "system",
+    contact: options.contact || "",
+    outcome: options.outcome || "",
+    metadata: options.metadata || {},
+  };
+}
+
+function addDaysFromNow(days) {
+  return new Date(Date.now() + Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function updateLeadContact(lead, contactId, updates = {}) {
+  const contacts = getLeadContactSet(lead);
+  return contacts.map((contact) =>
+    String(contact.id) === String(contactId) ? { ...contact, ...updates } : contact
+  );
+}
+
+function getNextLeadFallbackStage(lead, failedStage = getLeadRouteState(lead).stage) {
+  const contacts = getLeadContactSet(lead);
+  const withContacts = { ...lead, contacts };
+  if (failedStage.startsWith("call")) {
+    if (getLeadBestContact(withContacts, "email", "pic")) return "email_pic";
+    if (getLeadBestContact(withContacts, "email", "generic")) return "email_ask_pic";
+    return "manual_research";
+  }
+  if (failedStage.startsWith("email") || failedStage.startsWith("waiting_email")) {
+    return "manual_research";
+  }
+  if (failedStage === "manual_research") return "discarded";
+  return getLeadRouteState(withContacts).stage;
+}
+
+function getLeadEmailOutcomeForStage(stage) {
+  if (stage === "email_ask_pic") return "pic_request";
+  if (stage === "email_pic") return "pic_followup";
+  return "followup";
+}
+
 function getLeadFollowUpTemplateParts(lead, outcome, language) {
   const firstName = getLeadFirstName(lead);
   const companyName = String(lead?.companyName || "your store");
   const deckUrl = getLeadFollowUpDeckUrl(language);
   const languageKey = normalizeLeadFollowUpLanguage(language);
+  if (outcome === "pic_request") {
+    if (languageKey === "fr") {
+      return {
+        subject: `Qui gère les expéditions chez ${companyName} ?`,
+        body: `Bonjour,\n\nJe me permets de vous contacter pour savoir qui s'occupe des expéditions et des tarifs transporteurs chez ${companyName}.\n\nShipide aide les e-commerçants à accéder à de meilleurs tarifs d'expédition grâce à un modèle de volume groupé.\n\nPourriez-vous me rediriger vers la personne en charge ?\n\nMerci,\nShipide`,
+      };
+    }
+    if (languageKey === "nl") {
+      return {
+        subject: `Wie beheert de verzendingen bij ${companyName}?`,
+        body: `Hallo,\n\nIk neem even contact op om te vragen wie bij ${companyName} verantwoordelijk is voor verzendingen en transporttarieven.\n\nShipide helpt e-commercebedrijven betere verzendtarieven te krijgen via gebundeld verzendvolume.\n\nKunt u mij doorverwijzen naar de juiste persoon?\n\nMet vriendelijke groet,\nShipide`,
+      };
+    }
+    return {
+      subject: `Who handles shipping at ${companyName}?`,
+      body: `Hi,\n\nI wanted to ask who is responsible for shipping operations and carrier rates at ${companyName}.\n\nShipide helps ecommerce businesses access better shipping rates through pooled shipping volume.\n\nCould you point me to the right person?\n\nBest,\nShipide`,
+    };
+  }
   if (languageKey === "fr") {
     return {
       subject:
@@ -12791,7 +13293,8 @@ function openLeadFollowUpComposer(outcome) {
   );
   leadCallOutcomePendingOutcome = outcome;
   if (leadCallOutcomeStepPill) {
-    leadCallOutcomeStepPill.textContent = getLeadOutcomeMeta(outcome).label;
+    leadCallOutcomeStepPill.textContent =
+      outcome === "pic_request" ? tr("P.I.C. request") : getLeadOutcomeMeta(outcome).label;
   }
   if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
     leadCallOutcomeEmailSubject.value = draft.subject;
@@ -12879,6 +13382,16 @@ function openLeadCallOutcomeForLead(lead) {
   setLeadCallOutcomeModalOpen(true);
 }
 
+function openLeadWorkflowModal(lead) {
+  if (!lead) return;
+  leadCallOutcomeLeadId = String(lead.id || "");
+  resetLeadCallOutcomeComposer();
+  populateLeadCallOutcomeModal(lead);
+  setLeadCallOutcomeStep("choose");
+  setLeadCallOutcomeBusy(false);
+  setLeadCallOutcomeModalOpen(true);
+}
+
 function closeLeadCallOutcome() {
   if (leadCallOutcomeSaving) return;
   leadCallOutcomeLeadId = "";
@@ -12886,51 +13399,128 @@ function closeLeadCallOutcome() {
   setLeadCallOutcomeModalOpen(false);
 }
 
+function forceCloseLeadCallOutcome() {
+  leadCallOutcomeLeadId = "";
+  resetLeadCallOutcomeComposer();
+  setLeadCallOutcomeModalOpen(false);
+}
+
 async function saveLeadCallOutcome(outcome) {
   const safeOutcome = String(outcome || "").trim();
-  if (!leadCallOutcomeLeadId || !LEAD_OUTCOME_META[safeOutcome]) return;
-  if (safeOutcome === "no_pickup") {
-    setLeadCallOutcomeBusy(true);
-    try {
-      const lead = getActiveLeadCallOutcomeLead();
-      if (!lead) {
-        throw new Error(tr("Lead not found."));
+  if (!leadCallOutcomeLeadId || !safeOutcome) return;
+  const lead = getActiveLeadCallOutcomeLead();
+  if (!lead) return;
+  const route = getLeadRouteState(lead);
+  const edited = getLeadCallOutcomeEditedContact();
+  const currentContact = route.contact;
+  setLeadCallOutcomeBusy(true);
+  try {
+    if (safeOutcome === "phone_no_answer") {
+      if (!currentContact || currentContact.kind !== "phone") {
+        throw new Error(tr("No active phone route for this lead."));
       }
-      const nextNoPickupCount = Math.max(0, Number(lead?.no_pickup_count || 0)) + 1;
-      const contact = getLeadCallOutcomeEditedContact();
-      if (nextNoPickupCount >= 5) {
-        await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
-          phone: contact.phone || lead.phone || "",
-          email: contact.email || lead.email || "",
-        });
-        await discardLeadProspect(leadCallOutcomeLeadId, { quiet: true });
-        leadCallOutcomeLeadId = "";
-        resetLeadCallOutcomeComposer();
-        setLeadCallOutcomeModalOpen(false);
-        showToast(tr("Lead discarded after 5 unanswered calls."), { tone: "success" });
-        return;
-      }
-      setLeadListBucket("to_call", { rerender: false });
-      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
-        disposition: safeOutcome,
-        phone: contact.phone || lead.phone || "",
-        email: contact.email || lead.email || "",
-        last_called_at: new Date().toISOString(),
-        no_pickup_count: nextNoPickupCount,
-        retry_after: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      const nextAttemptCount = Math.max(0, Number(currentContact.attemptCount || 0)) + 1;
+      const maxAttempts = LEAD_PHONE_RETRY_DELAYS_DAYS.length;
+      const exhausted = nextAttemptCount >= maxAttempts;
+      const nextStage = exhausted ? getNextLeadFallbackStage(lead, route.stage) : "waiting_phone_retry";
+      const nextDelay = LEAD_PHONE_RETRY_DELAYS_DAYS[Math.min(nextAttemptCount, maxAttempts - 1)] || 0;
+      const contacts = updateLeadContact(lead, currentContact.id, {
+        attemptCount: nextAttemptCount,
+        reachableStatus: exhausted ? "no_answer_exhausted" : "no_answer",
+        lastOutcome: "no_answer",
+        lastAttemptAt: new Date().toISOString(),
+        nextAttemptAt: exhausted ? "" : addDaysFromNow(nextDelay),
       });
-      leadCallOutcomeLeadId = "";
-      resetLeadCallOutcomeComposer();
-      setLeadCallOutcomeModalOpen(false);
-      showToast(tr("Lead moved back into the not-talked queue for a 24h retry."), { tone: "success" });
-    } catch (error) {
-      showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
-    } finally {
-      setLeadCallOutcomeBusy(false);
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        contacts,
+        phone: edited.phone || lead.phone || "",
+        email: edited.email || lead.email || "",
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: nextStage,
+          currentContactId: exhausted ? "" : currentContact.id,
+          lastActionAt: new Date().toISOString(),
+          lastActionType: "phone_no_answer",
+          nextActionAt: exhausted ? "" : addDaysFromNow(nextDelay),
+        },
+        timeline: [
+          createLeadEvent(
+            "call_no_answer",
+            exhausted
+              ? "Phone route exhausted after three attempts"
+              : `No answer. Retry scheduled for attempt ${nextAttemptCount + 1}/3`,
+            { channel: "phone", contact: currentContact.value, outcome: "no_answer" }
+          ),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(exhausted ? tr("Phone route exhausted. Fallback route selected.") : tr("Call retry scheduled."), { tone: "success" });
+      return;
     }
-    return;
+    if (safeOutcome === "pic_acquired" || safeOutcome === "email_reply_pic") {
+      const pic = {
+        ...(lead.pic || {}),
+        phone: edited.phone || route.pic.phone || "",
+        email: edited.email || route.pic.email || "",
+        source: safeOutcome === "email_reply_pic" ? "email" : "call",
+      };
+      const nextStage = pic.phone ? "call_pic" : pic.email ? "email_pic" : "qualified";
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        phone: pic.phone || lead.phone || "",
+        email: pic.email || lead.email || "",
+        pic,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: nextStage,
+          currentContactId: "",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("pic_acquired", "P.I.C. contact acquired", {
+            channel: safeOutcome === "email_reply_pic" ? "email" : "phone",
+            contact: pic.email || pic.phone,
+            outcome: "pic_acquired",
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("P.I.C. saved and route updated."), { tone: "success" });
+      return;
+    }
+    if (safeOutcome === "no_pic_acquired" || safeOutcome === "route_failed") {
+      const nextStage = getNextLeadFallbackStage(lead, route.stage);
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        phone: edited.phone || lead.phone || "",
+        email: edited.email || lead.email || "",
+        disposition: nextStage === "discarded" ? "discarded" : lead.disposition || "new",
+        discarded_at: nextStage === "discarded" ? new Date().toISOString() : lead.discarded_at || "",
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: nextStage,
+          currentContactId: "",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent(
+            nextStage === "discarded" ? "lead_discarded" : "route_changed",
+            nextStage === "discarded" ? "Lead discarded after fallback route failed" : `Fallback route selected: ${nextStage}`,
+            { channel: "system", outcome: safeOutcome }
+          ),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(nextStage === "discarded" ? tr("Lead discarded.") : tr("Fallback route selected."), { tone: "success" });
+      return;
+    }
+  } catch (error) {
+    showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
+  } finally {
+    setLeadCallOutcomeBusy(false);
   }
-  openLeadFollowUpComposer(safeOutcome);
 }
 
 async function sendLeadFollowUpForCurrentLead() {
@@ -12962,26 +13552,52 @@ async function sendLeadFollowUpForCurrentLead() {
   }
   setLeadCallOutcomeBusy(true);
   try {
-    await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
-      disposition: leadCallOutcomePendingOutcome,
-      phone: contact.phone || lead.phone || "",
-      email,
-      follow_up_email: email,
-      follow_up_subject: subject,
-      follow_up_body: body,
-      follow_up_deck_language: selectedLanguage,
-      follow_up_deck_filename: selectedDeck.filename,
-      follow_up_deck_url: selectedDeck.url,
-      follow_up_sent_at: new Date().toISOString(),
-      last_called_at: new Date().toISOString(),
+    const updatedLead = await leadProspectRepository.sendEmail(leadCallOutcomeLeadId, {
+      to: email,
+      subject,
+      body,
+      language: selectedLanguage,
+      outcome: leadCallOutcomePendingOutcome,
+      deckFilename: selectedDeck.filename,
+      deckUrl: selectedDeck.url,
     });
-    openLeadFollowUpMailDraft({ email, subject, body });
-    leadCallOutcomeLeadId = "";
-    resetLeadCallOutcomeComposer();
-    setLeadCallOutcomeModalOpen(false);
-    showToast(tr("Follow-up draft opened in your mail app."), { tone: "success" });
+    if (updatedLead?.id) {
+      leadProspects = leadProspects.map((candidate) =>
+        String(candidate?.id || "") === String(updatedLead.id) ? updatedLead : candidate
+      );
+    } else {
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        disposition: leadCallOutcomePendingOutcome,
+        phone: contact.phone || lead.phone || "",
+        email,
+        follow_up_email: email,
+        follow_up_subject: subject,
+        follow_up_body: body,
+        follow_up_deck_language: selectedLanguage,
+        follow_up_deck_filename: selectedDeck.filename,
+        follow_up_deck_url: selectedDeck.url,
+        follow_up_sent_at: new Date().toISOString(),
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "waiting_email_reply",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: "email_sent",
+          nextActionAt: addDaysFromNow(LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS[1]),
+        },
+        timeline: [
+          createLeadEvent("email_sent", "Email sent from connected Gmail / Workspace", {
+            channel: "email",
+            contact: email,
+            outcome: leadCallOutcomePendingOutcome,
+          }),
+        ],
+      });
+    }
+    renderLeadProspects();
+    forceCloseLeadCallOutcome();
+    showToast(tr("Email sent and logged on the lead timeline."), { tone: "success" });
   } catch (error) {
-    showToast(error?.message || tr("Could not save the lead outcome."), { tone: "error" });
+    showToast(error?.message || tr("Could not send the email from Gmail."), { tone: "error" });
   } finally {
     setLeadCallOutcomeBusy(false);
   }
@@ -13003,23 +13619,35 @@ function launchLeadCall(lead, selectedPhone = "") {
   link.remove();
 }
 
-function handleLeadCallAction(leadId, selectedPhone = "") {
+function handleLeadWorkflowAction(leadId) {
   const lead = findLeadProspectById(leadId);
   if (!lead) return;
-  const phones = getLeadPhones(lead);
-  const phone = String(selectedPhone || phones[0] || lead?.phone || "").trim();
-  if (!selectedPhone && phones.length > 1) {
-    openLeadPhoneChoiceMenu(leadId);
+  const route = getLeadRouteState(lead);
+  if (
+    route.stage === "call_pic" ||
+    route.stage === "call_ask_pic" ||
+    (route.stage === "waiting_phone_retry" && isLeadContactDue(route.contact))
+  ) {
+    const phone = route.contact?.value || route.pic.phone || lead?.phone || "";
+    launchLeadCall(lead, phone);
+    window.setTimeout(() => {
+      openLeadWorkflowModal({
+        ...lead,
+        phone,
+      });
+    }, 120);
     return;
   }
-  closeLeadPhoneChoiceMenus();
-  launchLeadCall(lead, phone);
-  window.setTimeout(() => {
-    openLeadCallOutcomeForLead({
-      ...lead,
-      phone,
-    });
-  }, 120);
+  if (
+    route.stage === "email_pic" ||
+    route.stage === "email_ask_pic" ||
+    (route.stage === "waiting_email_reply" && isLeadContactDue(route.contact))
+  ) {
+    openLeadWorkflowModal(lead);
+    openLeadFollowUpComposer(getLeadEmailOutcomeForStage(route.stage));
+    return;
+  }
+  openLeadWorkflowModal(lead);
 }
 
 async function importLeadCsvFile(file) {
@@ -27002,6 +27630,27 @@ if (reloadLeadsButton) {
   });
 }
 
+if (syncLeadRepliesButton) {
+  syncLeadRepliesButton.addEventListener("click", async () => {
+    syncLeadRepliesButton.disabled = true;
+    try {
+      const result = await leadProspectRepository.syncReplies();
+      if (Array.isArray(result.leads)) {
+        leadProspects = result.leads;
+        leadProspectsLoaded = true;
+      }
+      renderLeadProspects();
+      showToast(tr("Synced {count} Gmail replies.", { count: result.synced || 0 }), {
+        tone: "success",
+      });
+    } catch (error) {
+      showToast(error?.message || tr("Could not sync Gmail replies."), { tone: "error" });
+    } finally {
+      syncLeadRepliesButton.disabled = false;
+    }
+  });
+}
+
 if (importLeadsButton) {
   importLeadsButton.addEventListener("click", () => {
     leadsCsvInput?.click();
@@ -27026,9 +27675,9 @@ if (leadsTableBody) {
       void discardLeadProspect(discardTarget.dataset.leadDiscard);
       return;
     }
-    const target = event.target instanceof Element ? event.target.closest("[data-lead-call]") : null;
+    const target = event.target instanceof Element ? event.target.closest("[data-lead-action]") : null;
     if (!(target instanceof HTMLButtonElement)) return;
-    handleLeadCallAction(target.dataset.leadCall, target.dataset.leadPhone || "");
+    handleLeadWorkflowAction(target.dataset.leadAction);
   });
 }
 
