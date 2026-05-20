@@ -547,6 +547,12 @@ const LEAD_OUTCOME_META = {
     className: "is-interested",
     listBucket: "called",
   },
+  initial_outreach: {
+    label: "Initial email",
+    summaryBucket: "followUp",
+    className: "is-mild",
+    listBucket: "email_waiting",
+  },
   mild_follow_up: {
     label: "Mildly interested",
     summaryBucket: "followUp",
@@ -3092,7 +3098,7 @@ let leadProspectsLoadPromise = null;
 let leadProspectsLoadRequestToken = 0;
 let leadMockModeEnabled = false;
 let leadMockSnapshot = null;
-let leadListBucket = "active";
+let leadListBucket = "to_contact";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
@@ -12297,8 +12303,7 @@ function getLeadRouteState(lead) {
     if (genericEmail) return "email_ask_pic";
     return "manual_research";
   })();
-  const currentStage =
-    stage && !["new", "discarded"].includes(stage) ? stage : fallbackStage;
+  const currentStage = stage && stage !== "new" ? stage : fallbackStage;
   const currentContact =
     contacts.find((contact) => contact.id === workflow.currentContactId) ||
     (currentStage === "call_pic"
@@ -12310,15 +12315,27 @@ function getLeadRouteState(lead) {
           : currentStage === "email_ask_pic"
             ? genericEmail
             : null);
-  const isWaiting = /^waiting_/.test(currentStage);
-  const bucket =
-    lead?.disposition === "discarded" || currentStage === "discarded"
-      ? "closed"
-      : currentStage === "manual_research"
-        ? "manual"
-        : isWaiting || !isLeadContactDue(currentContact || {}, Date.now())
-          ? "waiting"
-          : "active";
+  const bucket = (() => {
+    if (lead?.disposition === "discarded" || currentStage === "discarded") {
+      return "discarded";
+    }
+    if (
+      lead?.disposition === "manual_closed" ||
+      currentStage === "manual_closed" ||
+      currentStage === "email_reply_received" ||
+      currentStage === "manual_research" ||
+      currentStage === "qualified"
+    ) {
+      return "manual_closed";
+    }
+    if (currentStage === "waiting_phone_retry") {
+      return "to_recall";
+    }
+    if (currentStage === "waiting_email_reply") {
+      return "email_waiting";
+    }
+    return "to_contact";
+  })();
   return {
     stage: currentStage,
     contact: currentContact,
@@ -12335,57 +12352,63 @@ function getLeadStageMeta(lead) {
   const contactValue = route.contact?.value || "";
   const meta = {
     call_pic: {
-      label: tr("Call P.I.C."),
-      action: tr("Call P.I.C."),
+      label: tr("To Contact"),
+      action: tr("Call"),
       description: tr("Likely personal number detected."),
       className: "is-interested",
     },
     call_ask_pic: {
-      label: tr("Ask for P.I.C."),
-      action: tr("Ask for P.I.C."),
+      label: tr("To Contact"),
+      action: tr("Call"),
       description: tr("Company phone detected."),
       className: "is-no-pickup",
     },
     email_pic: {
-      label: tr("Email P.I.C."),
-      action: tr("Email P.I.C."),
+      label: tr("To Contact"),
+      action: tr("Send initial email"),
       description: tr("Likely person-specific email detected."),
       className: "is-interested",
     },
     email_ask_pic: {
-      label: tr("Request P.I.C."),
-      action: tr("Request P.I.C."),
+      label: tr("To Contact"),
+      action: tr("Send initial email"),
       description: tr("Generic inbox detected."),
       className: "is-mild",
     },
     waiting_phone_retry: {
-      label: tr("Waiting call retry"),
-      action: tr("Log call"),
-      description: tr("Next call is scheduled."),
+      label: tr("To Re-Call"),
+      action: tr("Call again"),
+      description: tr("Manual phone follow-up is due or scheduled."),
       className: "is-no-pickup",
     },
     waiting_email_reply: {
-      label: tr("Waiting reply"),
-      action: tr("Log reply"),
-      description: tr("Waiting for an email response."),
+      label: tr("Waiting / follow-up"),
+      action: tr("Queued"),
+      description: tr("Waiting for a reply or follow-up touchpoint."),
       className: "is-mild",
     },
     email_reply_received: {
       label: tr("Reply received"),
-      action: tr("Review reply"),
-      description: tr("A Gmail reply was logged."),
+      action: tr("Manual"),
+      description: tr("Handle the thread from the inbox."),
       className: "is-interested",
     },
     manual_research: {
-      label: tr("Manual research"),
-      action: tr("Research contact"),
-      description: tr("Structured routes did not produce a P.I.C."),
+      label: tr("Manual / Closed"),
+      action: tr("Manual"),
+      description: tr("No pending lead-system action."),
+      className: "is-not-interested",
+    },
+    manual_closed: {
+      label: tr("Manual / Closed"),
+      action: tr("Manual"),
+      description: tr("No pending lead-system action."),
       className: "is-not-interested",
     },
     qualified: {
-      label: tr("Qualified"),
-      action: tr("Open timeline"),
-      description: tr("P.I.C. acquired."),
+      label: tr("Manual / Closed"),
+      action: tr("Manual"),
+      description: tr("No pending lead-system action."),
       className: "is-interested",
     },
     discarded: {
@@ -12718,11 +12741,23 @@ function compareLeadProspects(left, right, bucket = leadListBucket) {
     return Number(left?.orderIndex || 0) - Number(right?.orderIndex || 0);
   }
 
-  if (bucket === "called") {
-    const rightCalled = parseLeadTimestamp(right?.last_called_at);
-    const leftCalled = parseLeadTimestamp(left?.last_called_at);
-    if (rightCalled !== leftCalled) return rightCalled - leftCalled;
+  if (bucket === "manual_closed") {
+    const rightAction = parseLeadTimestamp(right?.workflow?.lastActionAt || right?.last_called_at || right?.follow_up_sent_at);
+    const leftAction = parseLeadTimestamp(left?.workflow?.lastActionAt || left?.last_called_at || left?.follow_up_sent_at);
+    if (rightAction !== leftAction) return rightAction - leftAction;
     return Number(left?.orderIndex || 0) - Number(right?.orderIndex || 0);
+  }
+
+  if (bucket === "email_waiting") {
+    const leftAction = parseLeadTimestamp(left?.workflow?.nextActionAt);
+    const rightAction = parseLeadTimestamp(right?.workflow?.nextActionAt);
+    if (leftAction && rightAction && leftAction !== rightAction) return leftAction - rightAction;
+  }
+
+  if (bucket === "to_recall") {
+    const leftAction = parseLeadTimestamp(left?.workflow?.nextActionAt);
+    const rightAction = parseLeadTimestamp(right?.workflow?.nextActionAt);
+    if (leftAction && rightAction && leftAction !== rightAction) return leftAction - rightAction;
   }
 
   const now = Date.now();
@@ -12795,9 +12830,11 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
-  if (bucket === "waiting") return tr("waiting");
-  if (bucket === "manual") return tr("manual / closed");
-  return tr("active");
+  if (bucket === "email_waiting") return tr("waiting / follow-up");
+  if (bucket === "to_recall") return tr("to re-call");
+  if (bucket === "manual_closed") return tr("manual / closed");
+  if (bucket === "discarded") return tr("discarded");
+  return tr("to contact");
 }
 
 function syncLeadListTabs() {
@@ -12812,7 +12849,9 @@ function syncLeadListTabs() {
 
 function setLeadListBucket(nextBucket, options = {}) {
   const safeBucket =
-    nextBucket === "waiting" || nextBucket === "manual" ? nextBucket : "active";
+    ["to_contact", "email_waiting", "to_recall", "manual_closed", "discarded"].includes(nextBucket)
+      ? nextBucket
+      : "to_contact";
   const { rerender = true } = options;
   leadListBucket = safeBucket;
   syncLeadListTabs();
@@ -12829,11 +12868,11 @@ function renderLeadSummaryCards() {
   };
   leadProspects.forEach((lead) => {
     const bucket = getLeadRouteState(lead).bucket;
-    if (bucket === "waiting") {
+    if (bucket === "email_waiting" || bucket === "to_recall") {
       counts.followUp += 1;
       return;
     }
-    if (bucket === "manual" || bucket === "closed") {
+    if (bucket === "manual_closed" || bucket === "discarded") {
       counts.notInterested += 1;
       return;
     }
@@ -12849,10 +12888,7 @@ function getFilteredLeadProspects() {
   const stack = String(leadStackFilterValue || "all").trim().toLowerCase();
   return leadProspects.filter((lead) => {
     const routeBucket = getLeadRouteState(lead).bucket;
-    const matchesBucket =
-      leadListBucket === "manual"
-        ? routeBucket === "manual" || routeBucket === "closed"
-        : routeBucket === leadListBucket;
+    const matchesBucket = routeBucket === leadListBucket;
     if (!matchesBucket) return false;
     const leadStack = normalizeLeadStackKey(lead?.primaryPlatform || lead?.techStack);
     const matchesStack = stack === "all" || leadStack === stack;
@@ -12906,9 +12942,7 @@ function renderLeadProspects() {
 
   const bucketRows = leadProspects.filter((lead) => {
     const routeBucket = getLeadRouteState(lead).bucket;
-    return leadListBucket === "manual"
-      ? routeBucket === "manual" || routeBucket === "closed"
-      : routeBucket === leadListBucket;
+    return routeBucket === leadListBucket;
   });
   const filtered = getFilteredLeadProspects();
   leadsTableBody.innerHTML = "";
@@ -12948,8 +12982,10 @@ function renderLeadProspects() {
     const stack = getLeadStackMeta(lead?.primaryPlatform || lead?.techStack);
     const route = getLeadRouteState(lead);
     const stage = getLeadStageMeta(lead);
-    const showDiscardAction = route.bucket !== "closed";
-    const showPrimaryAction = route.bucket !== "closed";
+    const showDiscardAction = route.bucket !== "discarded" && route.bucket !== "manual_closed";
+    const showPrimaryAction =
+      route.bucket === "to_contact" ||
+      (route.bucket === "to_recall" && isLeadContactDue(route.contact));
     const phones = getLeadPhones(lead);
     const emails = getLeadEmails(lead);
     const domain = getLeadDisplayDomain(lead);
@@ -13074,16 +13110,10 @@ function populateLeadCallOutcomeModal(lead) {
       if (!(button instanceof HTMLButtonElement)) return;
       const outcome = String(button.dataset.leadOutcome || "");
       const isPhoneRoute = route.contact?.kind === "phone" || route.stage.startsWith("call") || route.stage === "waiting_phone_retry";
-      const isEmailRoute =
-        route.contact?.kind === "email" ||
-        route.stage.startsWith("email") ||
-        route.stage === "waiting_email_reply";
       const visible =
         outcome === "phone_no_answer"
           ? isPhoneRoute
-          : outcome === "email_reply_pic"
-            ? isEmailRoute
-            : true;
+          : outcome === "take_action" || outcome === "do_not_take_action";
       button.classList.toggle("is-hidden", !visible);
     });
   }
@@ -13156,7 +13186,7 @@ function setLeadCallOutcomeStep(step) {
   if (leadCallOutcomeNote) {
     leadCallOutcomeNote.textContent = isCompose
       ? tr("Send this from the connected Gmail / Workspace account so the thread can be tracked.")
-      : tr("Log the result of the current route. The next action and fallback are updated automatically.");
+      : tr("Log whether the call needs another attempt, an email action, or manual closure.");
   }
 }
 
@@ -13246,9 +13276,7 @@ function getNextLeadFallbackStage(lead, failedStage = getLeadRouteState(lead).st
 }
 
 function getLeadEmailOutcomeForStage(stage) {
-  if (stage === "email_ask_pic") return "pic_request";
-  if (stage === "email_pic") return "pic_followup";
-  return "followup";
+  return "initial_outreach";
 }
 
 function getLeadFollowUpTemplateParts(lead, outcome, language) {
@@ -13256,6 +13284,24 @@ function getLeadFollowUpTemplateParts(lead, outcome, language) {
   const companyName = String(lead?.companyName || "your store");
   const deckUrl = getLeadFollowUpDeckUrl(language);
   const languageKey = normalizeLeadFollowUpLanguage(language);
+  if (outcome === "initial_outreach") {
+    if (languageKey === "fr") {
+      return {
+        subject: `Shipide pour ${companyName}`,
+        body: `Bonjour,\n\nJe me permets de vous contacter au sujet de vos expéditions chez ${companyName}.\n\nShipide aide les e-commerçants à accéder à de meilleurs tarifs d'expédition grâce à un modèle de volume groupé, tout en gardant la génération d'étiquettes et la facturation dans un flux simple.\n\nJe vous joins notre courte présentation ici :\n${deckUrl}\n\nSi cela vous semble pertinent, je peux vous montrer rapidement comment cela fonctionnerait pour votre volume d'expédition.\n\nBien à vous,\nShipide`,
+      };
+    }
+    if (languageKey === "nl") {
+      return {
+        subject: `Shipide voor ${companyName}`,
+        body: `Hallo,\n\nIk neem contact op over de verzendingen van ${companyName}.\n\nShipide helpt e-commercebedrijven betere verzendtarieven te krijgen via gebundeld verzendvolume, met labelcreatie en facturatie in één eenvoudige workflow.\n\nU vindt onze korte presentatie hier:\n${deckUrl}\n\nAls dit relevant is, toon ik graag kort hoe dit voor uw verzendvolume zou werken.\n\nMet vriendelijke groet,\nShipide`,
+      };
+    }
+    return {
+      subject: `Shipide for ${companyName}`,
+      body: `Hi,\n\nI am reaching out about shipping operations at ${companyName}.\n\nShipide helps ecommerce businesses access better carrier rates through pooled shipping volume, while keeping label generation and billing in one simple workflow.\n\nI am including our short pitch deck here:\n${deckUrl}\n\nIf relevant, I would be glad to show you quickly how this could work for your shipping volume.\n\nBest,\nShipide`,
+    };
+  }
   if (outcome === "pic_request") {
     if (languageKey === "fr") {
       return {
@@ -13352,7 +13398,11 @@ function openLeadFollowUpComposer(outcome) {
   leadCallOutcomePendingOutcome = outcome;
   if (leadCallOutcomeStepPill) {
     leadCallOutcomeStepPill.textContent =
-      outcome === "pic_request" ? tr("P.I.C. request") : getLeadOutcomeMeta(outcome).label;
+      outcome === "initial_outreach"
+        ? tr("Initial email")
+        : outcome === "pic_request"
+          ? tr("P.I.C. request")
+          : getLeadOutcomeMeta(outcome).label;
   }
   if (leadCallOutcomeEmailSubject instanceof HTMLInputElement) {
     leadCallOutcomeEmailSubject.value = draft.subject;
@@ -13424,6 +13474,20 @@ async function discardLeadProspect(leadId, options = {}) {
     discarded_at: new Date().toISOString(),
     retry_after: "",
     last_called_at: new Date().toISOString(),
+    workflow: {
+      ...(findLeadProspectById(safeLeadId)?.workflow || {}),
+      stage: "discarded",
+      currentContactId: "",
+      lastActionAt: new Date().toISOString(),
+      lastActionType: "discarded",
+      nextActionAt: "",
+    },
+    timeline: [
+      createLeadEvent("lead_discarded", "Lead discarded from the queue", {
+        channel: "system",
+        outcome: "discarded",
+      }),
+    ],
   });
   if (!quiet) {
     showToast(tr("Lead discarded from the queue."), { tone: "success" });
@@ -13515,6 +13579,35 @@ async function saveLeadCallOutcome(outcome) {
       showToast(exhausted ? tr("Phone route exhausted. Fallback route selected.") : tr("Call retry scheduled."), { tone: "success" });
       return;
     }
+    if (safeOutcome === "take_action") {
+      setLeadCallOutcomeBusy(false);
+      openLeadFollowUpComposer("initial_outreach");
+      return;
+    }
+    if (safeOutcome === "do_not_take_action") {
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        disposition: "manual_closed",
+        phone: edited.phone || lead.phone || "",
+        email: edited.email || lead.email || "",
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "manual_closed",
+          currentContactId: "",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: "manual_closed",
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("manual_closed", "Lead closed manually with no pending action", {
+            channel: "system",
+            outcome: "do_not_take_action",
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("Lead moved to Manual / Closed."), { tone: "success" });
+      return;
+    }
     if (safeOutcome === "pic_acquired" || safeOutcome === "email_reply_pic") {
       const pic = {
         ...(lead.pic || {}),
@@ -13587,7 +13680,7 @@ async function sendLeadFollowUpForCurrentLead() {
   const contact = getLeadCallOutcomeEditedContact();
   const selectedLanguage = normalizeLeadFollowUpLanguage(leadCallOutcomeLanguageValue);
   const selectedDeck = getLeadFollowUpDeck(selectedLanguage);
-  const email = contact.email;
+  const email = contact.email || String(lead?.follow_up_email || lead?.email || "").trim();
   const subject =
     leadCallOutcomeEmailSubject instanceof HTMLInputElement
       ? String(leadCallOutcomeEmailSubject.value || "").trim()
@@ -13698,8 +13791,7 @@ function handleLeadWorkflowAction(leadId) {
   }
   if (
     route.stage === "email_pic" ||
-    route.stage === "email_ask_pic" ||
-    (route.stage === "waiting_email_reply" && isLeadContactDue(route.contact))
+    route.stage === "email_ask_pic"
   ) {
     openLeadWorkflowModal(lead);
     openLeadFollowUpComposer(getLeadEmailOutcomeForStage(route.stage));
@@ -13730,6 +13822,8 @@ function buildMockLeadWorkflowProspects() {
     };
   };
   const now = new Date().toISOString();
+  const dueCallAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const scheduledCallAt = addDaysFromNow(2);
   const rowTemplates = [
     {
       domain: "ateliermeridian.be",
@@ -13772,6 +13866,26 @@ function buildMockLeadWorkflowProspects() {
       phones: "",
     },
     {
+      domain: "lumenliving.be",
+      url: "https://lumenliving.be",
+      city: "Mechelen",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Home decor",
+      emails: "sales@lumenliving.be, anouk@lumenliving.be",
+      phones: "+32475123456",
+    },
+    {
+      domain: "greencrate.nl",
+      url: "https://greencrate.nl",
+      city: "Utrecht",
+      country: "Netherlands",
+      primary_platform: "WooCommerce",
+      category: "Organic food",
+      emails: "info@greencrate.nl",
+      phones: "+31301234567",
+    },
+    {
       domain: "brusselsceramics.be",
       url: "https://brusselsceramics.be",
       city: "Brussels",
@@ -13790,6 +13904,66 @@ function buildMockLeadWorkflowProspects() {
       category: "Stationery",
       emails: "support@petitepapeterie.be, sophie@petitepapeterie.be",
       phones: "",
+    },
+    {
+      domain: "northwavegear.be",
+      url: "https://northwavegear.be",
+      city: "Ostend",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Outdoor gear",
+      emails: "orders@northwavegear.be, tom@northwavegear.be",
+      phones: "+3259123456",
+    },
+    {
+      domain: "ateliernova.fr",
+      url: "https://ateliernova.fr",
+      city: "Lyon",
+      country: "France",
+      primary_platform: "Wix",
+      category: "Jewelry",
+      emails: "bonjour@ateliernova.fr",
+      phones: "",
+    },
+    {
+      domain: "canalcoffee.be",
+      url: "https://canalcoffee.be",
+      city: "Bruges",
+      country: "Belgium",
+      primary_platform: "WooCommerce",
+      category: "Coffee",
+      emails: "wholesale@canalcoffee.be",
+      phones: "+3250123456",
+    },
+    {
+      domain: "studioflor.nl",
+      url: "https://studioflor.nl",
+      city: "Amsterdam",
+      country: "Netherlands",
+      primary_platform: "Shopify",
+      category: "Flowers",
+      emails: "hello@studioflor.nl, lotte@studioflor.nl",
+      phones: "+31201234567",
+    },
+    {
+      domain: "grainandglow.be",
+      url: "https://grainandglow.be",
+      city: "Hasselt",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Beauty",
+      emails: "contact@grainandglow.be",
+      phones: "+3211123456",
+    },
+    {
+      domain: "minimalmakers.de",
+      url: "https://minimalmakers.de",
+      city: "Cologne",
+      country: "Germany",
+      primary_platform: "WooCommerce",
+      category: "Design objects",
+      emails: "support@minimalmakers.de",
+      phones: "+49221123456",
     },
     {
       domain: "atelier-gent.be",
@@ -13811,48 +13985,80 @@ function buildMockLeadWorkflowProspects() {
       emails: "info@oldstockoutlet.be",
       phones: "+32499111222",
     },
+    {
+      domain: "papertrail.be",
+      url: "https://papertrail.be",
+      city: "Kortrijk",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Stationery",
+      emails: "events@papertrail.be",
+      phones: "+3256123456",
+    },
+    {
+      domain: "lepetitpanier.fr",
+      url: "https://lepetitpanier.fr",
+      city: "Paris",
+      country: "France",
+      primary_platform: "Shopify",
+      category: "Grocery",
+      emails: "service@lepetitpanier.fr",
+      phones: "+33123456789",
+    },
+    {
+      domain: "mosskids.be",
+      url: "https://mosskids.be",
+      city: "Aalst",
+      country: "Belgium",
+      primary_platform: "Wix",
+      category: "Kids clothing",
+      emails: "hello@mosskids.be, press@mosskids.be",
+      phones: "+32488111222",
+    },
+    {
+      domain: "urbanbikes.nl",
+      url: "https://urbanbikes.nl",
+      city: "Eindhoven",
+      country: "Netherlands",
+      primary_platform: "WooCommerce",
+      category: "Cycling",
+      emails: "info@urbanbikes.nl",
+      phones: "+31401234567",
+    },
+    {
+      domain: "maisonatlas.be",
+      url: "https://maisonatlas.be",
+      city: "Mons",
+      country: "Belgium",
+      primary_platform: "Other",
+      category: "Furniture",
+      emails: "sales@maisonatlas.be",
+      phones: "+3265123456",
+    },
+    {
+      domain: "retrostitch.be",
+      url: "https://retrostitch.be",
+      city: "Charleroi",
+      country: "Belgium",
+      primary_platform: "Shopify",
+      category: "Vintage apparel",
+      emails: "contact@retrostitch.be",
+      phones: "+3271123456",
+    },
   ];
   return rowTemplates.map((row, index) => {
     const lead = makeLead(row, index);
-    if (index === 4) {
-      const phone = getLeadBestContact(lead, "phone", "generic");
-      const contacts = updateLeadContact(lead, phone?.id, {
-        attemptCount: 1,
-        reachableStatus: "no_answer",
-        lastOutcome: "no_answer",
-        lastAttemptAt: now,
-        nextAttemptAt: addDaysFromNow(2),
-      });
-      return {
-        ...lead,
-        contacts,
-        workflow: {
-          ...(lead.workflow || {}),
-          stage: "waiting_phone_retry",
-          currentContactId: phone?.id || "",
-          lastActionAt: now,
-          lastActionType: "phone_no_answer",
-          nextActionAt: addDaysFromNow(2),
-        },
-        timeline: [
-          createLeadEvent("call_no_answer", "No answer. Retry scheduled for attempt 2/3", {
-            channel: "phone",
-            contact: phone?.value || "",
-          }),
-          ...(lead.timeline || []),
-        ],
-      };
-    }
-    if (index === 5) {
-      const email = getLeadBestContact(lead, "email", "generic");
+    if ([6, 7, 8, 9].includes(index)) {
+      const email = getLeadBestContact(lead, "email", "pic") || getLeadBestContact(lead, "email", "generic");
+      const nextActionAt = addDaysFromNow([3, 7, 15, 3][index - 6]);
       const contacts = updateLeadContact(lead, email?.id, {
-        attemptCount: 1,
+        attemptCount: index === 8 ? 2 : 1,
         reachableStatus: "email_sent",
-        lastOutcome: "pic_request",
+        lastOutcome: "initial_outreach",
         lastAttemptAt: now,
-        nextAttemptAt: addDaysFromNow(3),
-        gmailThreadId: "mock-thread-001",
-        gmailMessageId: "mock-message-001",
+        nextAttemptAt: nextActionAt,
+        gmailThreadId: `mock-thread-${String(index).padStart(3, "0")}`,
+        gmailMessageId: `mock-message-${String(index).padStart(3, "0")}`,
       });
       return {
         ...lead,
@@ -13863,58 +14069,96 @@ function buildMockLeadWorkflowProspects() {
           currentContactId: email?.id || "",
           lastActionAt: now,
           lastActionType: "email_sent",
-          nextActionAt: addDaysFromNow(3),
+          nextActionAt,
         },
         timeline: [
-          createLeadEvent("email_sent", "P.I.C. request sent from connected Gmail / Workspace", {
-            channel: "email",
-            contact: email?.value || "",
-            metadata: { gmailThreadId: "mock-thread-001", gmailMessageId: "mock-message-001" },
-          }),
-          ...(lead.timeline || []),
-        ],
-      };
-    }
-    if (index === 6) {
-      const email = getLeadBestContact(lead, "email", "pic");
-      return {
-        ...lead,
-        workflow: {
-          ...(lead.workflow || {}),
-          stage: "email_reply_received",
-          currentContactId: email?.id || "",
-          lastActionAt: now,
-          lastActionType: "email_reply_received",
-          nextActionAt: "",
-        },
-        timeline: [
-          createLeadEvent("email_reply_received", "Email reply received in Gmail", {
-            channel: "email",
-            contact: email?.value || "",
-            metadata: { from: "Julien <julien@atelier-gent.be>", subject: "Re: Shipide" },
-          }),
           createLeadEvent("email_sent", "Initial email sent from connected Gmail / Workspace", {
             channel: "email",
             contact: email?.value || "",
+            outcome: "initial_outreach",
+            metadata: {
+              gmailThreadId: `mock-thread-${String(index).padStart(3, "0")}`,
+              gmailMessageId: `mock-message-${String(index).padStart(3, "0")}`,
+            },
           }),
           ...(lead.timeline || []),
         ],
       };
     }
-    if (index === 7) {
+    if ([10, 11, 12, 13].includes(index)) {
+      const phone = getLeadBestContact(lead, "phone", "pic") || getLeadBestContact(lead, "phone", "generic");
+      const nextActionAt = index % 2 === 0 ? dueCallAt : scheduledCallAt;
+      const contacts = updateLeadContact(lead, phone?.id, {
+        attemptCount: index === 12 ? 2 : 1,
+        reachableStatus: "no_answer",
+        lastOutcome: "no_answer",
+        lastAttemptAt: now,
+        nextAttemptAt: nextActionAt,
+      });
       return {
         ...lead,
+        contacts,
         workflow: {
           ...(lead.workflow || {}),
-          stage: "manual_research",
-          currentContactId: "",
+          stage: "waiting_phone_retry",
+          currentContactId: phone?.id || "",
           lastActionAt: now,
-          lastActionType: "route_failed",
+          lastActionType: "phone_no_answer",
+          nextActionAt,
+        },
+        timeline: [
+          createLeadEvent("call_no_answer", index % 2 === 0 ? "No answer. Re-call is due." : "No answer. Re-call scheduled.", {
+            channel: "phone",
+            contact: phone?.value || "",
+          }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    if ([14, 15, 16].includes(index)) {
+      const email = getLeadBestContact(lead, "email", "pic") || getLeadBestContact(lead, "email", "generic");
+      return {
+        ...lead,
+        disposition: index === 16 ? "manual_closed" : lead.disposition,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: index === 14 ? "email_reply_received" : index === 15 ? "manual_research" : "manual_closed",
+          currentContactId: email?.id || "",
+          lastActionAt: now,
+          lastActionType: index === 14 ? "email_reply_received" : "manual_closed",
           nextActionAt: "",
         },
         timeline: [
-          createLeadEvent("route_changed", "Phone and email routes failed. Manual research required.", {
+          index === 14
+            ? createLeadEvent("email_reply_received", "Email reply received in Gmail. Handle manually in the inbox.", {
+                channel: "email",
+                contact: email?.value || "",
+                metadata: { from: "Julien <julien@atelier-gent.be>", subject: "Re: Shipide" },
+              })
+            : createLeadEvent("manual_closed", "Lead is in manual / closed handling", {
+                channel: "system",
+              }),
+          ...(lead.timeline || []),
+        ],
+      };
+    }
+    if (index >= 17) {
+      return {
+        ...lead,
+        disposition: "discarded",
+        discarded_at: now,
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "discarded",
+          currentContactId: "",
+          lastActionAt: now,
+          lastActionType: "discarded",
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("lead_discarded", "Lead discarded from the queue", {
             channel: "system",
+            outcome: "discarded",
           }),
           ...(lead.timeline || []),
         ],
@@ -22673,7 +22917,7 @@ function setAuthView(session, options = {}) {
     leadProspects = [];
     leadProspectsLoaded = false;
     leadProspectsLoading = false;
-    leadListBucket = "to_call";
+    leadListBucket = "to_contact";
     leadCallOutcomeLeadId = "";
     leadCallOutcomePendingOutcome = "";
     leadCallOutcomeStep = "choose";

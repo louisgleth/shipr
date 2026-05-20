@@ -2053,24 +2053,24 @@
 
         <div class="admin-summary-grid leads-summary-grid">
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Action Due</div>
+            <div class="reports-kpi-title">To Contact</div>
             <div class="reports-kpi-value" id="leadsReadyCount">0</div>
-            <div class="reports-kpi-meta mono">Calls, emails, and research</div>
-            <div class="reports-kpi-foot">Leads with an action available now</div>
+            <div class="reports-kpi-meta mono">Initial outreach</div>
+            <div class="reports-kpi-foot">Leads ready for first contact</div>
           </article>
 
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Waiting</div>
+            <div class="reports-kpi-title">Waiting / Follow-up</div>
             <div class="reports-kpi-value" id="leadsFollowUpCount">0</div>
-            <div class="reports-kpi-meta mono">Replies + scheduled retries</div>
-            <div class="reports-kpi-foot">Leads paused until the next event</div>
+            <div class="reports-kpi-meta mono">Email queue + re-calls</div>
+            <div class="reports-kpi-foot">Leads waiting for the next touchpoint</div>
           </article>
 
           <article class="reports-card admin-summary-card">
             <div class="reports-kpi-title">Manual / Closed</div>
             <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
-            <div class="reports-kpi-meta mono">Research, discarded, qualified</div>
-            <div class="reports-kpi-foot">Leads outside the normal route</div>
+            <div class="reports-kpi-meta mono">Replies + closed routes</div>
+            <div class="reports-kpi-foot">No pending system action</div>
           </article>
         </div>
 
@@ -2079,38 +2079,58 @@
             <div>
               <div class="preview-title">Lead Queue</div>
               <p class="panel-sub leads-board-sub">
-                The primary action follows the route: phone first, email second, manual research last.
+                Send the first email from here. Replies and phone follow-ups stay manual, with clear due queues.
               </p>
               <div class="leads-list-tabs" id="leadsListTabs" role="tablist" aria-label="Lead call progress">
                 <button
                   type="button"
                   class="leads-list-tab is-active"
                   id="leadsNotTalkedTab"
-                  data-leads-list="active"
+                  data-leads-list="to_contact"
                   role="tab"
                   aria-selected="true"
                 >
-                  Action Due
+                  To Contact
                 </button>
                 <button
                   type="button"
                   class="leads-list-tab"
-                  id="leadsTalkedTab"
-                  data-leads-list="waiting"
+                  id="leadsEmailQueueTab"
+                  data-leads-list="email_waiting"
                   role="tab"
                   aria-selected="false"
                 >
-                  Waiting
+                  Waiting for Email Reply / In Follow-Up Queue
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsRecallTab"
+                  data-leads-list="to_recall"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  To Re-Call
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsManualTab"
+                  data-leads-list="manual_closed"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Manual / Closed
                 </button>
                 <button
                   type="button"
                   class="leads-list-tab"
                   id="leadsDiscardedTab"
-                  data-leads-list="manual"
+                  data-leads-list="discarded"
                   role="tab"
                   aria-selected="false"
                 >
-                  Manual / Closed
+                  Discarded
                 </button>
               </div>
             </div>
@@ -2181,7 +2201,7 @@
           </div>
           <div class="shopify-settings-body lead-callout-modal-body">
             <p class="shopify-settings-note" id="leadCallOutcomeNote">
-              The call has been handed off to your Mac phone workflow. As soon as the conversation ends, sort the prospect here.
+              Log the phone outcome. If the conversation is useful, continue to the email/deck screen.
             </p>
             <div class="lead-callout-context" id="leadCallOutcomeContext">
               <div class="lead-callout-context-item">
@@ -2206,21 +2226,13 @@
                 <span class="lead-callout-option-title">No answer</span>
                 <span class="lead-callout-option-copy">Keep this phone in the route and schedule the next call attempt.</span>
               </button>
-              <button type="button" class="lead-callout-option" data-lead-outcome="pic_acquired">
-                <span class="lead-callout-option-title">P.I.C. acquired</span>
-                <span class="lead-callout-option-copy">Save the phone/email currently shown and move to the direct P.I.C. route.</span>
+              <button type="button" class="lead-callout-option" data-lead-outcome="take_action">
+                <span class="lead-callout-option-title">Answered - take action</span>
+                <span class="lead-callout-option-copy">Open the email screen and send the deck from the connected Gmail account.</span>
               </button>
-              <button type="button" class="lead-callout-option" data-lead-outcome="no_pic_acquired">
-                <span class="lead-callout-option-title">Answered, no P.I.C.</span>
-                <span class="lead-callout-option-copy">Fallback to the email route if available, otherwise move to manual research.</span>
-              </button>
-              <button type="button" class="lead-callout-option" data-lead-outcome="email_reply_pic">
-                <span class="lead-callout-option-title">Email reply gave P.I.C.</span>
-                <span class="lead-callout-option-copy">Save the current email/phone as the P.I.C. contact.</span>
-              </button>
-              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="route_failed">
-                <span class="lead-callout-option-title">Route failed</span>
-                <span class="lead-callout-option-copy">Move to the next fallback route, or discard after manual research.</span>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="do_not_take_action">
+                <span class="lead-callout-option-title">Answered - no action</span>
+                <span class="lead-callout-option-copy">Close the lead manually with no pending action.</span>
               </button>
             </div>
             <div class="lead-callout-email-step is-hidden" id="leadCallOutcomeEmailStep">

@@ -9261,7 +9261,7 @@ async function syncLeadGmailReplies() {
         if (from.toLowerCase().includes(String(config.from || "").toLowerCase())) return;
         const subject = getGmailHeader(message, "Subject");
         events.push(
-          createLeadTimelineEvent("email_reply_received", "Email reply received in Gmail", {
+          createLeadTimelineEvent("email_reply_received", "Email reply received in Gmail. Handle manually in the inbox.", {
             channel: "email",
             contact: contact.value,
             outcome: "reply_received",
