@@ -3079,12 +3079,12 @@ html[data-theme="light"] .account-reference-pill.is-muted {
   justify-content: center;
 }
 
-.lead-call-choice-wrap {
+.lead-contact-choice {
   position: relative;
   display: inline-flex;
 }
 
-.lead-phone-choice-menu {
+.lead-contact-choice-menu {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
@@ -3103,16 +3103,18 @@ html[data-theme="light"] .account-reference-pill.is-muted {
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
-.lead-phone-choice-menu.is-open {
+.lead-contact-choice-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
-.lead-phone-choice-button {
+.lead-contact-choice-button {
   width: 100%;
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 42px;
+  display: grid;
+  gap: 3px;
+  padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
@@ -3123,9 +3125,14 @@ html[data-theme="light"] .account-reference-pill.is-muted {
   transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.lead-phone-choice-button:hover {
+.lead-contact-choice-button:hover {
   border-color: rgba(119, 71, 227, 0.32);
   background: rgba(119, 71, 227, 0.12);
+}
+
+.lead-contact-choice-button small {
+  color: var(--muted);
+  font-size: var(--fs-3xs);
 }
 
 .lead-discard-button {

@@ -3108,6 +3108,7 @@ let leadListBucket = "to_contact";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
+let leadCallOutcomeContactId = "";
 let leadCallOutcomeStep = "choose";
 let leadCallOutcomePendingOutcome = "";
 let leadCallOutcomeLanguageValue = DEFAULT_LEAD_FOLLOW_UP_LANGUAGE;
@@ -12851,28 +12852,92 @@ function getLeadCallHref(phone) {
   return safePhone ? `tel:${safePhone}` : "";
 }
 
-function closeLeadPhoneChoiceMenus(exceptLeadId = "") {
+function closeLeadContactChoiceMenus(exceptLeadId = "") {
   if (!leadsTableBody) return;
-  leadsTableBody.querySelectorAll("[data-lead-phone-menu]").forEach((menu) => {
+  leadsTableBody.querySelectorAll("[data-lead-contact-menu]").forEach((menu) => {
     const isExcept =
-      exceptLeadId && String(menu.getAttribute("data-lead-phone-menu") || "") === String(exceptLeadId);
+      exceptLeadId && String(menu.getAttribute("data-lead-contact-menu") || "") === String(exceptLeadId);
     menu.classList.toggle("is-open", Boolean(isExcept && !menu.classList.contains("is-open")));
   });
 }
 
-function openLeadPhoneChoiceMenu(leadId) {
+function openLeadContactChoiceMenu(leadId) {
   if (!leadsTableBody) return;
   const safeLeadId = String(leadId || "").trim();
   let didOpen = false;
-  leadsTableBody.querySelectorAll("[data-lead-phone-menu]").forEach((menu) => {
-    const isTarget = String(menu.getAttribute("data-lead-phone-menu") || "") === safeLeadId;
+  leadsTableBody.querySelectorAll("[data-lead-contact-menu]").forEach((menu) => {
+    const isTarget = String(menu.getAttribute("data-lead-contact-menu") || "") === safeLeadId;
     const shouldOpen = isTarget && !menu.classList.contains("is-open");
     menu.classList.toggle("is-open", shouldOpen);
     if (shouldOpen) didOpen = true;
   });
   if (!didOpen) {
-    closeLeadPhoneChoiceMenus();
+    closeLeadContactChoiceMenus();
   }
+}
+
+function getLeadActionKind(route) {
+  if (
+    route.stage === "call_pic" ||
+    route.stage === "call_ask_pic" ||
+    route.stage === "waiting_phone_retry"
+  ) {
+    return "phone";
+  }
+  if (route.stage === "email_pic" || route.stage === "email_ask_pic") {
+    return "email";
+  }
+  return "";
+}
+
+function getLeadActionContacts(lead, route = getLeadRouteState(lead)) {
+  const kind = getLeadActionKind(route);
+  if (!kind) return [];
+  const contacts = getLeadContactsByKind(lead, kind).filter((contact) => {
+    if (["wrong_number", "do_not_use"].includes(contact.reachableStatus)) return false;
+    if (kind === "phone") return Boolean(getLeadCallHref(contact.value));
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(contact.value || "").trim());
+  });
+  return contacts.sort((left, right) => {
+    if (left.id === route.contact?.id) return -1;
+    if (right.id === route.contact?.id) return 1;
+    if (left.type === "pic" && right.type !== "pic") return -1;
+    if (right.type === "pic" && left.type !== "pic") return 1;
+    return String(left.value || "").localeCompare(String(right.value || ""));
+  });
+}
+
+function formatLeadContactChoiceLabel(contact) {
+  const kind = contact?.kind === "phone" ? tr("Phone") : tr("Email");
+  const type = contact?.type === "pic" ? tr("P.I.C.") : tr("Non-P.I.C.");
+  return `${type} ${kind}`;
+}
+
+function renderLeadActionButton(lead, route, stage) {
+  const contacts = getLeadActionContacts(lead, route);
+  const leadId = String(lead?.id || "");
+  if (contacts.length <= 1) {
+    return `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-action="${escapeHtml(leadId)}" ${
+      contacts[0]?.id ? `data-lead-contact-id="${escapeHtml(String(contacts[0].id))}"` : ""
+    }>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12h13"/><path d="m13 6 6 6-6 6"/></svg>
+      <span>${escapeHtml(stage.action)}</span>
+    </button>`;
+  }
+  return `<div class="lead-contact-choice">
+    <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contact-toggle="${escapeHtml(leadId)}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 7h8"/><path d="M6 12h12"/><path d="M10 17h4"/></svg>
+      <span>${escapeHtml(route.stage.startsWith("email") ? tr("Choose email") : tr("Choose phone"))}</span>
+    </button>
+    <div class="lead-contact-choice-menu" data-lead-contact-menu="${escapeHtml(leadId)}">
+      ${contacts
+        .map((contact) => `<button type="button" class="lead-contact-choice-button" data-lead-action="${escapeHtml(leadId)}" data-lead-contact-id="${escapeHtml(String(contact.id || ""))}">
+          <span>${escapeHtml(contact.value || "--")}</span>
+          <small>${escapeHtml(formatLeadContactChoiceLabel(contact))}</small>
+        </button>`)
+        .join("")}
+    </div>
+  </div>`;
 }
 
 function findLeadProspectById(leadId) {
@@ -13084,12 +13149,7 @@ function renderLeadProspects() {
         <div class="leads-table-actions-group">
           ${
             showPrimaryAction
-              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-action="${escapeHtml(
-                  String(lead?.id || "")
-                )}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12h13"/><path d="m13 6 6 6-6 6"/></svg>
-            <span>${escapeHtml(stage.action)}</span>
-          </button>`
+              ? renderLeadActionButton(lead, route, stage)
               : ""
           }
           ${
@@ -13140,6 +13200,9 @@ function setLeadCallOutcomeBusy(isBusy) {
 
 function populateLeadCallOutcomeModal(lead) {
   const route = getLeadRouteState(lead);
+  const selectedContact =
+    getLeadContactSet(lead).find((contact) => String(contact.id || "") === String(leadCallOutcomeContactId || "")) ||
+    route.contact;
   if (leadCallOutcomeLeadName) {
     leadCallOutcomeLeadName.textContent = getLeadDisplayDomain(lead);
   }
@@ -13147,10 +13210,10 @@ function populateLeadCallOutcomeModal(lead) {
     leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || getLeadDisplayCompany(lead) || "--");
   }
   if (leadCallOutcomeLeadPhone instanceof HTMLInputElement) {
-    leadCallOutcomeLeadPhone.value = String(route.contact?.kind === "phone" ? route.contact.value : route.pic.phone || lead?.phone || "").trim();
+    leadCallOutcomeLeadPhone.value = String(selectedContact?.kind === "phone" ? selectedContact.value : route.pic.phone || lead?.phone || "").trim();
   }
   if (leadCallOutcomeLeadEmail instanceof HTMLInputElement) {
-    leadCallOutcomeLeadEmail.value = String(route.contact?.kind === "email" ? route.contact.value : route.pic.email || lead?.email || "").trim();
+    leadCallOutcomeLeadEmail.value = String(selectedContact?.kind === "email" ? selectedContact.value : route.pic.email || lead?.email || "").trim();
   }
   if (leadCallOutcomeActions) {
     leadCallOutcomeActions.querySelectorAll("[data-lead-outcome]").forEach((button) => {
@@ -13546,9 +13609,10 @@ async function discardLeadProspect(leadId, options = {}) {
   }
 }
 
-function openLeadCallOutcomeForLead(lead) {
+function openLeadCallOutcomeForLead(lead, options = {}) {
   if (!lead) return;
   leadCallOutcomeLeadId = String(lead.id || "");
+  leadCallOutcomeContactId = String(options.contactId || "");
   resetLeadCallOutcomeComposer();
   populateLeadCallOutcomeModal(lead);
   setLeadCallOutcomeStep("choose");
@@ -13556,9 +13620,10 @@ function openLeadCallOutcomeForLead(lead) {
   setLeadCallOutcomeModalOpen(true);
 }
 
-function openLeadWorkflowModal(lead) {
+function openLeadWorkflowModal(lead, options = {}) {
   if (!lead) return;
   leadCallOutcomeLeadId = String(lead.id || "");
+  leadCallOutcomeContactId = String(options.contactId || "");
   resetLeadCallOutcomeComposer();
   populateLeadCallOutcomeModal(lead);
   setLeadCallOutcomeStep("choose");
@@ -13569,12 +13634,14 @@ function openLeadWorkflowModal(lead) {
 function closeLeadCallOutcome() {
   if (leadCallOutcomeSaving) return;
   leadCallOutcomeLeadId = "";
+  leadCallOutcomeContactId = "";
   resetLeadCallOutcomeComposer();
   setLeadCallOutcomeModalOpen(false);
 }
 
 function forceCloseLeadCallOutcome() {
   leadCallOutcomeLeadId = "";
+  leadCallOutcomeContactId = "";
   resetLeadCallOutcomeComposer();
   setLeadCallOutcomeModalOpen(false);
 }
@@ -13586,7 +13653,10 @@ async function saveLeadCallOutcome(outcome) {
   if (!lead) return;
   const route = getLeadRouteState(lead);
   const edited = getLeadCallOutcomeEditedContact();
-  const currentContact = route.contact;
+  const selectedContact =
+    getLeadContactSet(lead).find((contact) => String(contact.id || "") === String(leadCallOutcomeContactId || "")) ||
+    route.contact;
+  const currentContact = selectedContact;
   setLeadCallOutcomeBusy(true);
   try {
     if (safeOutcome === "phone_no_answer") {
@@ -13825,22 +13895,25 @@ function launchLeadCall(lead, selectedPhone = "") {
   link.remove();
 }
 
-function handleLeadWorkflowAction(leadId) {
+function handleLeadWorkflowAction(leadId, options = {}) {
   const lead = findLeadProspectById(leadId);
   if (!lead) return;
   const route = getLeadRouteState(lead);
+  const selectedContact =
+    getLeadContactSet(lead).find((contact) => String(contact.id || "") === String(options.contactId || "")) ||
+    route.contact;
   if (
     route.stage === "call_pic" ||
     route.stage === "call_ask_pic" ||
     (route.stage === "waiting_phone_retry" && isLeadContactDue(route.contact))
   ) {
-    const phone = route.contact?.value || route.pic.phone || lead?.phone || "";
+    const phone = selectedContact?.kind === "phone" ? selectedContact.value : route.contact?.value || route.pic.phone || lead?.phone || "";
     launchLeadCall(lead, phone);
     window.setTimeout(() => {
       openLeadWorkflowModal({
         ...lead,
         phone,
-      });
+      }, { contactId: selectedContact?.id || "" });
     }, 120);
     return;
   }
@@ -13848,11 +13921,11 @@ function handleLeadWorkflowAction(leadId) {
     route.stage === "email_pic" ||
     route.stage === "email_ask_pic"
   ) {
-    openLeadWorkflowModal(lead);
+    openLeadWorkflowModal(lead, { contactId: selectedContact?.id || "" });
     openLeadFollowUpComposer(getLeadEmailOutcomeForStage(route.stage));
     return;
   }
-  openLeadWorkflowModal(lead);
+  openLeadWorkflowModal(lead, { contactId: selectedContact?.id || "" });
 }
 
 function buildMockLeadWorkflowProspects() {
@@ -28279,15 +28352,25 @@ if (leadsCsvInput) {
 
 if (leadsTableBody) {
   leadsTableBody.addEventListener("click", (event) => {
+    const toggleTarget =
+      event.target instanceof Element ? event.target.closest("[data-lead-contact-toggle]") : null;
+    if (toggleTarget instanceof HTMLButtonElement) {
+      openLeadContactChoiceMenu(toggleTarget.dataset.leadContactToggle);
+      return;
+    }
     const discardTarget =
       event.target instanceof Element ? event.target.closest("[data-lead-discard]") : null;
     if (discardTarget instanceof HTMLButtonElement) {
+      closeLeadContactChoiceMenus();
       void discardLeadProspect(discardTarget.dataset.leadDiscard);
       return;
     }
     const target = event.target instanceof Element ? event.target.closest("[data-lead-action]") : null;
     if (!(target instanceof HTMLButtonElement)) return;
-    handleLeadWorkflowAction(target.dataset.leadAction);
+    closeLeadContactChoiceMenus();
+    handleLeadWorkflowAction(target.dataset.leadAction, {
+      contactId: target.dataset.leadContactId || "",
+    });
   });
 }
 

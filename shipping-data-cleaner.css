@@ -99,7 +99,7 @@ select {
 }
 
 .cleaner-card {
-  width: min(920px, 100%);
+  width: min(640px, 100%);
   position: relative;
   z-index: 2;
   background: rgba(28, 32, 38, 0.96);
@@ -431,8 +431,9 @@ select {
 
 .cleaner-spec-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 10px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -442,7 +443,6 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 1px;
 }
 
 .cleaner-spec-icon svg {
@@ -471,6 +471,7 @@ select {
   margin-bottom: 6px;
   color: var(--text);
   font-size: var(--fs-xs);
+  line-height: 16px;
   font-family: var(--font-regular);
 }
 
