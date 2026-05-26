@@ -26,7 +26,7 @@ Before deploying, these URLs must be reachable publicly:
 
 ```text
 https://portal.shipide.com/assets/shipide-logo-white.png
-https://portal.shipide.com/signatures/group-11182.png
+https://portal.shipide.com/signatures/group-11182-small.png
 ```
 
 The current local files are:
@@ -34,6 +34,7 @@ The current local files are:
 ```text
 /Users/louis/shipide/portal/assets/shipide-logo-white.png
 /Users/louis/shipide/portal/signatures/group-11182.png
+/Users/louis/shipide/portal/signatures/group-11182-small.png
 ```
 
 ## Render locally
