@@ -1,1 +1,4 @@
 node_modules/
+signatures/dist/
+signatures/*.json.key
+signatures/*service-account*.json

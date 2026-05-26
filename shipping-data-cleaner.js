@@ -691,9 +691,6 @@ function applyLocalization() {
   document.title = t("documentTitle");
   setText(".cleaner-brand strong", t("brand"));
   if (els.fileInput) els.fileInput.setAttribute("aria-label", t("uploadAria"));
-  setText(".cleaner-kicker", t("kicker"));
-  const kickerDot = document.createElement("span");
-  document.querySelector(".cleaner-kicker")?.prepend(kickerDot);
   const intro = document.getElementById("cleanerIntroCopy");
   if (intro) intro.textContent = t("intro");
   document.querySelectorAll("#cleanerDownloadFromMap span, #cleanerDownload span").forEach((node) => {

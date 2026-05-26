@@ -1,0 +1,16 @@
+[
+  {
+    "email": "louis@shipide.com",
+    "name": "Louis Dias",
+    "title": "Head of Business",
+    "phone": "+32 488 28 04 56",
+    "phoneHref": "+32488280456"
+  },
+  {
+    "email": "noah@shipide.com",
+    "name": "Noah Gilson",
+    "title": "Head of Finance",
+    "phone": "+32 488 28 04 56",
+    "phoneHref": "+32488280456"
+  }
+]
