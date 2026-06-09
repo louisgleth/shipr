@@ -2038,9 +2038,9 @@
       <section class="account-page is-hidden" id="leadsPageSection">
         <div class="account-page-head">
           <div>
-            <h2>Lead Panel</h2>
+            <h2>Lead Workflow</h2>
             <p class="panel-sub">
-              Review prospects and mark each lead once contact has been made.
+              Classify contacts, work through phone/email routes, and keep every outreach event attached to the lead.
             </p>
           </div>
           <div class="account-page-actions">
@@ -2053,24 +2053,24 @@
 
         <div class="admin-summary-grid leads-summary-grid">
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Not Contacted</div>
+            <div class="reports-kpi-title">To Contact</div>
             <div class="reports-kpi-value" id="leadsReadyCount">0</div>
-            <div class="reports-kpi-meta mono">Open queue</div>
-            <div class="reports-kpi-foot">Leads still waiting for outreach</div>
+            <div class="reports-kpi-meta mono">Initial outreach</div>
+            <div class="reports-kpi-foot">Leads ready for first contact</div>
           </article>
 
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Contacted</div>
+            <div class="reports-kpi-title">Waiting / Follow-up</div>
             <div class="reports-kpi-value" id="leadsFollowUpCount">0</div>
-            <div class="reports-kpi-meta mono">Done</div>
-            <div class="reports-kpi-foot">Marked contacted manually</div>
+            <div class="reports-kpi-meta mono">Email queue + re-calls</div>
+            <div class="reports-kpi-foot">Leads waiting for the next touchpoint</div>
           </article>
 
           <article class="reports-card admin-summary-card">
-            <div class="reports-kpi-title">Total</div>
+            <div class="reports-kpi-title">Manual / Closed</div>
             <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
-            <div class="reports-kpi-meta mono">Loaded</div>
-            <div class="reports-kpi-foot">All leads in the panel</div>
+            <div class="reports-kpi-meta mono">Replies + closed routes</div>
+            <div class="reports-kpi-foot">No pending system action</div>
           </article>
         </div>
 
@@ -2079,28 +2079,58 @@
             <div>
               <div class="preview-title">Lead Queue</div>
               <p class="panel-sub leads-board-sub">
-                Same lead data, simplified into contacted and not contacted.
+                Send the first email from here. Replies and phone follow-ups stay manual, with clear due queues.
               </p>
               <div class="leads-list-tabs" id="leadsListTabs" role="tablist" aria-label="Lead call progress">
                 <button
                   type="button"
                   class="leads-list-tab is-active"
                   id="leadsNotTalkedTab"
-                  data-leads-list="not_contacted"
+                  data-leads-list="to_contact"
                   role="tab"
                   aria-selected="true"
                 >
-                  Not Contacted
+                  To Contact
                 </button>
                 <button
                   type="button"
                   class="leads-list-tab"
-                  id="leadsContactedTab"
-                  data-leads-list="contacted"
+                  id="leadsEmailQueueTab"
+                  data-leads-list="email_waiting"
                   role="tab"
                   aria-selected="false"
                 >
-                  Contacted
+                  Waiting for Email Reply / In Follow-Up Queue
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsRecallTab"
+                  data-leads-list="to_recall"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  To Re-Call
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsManualTab"
+                  data-leads-list="manual_closed"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Manual / Closed
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsDiscardedTab"
+                  data-leads-list="discarded"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Discarded
                 </button>
               </div>
             </div>

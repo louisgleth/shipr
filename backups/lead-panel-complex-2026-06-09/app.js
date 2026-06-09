@@ -728,7 +728,6 @@ const LEAD_FOLLOW_UP_DECKS = Object.freeze({
   },
 });
 const DEFAULT_LEAD_FOLLOW_UP_LANGUAGE = "en";
-const LEAD_CONTACTED_MIGRATION_CUTOFF = "2026-06-09T14:13:09Z";
 const leadProspectRepository = createLeadProspectRepository();
 const AUTH_SIGNUP_PREVIEW_DATA = {
   inviteToken: AUTH_SIGNUP_PREVIEW_TOKEN,
@@ -3109,7 +3108,7 @@ let leadProspectsLoadPromise = null;
 let leadProspectsLoadRequestToken = 0;
 let leadMockModeEnabled = false;
 let leadMockSnapshot = null;
-let leadListBucket = "not_contacted";
+let leadListBucket = "to_contact";
 let leadSearchQuery = "";
 let leadStackFilterValue = "all";
 let leadCallOutcomeLeadId = "";
@@ -13169,61 +13168,6 @@ function getLeadCallHref(phone) {
   return safePhone ? `tel:${safePhone}` : "";
 }
 
-function hasLeadPicPhone(lead) {
-  const pic = getLeadPicProfile(lead);
-  if (String(pic?.phone || "").trim()) return true;
-  return getLeadContactSet(lead).some(
-    (contact) =>
-      String(contact?.kind || "") === "phone" &&
-      String(contact?.type || "") === "pic" &&
-      String(contact?.value || "").trim()
-  );
-}
-
-function isLeadCreatedBeforeContactedMigration(lead) {
-  const createdAt = Date.parse(String(lead?.created_at || "").trim());
-  const cutoff = Date.parse(LEAD_CONTACTED_MIGRATION_CUTOFF);
-  return Number.isFinite(createdAt) && Number.isFinite(cutoff) && createdAt <= cutoff;
-}
-
-function isLeadContactedSimple(lead) {
-  const disposition = String(lead?.disposition || "").trim().toLowerCase();
-  const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
-  if (disposition === "contacted" || workflowStage === "contacted") return true;
-  return Boolean(
-    String(lead?.last_called_at || "").trim() ||
-      String(lead?.follow_up_sent_at || "").trim() ||
-      String(lead?.workflow?.lastActionAt || "").trim()
-  );
-}
-
-function shouldMigratePicPhoneLeadToContacted(lead) {
-  return (
-    !isLeadContactedSimple(lead) &&
-    hasLeadPicPhone(lead) &&
-    isLeadCreatedBeforeContactedMigration(lead)
-  );
-}
-
-function getSimpleLeadBucket(lead) {
-  return isLeadContactedSimple(lead) ? "contacted" : "not_contacted";
-}
-
-function getSimpleLeadStageMeta(lead) {
-  if (isLeadContactedSimple(lead)) {
-    return {
-      label: tr("Contacted"),
-      description: tr("Contact has been logged for this lead."),
-      className: "is-interested",
-    };
-  }
-  return {
-    label: tr("Not Contacted"),
-    description: tr("No contact has been logged yet."),
-    className: "is-new",
-  };
-}
-
 function closeLeadContactChoiceMenus(exceptLeadId = "") {
   if (!leadsTableBody) return;
   leadsTableBody.querySelectorAll("[data-lead-contact-menu]").forEach((menu) => {
@@ -13322,8 +13266,11 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
-  if (bucket === "contacted") return tr("contacted");
-  return tr("not contacted");
+  if (bucket === "email_waiting") return tr("waiting / follow-up");
+  if (bucket === "to_recall") return tr("to re-call");
+  if (bucket === "manual_closed") return tr("manual / closed");
+  if (bucket === "discarded") return tr("discarded");
+  return tr("to contact");
 }
 
 function syncLeadListTabs() {
@@ -13337,9 +13284,10 @@ function syncLeadListTabs() {
 }
 
 function setLeadListBucket(nextBucket, options = {}) {
-  const safeBucket = ["not_contacted", "contacted"].includes(nextBucket)
-    ? nextBucket
-    : "not_contacted";
+  const safeBucket =
+    ["to_contact", "email_waiting", "to_recall", "manual_closed", "discarded"].includes(nextBucket)
+      ? nextBucket
+      : "to_contact";
   const { rerender = true } = options;
   leadListBucket = safeBucket;
   syncLeadListTabs();
@@ -13350,27 +13298,32 @@ function setLeadListBucket(nextBucket, options = {}) {
 
 function renderLeadSummaryCards() {
   const counts = {
-    notContacted: 0,
-    contacted: 0,
-    total: leadProspects.length,
+    ready: 0,
+    followUp: 0,
+    notInterested: 0,
   };
   leadProspects.forEach((lead) => {
-    if (getSimpleLeadBucket(lead) === "contacted") {
-      counts.contacted += 1;
-    } else {
-      counts.notContacted += 1;
+    const bucket = getLeadRouteState(lead).bucket;
+    if (bucket === "email_waiting" || bucket === "to_recall") {
+      counts.followUp += 1;
+      return;
     }
+    if (bucket === "manual_closed" || bucket === "discarded") {
+      counts.notInterested += 1;
+      return;
+    }
+    counts.ready += 1;
   });
-  if (leadsReadyCount) leadsReadyCount.textContent = String(counts.notContacted);
-  if (leadsFollowUpCount) leadsFollowUpCount.textContent = String(counts.contacted);
-  if (leadsNotInterestedCount) leadsNotInterestedCount.textContent = String(counts.total);
+  if (leadsReadyCount) leadsReadyCount.textContent = String(counts.ready);
+  if (leadsFollowUpCount) leadsFollowUpCount.textContent = String(counts.followUp);
+  if (leadsNotInterestedCount) leadsNotInterestedCount.textContent = String(counts.notInterested);
 }
 
 function getFilteredLeadProspects() {
   const query = String(leadSearchQuery || "").trim().toLowerCase();
   const stack = String(leadStackFilterValue || "all").trim().toLowerCase();
   return leadProspects.filter((lead) => {
-    const routeBucket = getSimpleLeadBucket(lead);
+    const routeBucket = getLeadRouteState(lead).bucket;
     const matchesBucket = routeBucket === leadListBucket;
     if (!matchesBucket) return false;
     const leadStack = normalizeLeadStackKey(lead?.primaryPlatform || lead?.techStack);
@@ -13424,7 +13377,7 @@ function renderLeadProspects() {
   }
 
   const bucketRows = leadProspects.filter((lead) => {
-    const routeBucket = getSimpleLeadBucket(lead);
+    const routeBucket = getLeadRouteState(lead).bucket;
     return routeBucket === leadListBucket;
   });
   const filtered = getFilteredLeadProspects();
@@ -13463,8 +13416,13 @@ function renderLeadProspects() {
 
   filtered.forEach((lead) => {
     const stack = getLeadStackMeta(lead?.primaryPlatform || lead?.techStack);
-    const stage = getSimpleLeadStageMeta(lead);
-    const isContacted = getSimpleLeadBucket(lead) === "contacted";
+    const route = getLeadRouteState(lead);
+    const stage = getLeadStageMeta(lead);
+    const showDiscardAction = route.bucket !== "discarded" && route.bucket !== "manual_closed";
+    const showPrimaryAction =
+      route.bucket === "to_contact" ||
+      (route.bucket === "to_recall" && isLeadContactDue(route.contact)) ||
+      (route.bucket === "email_waiting" && isLeadContactDue(route.contact));
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
     const row = document.createElement("tr");
@@ -13506,13 +13464,18 @@ function renderLeadProspects() {
       <td class="leads-table-actions">
         <div class="leads-table-actions-group">
           ${
-            !isContacted
-              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
+            showPrimaryAction
+              ? renderLeadActionButton(lead, route, stage)
+              : ""
+          }
+          ${
+            showDiscardAction
+              ? `<button type="button" class="lead-discard-button" data-lead-discard="${escapeHtml(
                   String(lead?.id || "")
-                )}">
-          <span>${escapeHtml(tr("Contacted"))}</span>
-        </button>`
-              : `<span class="lead-outcome-pill is-interested">${escapeHtml(tr("Contacted"))}</span>`
+                )}" aria-label="${escapeHtml(tr("Discard lead"))}" title="${escapeHtml(tr("Discard lead"))}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>`
+              : ""
           }
         </div>
       </td>
@@ -14049,50 +14012,6 @@ async function applyLeadOutcomeUpdate(leadId, patch = {}) {
   return updatedLead;
 }
 
-async function migrateExistingPicPhoneLeadsToContacted() {
-  const candidates = leadProspects.filter(shouldMigratePicPhoneLeadToContacted);
-  if (!candidates.length) return [];
-
-  const migratedLeads = [];
-  for (const lead of candidates) {
-    const safeLeadId = String(lead?.id || "").trim();
-    if (!safeLeadId) continue;
-    const migratedAt = new Date().toISOString();
-    try {
-      const updatedLead = await leadProspectRepository.updateLead(safeLeadId, {
-        disposition: "contacted",
-        last_called_at: migratedAt,
-        retry_after: "",
-        workflow: {
-          ...(lead?.workflow || {}),
-          stage: "contacted",
-          currentContactId: "",
-          lastActionAt: migratedAt,
-          lastActionType: "contacted",
-          nextActionAt: "",
-        },
-        timeline: [
-          createLeadEvent("contacted", "Existing P.I.C. phone lead migrated to contacted", {
-            channel: "system",
-            outcome: "contacted",
-          }),
-        ],
-      });
-      if (updatedLead?.id) {
-        migratedLeads.push(updatedLead);
-      }
-    } catch (error) {
-      console.warn("Could not migrate lead with P.I.C. phone to contacted.", error);
-    }
-  }
-
-  if (migratedLeads.length) {
-    const migratedById = new Map(migratedLeads.map((lead) => [String(lead?.id || ""), lead]));
-    leadProspects = leadProspects.map((lead) => migratedById.get(String(lead?.id || "")) || lead);
-  }
-  return migratedLeads;
-}
-
 async function discardLeadProspect(leadId, options = {}) {
   const safeLeadId = String(leadId || "").trim();
   if (!safeLeadId) return;
@@ -14119,35 +14038,6 @@ async function discardLeadProspect(leadId, options = {}) {
   });
   if (!quiet) {
     showToast(tr("Lead discarded from the queue."), { tone: "success" });
-  }
-}
-
-async function markLeadProspectContacted(leadId, options = {}) {
-  const safeLeadId = String(leadId || "").trim();
-  if (!safeLeadId) return;
-  const { quiet = false } = options;
-  const existingLead = findLeadProspectById(safeLeadId);
-  await applyLeadOutcomeUpdate(safeLeadId, {
-    disposition: "contacted",
-    last_called_at: new Date().toISOString(),
-    retry_after: "",
-    workflow: {
-      ...(existingLead?.workflow || {}),
-      stage: "contacted",
-      currentContactId: "",
-      lastActionAt: new Date().toISOString(),
-      lastActionType: "contacted",
-      nextActionAt: "",
-    },
-    timeline: [
-      createLeadEvent("contacted", "Lead marked as contacted", {
-        channel: "manual",
-        outcome: "contacted",
-      }),
-    ],
-  });
-  if (!quiet) {
-    showToast(tr("Lead moved to Contacted."), { tone: "success" });
   }
 }
 
@@ -15129,10 +15019,6 @@ async function loadLeadProspects(options = {}) {
       }
       leadProspects = Array.isArray(rows) ? rows : [];
       leadProspectsLoaded = true;
-      await migrateExistingPicPhoneLeadsToContacted();
-      if (requestToken !== leadProspectsLoadRequestToken) {
-        return leadProspects;
-      }
       renderLeadProspects();
       return leadProspects;
     } catch (error) {
@@ -23838,7 +23724,7 @@ function setAuthView(session, options = {}) {
     leadProspects = [];
     leadProspectsLoaded = false;
     leadProspectsLoading = false;
-    leadListBucket = "not_contacted";
+    leadListBucket = "to_contact";
     leadCallOutcomeLeadId = "";
     leadCallOutcomePendingOutcome = "";
     leadCallOutcomeStep = "choose";
@@ -29160,13 +29046,6 @@ if (leadsCsvInput) {
 
 if (leadsTableBody) {
   leadsTableBody.addEventListener("click", (event) => {
-    const contactedTarget =
-      event.target instanceof Element ? event.target.closest("[data-lead-contacted]") : null;
-    if (contactedTarget instanceof HTMLButtonElement) {
-      closeLeadContactChoiceMenus();
-      void markLeadProspectContacted(contactedTarget.dataset.leadContacted);
-      return;
-    }
     const toggleTarget =
       event.target instanceof Element ? event.target.closest("[data-lead-contact-toggle]") : null;
     if (toggleTarget instanceof HTMLButtonElement) {
