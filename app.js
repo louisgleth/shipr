@@ -146,6 +146,7 @@ const ROUTE_PATHS = {
   register: "/register",
   resetPassword: "/reset-password",
   signupPreview: "/signup-preview",
+  localPreview: "/local-preview",
   account: "/account",
   admin: "/admin",
   leads: "/leads",
@@ -166,6 +167,7 @@ const ROUTE_SUFFIXES = [
   ROUTE_PATHS.register,
   ROUTE_PATHS.resetPassword,
   ROUTE_PATHS.signupPreview,
+  ROUTE_PATHS.localPreview,
   ROUTE_PATHS.account,
   ROUTE_PATHS.admin,
   ROUTE_PATHS.leads,
@@ -503,6 +505,7 @@ const AUTH_SIGNUP_PREVIEW_TOKEN = "local-signup-preview";
 const FLOW_LOGO_DARK_JSON_URL = "assets/flow-logo.json";
 const FLOW_LOGO_LIGHT_JSON_URL = "assets/flow-logo-light.json";
 const ADMIN_ACCESS_CACHE_STORAGE_KEY = "shipide-admin-access-cache-v1";
+const LOCAL_PLATFORM_PREVIEW_STORAGE_KEY = "shipide-local-platform-preview-v1";
 const RESERVED_CLIENT_USER_METADATA_KEYS = new Set(["app_admin"]);
 const SHOPIFY_EMBEDDED_CONTEXT_STORAGE_KEY = "shipide-shopify-embedded-context-v1";
 const SHOPIFY_PUBLIC_CONFIG_ENDPOINT = "/api/shopify/public-config";
@@ -706,7 +709,7 @@ const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "winkel",
 ]);
 const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
-const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7, 15]);
+const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7]);
 const LEAD_FOLLOW_UP_DECKS = Object.freeze({
   en: {
     label: "English",
@@ -3028,6 +3031,7 @@ let currentPdfUrl = "";
 let currentBatchPdfUrl = "";
 let currentUser = null;
 let cachedAuthAccessToken = "";
+let localPlatformPreviewEnabled = false;
 let authFocusRefreshPromise = null;
 let lastAuthFocusRefreshAt = 0;
 let activeLanguage = "en";
@@ -3576,6 +3580,62 @@ function isSignupPreviewRoute(location = window.location) {
   return getRelativeRoutePath(location.pathname || "/") === ROUTE_PATHS.signupPreview;
 }
 
+function isLocalPreviewHost(location = window.location) {
+  const host = String(location.hostname || "").trim().toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  );
+}
+
+function getStoredLocalPlatformPreviewEnabled() {
+  try {
+    return window.localStorage.getItem(LOCAL_PLATFORM_PREVIEW_STORAGE_KEY) === "1";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function setStoredLocalPlatformPreviewEnabled(enabled) {
+  try {
+    if (enabled) {
+      window.localStorage.setItem(LOCAL_PLATFORM_PREVIEW_STORAGE_KEY, "1");
+    } else {
+      window.localStorage.removeItem(LOCAL_PLATFORM_PREVIEW_STORAGE_KEY);
+    }
+  } catch (_error) {
+    // Ignore local storage failures; the current page can still preview.
+  }
+}
+
+function isLocalPlatformPreviewRoute(location = window.location) {
+  if (!isLocalPreviewHost(location)) return false;
+  const params = new URLSearchParams(location.search || "");
+  const rawFlag = String(params.get("localPreview") || params.get("preview") || "").trim().toLowerCase();
+  if (["0", "false", "off", "no"].includes(rawFlag)) {
+    setStoredLocalPlatformPreviewEnabled(false);
+    return false;
+  }
+  if (["1", "true", "yes", "on"].includes(rawFlag)) {
+    setStoredLocalPlatformPreviewEnabled(true);
+    return true;
+  }
+  if (getRelativeRoutePath(location.pathname || "/") === ROUTE_PATHS.localPreview) {
+    setStoredLocalPlatformPreviewEnabled(true);
+    return true;
+  }
+  return false;
+}
+
+function isLocalPlatformPreviewEnabled(location = window.location) {
+  if (!isLocalPreviewHost(location)) return false;
+  return isLocalPlatformPreviewRoute(location) || getStoredLocalPlatformPreviewEnabled();
+}
+
 function getSignupPreviewStepFromLocation(location = window.location) {
   const params = new URLSearchParams(location.search || "");
   return Number(params.get("previewStep") || params.get("step") || "") === 2 ? 2 : 1;
@@ -3637,6 +3697,10 @@ function parseRouteFromLocation() {
   }
   if (path === ROUTE_PATHS.login) {
     return { view: "login" };
+  }
+  if (path === ROUTE_PATHS.localPreview) {
+    setStoredLocalPlatformPreviewEnabled(true);
+    return { view: "builder", localPreview: true };
   }
   if (path === ROUTE_PATHS.register || path.startsWith(`${ROUTE_PATHS.register}/`)) {
     return { view: "register", inviteToken: getInviteTokenFromLocation(window.location) };
@@ -5578,6 +5642,7 @@ async function refreshAuthAccessToken() {
 }
 
 async function maybeRefreshAuthAccessTokenOnFocus() {
+  if (localPlatformPreviewEnabled) return "";
   if (!supabaseClient || !currentUser) return "";
   if (document.hidden) return "";
   if (authFocusRefreshPromise) return authFocusRefreshPromise;
@@ -7827,6 +7892,164 @@ function buildMockAdminPlatformHistory(clients = []) {
   return sample.filter((entry) => entry?.account?.user_id);
 }
 
+function buildLocalPlatformPreviewUser() {
+  return {
+    id: "local-platform-preview-user",
+    aud: "authenticated",
+    role: "authenticated",
+    email: "local-preview@shipide.local",
+    app_metadata: {
+      app_admin: true,
+    },
+    user_metadata: {
+      company_name: "Shipide Preview",
+      contact_name: "Local Preview",
+      contact_email: "local-preview@shipide.local",
+      contact_phone: "+32 488 28 04 56",
+      billing_address: "Avenue Louise 221, 1050 Brussels, Belgium",
+      tax_id: "EU-PREVIEW",
+      customer_id: "LOCAL-PREVIEW",
+      account_manager: "Shipide",
+      preferred_language: normalizeLanguageCode(activeLanguage) || "en",
+    },
+  };
+}
+
+function applyLocalPlatformPreviewAdminData() {
+  const mockClients = buildMockAdminClients();
+  const mockPlatformHistory = buildMockAdminPlatformHistory(mockClients);
+  adminClientBillingBusyIds = new Set();
+  adminMockModeEnabled = true;
+  adminMockSnapshot = null;
+  adminDashboardLoaded = true;
+  adminDashboardLoading = false;
+  clientInviteHistory = [];
+  shipmentExtractHistory = [];
+  adminDashboardState = {
+    ...(adminDashboardState || {}),
+    clients: mockClients,
+    platform_history: mockPlatformHistory,
+    invites: [],
+    shipment_extract_requests: [],
+    summary: buildAdminSummaryFromClients(mockClients, 0),
+    billing: {
+      invoices: [],
+      wise: {
+        configured: false,
+        receipts: [],
+      },
+    },
+  };
+  adminClients = mockClients;
+  adminPlatformHistory = mockPlatformHistory;
+  syncAdminBillingFromDashboard(adminDashboardState);
+  renderAdminSummary(adminDashboardState.summary || {});
+  renderClientInviteHistory(clientInviteHistory);
+  renderShipmentExtractHistory(shipmentExtractHistory);
+  applyAdminSettings(adminDashboardState?.settings || {});
+  renderAdminMockDataButton();
+  renderAdminClientsList();
+  renderAdminPlatformHistory();
+  renderAdminSettingsPreview();
+}
+
+function applyLocalPlatformPreviewLeadData() {
+  leadProspects = buildMockLeadWorkflowProspects();
+  leadProspectsLoaded = true;
+  leadProspectsLoading = false;
+  leadProspectsLoadPromise = null;
+  leadMockModeEnabled = true;
+  leadMockSnapshot = null;
+  renderLeadProspects();
+}
+
+function applyLocalPlatformPreviewBillingData() {
+  billingOverview = {
+    invoice_enabled: true,
+    card_enabled: false,
+    wallet_enabled: true,
+    wallet_balance_eur: 250,
+    wallet_pending_topups_eur: 0,
+    payment_mode: "invoice",
+    client_discount_pct: 0,
+    recent_topups: [],
+    iban_instructions: {
+      beneficiary: "Cryvelin LLC",
+      iban: "BE68 5390 0754 7034",
+      bic: "KREDBEBB",
+      address: "",
+      note: "Local preview only",
+    },
+  };
+  updateSummary();
+  renderCheckoutStepMode();
+  renderAccountBillingOverview();
+}
+
+function applyLocalPlatformPreviewRoute(route = parseRouteFromLocation()) {
+  const prefersHistory =
+    route.view === "account" ||
+    route.view === "admin" ||
+    route.view === "leads" ||
+    route.view === "post" ||
+    route.view === "history" ||
+    route.view === "returns" ||
+    route.view === "reports";
+
+  if (route.view === "account") {
+    setMainView("account", { push: false, animate: false });
+    void loadWarehouseSettings({ quiet: true });
+    void loadBillingOverview({ quiet: true });
+  } else if (route.view === "admin") {
+    setMainView("admin", { push: false, animate: false });
+    void loadAdminDashboard({ quiet: true });
+  } else if (route.view === "leads") {
+    setMainView("leads", { push: false, animate: false });
+    void loadLeadProspects({ quiet: true });
+  } else if (route.view === "post") {
+    initializePostStudio();
+    setMainView("post", { push: false, animate: false });
+    syncPostStudioAnimation();
+    void loadLinkedInConnectionStatus({ quiet: true });
+  } else if (route.view === "history") {
+    setMainView("history", { push: false, animate: false });
+  } else if (route.view === "returns") {
+    setMainView("returns", { push: false, animate: false });
+  } else if (route.view === "reports") {
+    setMainView("reports", {
+      push: false,
+      animate: false,
+      reportRange: String(route?.reportRange || ""),
+    });
+  } else {
+    setMainView("builder", { push: false, animate: false });
+    if (route.view === "builder") {
+      goToStep(clampStep(route.step), { push: false, regenerate: false });
+    } else {
+      updateRoute({ view: "builder", step: state.step }, { replace: true });
+    }
+  }
+
+  void loadGenerationHistory({ preferLatest: prefersHistory });
+}
+
+function activateLocalPlatformPreview(options = {}) {
+  const { animate = false } = options;
+  localPlatformPreviewEnabled = true;
+  setStoredLocalPlatformPreviewEnabled(true);
+  setAuthMessage("");
+  setAuthMode("login");
+  setAuthView(
+    {
+      user: buildLocalPlatformPreviewUser(),
+      access_token: "",
+      localPlatformPreview: true,
+    },
+    { animate }
+  );
+  applyLocalPlatformPreviewRoute(parseRouteFromLocation());
+}
+
 function toggleAdminMockData() {
   if (adminDashboardLoading) return;
   if (!adminMockModeEnabled) {
@@ -7927,6 +8150,15 @@ async function updateAdminClientBilling(userId, method) {
 
 async function loadAdminAccessStatus(options = {}) {
   const { quiet = false } = options;
+  if (localPlatformPreviewEnabled) {
+    adminAccessStatusRequestId += 1;
+    adminAccessStatusPromise = null;
+    adminAccessLoading = false;
+    adminAccessAllowed = true;
+    syncAdminAccessButtons();
+    refreshAdminOnlyTestTools();
+    return true;
+  }
   const activeUserId = String(currentUser?.id || "").trim();
   if (!activeUserId) {
     adminAccessStatusRequestId += 1;
@@ -8006,6 +8238,12 @@ async function loadAdminAccessStatus(options = {}) {
 async function loadAdminDashboard(options = {}) {
   const { quiet = false } = options;
   if (!currentUser) return false;
+  if (localPlatformPreviewEnabled) {
+    adminAccessAllowed = true;
+    adminDashboardLoading = false;
+    applyLocalPlatformPreviewAdminData();
+    return true;
+  }
   const hasAccess = adminAccessAllowed || (await loadAdminAccessStatus({ quiet: true }));
   if (!hasAccess) {
     adminDashboardLoaded = false;
@@ -8118,6 +8356,10 @@ async function loadBillingOverview(options = {}) {
     renderCheckoutStepMode();
     renderAccountBillingOverview();
     return null;
+  }
+  if (localPlatformPreviewEnabled) {
+    applyLocalPlatformPreviewBillingData();
+    return billingOverview;
   }
   try {
     const payload = await fetchApiWithAuth("/api/billing/overview", { timeoutMs: 12000 });
@@ -10377,6 +10619,14 @@ async function loadLinkedInConnectionStatus(options = {}) {
     refreshPostLinkedInUi();
     return null;
   }
+  if (localPlatformPreviewEnabled) {
+    linkedInConnectionPromise = null;
+    linkedInConnectionLoading = false;
+    linkedInConnection = normalizeLinkedInConnectionState({ configured: false });
+    resetLinkedInPublishResult();
+    refreshPostLinkedInUi();
+    return linkedInConnection;
+  }
   if (linkedInConnectionPromise && !refresh) {
     return linkedInConnectionPromise;
   }
@@ -10409,6 +10659,10 @@ async function startLinkedInConnectFlow() {
     showToast(tr("You must be signed in."), { tone: "error" });
     return;
   }
+  if (localPlatformPreviewEnabled) {
+    showToast(tr("LinkedIn connection is disabled in local preview."), { tone: "info" });
+    return;
+  }
   try {
     const payload = await fetchApiWithAuth("/api/linkedin/install-link", {
       method: "POST",
@@ -10426,6 +10680,10 @@ async function startLinkedInConnectFlow() {
 }
 
 async function disconnectLinkedInConnection() {
+  if (localPlatformPreviewEnabled) {
+    showToast(tr("LinkedIn connection is disabled in local preview."), { tone: "info" });
+    return;
+  }
   linkedInConnectionLoading = true;
   refreshPostLinkedInUi();
   try {
@@ -10447,6 +10705,7 @@ async function disconnectLinkedInConnection() {
 
 async function saveLinkedInSelectedOrganization() {
   if (!(postLinkedInOrganizationSelect instanceof HTMLSelectElement)) return;
+  if (localPlatformPreviewEnabled) return;
   const organizationUrn = String(postLinkedInOrganizationSelect.value || "").trim();
   if (!organizationUrn) return;
   linkedInConnectionLoading = true;
@@ -10492,6 +10751,10 @@ async function publishPostStudioToLinkedIn() {
   const selectedOrganization = getSelectedLinkedInOrganizationFromConnection(connection);
   if (!currentUser?.id) {
     showToast(tr("You must be signed in."), { tone: "error" });
+    return;
+  }
+  if (localPlatformPreviewEnabled) {
+    showToast(tr("LinkedIn publishing is disabled in local preview."), { tone: "info" });
     return;
   }
   if (!connection.connected || connection.needsReconnect) {
@@ -12308,7 +12571,7 @@ function getLeadRouteState(lead) {
     if (genericPhone) return "call_ask_pic";
     if (picEmail) return "email_pic";
     if (genericEmail) return "email_ask_pic";
-    return "manual_research";
+    return "manual_find_pic_email";
   })();
   const currentStage = stage && stage !== "new" ? stage : fallbackStage;
   const currentContact =
@@ -12329,7 +12592,6 @@ function getLeadRouteState(lead) {
     if (
       lead?.disposition === "manual_closed" ||
       currentStage === "manual_closed" ||
-      currentStage === "email_reply_received" ||
       currentStage === "manual_research" ||
       currentStage === "qualified"
     ) {
@@ -12357,48 +12619,68 @@ function getLeadRouteState(lead) {
 function getLeadStageMeta(lead) {
   const route = getLeadRouteState(lead);
   const contactValue = route.contact?.value || "";
+  const phoneRetryDescription =
+    route.contact?.type === "pic"
+      ? tr("Call the P.I.C. number again. Keep calling until reply; after three attempts, move to fallback.")
+      : tr("Call again and ask for the person in charge. If no P.I.C. is acquired after three attempts, move to manual phone search.");
+  const emailReplyDescription =
+    route.contact?.lastOutcome === "pic_request"
+      ? tr("Follow up with the generic inbox for a P.I.C. contact. After three attempts, move to manual personal-route search.")
+      : tr("Follow up with the email contact until reply. After three attempts, move to manual personal-route search.");
   const meta = {
     call_pic: {
       label: tr("To Contact"),
       action: tr("Call"),
-      description: tr("Likely personal number detected."),
+      description: tr("Call the P.I.C. number. Keep calling until reply; after three attempts, move to fallback."),
       className: "is-interested",
     },
     call_ask_pic: {
       label: tr("To Contact"),
       action: tr("Call"),
-      description: tr("Company phone detected."),
+      description: tr("Call the non-P.I.C. number and ask for the person in charge. If acquired, switch to the P.I.C. call route; if not, move to manual phone search."),
       className: "is-no-pickup",
     },
     email_pic: {
       label: tr("To Contact"),
       action: tr("Send initial email"),
-      description: tr("Likely person-specific email detected."),
+      description: tr("Email the P.I.C. contact. Follow up until reply; after three attempts, move to manual personal-route search."),
       className: "is-interested",
     },
     email_ask_pic: {
       label: tr("To Contact"),
-      action: tr("Send initial email"),
-      description: tr("Generic inbox detected."),
+      action: tr("Ask for P.I.C."),
+      description: tr("Email the generic inbox asking for the P.I.C. contact. If acquired, continue the email route; if not, move to manual personal-route search."),
       className: "is-mild",
     },
     waiting_phone_retry: {
       label: tr("To Re-Call"),
       action: tr("Call again"),
-      description: tr("Manual phone follow-up is due or scheduled."),
+      description: phoneRetryDescription,
       className: "is-no-pickup",
     },
     waiting_email_reply: {
       label: tr("Waiting / follow-up"),
-      action: tr("Queued"),
-      description: tr("Waiting for a reply or follow-up touchpoint."),
+      action: tr("Send follow-up"),
+      description: emailReplyDescription,
       className: "is-mild",
     },
     email_reply_received: {
       label: tr("Reply received"),
-      action: tr("Manual"),
-      description: tr("Handle the thread from the inbox."),
+      action: tr("Review reply"),
+      description: tr("Review the reply. If a P.I.C. contact was acquired, continue with email or call; if not, move to manual route."),
       className: "is-interested",
+    },
+    manual_find_pic_phone: {
+      label: tr("Manual route"),
+      action: tr("Resolve phone"),
+      description: tr("Manually find a P.I.C. phone number. If found, call until reply; if not, fall back to the email route."),
+      className: "is-no-pickup",
+    },
+    manual_find_pic_email: {
+      label: tr("Manual route"),
+      action: tr("Resolve email"),
+      description: tr("Manually find a P.I.C. email or personal route such as LinkedIn or Instagram. If found, email until reply; if not, close manually."),
+      className: "is-mild",
     },
     manual_research: {
       label: tr("Manual / Closed"),
@@ -12421,7 +12703,7 @@ function getLeadStageMeta(lead) {
     discarded: {
       label: tr("Discarded"),
       action: tr("Open timeline"),
-      description: tr("Lead removed from active routing."),
+      description: tr("Lead is removed from active routing. Open the timeline only if you need context."),
       className: "is-discarded",
     },
   };
@@ -12744,6 +13026,40 @@ function renderLeadContactClassificationBadges(lead) {
     .join("")}</div>`;
 }
 
+function getLeadContactTypeLabel(contact) {
+  const isPic = String(contact?.type || "") === "pic";
+  const kind = String(contact?.kind || "") === "phone" ? tr("phone") : tr("email");
+  return isPic ? `${tr("P.I.C.")} ${kind}` : `${tr("Non-P.I.C.")} ${kind}`;
+}
+
+function renderLeadContactList(lead) {
+  const contacts = getLeadContactSet(lead)
+    .filter((contact) => String(contact?.value || "").trim())
+    .sort((left, right) => {
+      const leftKind = String(left?.kind || "");
+      const rightKind = String(right?.kind || "");
+      if (leftKind !== rightKind) return leftKind === "phone" ? -1 : 1;
+      if (left.type === "pic" && right.type !== "pic") return -1;
+      if (right.type === "pic" && left.type !== "pic") return 1;
+      return String(left.value || "").localeCompare(String(right.value || ""));
+    });
+
+  if (!contacts.length) {
+    return `<div class="lead-contact-list"><span class="lead-contact-empty">${escapeHtml(tr("No email or phone"))}</span></div>`;
+  }
+
+  return `<div class="lead-contact-list">${contacts
+    .map((contact) => {
+      const kind = String(contact.kind || "") === "phone" ? "phone" : "email";
+      const type = String(contact.type || "") === "pic" ? "pic" : "generic";
+      return `<div class="lead-contact-line is-${escapeHtml(kind)} is-${escapeHtml(type)}">
+        <span class="lead-contact-kind">${escapeHtml(getLeadContactTypeLabel(contact))}</span>
+        <span class="lead-contact-value mono">${escapeHtml(contact.value || "--")}</span>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
 function getLeadDisplayDomain(lead) {
   return (
     normalizeLeadDomain(lead?.domain, lead?.url) ||
@@ -12884,7 +13200,11 @@ function getLeadActionKind(route) {
   ) {
     return "phone";
   }
-  if (route.stage === "email_pic" || route.stage === "email_ask_pic") {
+  if (
+    route.stage === "email_pic" ||
+    route.stage === "email_ask_pic" ||
+    route.stage === "waiting_email_reply"
+  ) {
     return "email";
   }
   return "";
@@ -12927,7 +13247,7 @@ function renderLeadActionButton(lead, route, stage) {
   return `<div class="lead-contact-choice">
     <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contact-toggle="${escapeHtml(leadId)}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 7h8"/><path d="M6 12h12"/><path d="M10 17h4"/></svg>
-      <span>${escapeHtml(route.stage.startsWith("email") ? tr("Choose email") : tr("Choose phone"))}</span>
+      <span>${escapeHtml(getLeadActionKind(route) === "email" ? tr("Choose email") : tr("Choose phone"))}</span>
     </button>
     <div class="lead-contact-choice-menu" data-lead-contact-menu="${escapeHtml(leadId)}">
       ${contacts
@@ -13101,24 +13421,20 @@ function renderLeadProspects() {
     const showDiscardAction = route.bucket !== "discarded" && route.bucket !== "manual_closed";
     const showPrimaryAction =
       route.bucket === "to_contact" ||
-      (route.bucket === "to_recall" && isLeadContactDue(route.contact));
-    const phones = getLeadPhones(lead);
-    const emails = getLeadEmails(lead);
+      (route.bucket === "to_recall" && isLeadContactDue(route.contact)) ||
+      (route.bucket === "email_waiting" && isLeadContactDue(route.contact));
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
-    const currentContactLabel = route.contact?.value ? ` · ${route.contact.value}` : "";
     const row = document.createElement("tr");
     row.className = "leads-row";
     row.innerHTML = `
       <td>
         <div class="lead-prospect">
           <div class="lead-prospect-name">${escapeHtml(domain || "--")}</div>
-          <div class="lead-prospect-phone mono">${escapeHtml(formatLeadContactCounts(lead))}</div>
-          ${renderLeadContactClassificationBadges(lead)}
         </div>
       </td>
       <td>
-        <div class="lead-company">${escapeHtml(getLeadDisplayCompany(lead))}</div>
+        ${renderLeadContactList(lead)}
       </td>
       <td>${escapeHtml(getLeadDisplayCity(lead))}</td>
       <td>
@@ -13142,7 +13458,7 @@ function renderLeadProspects() {
       <td>
         <div class="lead-stage-cell">
           <span class="lead-outcome-pill ${stage.className}">${escapeHtml(stage.label)}</span>
-          <span class="lead-stage-reason">${escapeHtml(stage.description)}${escapeHtml(currentContactLabel)}</span>
+          <span class="lead-stage-reason">${escapeHtml(stage.description)}</span>
         </div>
       </td>
       <td class="leads-table-actions">
@@ -13210,20 +13526,52 @@ function populateLeadCallOutcomeModal(lead) {
     leadCallOutcomeLeadCompany.textContent = String(lead?.companyName || getLeadDisplayCompany(lead) || "--");
   }
   if (leadCallOutcomeLeadPhone instanceof HTMLInputElement) {
-    leadCallOutcomeLeadPhone.value = String(selectedContact?.kind === "phone" ? selectedContact.value : route.pic.phone || lead?.phone || "").trim();
+    const shouldUseLeadPhone =
+      route.stage.startsWith("call") ||
+      route.stage === "waiting_phone_retry" ||
+      route.stage === "manual_find_pic_phone";
+    leadCallOutcomeLeadPhone.value = String(
+      selectedContact?.kind === "phone"
+        ? selectedContact.value
+        : route.pic.phone || (shouldUseLeadPhone ? lead?.phone : "") || ""
+    ).trim();
   }
   if (leadCallOutcomeLeadEmail instanceof HTMLInputElement) {
-    leadCallOutcomeLeadEmail.value = String(selectedContact?.kind === "email" ? selectedContact.value : route.pic.email || lead?.email || "").trim();
+    const shouldUseLeadEmail =
+      route.stage.startsWith("email") ||
+      route.stage === "waiting_email_reply" ||
+      route.stage === "manual_find_pic_email";
+    leadCallOutcomeLeadEmail.value = String(
+      selectedContact?.kind === "email"
+        ? selectedContact.value
+        : route.pic.email || (shouldUseLeadEmail ? lead?.email : "") || ""
+    ).trim();
   }
   if (leadCallOutcomeActions) {
     leadCallOutcomeActions.querySelectorAll("[data-lead-outcome]").forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
       const outcome = String(button.dataset.leadOutcome || "");
-      const isPhoneRoute = route.contact?.kind === "phone" || route.stage.startsWith("call") || route.stage === "waiting_phone_retry";
+      const isPicCallRoute =
+        route.stage === "call_pic" ||
+        (route.stage === "waiting_phone_retry" && route.contact?.type === "pic");
+      const isAskPicPhoneRoute =
+        route.stage === "call_ask_pic" ||
+        (route.stage === "waiting_phone_retry" && route.contact?.type !== "pic");
+      const isAskPicEmailRoute = route.stage === "email_reply_received";
+      const isManualPhoneRoute = route.stage === "manual_find_pic_phone";
+      const isManualEmailRoute = route.stage === "manual_find_pic_email";
       const visible =
         outcome === "phone_no_answer"
-          ? isPhoneRoute
-          : outcome === "take_action" || outcome === "do_not_take_action";
+          ? isPicCallRoute || isAskPicPhoneRoute
+          : outcome === "pic_acquired" || outcome === "no_pic_acquired"
+            ? isAskPicPhoneRoute || isAskPicEmailRoute
+            : outcome === "manual_phone_found" || outcome === "manual_phone_not_found"
+              ? isManualPhoneRoute
+              : outcome === "manual_email_found" || outcome === "manual_email_not_found"
+                ? isManualEmailRoute
+                : outcome === "take_action" || outcome === "do_not_take_action"
+                  ? isPicCallRoute
+                  : false;
       button.classList.toggle("is-hidden", !visible);
     });
   }
@@ -13375,22 +13723,106 @@ function updateLeadContact(lead, contactId, updates = {}) {
   );
 }
 
+function isValidLeadEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function upsertLeadContact(lead, kind, value, updates = {}) {
+  const safeKind = kind === "phone" ? "phone" : "email";
+  const safeValue =
+    safeKind === "phone" ? normalizeLeadPhone(value) : String(value || "").trim().toLowerCase();
+  const existingContactSet = Array.isArray(lead?.contacts) && lead.contacts.length
+    ? lead.contacts
+    : getLeadContactSet(lead);
+  if (!safeValue) return existingContactSet;
+  const id = buildLeadContactId(safeKind, safeValue);
+  const contacts = existingContactSet;
+  let didUpdate = false;
+  const nextContacts = contacts.map((contact) => {
+    const contactId = String(contact.id || buildLeadContactId(contact.kind, contact.value));
+    if (contactId !== id) return contact;
+    didUpdate = true;
+    return {
+      ...contact,
+      value: safeKind === "phone" ? value : safeValue,
+      ...updates,
+      id,
+      kind: safeKind,
+    };
+  });
+  if (didUpdate) return nextContacts;
+  const classification = safeKind === "phone" ? classifyLeadPhone(safeValue) : classifyLeadEmail(safeValue);
+  return [
+    ...nextContacts,
+    {
+      id,
+      kind: safeKind,
+      value: safeKind === "phone" ? value : safeValue,
+      type: classification.type,
+      reason: classification.reason,
+      reachableStatus: "unknown",
+      attemptCount: 0,
+      lastAttemptAt: "",
+      nextAttemptAt: "",
+      lastOutcome: "",
+      gmailThreadId: "",
+      gmailMessageId: "",
+      notes: "",
+      ...updates,
+    },
+  ];
+}
+
+function splitLeadContactsByKind(contacts, kind) {
+  return (Array.isArray(contacts) ? contacts : [])
+    .filter((contact) => contact?.kind === kind && String(contact.value || "").trim())
+    .map((contact) => String(contact.value || "").trim())
+    .filter((value, index, list) => {
+      const normalized = value.toLowerCase();
+      return list.findIndex((candidate) => candidate.toLowerCase() === normalized) === index;
+    });
+}
+
+function getLeadEmailFallbackStage(lead) {
+  const contacts = getLeadContactSet(lead);
+  const withContacts = { ...lead, contacts };
+  if (getLeadBestContact(withContacts, "email", "pic")) return "email_pic";
+  if (getLeadBestContact(withContacts, "email", "generic")) return "email_ask_pic";
+  return "manual_find_pic_email";
+}
+
 function getNextLeadFallbackStage(lead, failedStage = getLeadRouteState(lead).stage) {
   const contacts = getLeadContactSet(lead);
   const withContacts = { ...lead, contacts };
-  if (failedStage.startsWith("call")) {
-    if (getLeadBestContact(withContacts, "email", "pic")) return "email_pic";
-    if (getLeadBestContact(withContacts, "email", "generic")) return "email_ask_pic";
-    return "manual_research";
+  const route = getLeadRouteState(withContacts);
+  if (failedStage === "call_ask_pic") {
+    return "manual_find_pic_phone";
+  }
+  if (failedStage === "waiting_phone_retry" && route.contact?.type === "generic") {
+    return "manual_find_pic_phone";
+  }
+  if (failedStage.startsWith("call") || failedStage === "waiting_phone_retry") {
+    return getLeadEmailFallbackStage(withContacts);
   }
   if (failedStage.startsWith("email") || failedStage.startsWith("waiting_email")) {
-    return "manual_research";
+    return "manual_find_pic_email";
   }
-  if (failedStage === "manual_research") return "discarded";
+  if (failedStage === "manual_find_pic_phone") {
+    return getLeadEmailFallbackStage(withContacts);
+  }
+  if (failedStage === "manual_find_pic_email") {
+    return "manual_closed";
+  }
+  if (failedStage === "manual_research") return "manual_closed";
   return getLeadRouteState(withContacts).stage;
 }
 
-function getLeadEmailOutcomeForStage(stage) {
+function getLeadEmailOutcomeForStage(stage, lead = null) {
+  if (stage === "email_ask_pic") return "pic_request";
+  if (stage === "waiting_email_reply" && lead) {
+    const route = getLeadRouteState(lead);
+    if (route.contact?.lastOutcome === "pic_request") return "pic_request";
+  }
   return "initial_outreach";
 }
 
@@ -13731,21 +14163,53 @@ async function saveLeadCallOutcome(outcome) {
       return;
     }
     if (safeOutcome === "pic_acquired" || safeOutcome === "email_reply_pic") {
+      if (!edited.phone && !edited.email) {
+        throw new Error(tr("Add the P.I.C. phone or email first."));
+      }
+      let contacts = getLeadContactSet(lead);
+      if (edited.phone) {
+        contacts = upsertLeadContact({ ...lead, contacts }, "phone", edited.phone, {
+          type: "pic",
+          reason: tr("P.I.C. acquired"),
+          reachableStatus: "unknown",
+        });
+      }
+      if (edited.email) {
+        contacts = upsertLeadContact({ ...lead, contacts }, "email", edited.email, {
+          type: "pic",
+          reason: tr("P.I.C. acquired"),
+          reachableStatus: "unknown",
+        });
+      }
       const pic = {
         ...(lead.pic || {}),
         phone: edited.phone || route.pic.phone || "",
         email: edited.email || route.pic.email || "",
         source: safeOutcome === "email_reply_pic" ? "email" : "call",
       };
-      const nextStage = pic.phone ? "call_pic" : pic.email ? "email_pic" : "qualified";
+      const nextStage =
+        route.stage === "call_ask_pic" || route.stage === "waiting_phone_retry"
+          ? pic.phone
+            ? "call_pic"
+            : "email_pic"
+          : pic.email
+            ? "email_pic"
+            : "call_pic";
       await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
         phone: pic.phone || lead.phone || "",
         email: pic.email || lead.email || "",
+        phones: splitLeadContactsByKind(contacts, "phone"),
+        emails: splitLeadContactsByKind(contacts, "email"),
+        contacts,
         pic,
         workflow: {
           ...(lead.workflow || {}),
           stage: nextStage,
-          currentContactId: "",
+          currentContactId: pic.phone
+            ? buildLeadContactId("phone", pic.phone)
+            : pic.email
+              ? buildLeadContactId("email", pic.email)
+              : "",
           lastActionAt: new Date().toISOString(),
           lastActionType: safeOutcome,
           nextActionAt: "",
@@ -13763,12 +14227,15 @@ async function saveLeadCallOutcome(outcome) {
       return;
     }
     if (safeOutcome === "no_pic_acquired" || safeOutcome === "route_failed") {
-      const nextStage = getNextLeadFallbackStage(lead, route.stage);
+      const nextStage =
+        route.stage === "call_ask_pic" || route.stage === "waiting_phone_retry"
+          ? "manual_find_pic_phone"
+          : "manual_find_pic_email";
       await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
         phone: edited.phone || lead.phone || "",
         email: edited.email || lead.email || "",
-        disposition: nextStage === "discarded" ? "discarded" : lead.disposition || "new",
-        discarded_at: nextStage === "discarded" ? new Date().toISOString() : lead.discarded_at || "",
+        disposition: lead.disposition || "new",
+        discarded_at: lead.discarded_at || "",
         workflow: {
           ...(lead.workflow || {}),
           stage: nextStage,
@@ -13779,14 +14246,141 @@ async function saveLeadCallOutcome(outcome) {
         },
         timeline: [
           createLeadEvent(
-            nextStage === "discarded" ? "lead_discarded" : "route_changed",
-            nextStage === "discarded" ? "Lead discarded after fallback route failed" : `Fallback route selected: ${nextStage}`,
+            "route_changed",
+            nextStage === "manual_find_pic_phone"
+              ? "No P.I.C. acquired. Manual phone search selected."
+              : "No P.I.C. acquired. Manual email search selected.",
             { channel: "system", outcome: safeOutcome }
           ),
         ],
       });
       forceCloseLeadCallOutcome();
-      showToast(nextStage === "discarded" ? tr("Lead discarded.") : tr("Fallback route selected."), { tone: "success" });
+      showToast(tr("Fallback route selected."), { tone: "success" });
+      return;
+    }
+    if (safeOutcome === "manual_phone_found") {
+      if (!edited.phone) {
+        throw new Error(tr("Add the P.I.C. phone first."));
+      }
+      const contacts = upsertLeadContact(lead, "phone", edited.phone, {
+        type: "pic",
+        reason: tr("P.I.C. phone found manually"),
+        reachableStatus: "unknown",
+      });
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        phone: edited.phone,
+        phones: splitLeadContactsByKind(contacts, "phone"),
+        contacts,
+        pic: {
+          ...(lead.pic || {}),
+          phone: edited.phone,
+          source: "manual",
+        },
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "call_pic",
+          currentContactId: buildLeadContactId("phone", edited.phone),
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("pic_phone_found", "P.I.C. phone found manually. Call route selected.", {
+            channel: "manual",
+            contact: edited.phone,
+            outcome: safeOutcome,
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("P.I.C. phone saved. Call route selected."), { tone: "success" });
+      return;
+    }
+    if (safeOutcome === "manual_phone_not_found") {
+      const nextStage = getLeadEmailFallbackStage(lead);
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        phone: edited.phone || lead.phone || "",
+        email: edited.email || lead.email || "",
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: nextStage,
+          currentContactId: "",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("manual_phone_not_found", "P.I.C. phone not found. Email route selected.", {
+            channel: "manual",
+            outcome: safeOutcome,
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("Email fallback route selected."), { tone: "success" });
+      return;
+    }
+    if (safeOutcome === "manual_email_found") {
+      if (!isValidLeadEmail(edited.email)) {
+        throw new Error(tr("Add a valid P.I.C. email first."));
+      }
+      const contacts = upsertLeadContact(lead, "email", edited.email, {
+        type: "pic",
+        reason: tr("P.I.C. email found manually"),
+        reachableStatus: "unknown",
+      });
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        email: edited.email,
+        follow_up_email: edited.email,
+        emails: splitLeadContactsByKind(contacts, "email"),
+        contacts,
+        pic: {
+          ...(lead.pic || {}),
+          email: edited.email,
+          source: "manual",
+        },
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "email_pic",
+          currentContactId: buildLeadContactId("email", edited.email),
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("pic_email_found", "P.I.C. email found manually. Email route selected.", {
+            channel: "manual",
+            contact: edited.email,
+            outcome: safeOutcome,
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("P.I.C. email saved. Email route selected."), { tone: "success" });
+      return;
+    }
+    if (safeOutcome === "manual_email_not_found") {
+      await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
+        disposition: "manual_closed",
+        phone: edited.phone || lead.phone || "",
+        email: edited.email || lead.email || "",
+        workflow: {
+          ...(lead.workflow || {}),
+          stage: "manual_closed",
+          currentContactId: "",
+          lastActionAt: new Date().toISOString(),
+          lastActionType: safeOutcome,
+          nextActionAt: "",
+        },
+        timeline: [
+          createLeadEvent("manual_email_not_found", "No P.I.C. email found. Lead closed.", {
+            channel: "manual",
+            outcome: safeOutcome,
+          }),
+        ],
+      });
+      forceCloseLeadCallOutcome();
+      showToast(tr("Lead moved to Manual / Closed."), { tone: "success" });
       return;
     }
   } catch (error) {
@@ -13842,6 +14436,13 @@ async function sendLeadFollowUpForCurrentLead() {
         String(candidate?.id || "") === String(updatedLead.id) ? updatedLead : candidate
       );
     } else {
+      const currentEmailContact = getLeadContactSet(lead).find(
+        (contactItem) =>
+          contactItem.kind === "email" &&
+          String(contactItem.value || "").trim().toLowerCase() === email.toLowerCase()
+      );
+      const nextAttemptCount = Math.max(0, Number(currentEmailContact?.attemptCount || 0) || 0) + 1;
+      const exhausted = nextAttemptCount >= LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length;
       await applyLeadOutcomeUpdate(leadCallOutcomeLeadId, {
         disposition: leadCallOutcomePendingOutcome,
         phone: contact.phone || lead.phone || "",
@@ -13855,10 +14456,17 @@ async function sendLeadFollowUpForCurrentLead() {
         follow_up_sent_at: new Date().toISOString(),
         workflow: {
           ...(lead.workflow || {}),
-          stage: "waiting_email_reply",
+          stage: exhausted ? "manual_find_pic_email" : "waiting_email_reply",
+          currentContactId: exhausted ? "" : buildLeadContactId("email", email),
           lastActionAt: new Date().toISOString(),
           lastActionType: "email_sent",
-          nextActionAt: addDaysFromNow(LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS[1]),
+          nextActionAt: exhausted
+            ? ""
+            : addDaysFromNow(
+                LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS[
+                  Math.min(nextAttemptCount, LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS.length - 1)
+                ]
+              ),
         },
         timeline: [
           createLeadEvent("email_sent", "Email sent from connected Gmail / Workspace", {
@@ -13866,6 +14474,14 @@ async function sendLeadFollowUpForCurrentLead() {
             contact: email,
             outcome: leadCallOutcomePendingOutcome,
           }),
+          ...(exhausted
+            ? [
+                createLeadEvent(
+                  "route_changed",
+                  "Email route exhausted after three attempts. Manual email search selected."
+                ),
+              ]
+            : []),
         ],
       });
     }
@@ -13919,10 +14535,11 @@ function handleLeadWorkflowAction(leadId, options = {}) {
   }
   if (
     route.stage === "email_pic" ||
-    route.stage === "email_ask_pic"
+    route.stage === "email_ask_pic" ||
+    (route.stage === "waiting_email_reply" && isLeadContactDue(route.contact))
   ) {
     openLeadWorkflowModal(lead, { contactId: selectedContact?.id || "" });
-    openLeadFollowUpComposer(getLeadEmailOutcomeForStage(route.stage));
+    openLeadFollowUpComposer(getLeadEmailOutcomeForStage(route.stage, lead));
     return;
   }
   openLeadWorkflowModal(lead, { contactId: selectedContact?.id || "" });
@@ -14366,6 +14983,10 @@ async function loadLeadProspects(options = {}) {
     leadProspectsLoading = false;
     renderLeadProspects();
     return [];
+  }
+  if (localPlatformPreviewEnabled) {
+    applyLocalPlatformPreviewLeadData();
+    return leadProspects;
   }
   const hasAccess = adminAccessAllowed || (await loadAdminAccessStatus({ quiet: true }));
   if (!hasAccess) {
@@ -15637,6 +16258,20 @@ async function loadWarehouseSettings(options = {}) {
     return;
   }
 
+  if (localPlatformPreviewEnabled) {
+    const localRecords = loadLocalWarehouses(userId);
+    warehouseRecords = normalizeWarehouseRecords(
+      localRecords.length ? localRecords : buildDefaultWarehouseRecords(currentUser)
+    );
+    warehouseDirty = false;
+    warehouseSaving = false;
+    warehouseEnteringIds.clear();
+    saveLocalWarehouses(userId, warehouseRecords);
+    renderWarehouseList();
+    setWarehouseStatus(tr("Showing local preview shipping origins."));
+    return;
+  }
+
   if (!quiet) {
     setWarehouseStatus(tr("Loading shipping origins..."));
   }
@@ -15706,6 +16341,19 @@ async function saveWarehouseSettings() {
 
   const userId = currentUser.id;
   let savedOrigins = toWarehouseOriginsPayload(warehouseRecords);
+  if (localPlatformPreviewEnabled) {
+    warehouseRecords = normalizeWarehouseRecords(savedOrigins);
+    saveLocalWarehouses(userId, warehouseRecords);
+    warehouseDirty = false;
+    warehouseEnteringIds.clear();
+    warehouseSaving = false;
+    renderWarehouseList();
+    setWarehouseStatus(tr("Shipping origins saved in this browser for local preview."), {
+      tone: "success",
+    });
+    maybeApplyDefaultWarehouseToSender();
+    return;
+  }
   try {
     if (!supabaseClient) {
       throw new Error(tr("Could not sync to account. Supabase client is unavailable."));
@@ -17171,6 +17819,17 @@ async function loadGenerationHistory(options = {}) {
 
   setAccountHistoryStatus(tr("Loading previous generations..."));
   const previousRecordId = !preferLatest ? accountActiveRecord?.id : null;
+
+  if (localPlatformPreviewEnabled) {
+    const localRecords = loadLocalHistory(requestedUserId);
+    historyStore = "local";
+    applyLoadedRecords(
+      localRecords,
+      tr("Showing browser-saved history for this local preview."),
+      tr("No local preview history yet.")
+    );
+    return;
+  }
 
   if (supabaseClient) {
     const { data, error } = await fetchSupabaseHistoryRows(requestedUserId);
@@ -22885,8 +23544,10 @@ function setAuthBusy(
 
 function setAuthView(session, options = {}) {
   const { animate = true } = options;
+  const isLocalPreviewSession = Boolean(session?.localPlatformPreview);
   currentUser = session?.user || null;
-  cachedAuthAccessToken = String(session?.access_token || "");
+  localPlatformPreviewEnabled = isLocalPreviewSession ? true : localPlatformPreviewEnabled && Boolean(currentUser);
+  cachedAuthAccessToken = isLocalPreviewSession ? "" : String(session?.access_token || "");
   setClientInviteBusy(false);
   void setLanguage(resolvePreferredLanguage(currentUser), { persist: false });
   const route = parseRouteFromLocation();
@@ -22895,23 +23556,41 @@ function setAuthView(session, options = {}) {
   renderAccountProfile(currentUser);
   initializePortalFooter();
   if (isAppAuthed) {
-    adminAccessAllowed = getCachedAdminAccess(currentUser?.id);
-    adminAccessStatusRequestId += 1;
-    adminAccessStatusPromise = null;
-    adminAccessLoading = true;
-    startAuthKeepAlive();
-    loadWarehouseSettings({ quiet: true });
-    loadWixConnectionStatus({ quiet: true });
-    loadWooCommerceConnectionStatus({ quiet: true });
-    loadShopifyConnectionStatus({ quiet: true });
-    refreshAdminOnlyTestTools();
-    syncAdminAccessButtons();
-    void loadAdminAccessStatus({ quiet: true });
-    loadBillingOverview({ quiet: true });
-    if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
-      const localPref = getStoredLanguagePreference();
-      if (SUPPORTED_LANGUAGES.has(localPref)) {
-        void saveLanguagePreference(localPref);
+    if (localPlatformPreviewEnabled) {
+      adminAccessAllowed = true;
+      adminAccessStatusRequestId += 1;
+      adminAccessStatusPromise = null;
+      adminAccessLoading = false;
+      stopAuthKeepAlive();
+      applyLocalPlatformPreviewAdminData();
+      applyLocalPlatformPreviewLeadData();
+      applyLocalPlatformPreviewBillingData();
+      void loadWarehouseSettings({ quiet: true });
+      linkedInConnection = normalizeLinkedInConnectionState({ configured: false });
+      linkedInConnectionLoading = false;
+      linkedInConnectionPromise = null;
+      refreshPostLinkedInUi();
+      refreshAdminOnlyTestTools();
+      syncAdminAccessButtons();
+    } else {
+      adminAccessAllowed = getCachedAdminAccess(currentUser?.id);
+      adminAccessStatusRequestId += 1;
+      adminAccessStatusPromise = null;
+      adminAccessLoading = true;
+      startAuthKeepAlive();
+      loadWarehouseSettings({ quiet: true });
+      loadWixConnectionStatus({ quiet: true });
+      loadWooCommerceConnectionStatus({ quiet: true });
+      loadShopifyConnectionStatus({ quiet: true });
+      refreshAdminOnlyTestTools();
+      syncAdminAccessButtons();
+      void loadAdminAccessStatus({ quiet: true });
+      loadBillingOverview({ quiet: true });
+      if (!normalizeLanguageCode(currentUser?.user_metadata?.preferred_language)) {
+        const localPref = getStoredLanguagePreference();
+        if (SUPPORTED_LANGUAGES.has(localPref)) {
+          void saveLanguagePreference(localPref);
+        }
       }
     }
     if (adminBillingTestEmailInput && !adminBillingTestEmailInput.value.trim()) {
@@ -23311,6 +23990,10 @@ async function completePasswordRecovery() {
 }
 
 async function initializeAuth() {
+  if (isLocalPlatformPreviewEnabled()) {
+    activateLocalPlatformPreview({ animate: false });
+    return;
+  }
   if (!supabaseClient) {
     setAuthMessage(tr("Supabase client failed to initialize."));
     setAuthView(null, { animate: false });
@@ -28029,6 +28712,13 @@ if (authSignUp) {
 
 if (signOutButton) {
   signOutButton.addEventListener("click", async () => {
+    if (localPlatformPreviewEnabled) {
+      localPlatformPreviewEnabled = false;
+      setStoredLocalPlatformPreviewEnabled(false);
+      setAuthView(null, { animate: true });
+      updateRoute({ view: "login" }, { replace: true });
+      return;
+    }
     if (!supabaseClient) return;
     await supabaseClient.auth.signOut();
   });
@@ -28084,6 +28774,10 @@ if (openPostPageButton) {
     }
     initializePostStudio();
     setPostPageVisible(true);
+    if (localPlatformPreviewEnabled) {
+      refreshPostLinkedInUi();
+      return;
+    }
     await loadLinkedInConnectionStatus({ quiet: true });
   });
 }
@@ -31678,13 +32372,16 @@ if (!(typeof window !== "undefined" && window.__SHIPIDE_INVOICE_PRINT_MODE__)) {
   renderLeadProspects();
   cachePendingWixInstanceFromLocation();
   cacheShopifyEmbeddedContextFromLocation();
+  const initialLocalPlatformPreviewRequested = isLocalPlatformPreviewRoute(window.location);
   const initialRoute = parseRouteFromLocation();
   const initialStep =
     initialRoute.view === "builder" ? clampStep(initialRoute.step) : clampStep(state.step);
   const initialNormalizedRoute =
     initialRoute.view === "builder" ? { view: "builder", step: initialStep } : initialRoute;
   const preserveInitialSearch =
-    hasPendingProviderCallbackQuery(window.location) || Boolean(getShopifyEmbeddedContext());
+    hasPendingProviderCallbackQuery(window.location)
+    || Boolean(getShopifyEmbeddedContext())
+    || initialLocalPlatformPreviewRequested;
 
   goToStep(initialStep, { push: false, regenerate: false });
   if (initialRoute.view === "register") {

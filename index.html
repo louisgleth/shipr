@@ -2173,10 +2173,20 @@
 
           <div class="leads-table-wrap" id="leadsTableWrap">
             <table class="leads-table" aria-label="Lead workflow queue">
+              <colgroup>
+                <col class="leads-table-col-prospect" />
+                <col class="leads-table-col-contacts" />
+                <col class="leads-table-col-city" />
+                <col class="leads-table-col-stack" />
+                <col class="leads-table-col-category" />
+                <col class="leads-table-col-url" />
+                <col class="leads-table-col-stage" />
+                <col class="leads-table-col-action" />
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col">Prospect</th>
-                  <th scope="col">Company</th>
+                  <th scope="col">Contacts</th>
                   <th scope="col">City</th>
                   <th scope="col">Tech Stack</th>
                   <th scope="col">Category</th>
@@ -2225,6 +2235,30 @@
               <button type="button" class="lead-callout-option" data-lead-outcome="phone_no_answer">
                 <span class="lead-callout-option-title">No answer</span>
                 <span class="lead-callout-option-copy">Keep this phone in the route and schedule the next call attempt.</span>
+              </button>
+              <button type="button" class="lead-callout-option" data-lead-outcome="pic_acquired">
+                <span class="lead-callout-option-title">P.I.C. acquired</span>
+                <span class="lead-callout-option-copy">Save the person in charge and continue through the P.I.C. route.</span>
+              </button>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="no_pic_acquired">
+                <span class="lead-callout-option-title">No P.I.C. acquired</span>
+                <span class="lead-callout-option-copy">Move to the manual fallback route for this branch.</span>
+              </button>
+              <button type="button" class="lead-callout-option" data-lead-outcome="manual_phone_found">
+                <span class="lead-callout-option-title">P.I.C. phone found</span>
+                <span class="lead-callout-option-copy">Save the phone number above and start calling the P.I.C.</span>
+              </button>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="manual_phone_not_found">
+                <span class="lead-callout-option-title">P.I.C. phone not found</span>
+                <span class="lead-callout-option-copy">Fallback to the email route for this lead.</span>
+              </button>
+              <button type="button" class="lead-callout-option" data-lead-outcome="manual_email_found">
+                <span class="lead-callout-option-title">P.I.C. email found</span>
+                <span class="lead-callout-option-copy">Save the email above and start the P.I.C. email route.</span>
+              </button>
+              <button type="button" class="lead-callout-option is-muted" data-lead-outcome="manual_email_not_found">
+                <span class="lead-callout-option-title">P.I.C. email not found</span>
+                <span class="lead-callout-option-copy">Close this lead with no remaining route.</span>
               </button>
               <button type="button" class="lead-callout-option" data-lead-outcome="take_action">
                 <span class="lead-callout-option-title">Answered - take action</span>

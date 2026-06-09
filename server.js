@@ -127,7 +127,7 @@ const LEAD_GENERIC_EMAIL_ALIASES = new Set([
   "store", "support", "team", "talent", "vacature", "vacatures", "verkoop", "warehouse", "webshop", "werkenbij", "winkel",
 ]);
 const LEAD_PHONE_RETRY_DELAYS_DAYS = Object.freeze([0, 2, 6]);
-const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7, 15]);
+const LEAD_EMAIL_FOLLOW_UP_DELAYS_DAYS = Object.freeze([0, 3, 7]);
 const CLICKWRAP_CONTRACTS_TABLE = "clickwrap_contract_versions";
 const CLICKWRAP_ACCEPTANCES_TABLE = "clickwrap_acceptances";
 const ADMIN_SETTINGS_TABLE = "admin_settings";
@@ -8727,7 +8727,7 @@ function getLeadDefaultStage(payload = {}) {
   if (getLeadBestContact(payload, "phone", "generic")) return "call_ask_pic";
   if (getLeadBestContact(payload, "email", "pic")) return "email_pic";
   if (getLeadBestContact(payload, "email", "generic")) return "email_ask_pic";
-  return "manual_research";
+  return "manual_find_pic_email";
 }
 
 function createLeadTimelineEvent(type, summary, options = {}) {
@@ -9184,8 +9184,8 @@ async function sendLeadEmailFromGmail(id, message = {}) {
     contacts,
     workflow: {
       ...(lead.workflow || {}),
-      stage: "waiting_email_reply",
-      currentContactId: buildLeadContactId("email", to),
+      stage: exhausted ? "manual_find_pic_email" : "waiting_email_reply",
+      currentContactId: exhausted ? "" : buildLeadContactId("email", to),
       lastActionAt: new Date().toISOString(),
       lastActionType: "email_sent",
       nextActionAt: exhausted ? "" : addLeadDaysFromNow(nextDelay),
@@ -9201,6 +9201,14 @@ async function sendLeadEmailFromGmail(id, message = {}) {
           subject,
         },
       }),
+      ...(exhausted
+        ? [
+            createLeadTimelineEvent(
+              "route_changed",
+              "Email route exhausted after three attempts. Manual email search selected."
+            ),
+          ]
+        : []),
     ],
   };
   return { lead: await updateLeadProspect(id, patch), gmail: sent };
