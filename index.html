@@ -2067,6 +2067,13 @@
           </article>
 
           <article class="reports-card admin-summary-card">
+            <div class="reports-kpi-title">To Contact on LinkedIn</div>
+            <div class="reports-kpi-value" id="leadsLinkedInCount">0</div>
+            <div class="reports-kpi-meta mono">LinkedIn</div>
+            <div class="reports-kpi-foot">Connected on LinkedIn for follow-up</div>
+          </article>
+
+          <article class="reports-card admin-summary-card">
             <div class="reports-kpi-title">Total</div>
             <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
             <div class="reports-kpi-meta mono">Loaded</div>
@@ -2079,7 +2086,7 @@
             <div>
               <div class="preview-title">Lead Queue</div>
               <p class="panel-sub leads-board-sub">
-                Same lead data, simplified into contacted and not contacted.
+                Same lead data, organized by outreach progress.
               </p>
               <div class="leads-list-tabs" id="leadsListTabs" role="tablist" aria-label="Lead call progress">
                 <button
@@ -2091,6 +2098,16 @@
                   aria-selected="true"
                 >
                   Not Contacted
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsLinkedInTab"
+                  data-leads-list="to_contact_on_linkedin"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  To Contact on LinkedIn
                 </button>
                 <button
                   type="button"

@@ -2566,6 +2566,7 @@ const adminWiseClose = document.getElementById("adminWiseClose");
 const adminWiseCancel = document.getElementById("adminWiseCancel");
 const leadsReadyCount = document.getElementById("leadsReadyCount");
 const leadsFollowUpCount = document.getElementById("leadsFollowUpCount");
+const leadsLinkedInCount = document.getElementById("leadsLinkedInCount");
 const leadsNotInterestedCount = document.getElementById("leadsNotInterestedCount");
 const leadsListTabs = document.getElementById("leadsListTabs");
 const leadsSearchInput = document.getElementById("leadsSearchInput");
@@ -13189,6 +13190,7 @@ function isLeadCreatedBeforeContactedMigration(lead) {
 function isLeadContactedSimple(lead) {
   const disposition = String(lead?.disposition || "").trim().toLowerCase();
   const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
+  if (isLeadToContactOnLinkedIn(lead)) return false;
   if (disposition === "contacted" || workflowStage === "contacted") return true;
   return Boolean(
     String(lead?.last_called_at || "").trim() ||
@@ -13205,11 +13207,32 @@ function shouldMigratePicPhoneLeadToContacted(lead) {
   );
 }
 
+function isLeadToContactOnLinkedIn(lead) {
+  const disposition = String(lead?.disposition || "").trim().toLowerCase();
+  const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
+  return (
+    disposition === "linkedin_connected" ||
+    disposition === "to_contact_on_linkedin" ||
+    workflowStage === "to_contact_on_linkedin"
+  );
+}
+
 function getSimpleLeadBucket(lead) {
+  if (isLeadToContactOnLinkedIn(lead)) return "to_contact_on_linkedin";
   return isLeadContactedSimple(lead) ? "contacted" : "not_contacted";
 }
 
 function getSimpleLeadStageMeta(lead) {
+  if (isLeadToContactOnLinkedIn(lead)) {
+    const personName = String(lead?.linkedin_contact_name || lead?.workflow?.linkedinContactName || "").trim();
+    return {
+      label: tr("To Contact on LinkedIn"),
+      description: personName
+        ? tr("Connected with {name} on LinkedIn. Follow up there.", { name: personName })
+        : tr("Connected on LinkedIn. Follow up there."),
+      className: "is-linkedin",
+    };
+  }
   if (isLeadContactedSimple(lead)) {
     return {
       label: tr("Contacted"),
@@ -13322,6 +13345,7 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
+  if (bucket === "to_contact_on_linkedin") return tr("to contact on LinkedIn");
   if (bucket === "contacted") return tr("contacted");
   return tr("not contacted");
 }
@@ -13337,7 +13361,7 @@ function syncLeadListTabs() {
 }
 
 function setLeadListBucket(nextBucket, options = {}) {
-  const safeBucket = ["not_contacted", "contacted"].includes(nextBucket)
+  const safeBucket = ["not_contacted", "to_contact_on_linkedin", "contacted"].includes(nextBucket)
     ? nextBucket
     : "not_contacted";
   const { rerender = true } = options;
@@ -13351,18 +13375,23 @@ function setLeadListBucket(nextBucket, options = {}) {
 function renderLeadSummaryCards() {
   const counts = {
     notContacted: 0,
+    linkedin: 0,
     contacted: 0,
     total: leadProspects.length,
   };
   leadProspects.forEach((lead) => {
-    if (getSimpleLeadBucket(lead) === "contacted") {
+    const bucket = getSimpleLeadBucket(lead);
+    if (bucket === "contacted") {
       counts.contacted += 1;
+    } else if (bucket === "to_contact_on_linkedin") {
+      counts.linkedin += 1;
     } else {
       counts.notContacted += 1;
     }
   });
   if (leadsReadyCount) leadsReadyCount.textContent = String(counts.notContacted);
   if (leadsFollowUpCount) leadsFollowUpCount.textContent = String(counts.contacted);
+  if (leadsLinkedInCount) leadsLinkedInCount.textContent = String(counts.linkedin);
   if (leadsNotInterestedCount) leadsNotInterestedCount.textContent = String(counts.total);
 }
 
@@ -13464,7 +13493,9 @@ function renderLeadProspects() {
   filtered.forEach((lead) => {
     const stack = getLeadStackMeta(lead?.primaryPlatform || lead?.techStack);
     const stage = getSimpleLeadStageMeta(lead);
-    const isContacted = getSimpleLeadBucket(lead) === "contacted";
+    const leadBucket = getSimpleLeadBucket(lead);
+    const isContacted = leadBucket === "contacted";
+    const isLinkedIn = leadBucket === "to_contact_on_linkedin";
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
     const row = document.createElement("tr");
@@ -13506,8 +13537,20 @@ function renderLeadProspects() {
       <td class="leads-table-actions">
         <div class="leads-table-actions-group">
           ${
-            !isContacted
-              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
+            !isContacted && !isLinkedIn
+              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button lead-linkedin-button" data-lead-linkedin="${escapeHtml(
+                  String(lead?.id || "")
+                )}">
+          <span>${escapeHtml(tr("Connected on LinkedIn"))}</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
+                  String(lead?.id || "")
+                )}">
+          <span>${escapeHtml(tr("Contacted"))}</span>
+        </button>`
+              : isLinkedIn
+                ? `<span class="lead-outcome-pill is-linkedin">${escapeHtml(tr("To Contact on LinkedIn"))}</span>
+        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
                   String(lead?.id || "")
                 )}">
           <span>${escapeHtml(tr("Contacted"))}</span>
@@ -14041,6 +14084,31 @@ function openLeadFollowUpMailDraft({ email, subject, body }) {
 }
 
 async function applyLeadOutcomeUpdate(leadId, patch = {}) {
+  const safeLeadId = String(leadId || "").trim();
+  const existingLead = findLeadProspectById(safeLeadId);
+  if ((leadMockModeEnabled || localPlatformPreviewEnabled) && existingLead) {
+    const updatedLead = {
+      ...existingLead,
+      ...patch,
+      id: existingLead.id,
+      orderIndex: existingLead.orderIndex,
+      created_at: existingLead.created_at,
+      updated_at: new Date().toISOString(),
+      workflow: {
+        ...(existingLead.workflow || {}),
+        ...(patch.workflow || {}),
+      },
+      timeline: [
+        ...(Array.isArray(existingLead.timeline) ? existingLead.timeline : []),
+        ...(Array.isArray(patch.timeline) ? patch.timeline : []),
+      ],
+    };
+    leadProspects = leadProspects.map((lead) =>
+      String(lead?.id || "") === safeLeadId ? updatedLead : lead
+    );
+    renderLeadProspects();
+    return updatedLead;
+  }
   const updatedLead = await leadProspectRepository.updateLead(leadId, patch);
   leadProspects = leadProspects.map((lead) =>
     String(lead?.id || "") === String(updatedLead?.id || "") ? updatedLead : lead
@@ -14122,6 +14190,43 @@ async function discardLeadProspect(leadId, options = {}) {
   }
 }
 
+async function markLeadProspectLinkedIn(leadId, options = {}) {
+  const safeLeadId = String(leadId || "").trim();
+  if (!safeLeadId) return;
+  const { quiet = false } = options;
+  const existingLead = findLeadProspectById(safeLeadId);
+  const connectedAt = new Date().toISOString();
+  try {
+    await applyLeadOutcomeUpdate(safeLeadId, {
+      disposition: "linkedin_connected",
+      linkedin_contact_name: "",
+      linkedin_connected_at: connectedAt,
+      retry_after: "",
+      workflow: {
+        ...(existingLead?.workflow || {}),
+        stage: "to_contact_on_linkedin",
+        currentContactId: "",
+        linkedinContactName: "",
+        lastActionAt: connectedAt,
+        lastActionType: "linkedin_connected",
+        nextActionAt: "",
+      },
+      timeline: [
+        createLeadEvent("linkedin_connected", "Connected on LinkedIn", {
+          channel: "linkedin",
+          outcome: "to_contact_on_linkedin",
+        }),
+      ],
+    });
+    setLeadListBucket("to_contact_on_linkedin");
+    if (!quiet) {
+      showToast(tr("Lead moved to To Contact on LinkedIn."), { tone: "success" });
+    }
+  } catch (error) {
+    showToast(error?.message || tr("Could not update the lead."), { tone: "error" });
+  }
+}
+
 async function markLeadProspectContacted(leadId, options = {}) {
   const safeLeadId = String(leadId || "").trim();
   if (!safeLeadId) return;
@@ -14147,6 +14252,7 @@ async function markLeadProspectContacted(leadId, options = {}) {
     ],
   });
   if (!quiet) {
+    setLeadListBucket("contacted");
     showToast(tr("Lead moved to Contacted."), { tone: "success" });
   }
 }
@@ -29160,6 +29266,13 @@ if (leadsCsvInput) {
 
 if (leadsTableBody) {
   leadsTableBody.addEventListener("click", (event) => {
+    const linkedInTarget =
+      event.target instanceof Element ? event.target.closest("[data-lead-linkedin]") : null;
+    if (linkedInTarget instanceof HTMLButtonElement) {
+      closeLeadContactChoiceMenus();
+      void markLeadProspectLinkedIn(linkedInTarget.dataset.leadLinkedin);
+      return;
+    }
     const contactedTarget =
       event.target instanceof Element ? event.target.closest("[data-lead-contacted]") : null;
     if (contactedTarget instanceof HTMLButtonElement) {

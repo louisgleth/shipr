@@ -2709,7 +2709,7 @@ html[data-theme="light"] .scroll-fade-wrap--card {
 }
 
 .leads-summary-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -3054,6 +3054,12 @@ html[data-theme="light"] .scroll-fade-wrap--card {
   background: rgba(119, 71, 227, 0.14);
 }
 
+.lead-outcome-pill.is-linkedin {
+  color: #9bd8ff;
+  border-color: rgba(54, 142, 190, 0.42);
+  background: rgba(54, 142, 190, 0.14);
+}
+
 .lead-outcome-pill.is-discarded {
   color: rgba(241, 244, 251, 0.52);
   border-color: rgba(126, 133, 148, 0.28);
@@ -3106,6 +3112,12 @@ html[data-theme="light"] .payment-method-pill.is-wallet {
   background: rgba(91, 50, 186, 0.085);
 }
 
+html[data-theme="light"] .lead-outcome-pill.is-linkedin {
+  color: #17658d;
+  border-color: rgba(23, 101, 141, 0.24);
+  background: rgba(23, 101, 141, 0.09);
+}
+
 html[data-theme="light"] .lead-outcome-pill.is-mild,
 html[data-theme="light"] .account-reference-pill.is-warning,
 html[data-theme="light"] .admin-billing-status-pill.is-overdue,
@@ -3150,6 +3162,10 @@ html[data-theme="light"] .account-reference-pill.is-muted {
 .lead-call-button {
   min-width: 90px;
   justify-content: center;
+}
+
+.lead-linkedin-button {
+  min-width: 154px;
 }
 
 .lead-contact-choice {
