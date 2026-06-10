@@ -2567,6 +2567,7 @@ const adminWiseCancel = document.getElementById("adminWiseCancel");
 const leadsReadyCount = document.getElementById("leadsReadyCount");
 const leadsFollowUpCount = document.getElementById("leadsFollowUpCount");
 const leadsLinkedInCount = document.getElementById("leadsLinkedInCount");
+const leadsBinCount = document.getElementById("leadsBinCount");
 const leadsNotInterestedCount = document.getElementById("leadsNotInterestedCount");
 const leadsListTabs = document.getElementById("leadsListTabs");
 const leadsSearchInput = document.getElementById("leadsSearchInput");
@@ -13104,7 +13105,7 @@ function parseLeadTimestamp(value) {
 }
 
 function compareLeadProspects(left, right, bucket = leadListBucket) {
-  if (bucket === "discarded") {
+  if (bucket === "bin" || bucket === "discarded") {
     const rightDiscarded = parseLeadTimestamp(right?.discarded_at || right?.last_called_at);
     const leftDiscarded = parseLeadTimestamp(left?.discarded_at || left?.last_called_at);
     if (rightDiscarded !== leftDiscarded) return rightDiscarded - leftDiscarded;
@@ -13190,6 +13191,7 @@ function isLeadCreatedBeforeContactedMigration(lead) {
 function isLeadContactedSimple(lead) {
   const disposition = String(lead?.disposition || "").trim().toLowerCase();
   const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
+  if (isLeadInBin(lead)) return false;
   if (isLeadToContactOnLinkedIn(lead)) return false;
   if (disposition === "contacted" || workflowStage === "contacted") return true;
   return Boolean(
@@ -13207,6 +13209,12 @@ function shouldMigratePicPhoneLeadToContacted(lead) {
   );
 }
 
+function isLeadInBin(lead) {
+  const disposition = String(lead?.disposition || "").trim().toLowerCase();
+  const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
+  return disposition === "discarded" || disposition === "bin" || workflowStage === "discarded" || workflowStage === "bin";
+}
+
 function isLeadToContactOnLinkedIn(lead) {
   const disposition = String(lead?.disposition || "").trim().toLowerCase();
   const workflowStage = String(lead?.workflow?.stage || lead?.routeStage || "").trim().toLowerCase();
@@ -13218,11 +13226,19 @@ function isLeadToContactOnLinkedIn(lead) {
 }
 
 function getSimpleLeadBucket(lead) {
+  if (isLeadInBin(lead)) return "bin";
   if (isLeadToContactOnLinkedIn(lead)) return "to_contact_on_linkedin";
   return isLeadContactedSimple(lead) ? "contacted" : "not_contacted";
 }
 
 function getSimpleLeadStageMeta(lead) {
+  if (isLeadInBin(lead)) {
+    return {
+      label: tr("Bin"),
+      description: tr("Lead has been discarded from active outreach."),
+      className: "is-discarded",
+    };
+  }
   if (isLeadToContactOnLinkedIn(lead)) {
     const personName = String(lead?.linkedin_contact_name || lead?.workflow?.linkedinContactName || "").trim();
     return {
@@ -13345,6 +13361,7 @@ function findLeadProspectById(leadId) {
 }
 
 function getLeadListBucketLabel(bucket = leadListBucket) {
+  if (bucket === "bin") return tr("bin");
   if (bucket === "to_contact_on_linkedin") return tr("to contact on LinkedIn");
   if (bucket === "contacted") return tr("contacted");
   return tr("not contacted");
@@ -13361,7 +13378,7 @@ function syncLeadListTabs() {
 }
 
 function setLeadListBucket(nextBucket, options = {}) {
-  const safeBucket = ["not_contacted", "to_contact_on_linkedin", "contacted"].includes(nextBucket)
+  const safeBucket = ["not_contacted", "to_contact_on_linkedin", "contacted", "bin"].includes(nextBucket)
     ? nextBucket
     : "not_contacted";
   const { rerender = true } = options;
@@ -13377,6 +13394,7 @@ function renderLeadSummaryCards() {
     notContacted: 0,
     linkedin: 0,
     contacted: 0,
+    bin: 0,
     total: leadProspects.length,
   };
   leadProspects.forEach((lead) => {
@@ -13385,6 +13403,8 @@ function renderLeadSummaryCards() {
       counts.contacted += 1;
     } else if (bucket === "to_contact_on_linkedin") {
       counts.linkedin += 1;
+    } else if (bucket === "bin") {
+      counts.bin += 1;
     } else {
       counts.notContacted += 1;
     }
@@ -13392,6 +13412,7 @@ function renderLeadSummaryCards() {
   if (leadsReadyCount) leadsReadyCount.textContent = String(counts.notContacted);
   if (leadsFollowUpCount) leadsFollowUpCount.textContent = String(counts.contacted);
   if (leadsLinkedInCount) leadsLinkedInCount.textContent = String(counts.linkedin);
+  if (leadsBinCount) leadsBinCount.textContent = String(counts.bin);
   if (leadsNotInterestedCount) leadsNotInterestedCount.textContent = String(counts.total);
 }
 
@@ -13496,6 +13517,25 @@ function renderLeadProspects() {
     const leadBucket = getSimpleLeadBucket(lead);
     const isContacted = leadBucket === "contacted";
     const isLinkedIn = leadBucket === "to_contact_on_linkedin";
+    const isBin = leadBucket === "bin";
+    const leadId = String(lead?.id || "");
+    const safeLeadId = escapeHtml(leadId);
+    const linkedinButtonHtml = `<button type="button" class="btn btn-secondary btn-sm lead-call-button lead-linkedin-button" data-lead-linkedin="${safeLeadId}">
+          <span>${escapeHtml(tr("Connected on LinkedIn"))}</span>
+        </button>`;
+    const contactedButtonHtml = `<button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${safeLeadId}">
+          <span>${escapeHtml(tr("Contacted"))}</span>
+        </button>`;
+    const discardButtonHtml = `<button type="button" class="btn btn-secondary btn-sm lead-call-button lead-discard-action" data-lead-discard="${safeLeadId}">
+          <span>${escapeHtml(tr("Discard"))}</span>
+        </button>`;
+    const actionHtml = isBin
+      ? `<span class="lead-outcome-pill is-discarded">${escapeHtml(tr("Bin"))}</span>`
+      : !isContacted && !isLinkedIn
+        ? `${linkedinButtonHtml}${contactedButtonHtml}${discardButtonHtml}`
+        : isLinkedIn
+          ? `<span class="lead-outcome-pill is-linkedin">${escapeHtml(tr("To Contact on LinkedIn"))}</span>${contactedButtonHtml}${discardButtonHtml}`
+          : `<span class="lead-outcome-pill is-interested">${escapeHtml(tr("Contacted"))}</span>${discardButtonHtml}`;
     const domain = getLeadDisplayDomain(lead);
     const url = getLeadDisplayUrl(lead);
     const row = document.createElement("tr");
@@ -13536,27 +13576,7 @@ function renderLeadProspects() {
       </td>
       <td class="leads-table-actions">
         <div class="leads-table-actions-group">
-          ${
-            !isContacted && !isLinkedIn
-              ? `<button type="button" class="btn btn-secondary btn-sm lead-call-button lead-linkedin-button" data-lead-linkedin="${escapeHtml(
-                  String(lead?.id || "")
-                )}">
-          <span>${escapeHtml(tr("Connected on LinkedIn"))}</span>
-        </button>
-        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
-                  String(lead?.id || "")
-                )}">
-          <span>${escapeHtml(tr("Contacted"))}</span>
-        </button>`
-              : isLinkedIn
-                ? `<span class="lead-outcome-pill is-linkedin">${escapeHtml(tr("To Contact on LinkedIn"))}</span>
-        <button type="button" class="btn btn-secondary btn-sm lead-call-button" data-lead-contacted="${escapeHtml(
-                  String(lead?.id || "")
-                )}">
-          <span>${escapeHtml(tr("Contacted"))}</span>
-        </button>`
-              : `<span class="lead-outcome-pill is-interested">${escapeHtml(tr("Contacted"))}</span>`
-          }
+          ${actionHtml}
         </div>
       </td>
     `;
@@ -14186,6 +14206,7 @@ async function discardLeadProspect(leadId, options = {}) {
     ],
   });
   if (!quiet) {
+    setLeadListBucket("bin");
     showToast(tr("Lead discarded from the queue."), { tone: "success" });
   }
 }

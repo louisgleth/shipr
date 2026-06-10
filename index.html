@@ -2074,6 +2074,13 @@
           </article>
 
           <article class="reports-card admin-summary-card">
+            <div class="reports-kpi-title">Bin</div>
+            <div class="reports-kpi-value" id="leadsBinCount">0</div>
+            <div class="reports-kpi-meta mono">Discarded</div>
+            <div class="reports-kpi-foot">Discarded leads kept out of active lists</div>
+          </article>
+
+          <article class="reports-card admin-summary-card">
             <div class="reports-kpi-title">Total</div>
             <div class="reports-kpi-value" id="leadsNotInterestedCount">0</div>
             <div class="reports-kpi-meta mono">Loaded</div>
@@ -2118,6 +2125,16 @@
                   aria-selected="false"
                 >
                   Contacted
+                </button>
+                <button
+                  type="button"
+                  class="leads-list-tab"
+                  id="leadsBinTab"
+                  data-leads-list="bin"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Bin
                 </button>
               </div>
             </div>
