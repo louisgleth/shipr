@@ -3993,6 +3993,12 @@ html[data-theme="light"] .label-confirm-kicker {
   align-items: center;
 }
 
+.admin-demo-account-result {
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .admin-billing-test {
   border-top: 1px solid var(--stroke);
   padding-top: 10px;

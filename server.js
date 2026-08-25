@@ -18067,6 +18067,10 @@ async function handleApi(req, res, requestUrl) {
     await handleAdminClientBillingSave(req, res);
     return true;
   }
+  if (pathname === "/api/admin/demo-account/reset" && req.method === "POST") {
+    await proxyAuthenticatedApi(req, res, "/api/admin/demo-account/reset");
+    return true;
+  }
   if (pathname === "/api/admin/invoices" && req.method === "GET") {
     await handleAdminInvoicesList(req, res, requestUrl);
     return true;

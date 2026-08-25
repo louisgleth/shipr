@@ -2617,6 +2617,8 @@ const adminBillingRunResult = document.getElementById("adminBillingRunResult");
 const adminBillingTestEmailInput = document.getElementById("adminBillingTestEmail");
 const adminBillingSendTestButton = document.getElementById("adminBillingSendTest");
 const adminBillingSendTopupTestButton = document.getElementById("adminBillingSendTopupTest");
+const adminDemoAccountResetButton = document.getElementById("adminDemoAccountReset");
+const adminDemoAccountResult = document.getElementById("adminDemoAccountResult");
 const adminBillingSendDocumentTripletButton = document.getElementById("adminBillingSendDocumentTriplet");
 const adminBillingSendTestSequenceButton = document.getElementById("adminBillingSendTestSequence");
 const adminReportsSendTestButton = document.getElementById("adminReportsSendTest");
@@ -7968,12 +7970,12 @@ function applyLocalPlatformPreviewLeadData() {
 
 function applyLocalPlatformPreviewBillingData() {
   billingOverview = {
-    invoice_enabled: true,
+    invoice_enabled: false,
     card_enabled: false,
     wallet_enabled: true,
-    wallet_balance_eur: 250,
+    wallet_balance_eur: 2000,
     wallet_pending_topups_eur: 0,
-    payment_mode: "invoice",
+    payment_mode: "wallet",
     client_discount_pct: 0,
     recent_topups: [],
     iban_instructions: {
@@ -8390,6 +8392,7 @@ function setAdminBillingBusy(isBusy) {
   if (adminBillingRunSendButton) adminBillingRunSendButton.disabled = adminBillingBusy;
   if (adminBillingSendTestButton) adminBillingSendTestButton.disabled = adminBillingBusy;
   if (adminBillingSendTopupTestButton) adminBillingSendTopupTestButton.disabled = adminBillingBusy;
+  if (adminDemoAccountResetButton) adminDemoAccountResetButton.disabled = adminBillingBusy;
   if (adminBillingSendDocumentTripletButton) {
     adminBillingSendDocumentTripletButton.disabled = adminBillingBusy;
   }
@@ -8446,6 +8449,24 @@ function renderAdminBillingRunResult(payload = null) {
     `TOTAL ${formatMoney(Number(run?.totals?.total_inc_vat || run?.totals?.subtotal_ex_vat || 0))}`,
   ];
   adminBillingRunResult.textContent = summary.join("   |   ");
+}
+
+function renderAdminDemoAccountResult(payload = null) {
+  if (!adminDemoAccountResult) return;
+  if (!payload || typeof payload !== "object") {
+    adminDemoAccountResult.textContent = "";
+    adminDemoAccountResult.classList.add("is-hidden");
+    return;
+  }
+  const email = String(payload?.email || "demo@shipide.com").trim();
+  const balance = formatMoney(Number(payload?.balance_eur || payload?.target_balance_eur || 0));
+  const temporaryPassword = String(payload?.temporary_password || "").trim();
+  const passwordText = temporaryPassword
+    ? `PASSWORD ${temporaryPassword}`
+    : "PASSWORD Configured in DEMO_ACCOUNT_PASSWORD";
+  const stateText = payload?.created ? "CREATED" : "RESET";
+  adminDemoAccountResult.textContent = `${stateText}   |   LOGIN ${email}   |   BALANCE ${balance}   |   ${passwordText}`;
+  adminDemoAccountResult.classList.remove("is-hidden");
 }
 
 function getAdminInvoiceStatusClass(status) {
@@ -9039,6 +9060,35 @@ async function sendAdminTopupBillingTestEmail() {
     );
   } catch (error) {
     setAdminBillingStatus(error?.message || tr("Could not send test invoice email."), {
+      tone: "error",
+    });
+  } finally {
+    setAdminBillingBusy(false);
+  }
+}
+
+async function resetAdminDemoAccount() {
+  if (adminBillingBusy) return;
+  setAdminBillingBusy(true);
+  setAdminBillingStatus("");
+  renderAdminDemoAccountResult(null);
+  try {
+    const payload = await fetchApiWithAuth("/api/admin/demo-account/reset", {
+      method: "POST",
+      timeoutMs: 60000,
+      body: JSON.stringify({}),
+    });
+    renderAdminDemoAccountResult(payload);
+    setAdminBillingStatus(
+      tr("Demo login reset with {amount} available.", {
+        amount: formatMoney(Number(payload?.balance_eur || 0)),
+      }),
+      { tone: "success" }
+    );
+    await loadAdminDashboard({ quiet: true });
+    await loadBillingOverview({ quiet: true });
+  } catch (error) {
+    setAdminBillingStatus(error?.message || tr("Could not reset demo login."), {
       tone: "error",
     });
   } finally {
@@ -29714,6 +29764,12 @@ if (adminBillingSendTestButton) {
 if (adminBillingSendTopupTestButton) {
   adminBillingSendTopupTestButton.addEventListener("click", async () => {
     await sendAdminTopupBillingTestEmail();
+  });
+}
+
+if (adminDemoAccountResetButton) {
+  adminDemoAccountResetButton.addEventListener("click", async () => {
+    await resetAdminDemoAccount();
   });
 }
 

@@ -114,6 +114,8 @@ const CLICKWRAP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_CLICKWRAP_CONTRACT_PDF_URL = "/assets/contracts/commAgreement-v1.pdf";
 const DEFAULT_WELCOME_PORTAL_URL = "https://portal.shipide.com/login";
 const DEFAULT_PUBLIC_APP_URL = "https://portal.shipide.com";
+const DEFAULT_DEMO_ACCOUNT_EMAIL = "demo@shipide.com";
+const DEMO_ACCOUNT_TARGET_BALANCE_CENTS = 200000;
 const CLICKWRAP_CONTRACT_TEMPLATE_PDF_URL = "/assets/contracts/commAgreement-v1-template.pdf";
 const CLICKWRAP_CONTRACT_TEMPLATE_FONT_URL = "/assets/fonts/PTMono-Regular.ttf";
 const CLICKWRAP_STORAGE_BUCKET = "clickwrap-contracts";
@@ -293,6 +295,9 @@ export default {
         && request.method === "POST"
       ) {
         return handleAdminClientWalletAdjust(request, env);
+      }
+      if (pathname === "/api/admin/demo-account/reset" && request.method === "POST") {
+        return handleAdminDemoAccountReset(request, env);
       }
       if (pathname === "/api/admin/invoices" && request.method === "GET") {
         return handleAdminInvoicesList(request, env, url);
@@ -4374,6 +4379,13 @@ async function listSupabaseUsers(env, limit = 200) {
     if (pageUsers.length < pageSize) break;
   }
   return users.slice(0, safeLimit);
+}
+
+async function getSupabaseUserByEmail(env, email) {
+  const targetEmail = normalizeEmail(email);
+  if (!targetEmail) return null;
+  const users = await listSupabaseUsers(env, 1000);
+  return users.find((user) => normalizeEmail(user?.email || "") === targetEmail) || null;
 }
 
 async function listGenerationHistoryRows(env, limit = 5000) {
@@ -9843,6 +9855,30 @@ async function saveClientBillingPreference(env, adminUserId, userId, payload) {
   return normalizeClientBillingPreference(Array.isArray(rows) && rows.length ? rows[0] : normalized);
 }
 
+async function deleteClientBillingPreference(env, userId) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    throw new Error("Client id is required.");
+  }
+  const params = new URLSearchParams();
+  params.set("user_id", `eq.${safeUserId}`);
+  const response = await supabaseServiceRequest(
+    env,
+    `/rest/v1/${CLIENT_BILLING_PREF_TABLE}?${params.toString()}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=minimal",
+      },
+    }
+  );
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    if (/relation .*client_billing_preferences/i.test(details)) return;
+    throw new Error(`Could not reset billing settings (${response.status}) ${details}`.trim());
+  }
+}
+
 async function getAdminSettings(env) {
   const params = new URLSearchParams();
   params.set("select", "scope,carrier_discount_pct,client_discount_pct,updated_at,updated_by");
@@ -10991,6 +11027,102 @@ async function buildAdminClientWalletWorkspace(env, userId) {
   };
 }
 
+function generateDemoAccountPassword() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (byte) => byte.toString(36).padStart(2, "0")).join("").slice(0, 24);
+  return `ShipideDemo-${token}!`;
+}
+
+function getDemoAccountEmail(env) {
+  return normalizeEmail(env.DEMO_ACCOUNT_EMAIL || DEFAULT_DEMO_ACCOUNT_EMAIL);
+}
+
+function getDemoAccountPassword(env) {
+  return String(env.DEMO_ACCOUNT_PASSWORD || "").trim();
+}
+
+function buildDemoAccountMetadata(email) {
+  const safeEmail = normalizeEmail(email);
+  return {
+    company_name: "Shipide Demo",
+    contact_name: "Demo Account",
+    contact_email: safeEmail,
+    contact_phone: "+32 488 28 04 56",
+    billing_address: "Avenue Louise 221, 1050 Brussels, Belgium",
+    tax_id: "DEMO",
+    customer_id: "DEMO-ACCOUNT",
+    account_manager: "Shipide",
+    preferred_language: "en",
+    demo_account: true,
+  };
+}
+
+async function ensureDemoAccount(env, options = {}) {
+  const email = getDemoAccountEmail(env);
+  if (!email || !isValidEmailFormat(email)) {
+    throw new Error("DEMO_ACCOUNT_EMAIL must be a valid email address.");
+  }
+  const configuredPassword = getDemoAccountPassword(env);
+  const generatedPassword = configuredPassword ? "" : generateDemoAccountPassword();
+  const password = configuredPassword || generatedPassword;
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(`DEMO_ACCOUNT_PASSWORD must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+  }
+  const metadata = {
+    ...buildDemoAccountMetadata(email),
+    ...(options.metadata && typeof options.metadata === "object" ? options.metadata : {}),
+  };
+  const existingUser = await getSupabaseUserByEmail(env, email);
+  const user = existingUser?.id
+    ? await updateSupabaseUserById(env, existingUser.id, {
+        password,
+        user_metadata: {
+          ...(existingUser.user_metadata && typeof existingUser.user_metadata === "object"
+            ? existingUser.user_metadata
+            : {}),
+          ...metadata,
+        },
+      })
+    : await createSupabaseUserWithMetadata(env, email, password, metadata);
+  await ensureAccountSettingsRow(env, user.id);
+  return {
+    user,
+    email,
+    generatedPassword,
+    created: !existingUser?.id,
+  };
+}
+
+async function resetDemoAccountWallet(env, userId, actor) {
+  const wallet = await getOrCreateBillingWallet(env, userId);
+  const currentBalanceCents = Math.trunc(Number(wallet?.balance_cents) || 0);
+  const deltaCents = DEMO_ACCOUNT_TARGET_BALANCE_CENTS - currentBalanceCents;
+  let transaction = null;
+  if (deltaCents !== 0) {
+    const result = await applyBillingWalletTransaction(env, {
+      userId,
+      amountCents: deltaCents,
+      source: "demo_seed",
+      reference: `DEMO-SEED-${Date.now().toString(36).toUpperCase()}`,
+      metadata: {
+        actor: String(actor || "admin").trim() || "admin",
+        reason: "Reset demo account wallet balance",
+        target_balance_cents: DEMO_ACCOUNT_TARGET_BALANCE_CENTS,
+        previous_balance_cents: currentBalanceCents,
+        channel: "admin_demo_account",
+      },
+      currency: DEFAULT_BILLING_CURRENCY,
+    });
+    transaction = result.transaction;
+  }
+  return {
+    ...(await getOrCreateBillingWallet(env, userId)),
+    demo_delta_cents: deltaCents,
+    demo_transaction: transaction,
+  };
+}
+
 async function markRegistrationInviteClaimed(env, inviteId, userId, email) {
   if (!inviteId || !userId) return;
   const params = new URLSearchParams();
@@ -11064,6 +11196,33 @@ async function createSupabaseUserWithMetadata(env, email, password, userMetadata
     throw new Error("Account creation response was invalid.");
   }
   return payload;
+}
+
+async function updateSupabaseUserById(env, userId, updates = {}) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    throw new Error("User id is required.");
+  }
+  const body = updates && typeof updates === "object" ? updates : {};
+  const response = await fetch(
+    `${String(env.SUPABASE_URL).replace(/\/+$/, "")}/auth/v1/admin/users/${safeUserId}`,
+    {
+      method: "PUT",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      payload?.msg || payload?.error_description || payload?.error || `Could not update account (${response.status}).`;
+    throw new Error(String(message).trim());
+  }
+  return payload?.user && typeof payload.user === "object" ? payload.user : payload;
 }
 
 async function deleteSupabaseUserById(env, userId) {
@@ -16757,6 +16916,49 @@ async function handleAdminClientWalletAdjust(request, env) {
     });
   } catch (error) {
     return jsonResponse({ error: error?.message || "Could not apply wallet adjustment." }, 500);
+  }
+}
+
+async function handleAdminDemoAccountReset(request, env) {
+  const user = await getAuthenticatedUser(request, env);
+  if (!user?.id) {
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+  if (!canManageRegistrationInvites(user, env)) {
+    return jsonResponse({ error: "You are not allowed to manage demo accounts." }, 403);
+  }
+
+  let body = {};
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Invalid request body." }, 400);
+  }
+
+  try {
+    const demo = await ensureDemoAccount(env, {
+      metadata: body?.metadata && typeof body.metadata === "object" ? body.metadata : {},
+    });
+    await deleteClientBillingPreference(env, demo.user.id);
+    const wallet = await resetDemoAccountWallet(
+      env,
+      demo.user.id,
+      normalizeEmail(user.email || "") || user.id
+    );
+    return jsonResponse({
+      ok: true,
+      created: demo.created,
+      userId: demo.user.id,
+      email: demo.email,
+      temporary_password: demo.generatedPassword || "",
+      password_generated: Boolean(demo.generatedPassword),
+      balance_eur: fromCents(Number(wallet?.balance_cents) || 0),
+      target_balance_eur: fromCents(DEMO_ACCOUNT_TARGET_BALANCE_CENTS),
+      payment_mode: "wallet",
+      transaction_reference: wallet?.demo_transaction?.reference || null,
+    });
+  } catch (error) {
+    return jsonResponse({ error: error?.message || "Could not reset demo account." }, 500);
   }
 }
 
