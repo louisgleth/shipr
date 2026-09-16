@@ -1226,6 +1226,24 @@
           </article>
         </div>
 
+        <article class="reports-card admin-analytics-card" id="adminAnalyticsCard">
+          <div><div class="reports-kpi-title">Website acquisition</div>
+          <p class="panel-sub">Five SEO tools and the Shipide application funnel</p></div>
+          <div class="admin-analytics-metrics">
+            <div><strong id="adminAnalyticsLive">—</strong><span>Live visitors</span></div>
+            <div><strong id="adminAnalyticsSessions">—</strong><span>Tool sessions · 28 days</span></div>
+            <div><strong id="adminAnalyticsClicks">—</strong><span>Shipide clicks · 28 days</span></div>
+            <div><strong id="adminAnalyticsLeads">—</strong><span>Applications · 28 days</span></div>
+          </div>
+          <div class="admin-analytics-actions"><span id="adminAnalyticsStatus" class="reports-kpi-meta" role="status">Loading analytics…</span>
+          <button type="button" class="btn btn-secondary btn-sm" id="openAdminAnalytics">Open full analytics</button></div>
+        </article>
+        <dialog id="adminAnalyticsDialog" class="admin-analytics-dialog" aria-labelledby="adminAnalyticsTitle">
+          <div class="admin-analytics-dialog-head"><h2 id="adminAnalyticsTitle">Website analytics</h2><button type="button" class="btn btn-ghost btn-sm" id="closeAdminAnalytics">Close</button></div>
+          <p id="adminAnalyticsReportStatus" role="status">Loading report…</p>
+          <iframe id="adminAnalyticsFrame" title="Full Shipide analytics report" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
+        </dialog>
+
         <div class="admin-top-grid">
           <div class="invite-panel admin-panel-card">
             <div class="invite-head">
@@ -3348,5 +3366,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="countries.js"></script>
     <script src="app.js?v=20260825-demo-login"></script>
+    <script src="admin-analytics.js?v=20260916"></script>
   </body>
 </html>

@@ -1,3 +1,4 @@
+import { handleAdminAnalytics } from "./admin-analytics-proxy.mjs";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import puppeteer from "@cloudflare/puppeteer";
@@ -256,6 +257,9 @@ export default {
         });
       }
 
+      if (pathname.startsWith("/api/admin/analytics/") && request.method === "GET") {
+        return handleAdminAnalytics(request, env, {authenticate:getAuthenticatedUser,isAdmin:canManageRegistrationInvites});
+      }
       if (pathname === "/api/admin/status" && request.method === "GET") {
         return handleAdminStatus(request, env);
       }
