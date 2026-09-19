@@ -2,7 +2,7 @@
 
 Base URL: `https://portal.shipide.com/api/v1`
 
-The [OpenAPI specification](openapi.json) describes the request schemas, response models, authentication, and endpoint permissions. It can be imported into Postman or another OpenAPI-compatible client.
+The [OpenAPI specification](https://portal.shipide.com/docs/openapi.json) describes the request schemas, response models, authentication, and endpoint permissions. It can be imported into Postman or another OpenAPI-compatible client.
 
 | Method | Path | Required scope | Purpose |
 | --- | --- | --- | --- |
