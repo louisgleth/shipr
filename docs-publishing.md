@@ -1,12 +1,12 @@
 # Shipide GitBook publishing
 
-Target: https://docs.shipide.com
+Published and verified over HTTPS: https://docs.shipide.com
 
 GitBook site: https://app.gitbook.com/o/SSngBtXf8qGV5zOw0w94/sites/site_Rft2W
 
-Published and verified at: https://shipide.gitbook.io/shipide-docs/
+GitBook fallback URL: https://shipide.gitbook.io/shipide-docs/
 
-GitBook's requested DNS record: CNAME `docs` to `5842f9da13-hosting.gitbook.io`, DNS only (not proxied).
+Configured in Cloudflare: CNAME `docs` to `5842f9da13-hosting.gitbook.io`, DNS only (not proxied), TTL Auto. GitBook detected the record, and the custom domain returned HTTP 200 with valid HTTPS on September 19, 2026.
 
 The hosted OpenAPI source is https://portal.shipide.com/docs/openapi.json. GitBook is configured to import it under the name `shipide-api`; its URL import checks for updates every six hours. Guide content was imported as Markdown rather than enabling Git Sync.
 
