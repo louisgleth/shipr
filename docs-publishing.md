@@ -2,6 +2,12 @@
 
 Target: https://docs.shipide.com
 
+GitBook site: https://app.gitbook.com/o/SSngBtXf8qGV5zOw0w94/sites/site_Rft2W
+
+GitBook's requested DNS record: CNAME `docs` to `5842f9da13-hosting.gitbook.io`, DNS only (not proxied).
+
+The hosted OpenAPI source is https://portal.shipide.com/docs/openapi.json. GitBook is configured to import it under the name `shipide-api`; its URL import checks for updates every six hours. Guide content was imported as Markdown rather than enabling Git Sync.
+
 Source content lives in `docs/`. `.gitbook.yaml` selects that root for a future Git Sync connection. `npm run docs:build` generates the importable OpenAPI schema. GitBook content can also be imported as a Markdown ZIP containing README.md, SUMMARY.md, the topic files, and openapi.json.
 
 ## Branding
@@ -18,6 +24,8 @@ Source content lives in `docs/`. `.gitbook.yaml` selects that root for a future 
 - Header links: Portal (`https://portal.shipide.com`), Support (`mailto:info@shipide.com`).
 
 Set these in GitBook's site customization panel; `.gitbook.yaml` does not control hosted-site branding. Use GitBook's actual domain setup to obtain its CNAME target. Do not guess a target. Custom-domain support may require a paid GitBook site plan; do not purchase a plan without the user's approval.
+
+Applied branding: both logo variants, favicon, `#7747E3` in light and dark modes, dark default mode with viewer toggle, and title "Shipide Developers". Main typography uses GitBook's Inter fallback; the original brand fonts are OTF/TTF while GitBook requires WOFF/WOFF2 and a higher plan for custom fonts. The account was placed on a 14-day trial by GitBook onboarding; no paid plan was purchased.
 
 ## API deployment
 
