@@ -24,11 +24,11 @@
         const row = document.createElement('div'); row.className = 'key-row'; row.dataset.revoked = String(Boolean(key.revoked_at));
         const name = text('div', key.name); name.append(text('small', key.revoked_at ? 'Revoked' : key.expires_at && Date.parse(key.expires_at) <= Date.now() ? 'Expired' : `Last used: ${date(key.last_used_at)}`));
         const revoke = text('button', 'Revoke', 'btn btn-secondary btn-sm'); revoke.type = 'button'; revoke.disabled = Boolean(key.revoked_at); revoke.setAttribute('aria-label', `Revoke ${key.name}`);
-        revoke.addEventListener('click', () => { selectedKey = key; el('revokeName').textContent = key.name; el('revokeDialog').showModal(); });
+        revoke.addEventListener('click', () => { selectedKey = key; el('revokeName').textContent = key.name; el('revokeDialog').returnValue = ''; el('revokeDialog').showModal(); });
         row.append(name, text('code', `${key.prefix}...`), text('span', key.mode === 'test' ? 'Sandbox' : 'Live'), text('small', `Expires: ${date(key.expires_at)}`, 'key-date'), revoke); el('keyList').append(row);
       }
       if (!el('scopes').children.length) for (const scope of scopes) {
-        const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox'; input.value = scope; input.name = 'scope'; input.checked = true; label.append(input, document.createTextNode(scope)); el('scopes').append(label);
+        const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox'; input.value = scope; input.name = 'scope'; input.defaultChecked = true; label.append(input, document.createTextNode(scope)); el('scopes').append(label);
       }
     } catch (error) { el('status').textContent = error.message; el('workspace').hidden = true; el('login').hidden = false; }
   }
