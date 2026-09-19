@@ -5,7 +5,13 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [triggers]
-crons = ["15 6 * * *"]
+crons = ["15 6 * * *", "* * * * *"]
+
+[[d1_databases]]
+binding = "CUSTOMER_API_DB"
+database_name = "shipide-customer-api"
+database_id = "4c0a5939-5b37-47e8-95fa-26a692ade130"
+migrations_dir = "migrations/customer-api"
 
 [browser]
 binding = "BROWSER"

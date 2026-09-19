@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex"><title>Developer | Shipide</title>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/developer.css">
+</head>
+<body class="developer-page">
+  <header class="developer-header"><a href="/" class="developer-brand"><img src="/shipide_logo.png" alt="Shipide"></a><nav><a href="https://docs.shipide.com" target="_blank" rel="noopener">Documentation</a><a href="/">Back to portal</a></nav></header>
+  <main>
+    <div class="developer-title"><div><p class="eyebrow">SHIPIDE API</p><h1>Developer</h1></div><span class="developer-badge">v1</span></div>
+    <p id="status" role="status" aria-live="polite">Loading account...</p>
+    <a href="/login" id="login" hidden>Sign in to continue</a>
+    <section id="workspace" hidden>
+      <div class="developer-section-title"><h2>API keys</h2><button class="btn btn-primary" id="newKey" type="button">Create key</button></div>
+      <div id="keyList" class="key-list"></div>
+      <section class="developer-availability"><h2>Environments</h2><dl><div><dt>Sandbox</dt><dd>Test shipments, rates, PDF labels, and webhooks. No charges.</dd></div><div><dt>Live</dt><dd>Order and shipment intake available. Carrier booking is awaiting activation.</dd></div></dl></section>
+    </section>
+  </main>
+  <dialog id="keyDialog">
+    <form id="keyForm">
+      <div class="developer-section-title"><h2>Create API key</h2><button class="icon-button" type="button" id="closeDialog" aria-label="Close" title="Close">&#215;</button></div>
+      <label for="keyName">Name</label><input id="keyName" name="name" maxlength="80" placeholder="Warehouse integration" required>
+      <label for="keyMode">Environment</label><select id="keyMode" name="mode"><option value="test">Sandbox</option><option value="live">Live</option></select>
+      <label for="keyExpiry">Expires</label><select id="keyExpiry"><option value="90">In 90 days</option><option value="30">In 30 days</option><option value="365">In one year</option><option value="0">No expiry</option></select>
+      <fieldset><legend>Permissions</legend><div id="scopes" class="scope-grid"></div></fieldset>
+      <p id="formError" role="alert"></p><button class="btn btn-primary" id="createKey" type="submit">Create key</button>
+    </form>
+    <section id="keyResult" hidden><h2>API key created</h2><p>This key is only shown once.</p><output id="secret"></output><div class="developer-section-title"><button class="btn btn-secondary" id="copyKey" type="button">Copy key</button><button class="btn btn-primary" id="doneKey" type="button">Done</button></div></section>
+  </dialog>
+  <dialog id="revokeDialog"><form method="dialog"><h2>Revoke API key?</h2><p id="revokeName"></p><p>Requests using this key will stop working immediately.</p><div class="developer-section-title"><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="revoke">Revoke key</button></div></form></dialog>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="/developer.js" defer></script>
+</body>
+</html>

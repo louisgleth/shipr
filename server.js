@@ -3074,6 +3074,7 @@ async function proxyAuthenticatedApi(req, res, targetPathWithQuery) {
       method: req.method || "GET",
       headers: {
         Authorization: `Bearer ${bearerToken}`,
+        ...(req.headers['idempotency-key'] ? { 'Idempotency-Key': req.headers['idempotency-key'] } : {}),
         ...(rawBody
           ? {
               "Content-Type": "application/json",
@@ -18027,6 +18028,10 @@ async function handleShopifyDevSeedOrders(req, res) {
 
 async function handleApi(req, res, requestUrl) {
   const pathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
+  if (pathname.startsWith('/api/developer/') || pathname.startsWith('/api/v1/')) {
+    await proxyAuthenticatedApi(req, res, `${pathname}${requestUrl.search}`);
+    return true;
+  }
   if (pathname === "/api/admin/status" && req.method === "GET") {
     await handleAdminStatus(req, res);
     return true;

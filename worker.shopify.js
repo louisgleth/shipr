@@ -1,4 +1,5 @@
 import { handleAdminAnalytics } from "./admin-analytics-proxy.mjs";
+import { handleCustomerApi, handleDeveloperApi, dispatchWebhooks } from "./customer-api.mjs";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import puppeteer from "@cloudflare/puppeteer";
@@ -249,6 +250,9 @@ export default {
     try {
       const url = new URL(request.url);
       const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+      if (pathname.startsWith('/api/v1/')) return handleCustomerApi(request, env);
+      if (pathname.startsWith('/api/developer/')) return handleDeveloperApi(request, env, getAuthenticatedUser);
 
       if (request.method === "OPTIONS") {
         return new Response(null, {
@@ -583,6 +587,10 @@ export default {
     }
   },
   async scheduled(event, env) {
+    if (event.cron === '* * * * *') {
+      await dispatchWebhooks(env);
+      return;
+    }
     const scheduledNow = Number.isFinite(Number(event?.scheduledTime))
       ? new Date(Number(event.scheduledTime))
       : new Date();

@@ -4,6 +4,8 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "test:api": "node --test scripts/test-customer-api.mjs",
+    "docs:build": "node scripts/build-api-spec.mjs",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "signatures:dry-run": "node signatures/deploy-gmail-signatures.js --dry-run",
