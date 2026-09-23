@@ -11,7 +11,14 @@ test('analytics never reaches collector for unsigned or non-admin users',async()
 test('admin proxy limits destinations, uses server credential, and avoids duplicate leads',async()=>{
  const calls=[];const env={OBSERVATORY_ADMIN_TOKEN:'server-secret',OBSERVATORY:{fetch:async req=>{calls.push(req);return Response.json(req.url.endsWith('/v1/live')?{total:2}:{sites:[{id:'marge',sessions:3,counts:{shipide_click:2},leads:1,search:{clicks:4}},{id:'shipide',sessions:1,counts:{},leads:1,search:{clicks:1}}]});}}};
  const auth={authenticate:async()=>({id:'admin'}),isAdmin:()=>true};
- const result=await handleAdminAnalytics(request('summary'),env,auth),body=await result.json();assert.equal(body.leads,1);assert.equal(body.sessions,3);assert.equal(body.live.total,2);assert.equal(JSON.stringify(body).includes('server-secret'),false);assert.ok(calls.every(r=>r.headers.get('Authorization')==='Bearer server-secret'));assert.equal(result.headers.get('Cache-Control'),'no-store');
+  const result=await handleAdminAnalytics(request('summary'),env,auth),body=await result.json();assert.equal(body.leads,1);assert.equal(body.sessions,3);assert.equal(body.live.total,2);assert.equal(JSON.stringify(body).includes('server-secret'),false);assert.ok(calls.every(r=>r.headers.get('Authorization')==='Bearer server-secret'));assert.equal(result.headers.get('Cache-Control'),'no-store');
+  assert.equal(body.articleViews,null);assert.equal(body.articleGoogleClicks,null);
  assert.equal((await handleAdminAnalytics(request('arbitrary'),env,auth)).status,404);assert.equal(calls.length,2);
  env.OBSERVATORY.fetch=async()=>new Response('upstream secret error',{status:500});const failure=await handleAdminAnalytics(request('live'),env,auth);assert.equal(failure.status,502);assert.equal((await failure.text()).includes('upstream secret'),false);
+});
+test('SEO center forwards only supported periods and preserves missing article figures',async()=>{
+ const calls=[];const env={OBSERVATORY_ADMIN_TOKEN:'server-secret',OBSERVATORY:{fetch:async req=>{calls.push(req.url);return new Response('<h1>SEO center</h1>');}}},auth={authenticate:async()=>({id:'admin'}),isAdmin:()=>true};
+ assert.equal((await handleAdminAnalytics(request('report?days=90'),env,auth)).status,200);
+ assert.equal(calls[0],'https://observatory.internal/?days=90');
+ assert.equal((await handleAdminAnalytics(request('report?days=999'),env,auth)).status,400);assert.equal(calls.length,1);
 });

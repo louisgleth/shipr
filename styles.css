@@ -12188,7 +12188,7 @@ html[data-theme="light"] .btn-primary {
 
 /* Admin acquisition summary and isolated read-only report. */
 .admin-analytics-card { margin: 20px 0; padding: 24px; }
-.admin-analytics-metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin:20px 0; }
+.admin-analytics-metrics { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:20px 0; }
 .admin-analytics-metrics strong { display:block;font-size:28px;font-weight:400; }
 .admin-analytics-metrics span { display:block;color:var(--muted);font-size:12px;margin-top:6px; }
 .admin-analytics-actions,.admin-analytics-dialog-head { display:flex;justify-content:space-between;align-items:center;gap:16px; }
@@ -12197,6 +12197,8 @@ html[data-theme="light"] .btn-primary {
 .admin-analytics-dialog-head { padding:16px 24px;border-bottom:1px solid var(--stroke); }
 .admin-analytics-dialog-head h2 { margin:0;font-size:18px; }
 #adminAnalyticsReportStatus { padding:0 24px; }
-#adminAnalyticsFrame { width:100%;height:calc(100% - 76px);border:0;display:block;background:var(--primary); }
+#adminAnalyticsFrame { width:100%;height:calc(100% - 140px);border:0;display:block;background:var(--primary); }
 @media(max-width:650px){.admin-analytics-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.admin-analytics-actions{align-items:flex-start;flex-direction:column}.admin-analytics-card{padding:18px}.admin-analytics-dialog-head{padding:12px}.admin-analytics-dialog{width:96vw;max-width:96vw}}
 #adminAnalyticsFrame[hidden] { display:none; }
+
+.admin-analytics-period{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--stroke);font-size:13px;color:var(--muted)}.admin-analytics-period select{background:var(--surface);color:var(--text);border:1px solid var(--stroke);padding:7px 10px;border-radius:var(--radius);font:inherit}
